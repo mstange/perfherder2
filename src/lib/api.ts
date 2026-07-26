@@ -58,6 +58,13 @@ export type Series = {
   isSubtest: boolean;
   parentSignature: string | null;
   signatureHash: string;
+  // Compound identity: `${repository}|${signatureHash}`. Baked in at
+  // construction so callers never need to remember the composition — using
+  // `signatureHash` alone would collide across repos (the same test has the
+  // same hash on autoland and mozilla-central).
+  key: string;
+  // The parent row's `key`, if this is a subtest. `null` for parents.
+  parentKey: string | null;
   // Precomputed lowercase haystack for fast text filtering.
   searchText: string;
 };
@@ -124,6 +131,7 @@ export function toSeries(
     ]
       .join(' ')
       .toLowerCase();
+    const parentSignature = s.parent_signature ?? null;
     out.push({
       id: Number(idStr),
       repository,
@@ -138,9 +146,11 @@ export function toSeries(
       tags,
       measurementUnit: s.measurement_unit ?? '',
       hasSubtests: !!s.has_subtests,
-      isSubtest: !!s.parent_signature,
-      parentSignature: s.parent_signature ?? null,
+      isSubtest: !!parentSignature,
+      parentSignature,
       signatureHash: s.signature_hash,
+      key: `${repository}|${s.signature_hash}`,
+      parentKey: parentSignature ? `${repository}|${parentSignature}` : null,
       searchText,
     });
   }

@@ -16,7 +16,6 @@ import {
   parseChip,
   pickCachedForRepo,
   removeChip,
-  rowKey,
   sortKey,
   toggleChip,
   tokenizeFilter,
@@ -25,10 +24,16 @@ import {
   type SortState,
 } from './filter';
 
+// The picker uses `Series.key` / `Series.parentKey` as the compound identity
+// across repos. Test fixtures compute them from repository + signatureHash so
+// overrides that change either field automatically get consistent keys.
 function s(overrides: Partial<Series> = {}): Series {
+  const repository = overrides.repository ?? 'autoland';
+  const signatureHash = overrides.signatureHash ?? 'hash1';
+  const parentSignature = overrides.parentSignature ?? null;
   const base: Series = {
     id: 1,
-    repository: 'autoland',
+    repository,
     framework: 'browsertime',
     frameworkId: 13,
     platform: 'linux2404-64',
@@ -40,9 +45,11 @@ function s(overrides: Partial<Series> = {}): Series {
     tags: ['fission'],
     measurementUnit: 'score',
     hasSubtests: false,
-    isSubtest: false,
-    parentSignature: null,
-    signatureHash: 'hash1',
+    isSubtest: !!parentSignature,
+    parentSignature,
+    signatureHash,
+    key: `${repository}|${signatureHash}`,
+    parentKey: parentSignature ? `${repository}|${parentSignature}` : null,
     searchText: 'speedometer3 firefox linux2404-64 browsertime autoland opt fission',
   };
   return { ...base, ...overrides };
@@ -253,14 +260,6 @@ describe('groupChildrenByParent', () => {
 
   it('returns an empty map when there are no subtests', () => {
     expect(groupChildrenByParent([s()]).size).toBe(0);
-  });
-});
-
-describe('rowKey', () => {
-  it('combines repo and signature hash', () => {
-    expect(rowKey({ repository: 'autoland', signatureHash: 'abc' })).toBe(
-      'autoland|abc',
-    );
   });
 });
 

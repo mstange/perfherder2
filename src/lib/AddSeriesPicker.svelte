@@ -21,7 +21,6 @@
     matchParentWithChildren,
     matchesRow,
     pickCachedForRepo,
-    rowKey,
     toggleChip,
     type Filter,
     type FilterChip,
@@ -47,7 +46,7 @@
   let timeRangeSeconds = $state(1209600); // 14 days, matches perfherder default.
   let filter = $state<Filter>(EMPTY_FILTER);
   let sort = $state<SortState | null>(null);
-  // Expansion state is keyed by `rowKey(row)` = `${repo}|${signatureHash}`,
+  // Expansion state is keyed by `Series.key` = `${repo}|${signatureHash}`,
   // not by hash alone. Two repos can share a hash for the same test, and
   // keying by hash would toggle both together.
   let expanded = $state(new Set<string>());
@@ -153,14 +152,13 @@
     const matchedChildren = new Map<string, Series[]>();
     for (const row of combined) {
       if (row.isSubtest) continue;
-      const key = rowKey(row);
       if (matchSubtests && filterActive) {
-        const kids = childrenByParent.get(key) ?? [];
+        const kids = childrenByParent.get(row.key) ?? [];
         const m = matchParentWithChildren(row, kids, filter);
         if (!m) continue;
         parents.push(row);
-        if (!m.selfMatched) autoExpanded.add(key);
-        matchedChildren.set(key, m.matchedChildren);
+        if (!m.selfMatched) autoExpanded.add(row.key);
+        matchedChildren.set(row.key, m.matchedChildren);
       } else if (matchesRow(row, filter)) {
         parents.push(row);
       }
@@ -182,10 +180,9 @@
   // matched — so a subtest-badge click reveals exactly the row the user
   // clicked instead of 200 siblings.
   function childrenForParent(parent: Series): Series[] {
-    const key = rowKey(parent);
-    const all = childrenByParent.get(key) ?? [];
+    const all = childrenByParent.get(parent.key) ?? [];
     if (!matchSubtests || !filterActive) return all;
-    return filterResult.matchedChildren.get(key) ?? all;
+    return filterResult.matchedChildren.get(parent.key) ?? all;
   }
 
   function isRowExpanded(key: string): boolean {
@@ -282,7 +279,7 @@
     const rows: Series[] = [];
     for (const p of visibleParents) {
       rows.push(p);
-      if (isRowExpanded(rowKey(p))) {
+      if (isRowExpanded(p.key)) {
         for (const c of childrenForParent(p)) rows.push(c);
       }
     }
@@ -463,7 +460,7 @@
         {/snippet}
 
         {#each visibleParents as row (row.id)}
-          {@const parentKey = rowKey(row)}
+          {@const parentKey = row.key}
           {@const allChildren = childrenByParent.get(parentKey) ?? []}
           {@const children = childrenForParent(row)}
           {@const isExpanded = isRowExpanded(parentKey)}

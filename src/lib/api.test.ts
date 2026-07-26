@@ -123,4 +123,33 @@ describe('toSeries', () => {
     const [s] = toSeries({ '42': raw() }, 'autoland', frameworks, optionMap);
     expect(s.id).toBe(42);
   });
+
+  it('composes `key` = `${repository}|${signatureHash}` and null parentKey for parents', () => {
+    const [s] = toSeries(
+      { '1': raw({ signature_hash: 'HASH' }) },
+      'autoland',
+      frameworks,
+      optionMap,
+    );
+    expect(s.key).toBe('autoland|HASH');
+    expect(s.parentKey).toBeNull();
+  });
+
+  it('composes `parentKey` on subtest rows so cross-repo hash aliasing does not associate children with the wrong parent', () => {
+    const [child] = toSeries(
+      {
+        '2': raw({
+          id: 2,
+          signature_hash: 'CHASH',
+          parent_signature: 'PHASH',
+          test: 'sub',
+        }),
+      },
+      'autoland',
+      frameworks,
+      optionMap,
+    );
+    expect(child.key).toBe('autoland|CHASH');
+    expect(child.parentKey).toBe('autoland|PHASH');
+  });
 });
