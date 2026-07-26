@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from 'svelte';
   import {
     FILTER_FIELDS,
     chipToString,
@@ -38,7 +39,13 @@
   // externally" (adopt into textValue). Without this the debounce would
   // clobber the input mid-typing, because during the debounce window
   // `filter.text` still holds the pre-typing value.
-  let lastCommittedFilter: Filter = filter;
+  //
+  // `untrack` on the initializer makes it explicit that we want the
+  // *current* value of the `filter` prop at construction time, not a
+  // reactive subscription to it — Svelte 5 warns on plain reads of props
+  // outside an effect / derived because that's a common footgun. The
+  // snapshot semantics is exactly what we want, so we opt out of tracking.
+  let lastCommittedFilter: Filter = untrack(() => filter);
 
   // A text-only edit that we've computed but haven't yet handed to the
   // parent. Cleared when the timer fires (or we commit immediately for
