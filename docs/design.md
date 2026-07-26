@@ -98,16 +98,50 @@ the disclosure UX.
 
 ### Row identity: `Series.key`, composed at construction
 
-`Series.key` = `${repository}|${signatureHash}`, populated in
+`Series.key` = `${repository}|${id}`, populated in
 [api.ts::toSeries](../src/lib/api.ts). It's used anywhere a row needs
 stable per-row identity across the union of caches — expansion state,
-parent-child grouping, master-checkbox scope. Subtest rows also carry
-`Series.parentKey` (their parent's `key`), so
-[filter.ts::groupChildrenByParent](../src/lib/filter.ts) can bucket
-children without repeating the compound-key recipe. **Never key by
-`signatureHash` alone** — the same test has the same hash on autoland
-and mozilla-central, and mixing them up silently associates autoland
-children with mozilla-central parents.
+parent-child grouping, master-checkbox scope, and the `#each` key in
+[AddSeriesPicker.svelte](../src/lib/AddSeriesPicker.svelte)'s virtual
+scroller. Subtest rows also carry `Series.parentKey` (their parent's
+`key`), so [filter.ts::groupChildrenByParent](../src/lib/filter.ts) can
+bucket children without repeating the compound-key recipe.
+
+**Signature-hash aliasing (two failure modes we've been burned by).**
+`signature_hash` is *not* a globally unique identifier — the picker used
+to key rows by `${repository}|${signatureHash}`, and both of these bit us:
+
+1. **Across repos.** The same test has the same hash on autoland and
+   mozilla-central. Keying by hash alone lets autoland children get
+   attached to a mozilla-central parent (and vice versa). Fixed once by
+   including the repo in the key.
+2. **Within a repo, across `application`.** Two rows that differ *only*
+   by application (custom-car vs chrome for the same suite/platform)
+   share a hash — apparently `application` is not part of the hash
+   input. `${repo}|${hash}` still collides, and
+   `groupChildrenByParent` then merges children across applications; the
+   virtual `#each` throws `each_key_duplicate` when both parents are on
+   screen and expanded.
+
+Fix: **key by the API's row `id`**, which is per-signature and globally
+unique in the treeherder DB. `parentKey` can no longer be constructed
+from the raw `parent_signature` (also a hash — same aliasing) — the
+[toSeries](../src/lib/api.ts) pass builds a lookup from
+`(hash, application) → parentId` and stores `parentKey =
+${repo}|${parentId}` on each child. The assumption is that a child
+inherits its parent's `application`, which holds in every sample we've
+checked; a warning-worthy fallback would be to leave `parentKey` null
+and render the child as an orphan, but we've not needed it.
+
+Consequences for anyone touching this code:
+
+- **Never key rows by `signatureHash` alone.** Not in maps, not in
+  `#each` blocks, not in cache lookups. Use `Series.key`.
+- **Never derive `parentKey` from `parent_signature` directly.** Go
+  through the parent's `Series.key` — that's the whole point of the
+  field.
+- **If you invent a new lookup keyed by `(repo, hash)`,** convince
+  yourself the collision doesn't matter (or add the disambiguator).
 
 ### "Match inside subtests" is a filter semantic; fetching is separate
 

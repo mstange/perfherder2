@@ -58,12 +58,17 @@ export type Series = {
   isSubtest: boolean;
   parentSignature: string | null;
   signatureHash: string;
-  // Compound identity: `${repository}|${signatureHash}`. Baked in at
-  // construction so callers never need to remember the composition — using
-  // `signatureHash` alone would collide across repos (the same test has the
-  // same hash on autoland and mozilla-central).
+  // Compound identity: `${repository}|${id}`. Baked in at construction so
+  // callers never need to remember the composition. The API's row id is
+  // globally unique, unlike `signatureHash` which collides both across repos
+  // (same test on autoland and mozilla-central) and within a repo (two rows
+  // differing only by `application` — e.g. custom-car vs chrome — share a
+  // hash).
   key: string;
-  // The parent row's `key`, if this is a subtest. `null` for parents.
+  // The parent row's `key`, if this is a subtest. `null` for parents. Looked
+  // up in `toSeries` because `parent_signature` alone doesn't identify the
+  // parent when hashes alias within a repo (see above); the child's
+  // `application` disambiguates.
   parentKey: string | null;
   // Precomputed lowercase haystack for fast text filtering.
   searchText: string;
@@ -108,8 +113,25 @@ export function toSeries(
   frameworkMap: Map<number, string>,
   optionMap: Map<string, string[]>,
 ): Series[] {
+  const entries = Object.entries(raw);
+
+  // Lookup from a parent's (signature_hash, application) to its numeric id.
+  // Subtests reference their parent by `parent_signature` (a hash), but that
+  // hash is NOT unique within a repo: parents that differ only by
+  // `application` (custom-car vs chrome for the same suite/platform) share
+  // it. A child inherits its parent's application, so (hash, application)
+  // uniquely picks the right parent — and the parent's id then goes into the
+  // child's `parentKey`.
+  const parentIdByHashApp = new Map<string, number>();
+  for (const [idStr, s] of entries) {
+    if (s.parent_signature) continue;
+    const app = s.application ?? '';
+    parentIdByHashApp.set(`${s.signature_hash}|${app}`, Number(idStr));
+  }
+
   const out: Series[] = [];
-  for (const [idStr, s] of Object.entries(raw)) {
+  for (const [idStr, s] of entries) {
+    const id = Number(idStr);
     const framework = frameworkMap.get(s.framework_id) ?? `framework:${s.framework_id}`;
     const baseOpts = optionMap.get(s.option_collection_hash) ?? [];
     const extra = s.extra_options ?? [];
@@ -132,8 +154,13 @@ export function toSeries(
       .join(' ')
       .toLowerCase();
     const parentSignature = s.parent_signature ?? null;
+    let parentKey: string | null = null;
+    if (parentSignature) {
+      const pid = parentIdByHashApp.get(`${parentSignature}|${application}`);
+      if (pid !== undefined) parentKey = `${repository}|${pid}`;
+    }
     out.push({
-      id: Number(idStr),
+      id,
       repository,
       framework,
       frameworkId: s.framework_id,
@@ -149,8 +176,8 @@ export function toSeries(
       isSubtest: !!parentSignature,
       parentSignature,
       signatureHash: s.signature_hash,
-      key: `${repository}|${s.signature_hash}`,
-      parentKey: parentSignature ? `${repository}|${parentSignature}` : null,
+      key: `${repository}|${id}`,
+      parentKey,
       searchText,
     });
   }

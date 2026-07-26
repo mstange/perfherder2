@@ -53,8 +53,9 @@ export class PickerState {
   // Explicit user overrides layered over the derived `autoExpanded` set.
   // `user-open` / `user-closed` win over the filter's auto-open, so clicking
   // the caret on an auto-expanded row actually collapses it. Keyed by
-  // `Series.key`, not by signature_hash alone — two repos can share a hash
-  // for the same test.
+  // `Series.key` (`${repo}|${id}`) so aliased signature_hashes don't collapse
+  // sibling rows into the same override slot — see docs/design.md
+  // "Row identity" for the aliasing modes.
   userExpansion = $state(new Map<string, ExpansionOverride>());
 
   // ---- Fetch caches -----------------------------------------------------

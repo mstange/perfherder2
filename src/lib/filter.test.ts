@@ -25,14 +25,19 @@ import {
 } from './filter';
 
 // The picker uses `Series.key` / `Series.parentKey` as the compound identity
-// across repos. Test fixtures compute them from repository + signatureHash so
-// overrides that change either field automatically get consistent keys.
+// across repos. Test fixtures compute them from repository + id so overrides
+// that change either field automatically get consistent keys.
 function s(overrides: Partial<Series> = {}): Series {
   const repository = overrides.repository ?? 'autoland';
+  const id = overrides.id ?? 1;
   const signatureHash = overrides.signatureHash ?? 'hash1';
   const parentSignature = overrides.parentSignature ?? null;
+  // `parentKey` is a fixture-supplied override in tests that exercise the
+  // parent/child linkage (see groupChildrenByParent); otherwise default to
+  // null. Real code computes it via id lookup in `toSeries`.
+  const parentKey = overrides.parentKey ?? null;
   const base: Series = {
-    id: 1,
+    id,
     repository,
     framework: 'browsertime',
     frameworkId: 13,
@@ -48,8 +53,8 @@ function s(overrides: Partial<Series> = {}): Series {
     isSubtest: !!parentSignature,
     parentSignature,
     signatureHash,
-    key: `${repository}|${signatureHash}`,
-    parentKey: parentSignature ? `${repository}|${parentSignature}` : null,
+    key: `${repository}|${id}`,
+    parentKey,
     searchText: 'speedometer3 firefox linux2404-64 browsertime autoland opt fission',
   };
   return { ...base, ...overrides };
@@ -220,42 +225,19 @@ describe('fieldValues', () => {
 });
 
 describe('groupChildrenByParent', () => {
-  it('groups subtest rows by (repo, parent signature_hash) and skips non-subtests', () => {
-    const parent1 = s({ signatureHash: 'P1', hasSubtests: true });
-    const parent2 = s({ signatureHash: 'P2', hasSubtests: true });
-    const c1 = s({ id: 10, isSubtest: true, parentSignature: 'P1', signatureHash: 'C1' });
-    const c2 = s({ id: 11, isSubtest: true, parentSignature: 'P1', signatureHash: 'C2' });
-    const c3 = s({ id: 12, isSubtest: true, parentSignature: 'P2', signatureHash: 'C3' });
+  it('groups subtest rows by parentKey and skips non-subtests', () => {
+    const parent1 = s({ id: 1, hasSubtests: true });
+    const parent2 = s({ id: 2, hasSubtests: true });
+    const c1 = s({ id: 10, isSubtest: true, parentSignature: 'P1', parentKey: 'autoland|1' });
+    const c2 = s({ id: 11, isSubtest: true, parentSignature: 'P1', parentKey: 'autoland|1' });
+    const c3 = s({ id: 12, isSubtest: true, parentSignature: 'P2', parentKey: 'autoland|2' });
 
     const grouped = groupChildrenByParent([parent1, c1, c2, parent2, c3]);
 
-    expect(grouped.get('autoland|P1')?.map((r) => r.id)).toEqual([10, 11]);
-    expect(grouped.get('autoland|P2')?.map((r) => r.id)).toEqual([12]);
-    expect(grouped.has('autoland|C1')).toBe(false);
-  });
-
-  it('keeps children from different repos in separate buckets even when the parent signature_hash is shared', () => {
-    // The same test has the same signature_hash across repos — keying by
-    // hash alone would let autoland children get attached to a
-    // mozilla-central parent (and vice versa), which then survives filters
-    // it shouldn't.
-    const autoKid = s({
-      id: 10,
-      repository: 'autoland',
-      isSubtest: true,
-      parentSignature: 'HASH',
-      signatureHash: 'CA',
-    });
-    const mcKid = s({
-      id: 11,
-      repository: 'mozilla-central',
-      isSubtest: true,
-      parentSignature: 'HASH',
-      signatureHash: 'CM',
-    });
-    const grouped = groupChildrenByParent([autoKid, mcKid]);
-    expect(grouped.get('autoland|HASH')?.map((r) => r.id)).toEqual([10]);
-    expect(grouped.get('mozilla-central|HASH')?.map((r) => r.id)).toEqual([11]);
+    expect(grouped.get('autoland|1')?.map((r) => r.id)).toEqual([10, 11]);
+    expect(grouped.get('autoland|2')?.map((r) => r.id)).toEqual([12]);
+    // Non-subtests don't create buckets.
+    expect(grouped.size).toBe(2);
   });
 
   it('returns an empty map when there are no subtests', () => {
