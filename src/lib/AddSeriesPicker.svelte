@@ -11,12 +11,18 @@
     type Series,
   } from './api';
   import {
+    EMPTY_FILTER,
     cacheKey,
     groupChildrenByParent,
+    hasChip,
     matchesRow,
     pickCachedForRepo,
-    tokenizeFilter,
+    toggleChip,
+    type Filter,
+    type FilterChip,
+    type FilterField,
   } from './filter';
+  import FilterInput from './FilterInput.svelte';
 
   type Props = {
     onadd?: (series: Series[]) => void;
@@ -27,12 +33,10 @@
   let selectedRepos = $state(new Set<string>(DEFAULT_REPOS));
   let includeSubtests = $state(false);
   let timeRangeSeconds = $state(1209600); // 14 days, matches perfherder default.
-  let filterText = $state('');
-  let selectedPlatforms = $state(new Set<string>()); // empty = all
+  let filter = $state<Filter>(EMPTY_FILTER);
   let expanded = $state(new Set<string>()); // parent signature_hash values
 
-  // Cached signature responses keyed by "repo|subtests|interval" so toggling
-  // options doesn't discard fetched series.
+  // Cached signature responses.
   let seriesCache = $state(new Map<string, Series[]>());
   let loadingRepos = $state(new Set<string>());
   let errors = $state<string[]>([]);
@@ -112,20 +116,12 @@
 
   const childrenByParent = $derived(groupChildrenByParent(combined));
 
-  const availablePlatforms = $derived.by(() => {
-    const s = new Set<string>();
-    for (const r of combined) if (!r.isSubtest) s.add(r.platform);
-    return [...s].sort();
-  });
-
-  const filterTokens = $derived(tokenizeFilter(filterText));
-
   // Top-level rows: not subtests, matching the current filter.
   const filteredParents = $derived.by(() => {
     const out: Series[] = [];
     for (const row of combined) {
       if (row.isSubtest) continue;
-      if (matchesRow(row, filterTokens, selectedPlatforms)) out.push(row);
+      if (matchesRow(row, filter)) out.push(row);
     }
     return out;
   });
@@ -142,13 +138,6 @@
     selectedRepos = next;
   }
 
-  function togglePlatform(name: string) {
-    const next = new Set(selectedPlatforms);
-    if (next.has(name)) next.delete(name);
-    else next.add(name);
-    selectedPlatforms = next;
-  }
-
   function togglePick(row: Series, on: boolean) {
     const next = new Map(picked);
     if (on) next.set(row.id, row);
@@ -161,9 +150,6 @@
     if (next.has(hash)) next.delete(hash);
     else next.add(hash);
     expanded = next;
-    // If subtests haven't been loaded yet, opt into fetching them. The $effect
-    // above will pick up the change and fetch. The row will show a loading
-    // indicator until data arrives.
     if (!includeSubtests) includeSubtests = true;
   }
 
@@ -175,6 +161,18 @@
     onadd?.([...picked.values()]);
   }
 
+  // Toggle a chip for a badge click. Chip values are normalized to lowercase
+  // so the same field:value pair always dedupes correctly regardless of the
+  // casing on the badge.
+  function toggleFilterChip(field: FilterField, value: string) {
+    const chip: FilterChip = { field, value: value.toLowerCase() };
+    filter = toggleChip(filter, chip);
+  }
+
+  function isActive(field: FilterField, value: string): boolean {
+    return hasChip(filter, { field, value: value.toLowerCase() });
+  }
+
   const anyLoading = $derived(loadingRepos.size > 0);
 </script>
 
@@ -182,9 +180,9 @@
   <header>
     <h2>Add series</h2>
     <p class="hint">
-      One combined list across selected repos — no need to pick a harness or
-      platform first. Filter with the search box; expand a row to see its
-      subtests.
+      One combined list across selected repos. Filter by clicking any badge or
+      by typing free text / <code>field:value</code> tokens. Expand a row to
+      see its subtests.
     </p>
   </header>
 
@@ -233,32 +231,10 @@
       </label>
     </div>
 
-    <div class="control-row">
-      <input
-        class="filter"
-        type="search"
-        placeholder="Filter (space-separated tokens: e.g. 'tp6 linux fission')"
-        bind:value={filterText}
-      />
+    <div class="control-row filter-row">
+      <span class="control-label">Filter</span>
+      <FilterInput {filter} onchange={(next) => (filter = next)} />
     </div>
-
-    {#if availablePlatforms.length > 0 && availablePlatforms.length <= 60}
-      <div class="control-row">
-        <span class="control-label">Platform</span>
-        <div class="chips chips-small">
-          {#each availablePlatforms as p}
-            <label class="chip" class:chip-on={selectedPlatforms.has(p)}>
-              <input
-                type="checkbox"
-                checked={selectedPlatforms.has(p)}
-                onchange={() => togglePlatform(p)}
-              />
-              <span>{p}</span>
-            </label>
-          {/each}
-        </div>
-      </div>
-    {/if}
   </section>
 
   <!-- The action buttons stay mounted even when nothing is selected so the
@@ -274,10 +250,8 @@
     <span class="picked-count" class:muted={picked.size === 0}>
       {picked.size} selected
     </span>
-    <button
-      type="button"
-      onclick={clearPicked}
-      disabled={picked.size === 0}>Clear</button
+    <button type="button" onclick={clearPicked} disabled={picked.size === 0}
+      >Clear</button
     >
     <button
       type="button"
@@ -308,6 +282,22 @@
         </tr>
       </thead>
       <tbody>
+        {#snippet badge(field: FilterField, value: string, cls: string)}
+          {@const active = isActive(field, value)}
+          <button
+            type="button"
+            class="badge {cls}"
+            class:badge-active={active}
+            title={active
+              ? `Remove filter ${field}:${value}`
+              : `Filter to only ${field}:${value}`}
+            onclick={() => toggleFilterChip(field, value)}
+          >
+            <span class="badge-text">{value}</span>
+            <span class="badge-cue" aria-hidden="true">{active ? '×' : '+'}</span>
+          </button>
+        {/snippet}
+
         {#each visibleParents as row (row.id)}
           {@const children = childrenByParent.get(row.signatureHash) ?? []}
           {@const isExpanded = expanded.has(row.signatureHash)}
@@ -334,23 +324,29 @@
               {/if}
             </td>
             <td>
-              <div class="suite">{row.suite}</div>
-              {#if row.test}<div class="test">{row.test}</div>{/if}
+              {@render badge('suite', row.suite, 'badge-suite')}
+              {#if row.test}
+                {@render badge('test', row.test, 'badge-test')}
+              {/if}
               {#if row.tags.length > 0}
                 <div class="tag-row">
-                  {#each row.tags as t}<span class="badge badge-tag">{t}</span>{' '}{/each}
+                  {#each row.tags as t}
+                    {@render badge('tag', t, 'badge-tag')}{' '}
+                  {/each}
                 </div>
               {/if}
             </td>
             <td>
               {#if row.application}
-                <span class="badge badge-app">{row.application}</span>
+                {@render badge('application', row.application, 'badge-app')}
               {/if}
             </td>
-            <td><span class="badge badge-repo">{row.repository}</span></td>
-            <td><span class="badge badge-platform">{row.platform}</span></td>
+            <td>{@render badge('repo', row.repository, 'badge-repo')}</td>
+            <td>{@render badge('platform', row.platform, 'badge-platform')}</td>
             <td>
-              {#each row.options as o}<span class="badge">{o}</span>{' '}{/each}
+              {#each row.options as o}
+                {@render badge('option', o, 'badge-option')}{' '}
+              {/each}
             </td>
             <td class="unit">{row.measurementUnit}</td>
           </tr>
@@ -379,22 +375,28 @@
                   </td>
                   <td class="col-disclose"></td>
                   <td class="subtest-cell">
-                    <div class="test">{child.test || child.suite}</div>
+                    {@render badge('test', child.test || child.suite, 'badge-test')}
                     {#if child.tags.length > 0}
                       <div class="tag-row">
-                        {#each child.tags as t}<span class="badge badge-tag">{t}</span>{' '}{/each}
+                        {#each child.tags as t}
+                          {@render badge('tag', t, 'badge-tag')}{' '}
+                        {/each}
                       </div>
                     {/if}
                   </td>
                   <td>
                     {#if child.application}
-                      <span class="badge badge-app">{child.application}</span>
+                      {@render badge('application', child.application, 'badge-app')}
                     {/if}
                   </td>
-                  <td><span class="badge badge-repo">{child.repository}</span></td>
-                  <td><span class="badge badge-platform">{child.platform}</span></td>
+                  <td>{@render badge('repo', child.repository, 'badge-repo')}</td>
                   <td>
-                    {#each child.options as o}<span class="badge">{o}</span>{' '}{/each}
+                    {@render badge('platform', child.platform, 'badge-platform')}
+                  </td>
+                  <td>
+                    {#each child.options as o}
+                      {@render badge('option', o, 'badge-option')}{' '}
+                    {/each}
                   </td>
                   <td class="unit">{child.measurementUnit}</td>
                 </tr>
@@ -438,6 +440,12 @@
     color: #57606a;
     font-size: 13px;
   }
+  .hint code {
+    background: #f6f8fa;
+    padding: 0 3px;
+    border-radius: 3px;
+    font-size: 12px;
+  }
   .controls {
     display: flex;
     flex-direction: column;
@@ -452,6 +460,12 @@
     align-items: center;
     gap: 10px;
     flex-wrap: wrap;
+  }
+  .filter-row {
+    align-items: flex-start;
+  }
+  .filter-row .control-label {
+    padding-top: 8px;
   }
   .control-label {
     min-width: 80px;
@@ -494,23 +508,11 @@
   .chip-count-dim {
     opacity: 0.55;
   }
-  .chips-small .chip {
-    font-size: 12px;
-    padding: 2px 8px;
-  }
   .toggle {
     display: inline-flex;
     align-items: center;
     gap: 6px;
     cursor: pointer;
-  }
-  .filter {
-    flex: 1;
-    min-width: 300px;
-    padding: 6px 10px;
-    font-size: 14px;
-    border: 1px solid #d0d7de;
-    border-radius: 6px;
   }
   select {
     padding: 4px 6px;
@@ -526,8 +528,6 @@
   }
   .picked-count {
     font-weight: 600;
-    /* Reserve enough space that going from "0 selected" → "12 selected"
-       doesn't nudge the buttons horizontally either. */
     min-width: 9ch;
     display: inline-block;
   }
@@ -645,30 +645,55 @@
     font-style: italic;
     background: #fafbfc;
   }
-  .suite {
-    font-weight: 600;
-  }
-  .test {
-    color: #57606a;
-    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-    font-size: 12px;
-  }
   .tag-row {
     margin-top: 2px;
     display: flex;
     flex-wrap: wrap;
     gap: 3px;
   }
+  /* Badges are now buttons — same visual as before, but the "+" / "×"
+     affordance appears on hover, and always when the chip is active. */
   .badge {
-    display: inline-block;
-    padding: 1px 6px;
+    display: inline-flex;
+    align-items: baseline;
+    gap: 2px;
+    padding: 1px 4px 1px 6px;
     margin: 1px 0;
+    font: inherit;
     font-size: 11px;
     line-height: 1.4;
     background: #eaeef2;
     color: #24292f;
+    border: 1px solid transparent;
     border-radius: 4px;
     white-space: nowrap;
+    cursor: pointer;
+  }
+  .badge:hover {
+    filter: brightness(0.94);
+  }
+  .badge-cue {
+    display: inline-block;
+    width: 10px;
+    text-align: center;
+    color: #57606a;
+    font-size: 12px;
+    font-weight: 600;
+    opacity: 0;
+    transition: opacity 0.1s ease;
+  }
+  .badge:hover .badge-cue,
+  .badge-active .badge-cue {
+    opacity: 1;
+  }
+  .badge-active {
+    outline: 2px solid #0969da;
+    outline-offset: -2px;
+    background: #ddf4ff;
+    color: #0a4b70;
+  }
+  .badge-active .badge-cue {
+    color: #cf222e;
   }
   .badge-tag {
     background: #ddf4ff;
@@ -684,6 +709,20 @@
   .badge-app {
     background: #d1f4ff;
     color: #0a4b70;
+  }
+  .badge-option {
+    background: #eaeef2;
+  }
+  .badge-suite {
+    background: #dafbe1;
+    color: #116329;
+    font-weight: 600;
+  }
+  .badge-test {
+    background: #fff;
+    border-color: #d0d7de;
+    color: #57606a;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   }
   .unit {
     color: #57606a;
