@@ -290,9 +290,29 @@ export class PickerState {
   // Toggle a chip for a badge click. Values are normalized to lowercase so
   // the same field:value pair dedupes correctly regardless of the badge's
   // casing.
-  toggleFilterChip(field: FilterField, value: string): void {
+  //
+  // `fromSubtest` is set by the AddSeriesPicker template when the click
+  // originated on a subtest row. In that case we auto-enable `matchSubtests`
+  // if it isn't already on: parent rows have no `test` field of their own,
+  // so a `test:<subtest-name>` chip added by clicking a subtest badge would
+  // otherwise empty the list (no parent could satisfy it). This trip-wire
+  // fixes that specific dead-end without changing filter behaviour for
+  // chips added from parent rows or typed into the FilterInput. The user
+  // can still uncheck the box after the fact if they want to reset.
+  toggleFilterChip(
+    field: FilterField,
+    value: string,
+    opts?: { fromSubtest?: boolean },
+  ): void {
     const chip: FilterChip = { field, value: value.toLowerCase() };
-    this.filter = toggleChip(this.filter, chip);
+    const nextFilter = toggleChip(this.filter, chip);
+    // Only nudge matchSubtests when we're ADDING a chip from a subtest —
+    // not when we're removing one (which would be an odd time to opt in).
+    const added = nextFilter.chips.length > this.filter.chips.length;
+    this.filter = nextFilter;
+    if (added && opts?.fromSubtest && !this.matchSubtests) {
+      this.matchSubtests = true;
+    }
   }
 
   toggleSelectAll(): void {

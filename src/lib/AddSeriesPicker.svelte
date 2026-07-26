@@ -277,7 +277,12 @@
         </tr>
       </thead>
       <tbody>
-        {#snippet badge(field: FilterField, value: string, cls: string)}
+        {#snippet badge(
+          field: FilterField,
+          value: string,
+          cls: string,
+          fromSubtest: boolean = false,
+        )}
           {@const active = picker.isChipActive(field, value)}
           <button
             type="button"
@@ -286,7 +291,7 @@
             title={active
               ? `Remove filter ${field}:${value}`
               : `Filter to only ${field}:${value}`}
-            onclick={() => picker.toggleFilterChip(field, value)}
+            onclick={() => picker.toggleFilterChip(field, value, { fromSubtest })}
           >
             <span class="badge-text">{value}</span>
             <span class="badge-cue" aria-hidden="true">{active ? '×' : '+'}</span>
@@ -371,20 +376,20 @@
               </td>
               <td class="col-disclose"></td>
               <td class="subtest-cell">
-                {@render badge('test', child.test || child.suite, 'badge-test')}
+                {@render badge('test', child.test || child.suite, 'badge-test', true)}
               </td>
-              <td>{@render badge('repo', child.repository, 'badge-repo')}</td>
+              <td>{@render badge('repo', child.repository, 'badge-repo', true)}</td>
               <td>
-                {@render badge('platform', child.platform, 'badge-platform')}
+                {@render badge('platform', child.platform, 'badge-platform', true)}
               </td>
               <td>
                 {#if child.application}
-                  {@render badge('application', child.application, 'badge-app')}
+                  {@render badge('application', child.application, 'badge-app', true)}
                 {/if}
               </td>
               <td>
                 {#each child.options as o}
-                  {@render badge('option', o, 'badge-option')}{' '}
+                  {@render badge('option', o, 'badge-option', true)}{' '}
                 {/each}
               </td>
               <td class="unit">{child.measurementUnit}</td>

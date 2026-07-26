@@ -170,6 +170,19 @@ Do not conflate `matchSubtests=false` with "hide subtests" — subtests
 are still visible under manually expanded parents in that mode; the
 flag only means "the filter does not descend."
 
+**Auto-flip trip-wire.** The user could still walk into the empty-list
+dead end by expanding a parent, then clicking a badge on a subtest row
+(a `test:<name>` badge in particular). To keep this natural action from
+hitting a wall, the badge snippet in
+[AddSeriesPicker.svelte](../src/lib/AddSeriesPicker.svelte) passes
+`fromSubtest: true` to `toggleFilterChip` when the click originated on
+a subtest row, and `PickerState.toggleFilterChip` auto-enables
+`matchSubtests` in that case. It's a one-way nudge — we only flip on
+chip *addition*, not removal, and only if the checkbox was off — so the
+user's explicit off-state is preserved for badge clicks on parent rows
+and for chips typed into the FilterInput. Users can uncheck the box
+after the fact to reset.
+
 ### Framework is searchable but not shown
 
 Perfherder cares deeply about `framework` (talos vs browsertime vs awsy).
