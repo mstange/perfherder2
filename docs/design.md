@@ -225,6 +225,8 @@ these strings for display — you'll get bitten by edge cases.**
 
 ## Things I'd change next
 
+### Features
+
 - Add virtual scrolling. 500 rows is already fine but if we ever want to
   drop the cap, `svelte-virtual-scroll-list` or a hand-rolled row-window
   fits in ~50 lines.
@@ -234,3 +236,42 @@ these strings for display — you'll get bitten by edge cases.**
 - Auto-complete inside the FilterInput (suggest values for `repo:` etc).
 - Actually plot the selected series on a graph — this is currently just
   the picker.
+
+### Refactors (the picker is starting to sprawl)
+
+The subtest-matching feature grew `AddSeriesPicker.svelte` past a
+comfortable size. A future rewrite pass should probably do all of these
+together:
+
+- **Extract picker state into a plain-TS module.** Right now the `.svelte`
+  file owns fetch orchestration, ~5 `$state` cells, a big `$derived.by`,
+  expansion tri-state, select-all logic, and the whole template. Moving
+  the reactive graph into `pickerState.ts` (returning `$state`/`$derived`
+  values) would leave `AddSeriesPicker.svelte` as a thin renderer and let
+  each piece be unit-tested without a DOM.
+- **Split `matchSubtests` into two orthogonal concepts.** Today the
+  checkbox drives both (a) whether the subtests=1 payload is fetched and
+  (b) whether the filter descends into children. Manual expansion sneaks
+  fetch-triggering in by flipping the same flag, which coupled cause and
+  effect in the "can't collapse" bug. Better model: derived
+  `needSubtestsFetch = matchSubtests || expanded.size > 0` for the
+  cacheKey, and a separate `filterDescendsIntoSubtests` for the filter
+  branch. Manual expansion no longer touches filter semantics.
+- **Unify expansion into one map.** The current `expanded` /
+  `collapsed` / `autoExpanded` triple works but the ordering matters and
+  the invariants are subtle. A single `Map<key, 'user-open'|'user-closed'>`
+  layered over the derived auto set expresses the same thing with one
+  place to reason about.
+- **Give `Series` a computed `key` field.** The cross-repo hash aliasing
+  bug (autoland children attaching to mozilla-central parents because
+  `signature_hash` is shared) shows that using `signatureHash` as
+  identity anywhere is a footgun. Moving `${repo}|${signatureHash}` into
+  `Series.key` at construction removes every "did I remember to compose
+  the compound key here" call site. Right now [filter.ts::rowKey](../src/lib/filter.ts)
+  is the single source of truth — everyone that touches expansion or
+  parent-child grouping must call it.
+- **Component decomposition, cautiously.** A `PickerRow.svelte` that owns
+  a single row's expand/select/badge interactions would shrink the main
+  file, but Svelte 5 reactive tracking across component boundaries can
+  make snappy interactions surprisingly re-render-heavy. Only pull this
+  trigger if we hit perf issues, and profile before/after.
