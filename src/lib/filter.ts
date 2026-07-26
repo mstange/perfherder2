@@ -266,15 +266,37 @@ export function compareRows(
 // ---------------------------------------------------------------------------
 // Subtest grouping and cache helpers (unchanged)
 
+// Stable per-row identity across the union of caches. A test's
+// `signature_hash` is the same on autoland and mozilla-central (it's a hash
+// of framework/platform/options/suite/test, not repo), so grouping children
+// by hash alone would associate autoland children with mozilla-central
+// parents. We prefix with repository to keep those buckets separate.
+export function rowKey(row: {
+  repository: string;
+  signatureHash: string;
+}): string {
+  return `${row.repository}|${row.signatureHash}`;
+}
+
+// Same shape as `rowKey`, but for a child looking up its parent — the child's
+// `parentSignature` is the parent's signature_hash, and the child inherits
+// the repository from the parent's fetch batch.
+function parentKeyOf(child: Series): string | null {
+  if (!child.parentSignature) return null;
+  return `${child.repository}|${child.parentSignature}`;
+}
+
 export function groupChildrenByParent(
   rows: readonly Series[],
 ): Map<string, Series[]> {
   const m = new Map<string, Series[]>();
   for (const r of rows) {
-    if (!r.isSubtest || !r.parentSignature) continue;
-    const arr = m.get(r.parentSignature);
+    if (!r.isSubtest) continue;
+    const key = parentKeyOf(r);
+    if (!key) continue;
+    const arr = m.get(key);
     if (arr) arr.push(r);
-    else m.set(r.parentSignature, [r]);
+    else m.set(key, [r]);
   }
   return m;
 }

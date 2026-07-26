@@ -16,6 +16,7 @@ import {
   parseChip,
   pickCachedForRepo,
   removeChip,
+  rowKey,
   sortKey,
   toggleChip,
   tokenizeFilter,
@@ -212,7 +213,7 @@ describe('fieldValues', () => {
 });
 
 describe('groupChildrenByParent', () => {
-  it('groups subtest rows by parent signature_hash and skips non-subtests', () => {
+  it('groups subtest rows by (repo, parent signature_hash) and skips non-subtests', () => {
     const parent1 = s({ signatureHash: 'P1', hasSubtests: true });
     const parent2 = s({ signatureHash: 'P2', hasSubtests: true });
     const c1 = s({ id: 10, isSubtest: true, parentSignature: 'P1', signatureHash: 'C1' });
@@ -221,12 +222,45 @@ describe('groupChildrenByParent', () => {
 
     const grouped = groupChildrenByParent([parent1, c1, c2, parent2, c3]);
 
-    expect(grouped.get('P1')?.map((r) => r.id)).toEqual([10, 11]);
-    expect(grouped.get('P2')?.map((r) => r.id)).toEqual([12]);
-    expect(grouped.has('C1')).toBe(false);
+    expect(grouped.get('autoland|P1')?.map((r) => r.id)).toEqual([10, 11]);
+    expect(grouped.get('autoland|P2')?.map((r) => r.id)).toEqual([12]);
+    expect(grouped.has('autoland|C1')).toBe(false);
   });
+
+  it('keeps children from different repos in separate buckets even when the parent signature_hash is shared', () => {
+    // The same test has the same signature_hash across repos — keying by
+    // hash alone would let autoland children get attached to a
+    // mozilla-central parent (and vice versa), which then survives filters
+    // it shouldn't.
+    const autoKid = s({
+      id: 10,
+      repository: 'autoland',
+      isSubtest: true,
+      parentSignature: 'HASH',
+      signatureHash: 'CA',
+    });
+    const mcKid = s({
+      id: 11,
+      repository: 'mozilla-central',
+      isSubtest: true,
+      parentSignature: 'HASH',
+      signatureHash: 'CM',
+    });
+    const grouped = groupChildrenByParent([autoKid, mcKid]);
+    expect(grouped.get('autoland|HASH')?.map((r) => r.id)).toEqual([10]);
+    expect(grouped.get('mozilla-central|HASH')?.map((r) => r.id)).toEqual([11]);
+  });
+
   it('returns an empty map when there are no subtests', () => {
     expect(groupChildrenByParent([s()]).size).toBe(0);
+  });
+});
+
+describe('rowKey', () => {
+  it('combines repo and signature hash', () => {
+    expect(rowKey({ repository: 'autoland', signatureHash: 'abc' })).toBe(
+      'autoland|abc',
+    );
   });
 });
 

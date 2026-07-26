@@ -21,6 +21,7 @@
     matchParentWithChildren,
     matchesRow,
     pickCachedForRepo,
+    rowKey,
     toggleChip,
     type Filter,
     type FilterChip,
@@ -46,7 +47,15 @@
   let timeRangeSeconds = $state(1209600); // 14 days, matches perfherder default.
   let filter = $state<Filter>(EMPTY_FILTER);
   let sort = $state<SortState | null>(null);
-  let expanded = $state(new Set<string>()); // parent signature_hash values
+  // Expansion state is keyed by `rowKey(row)` = `${repo}|${signatureHash}`,
+  // not by hash alone. Two repos can share a hash for the same test, and
+  // keying by hash would toggle both together.
+  let expanded = $state(new Set<string>());
+  // Explicit "user wants this collapsed" overrides for auto-expanded rows.
+  // Without this, clicking the caret on an auto-expanded row is a no-op —
+  // `expanded` doesn't have it, so deletion is a no-op, and the row stays
+  // open on the next render because `autoExpanded` still contains it.
+  let collapsed = $state(new Set<string>());
 
   // Cached signature responses.
   let seriesCache = $state(new Map<string, Series[]>());
@@ -144,13 +153,14 @@
     const matchedChildren = new Map<string, Series[]>();
     for (const row of combined) {
       if (row.isSubtest) continue;
+      const key = rowKey(row);
       if (matchSubtests && filterActive) {
-        const kids = childrenByParent.get(row.signatureHash) ?? [];
+        const kids = childrenByParent.get(key) ?? [];
         const m = matchParentWithChildren(row, kids, filter);
         if (!m) continue;
         parents.push(row);
-        if (!m.selfMatched) autoExpanded.add(row.signatureHash);
-        matchedChildren.set(row.signatureHash, m.matchedChildren);
+        if (!m.selfMatched) autoExpanded.add(key);
+        matchedChildren.set(key, m.matchedChildren);
       } else if (matchesRow(row, filter)) {
         parents.push(row);
       }
@@ -172,13 +182,15 @@
   // matched — so a subtest-badge click reveals exactly the row the user
   // clicked instead of 200 siblings.
   function childrenForParent(parent: Series): Series[] {
-    const all = childrenByParent.get(parent.signatureHash) ?? [];
+    const key = rowKey(parent);
+    const all = childrenByParent.get(key) ?? [];
     if (!matchSubtests || !filterActive) return all;
-    return filterResult.matchedChildren.get(parent.signatureHash) ?? all;
+    return filterResult.matchedChildren.get(key) ?? all;
   }
 
-  function isRowExpanded(hash: string): boolean {
-    return expanded.has(hash) || autoExpanded.has(hash);
+  function isRowExpanded(key: string): boolean {
+    if (collapsed.has(key)) return false;
+    return expanded.has(key) || autoExpanded.has(key);
   }
 
   // Children under an expanded parent: sort by the same column so a
@@ -206,14 +218,34 @@
     picked = next;
   }
 
-  function toggleExpanded(hash: string) {
-    const next = new Set(expanded);
-    // Reconcile with any auto-expansion: if the row is currently auto-open
-    // and the user clicks the caret, treat that as an explicit collapse
-    // request even if `expanded` didn't have the hash before.
-    if (next.has(hash) || autoExpanded.has(hash)) next.delete(hash);
-    else next.add(hash);
-    expanded = next;
+  function toggleExpanded(key: string) {
+    // Three possible current states: user-opened (in `expanded`),
+    // auto-opened (in `autoExpanded`), or closed (neither, or in
+    // `collapsed`). We flip whichever bit corresponds to the row's current
+    // visible state.
+    if (isRowExpanded(key)) {
+      if (expanded.has(key)) {
+        const next = new Set(expanded);
+        next.delete(key);
+        expanded = next;
+      } else {
+        // Auto-expanded — the user wants it closed. Record that as an
+        // explicit override so the next render honors the collapse.
+        const next = new Set(collapsed);
+        next.add(key);
+        collapsed = next;
+      }
+    } else {
+      if (collapsed.has(key)) {
+        const next = new Set(collapsed);
+        next.delete(key);
+        collapsed = next;
+      } else {
+        const next = new Set(expanded);
+        next.add(key);
+        expanded = next;
+      }
+    }
     // Manual expansion signals the user cares about subtests: bump into
     // subtest-matching mode so the fatter payload is fetched and future
     // filters descend into children.
@@ -250,7 +282,7 @@
     const rows: Series[] = [];
     for (const p of visibleParents) {
       rows.push(p);
-      if (isRowExpanded(p.signatureHash)) {
+      if (isRowExpanded(rowKey(p))) {
         for (const c of childrenForParent(p)) rows.push(c);
       }
     }
@@ -431,9 +463,10 @@
         {/snippet}
 
         {#each visibleParents as row (row.id)}
-          {@const allChildren = childrenByParent.get(row.signatureHash) ?? []}
+          {@const parentKey = rowKey(row)}
+          {@const allChildren = childrenByParent.get(parentKey) ?? []}
           {@const children = childrenForParent(row)}
-          {@const isExpanded = isRowExpanded(row.signatureHash)}
+          {@const isExpanded = isRowExpanded(parentKey)}
           {@const awaitingSubtests =
             isExpanded && row.hasSubtests && allChildren.length === 0}
           <tr class:selected={picked.has(row.id)}>
@@ -452,7 +485,7 @@
                   class="disclose"
                   class:disclose-open={isExpanded}
                   aria-label={isExpanded ? 'Collapse subtests' : 'Expand subtests'}
-                  onclick={() => toggleExpanded(row.signatureHash)}
+                  onclick={() => toggleExpanded(parentKey)}
                 >▶</button>
               {/if}
             </td>
