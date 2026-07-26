@@ -19,22 +19,31 @@ architecture breaks.**
 
 - [src/lib/api.ts](../src/lib/api.ts) — types, network calls, `toSeries`
   (raw signature → enriched `Series`). Framework map + option-collection map
-  are fetched once and passed in.
-- [src/lib/filter.ts](../src/lib/filter.ts) — **all pure logic**. Filter
+  are fetched once and passed in. `toSeries` bakes `Series.key`
+  (`${repo}|${signatureHash}`) and `Series.parentKey` in at construction,
+  so callers never recompose the compound identity — using
+  `signatureHash` alone would collide across repos.
+- [src/lib/filter.ts](../src/lib/filter.ts) — **pure logic**. Filter
   model (chips + free text), `matchesRow`, sort comparator, cache-key +
   fallback picker, child grouping. Unit-tested.
+- [src/lib/pickerState.svelte.ts](../src/lib/pickerState.svelte.ts) — the
+  reactive core of the picker: a `PickerState` class holding every
+  `$state` cell, the `$derived` graph, the `$effect` that triggers
+  fetches, and the mutation methods. No template code lives here, so
+  every seam is exercisable without a DOM.
 - [src/lib/FilterInput.svelte](../src/lib/FilterInput.svelte) — the chip +
   text input widget. Owns its in-progress text value; publishes committed
   chips + residual text upward via `onchange`.
-- [src/lib/AddSeriesPicker.svelte](../src/lib/AddSeriesPicker.svelte) — the
-  whole picker. Owns filter state, sort state, cache, selection.
+- [src/lib/AddSeriesPicker.svelte](../src/lib/AddSeriesPicker.svelte) —
+  a thin renderer over `PickerState`. Instantiates the class and wires
+  DOM events to its methods; adds no reactive state of its own.
 - [src/App.svelte](../src/App.svelte) — thin host.
 
 **State ownership rule.** All shared UI state (filter, sort, cache,
-selection, expansion) lives in `AddSeriesPicker.svelte` as `$state`.
-`FilterInput.svelte` is dumb — the only local state it has is the
-in-progress `textValue`, so mid-typing parses don't round-trip through
-the parent on every keystroke.
+selection, expansion) lives on the `PickerState` instance created by
+`AddSeriesPicker.svelte`. `FilterInput.svelte` is dumb — the only local
+state it has is the in-progress `textValue`, so mid-typing parses
+don't round-trip through the parent on every keystroke.
 
 ## Data flow
 
@@ -86,27 +95,45 @@ a subtests=1 fetch is a strict superset of subtests=0 — the top-level rows
 are identical in both. Do not break this invariant without also revisiting
 the disclosure UX.
 
-### "Match inside subtests" is the filter semantic, not just a fetch flag
+### Row identity: `Series.key`, composed at construction
 
-The `matchSubtests` state (checkbox on the filter row) controls **two**
-things that used to be tangled:
+`Series.key` = `${repository}|${signatureHash}`, populated in
+[api.ts::toSeries](../src/lib/api.ts). It's used anywhere a row needs
+stable per-row identity across the union of caches — expansion state,
+parent-child grouping, master-checkbox scope. Subtest rows also carry
+`Series.parentKey` (their parent's `key`), so
+[filter.ts::groupChildrenByParent](../src/lib/filter.ts) can bucket
+children without repeating the compound-key recipe. **Never key by
+`signatureHash` alone** — the same test has the same hash on autoland
+and mozilla-central, and mixing them up silently associates autoland
+children with mozilla-central parents.
 
-- **Fetch:** when on, we fetch the subtests=1 payload (via `cacheKey`),
-  so subtest rows exist in memory. Manually expanding any parent also
-  flips this on for the same reason.
-- **Filter semantic:** when on AND the filter is active, a parent qualifies
-  if it OR any of its children match. Parents that only match via a child
-  are auto-expanded, and under any expanded parent only the matched
-  children are rendered (see `childrenForParent` /
-  [filter.ts::matchParentWithChildren](../src/lib/filter.ts)).
+### "Match inside subtests" is a filter semantic; fetching is separate
 
-Why: with the old "include subtests" toggle, clicking a subtest badge
-added a `test:<name>` chip that no parent could satisfy (parent rows
-have an empty `test` field), so the list went empty. Descending the
-filter into subtests fixes that, and auto-expansion makes the *reason*
-a parent survived visible. Do not conflate `matchSubtests=false` with
-"hide subtests" — subtests are still visible under manually expanded
-parents in that mode; the flag only means "the filter does not descend."
+`matchSubtests` (the checkbox on the filter row) means one thing: when
+on AND the filter is active, a parent qualifies if it OR any of its
+children match. Parents that only match via a child are auto-expanded,
+and under any expanded parent only the matched children are rendered
+(see `PickerState.childrenForParent` /
+[filter.ts::matchParentWithChildren](../src/lib/filter.ts)).
+
+Whether we actually *fetch* the fatter subtests=1 payload is a
+different, derived question. `PickerState.needSubtestsFetch` returns
+true when `matchSubtests` is on OR any row has been manually expanded —
+either case makes child rows part of what's visible on screen. Manual
+expansion no longer flips `matchSubtests`, so expanding one row can't
+silently rearrange the whole filtered list.
+
+Why the split: with the old "include subtests" toggle, clicking a
+subtest badge added a `test:<name>` chip that no parent could satisfy
+(parent rows have an empty `test` field), so the list went empty.
+Descending the filter into subtests fixes that, and auto-expansion
+makes the *reason* a parent survived visible. Coupling that filter
+semantic to the fetch trigger, and coupling the fetch trigger to
+manual expansion, made cause and effect impossible to reason about.
+Do not conflate `matchSubtests=false` with "hide subtests" — subtests
+are still visible under manually expanded parents in that mode; the
+flag only means "the filter does not descend."
 
 ### Framework is searchable but not shown
 
@@ -237,39 +264,8 @@ these strings for display — you'll get bitten by edge cases.**
 - Actually plot the selected series on a graph — this is currently just
   the picker.
 
-### Refactors (the picker is starting to sprawl)
+### Refactors
 
-The subtest-matching feature grew `AddSeriesPicker.svelte` past a
-comfortable size. A future rewrite pass should probably do all of these
-together:
-
-- **Extract picker state into a plain-TS module.** Right now the `.svelte`
-  file owns fetch orchestration, ~5 `$state` cells, a big `$derived.by`,
-  expansion tri-state, select-all logic, and the whole template. Moving
-  the reactive graph into `pickerState.ts` (returning `$state`/`$derived`
-  values) would leave `AddSeriesPicker.svelte` as a thin renderer and let
-  each piece be unit-tested without a DOM.
-- **Split `matchSubtests` into two orthogonal concepts.** Today the
-  checkbox drives both (a) whether the subtests=1 payload is fetched and
-  (b) whether the filter descends into children. Manual expansion sneaks
-  fetch-triggering in by flipping the same flag, which coupled cause and
-  effect in the "can't collapse" bug. Better model: derived
-  `needSubtestsFetch = matchSubtests || expanded.size > 0` for the
-  cacheKey, and a separate `filterDescendsIntoSubtests` for the filter
-  branch. Manual expansion no longer touches filter semantics.
-- **Unify expansion into one map.** The current `expanded` /
-  `collapsed` / `autoExpanded` triple works but the ordering matters and
-  the invariants are subtle. A single `Map<key, 'user-open'|'user-closed'>`
-  layered over the derived auto set expresses the same thing with one
-  place to reason about.
-- **Give `Series` a computed `key` field.** The cross-repo hash aliasing
-  bug (autoland children attaching to mozilla-central parents because
-  `signature_hash` is shared) shows that using `signatureHash` as
-  identity anywhere is a footgun. Moving `${repo}|${signatureHash}` into
-  `Series.key` at construction removes every "did I remember to compose
-  the compound key here" call site. Right now [filter.ts::rowKey](../src/lib/filter.ts)
-  is the single source of truth — everyone that touches expansion or
-  parent-child grouping must call it.
 - **Component decomposition, cautiously.** A `PickerRow.svelte` that owns
   a single row's expand/select/badge interactions would shrink the main
   file, but Svelte 5 reactive tracking across component boundaries can
