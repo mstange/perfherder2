@@ -284,6 +284,9 @@
     {/if}
   </section>
 
+  <!-- The action buttons stay mounted even when nothing is selected so the
+       status row's height never changes. Disabled state is the visual
+       signal that no rows are picked. -->
   <div class="status">
     <span>
       {filteredParents.length.toLocaleString()} matching / {combined.filter(
@@ -291,13 +294,20 @@
       ).length.toLocaleString()} total
     </span>
     {#if anyLoading}<span class="loading-note">Loading…</span>{/if}
-    {#if picked.size > 0}
-      <span class="picked-count">{picked.size} selected</span>
-      <button type="button" onclick={clearPicked}>Clear selection</button>
-      <button type="button" class="primary" onclick={addPicked}
-        >Add {picked.size}</button
-      >
-    {/if}
+    <span class="picked-count" class:muted={picked.size === 0}>
+      {picked.size} selected
+    </span>
+    <button
+      type="button"
+      onclick={clearPicked}
+      disabled={picked.size === 0}>Clear</button
+    >
+    <button
+      type="button"
+      class="primary"
+      onclick={addPicked}
+      disabled={picked.size === 0}>Add {picked.size}</button
+    >
   </div>
 
   {#if errors.length > 0}
@@ -539,6 +549,14 @@
   }
   .picked-count {
     font-weight: 600;
+    /* Reserve enough space that going from "0 selected" → "12 selected"
+       doesn't nudge the buttons horizontally either. */
+    min-width: 9ch;
+    display: inline-block;
+  }
+  .muted {
+    color: #57606a;
+    font-weight: 400;
   }
   .loading-note {
     color: #57606a;
@@ -552,13 +570,24 @@
     border-radius: 6px;
     cursor: pointer;
   }
+  button:disabled {
+    color: #8c959f;
+    background: #f6f8fa;
+    border-color: #d0d7de;
+    cursor: not-allowed;
+  }
   button.primary {
     background: #1f883d;
     color: #fff;
     border-color: #1f883d;
   }
-  button.primary:hover {
+  button.primary:hover:not(:disabled) {
     background: #1a7f37;
+  }
+  button.primary:disabled {
+    background: #94d3a2;
+    color: #ffffffcc;
+    border-color: #94d3a2;
   }
   .table-wrap {
     border: 1px solid #d0d7de;
