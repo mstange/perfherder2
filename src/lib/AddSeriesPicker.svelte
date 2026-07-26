@@ -208,6 +208,23 @@
   {/if}
 
   <section class="controls">
+    <div class="control-row filter-row">
+      <span class="control-label">Filter</span>
+      <FilterInput {filter} onchange={(next) => (filter = next)} />
+      <div class="time-controls">
+        <label class="inline-label" for="time-range-select">Time range</label>
+        <select id="time-range-select" bind:value={timeRangeSeconds}>
+          {#each TIME_RANGES as tr}
+            <option value={tr.value}>{tr.label}</option>
+          {/each}
+        </select>
+        <label class="toggle">
+          <input type="checkbox" bind:checked={includeSubtests} />
+          Include subtests
+        </label>
+      </div>
+    </div>
+
     <div class="control-row">
       <span class="control-label">Repos</span>
       <div class="chips">
@@ -232,25 +249,6 @@
           </label>
         {/each}
       </div>
-    </div>
-
-    <div class="control-row">
-      <span class="control-label">Time range</span>
-      <select bind:value={timeRangeSeconds}>
-        {#each TIME_RANGES as tr}
-          <option value={tr.value}>{tr.label}</option>
-        {/each}
-      </select>
-
-      <label class="toggle">
-        <input type="checkbox" bind:checked={includeSubtests} />
-        Include subtests
-      </label>
-    </div>
-
-    <div class="control-row filter-row">
-      <span class="control-label">Filter</span>
-      <FilterInput {filter} onchange={(next) => (filter = next)} />
     </div>
   </section>
 
@@ -507,6 +505,18 @@
   }
   .filter-row .control-label {
     padding-top: 8px;
+  }
+  .time-controls {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding-top: 4px;
+  }
+  .inline-label {
+    color: #57606a;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
   }
   .control-label {
     min-width: 80px;

@@ -106,47 +106,56 @@
   const chipClass = (field: string) => `chip-field chip-field-${field}`;
 </script>
 
-<div class="filter-input" role="search">
-  {#each filter.chips as chip (chipToString(chip))}
-    <span class="chip-pill" title={`Remove ${chip.field} filter`}>
-      <span class={chipClass(chip.field)}>{chip.field}</span>
-      <span class="chip-value">{chip.value}</span>
-      <button
-        type="button"
-        class="chip-remove"
-        aria-label={`Remove ${chip.field}:${chip.value}`}
-        onclick={() => removeChip(chip)}
-      >×</button>
-    </span>
-  {/each}
-  <input
-    bind:this={inputEl}
-    class="filter-text"
-    type="text"
-    placeholder={filter.chips.length === 0
-      ? "Filter — free text, or field:value (e.g. repo:autoland, application:chrome)"
-      : ''}
-    value={textValue}
-    oninput={onInput}
-    onkeydown={onKeydown}
-    autocomplete="off"
-    spellcheck="false"
-  />
-</div>
+<div class="filter-column">
+  <div class="filter-input" role="search">
+    {#each filter.chips as chip (chipToString(chip))}
+      <span class="chip-pill" title={`Remove ${chip.field} filter`}>
+        <span class={chipClass(chip.field)}>{chip.field}</span>
+        <span class="chip-value">{chip.value}</span>
+        <button
+          type="button"
+          class="chip-remove"
+          aria-label={`Remove ${chip.field}:${chip.value}`}
+          onclick={() => removeChip(chip)}
+        >×</button>
+      </span>
+    {/each}
+    <!-- svelte-ignore a11y_autofocus -->
+    <input
+      bind:this={inputEl}
+      class="filter-text"
+      type="text"
+      placeholder={filter.chips.length === 0
+        ? "Filter — free text, or field:value (e.g. repo:autoland, application:chrome)"
+        : ''}
+      value={textValue}
+      oninput={onInput}
+      onkeydown={onKeydown}
+      autocomplete="off"
+      spellcheck="false"
+      autofocus
+    />
+  </div>
 
-<div class="filter-hint">
-  <span>Fields:</span>
-  {#each FILTER_FIELDS as f, i}<code>{f}</code>{i < FILTER_FIELDS.length - 1 ? ' ' : ''}{/each}
+  <div class="filter-hint">
+    <span>Fields:</span>
+    {#each FILTER_FIELDS as f, i}<code>{f}</code>{i < FILTER_FIELDS.length - 1 ? ' ' : ''}{/each}
+  </div>
 </div>
 
 <style>
+  .filter-column {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    flex: 1;
+    min-width: 300px;
+  }
   .filter-input {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     gap: 4px;
-    flex: 1;
-    min-width: 300px;
     padding: 4px 6px;
     background: #fff;
     border: 1px solid #d0d7de;
