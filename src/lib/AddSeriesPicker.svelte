@@ -596,10 +596,10 @@
   col.col-disclose-w { width: 24px; }
   col.col-suite-w    { width: 26%; }
   col.col-app-w      { width: 10%; }
-  col.col-repo-w     { width: 10%; }
-  col.col-platform-w { width: 16%; }
+  col.col-repo-w     { width: 8%; }
+  col.col-platform-w { width: 20%; }
   col.col-options-w  { width: 28%; }
-  col.col-unit-w     { width: 10%; }
+  col.col-unit-w     { width: 8%; }
   thead th {
     position: sticky;
     top: 0;
