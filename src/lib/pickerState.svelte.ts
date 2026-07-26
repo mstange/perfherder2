@@ -36,11 +36,6 @@ import {
   type SortState,
 } from './filter';
 
-// Broad filters can match 25k rows; the DOM handles that badly. Cap here and
-// show an overflow hint. We `sort()` before `slice()` so the first 500 are
-// always the sorted-first 500, not a random subset.
-export const RENDER_CAP = 500;
-
 export type ExpansionOverride = 'user-open' | 'user-closed';
 
 export class PickerState {
@@ -132,16 +127,15 @@ export class PickerState {
 
   filteredParents = $derived(this.filterResult.parents);
   autoExpanded = $derived(this.filterResult.autoExpanded);
-  visibleParents = $derived(this.filteredParents.slice(0, RENDER_CAP));
-  overflow = $derived(Math.max(0, this.filteredParents.length - RENDER_CAP));
   anyLoading = $derived(this.loadingRepos.size > 0);
 
-  // Master checkbox scope: every row currently rendered in the DOM. This
-  // maps to "what the user sees" — narrower and safer than "all matches"
-  // when the filter has 25k hits and the render cap is 500.
+  // Master checkbox scope: every row the current filter+expansion would
+  // render. Virtual scrolling means most of these aren't in the DOM at any
+  // given moment, but they are all "shown to the user" as they scroll —
+  // so select-all covers everything the filter has surfaced.
   renderedRows = $derived.by(() => {
     const rows: Series[] = [];
-    for (const p of this.visibleParents) {
+    for (const p of this.filteredParents) {
       rows.push(p);
       if (this.isRowExpanded(p.key)) {
         for (const c of this.childrenForParent(p)) rows.push(c);

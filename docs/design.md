@@ -62,7 +62,8 @@ combined      = union of pickCachedForRepo(cache, repo, interval) for repo in se
 filteredParents = combined.filter(!isSubtest && matchesRow(row, filter))
                           .sort(compareRows(_, _, sort))
                 ↓
-visibleParents = filteredParents.slice(0, RENDER_CAP)
+flatRows       = parents ⊕ (expanded parents' children / notes) — a flat list
+                 the virtual scroller windows into.
 ```
 
 ## Key design decisions
@@ -198,12 +199,31 @@ naive `{#each opts as o}<span class="badge">{o}</span> {/each}` produces
 The current code uses `{@render badge(field, value, cls)}{' '}` for the same
 reason.
 
-### Rendering cap of 500 rows
+### Virtual scrolling over a flat row list
 
-`RENDER_CAP = 500` in the picker. Broad filters can match 25k rows; the DOM
-handles that badly. We cap and show an overflow hint. Because we `sort()`
-**before** `slice()`, the first 500 are always the sorted-first 500, not a
-random subset.
+Broad filters can match 25k parents; expanding one parent adds ~200
+subtests. Rendering all of that into the DOM tanks scroll perf.
+
+[AddSeriesPicker.svelte](../src/lib/AddSeriesPicker.svelte) flattens
+`filteredParents` (plus each expanded parent's children or its
+loading/empty note) into a single `flatRows` array, then renders only the
+window `[startIndex, endIndex)` — driven by the `.table-wrap` scroller's
+`scrollTop` and `clientHeight`. Two spacer `<tr>` elements before and
+after the visible window occupy the space the un-rendered rows would.
+
+Row heights are estimated at `ESTIMATED_ROW_HEIGHT = 36`. Since real rows
+vary (~30–55px depending on tags and options wrapping), the total scroll
+area doesn't perfectly match the sum of actual rendered heights; the
+generous `OVERSCAN = 12` on each side absorbs the drift so the user never
+sees a blank strip while scrolling. If drift ever gets bad enough to be
+visible, upgrade to measured heights (each row reports its height via a
+ResizeObserver, and offsets become a running sum). ~50 more lines.
+
+**Do not rename the picker instance back to `state`.** `const state = new
+PickerState()` inside a `.svelte` file collides with the `$state` rune:
+the compiler interprets `$state(...)` calls as store subscriptions on a
+variable literally named `state` and fails at runtime with
+`store_invalid_shape`. The convention in this file is `picker`.
 
 ## Testing
 
@@ -254,9 +274,6 @@ these strings for display — you'll get bitten by edge cases.**
 
 ### Features
 
-- Add virtual scrolling. 500 rows is already fine but if we ever want to
-  drop the cap, `svelte-virtual-scroll-list` or a hand-rolled row-window
-  fits in ~50 lines.
 - Persist the filter and sort in the URL query so the picker is
   shareable. `filter=...&sort=platform:desc` etc.
 - Column reordering + hide/show. Not worth it until someone asks.

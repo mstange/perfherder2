@@ -1,7 +1,7 @@
 <script lang="ts">
   import { PINNED_REPOS, TIME_RANGES, type Series } from './api';
   import type { FilterField, SortColumn } from './filter';
-  import { PickerState, RENDER_CAP } from './pickerState.svelte';
+  import { PickerState } from './pickerState.svelte';
   import FilterInput from './FilterInput.svelte';
 
   type Props = {
@@ -10,11 +10,101 @@
   let { onadd }: Props = $props();
 
   // All shared UI state lives on PickerState. This component is a thin
-  // renderer over it. See pickerState.svelte.ts.
-  const state = new PickerState();
+  // renderer over it. See pickerState.svelte.ts. Named `picker` (not
+  // `state`) to avoid shadowing Svelte 5's `$state` rune — the compiler
+  // will otherwise interpret `$state(...)` as a store subscription on a
+  // variable literally named `state` and blow up at runtime.
+  const picker = new PickerState();
 
   function addPicked() {
-    onadd?.(state.pickedSeries());
+    onadd?.(picker.pickedSeries());
+  }
+
+  // ---- Virtual scrolling ------------------------------------------------
+  // Broad filters can produce 25k rows; even one expanded parent adds a few
+  // hundred subtests. We render only a scroll-window over a flat row list.
+  //
+  // Assumes a roughly uniform row height: since rows can be one or two lines
+  // depending on tags/options, ESTIMATED_ROW_HEIGHT is an average and OVERSCAN
+  // is generous enough to cover the drift without noticeable pop-in.
+  const ESTIMATED_ROW_HEIGHT = 36;
+  const OVERSCAN = 12;
+
+  type FlatRow =
+    | { kind: 'parent'; row: Series }
+    | { kind: 'child'; row: Series }
+    | { kind: 'note'; message: string };
+
+  const flatRows = $derived.by<FlatRow[]>(() => {
+    const rows: FlatRow[] = [];
+    for (const parent of picker.filteredParents) {
+      rows.push({ kind: 'parent', row: parent });
+      if (!picker.isRowExpanded(parent.key)) continue;
+      const allChildren = picker.childrenByParent.get(parent.key) ?? [];
+      const children = picker.childrenForParent(parent);
+      if (parent.hasSubtests && allChildren.length === 0) {
+        rows.push({ kind: 'note', message: 'Loading subtests…' });
+      } else if (allChildren.length === 0) {
+        rows.push({ kind: 'note', message: 'No subtests in loaded data.' });
+      } else if (children.length === 0) {
+        rows.push({ kind: 'note', message: 'No subtests match the current filter.' });
+      } else {
+        for (const child of picker.sortedChildren(children)) {
+          rows.push({ kind: 'child', row: child });
+        }
+      }
+    }
+    return rows;
+  });
+
+  let scrollTop = $state(0);
+  let viewportHeight = $state(600);
+  let scroller = $state<HTMLDivElement | null>(null);
+
+  function onScroll(e: Event) {
+    scrollTop = (e.currentTarget as HTMLDivElement).scrollTop;
+  }
+
+  // The `bind:clientHeight` shorthand tripped a Svelte 5 non_reactive_update
+  // warning under runes mode. A ResizeObserver keeps `viewportHeight` in
+  // sync when the container resizes (window resize, dev-tools open, etc.).
+  $effect(() => {
+    if (!scroller) return;
+    viewportHeight = scroller.clientHeight;
+    const ro = new ResizeObserver(() => {
+      if (scroller) viewportHeight = scroller.clientHeight;
+    });
+    ro.observe(scroller);
+    return () => ro.disconnect();
+  });
+
+  const totalHeight = $derived(flatRows.length * ESTIMATED_ROW_HEIGHT);
+  const startIndex = $derived(
+    Math.max(
+      0,
+      Math.min(
+        flatRows.length,
+        Math.floor(scrollTop / ESTIMATED_ROW_HEIGHT) - OVERSCAN,
+      ),
+    ),
+  );
+  const endIndex = $derived(
+    Math.max(
+      0,
+      Math.min(
+        flatRows.length,
+        Math.ceil((scrollTop + viewportHeight) / ESTIMATED_ROW_HEIGHT) + OVERSCAN,
+      ),
+    ),
+  );
+  const topPadding = $derived(startIndex * ESTIMATED_ROW_HEIGHT);
+  const bottomPadding = $derived(Math.max(0, totalHeight - endIndex * ESTIMATED_ROW_HEIGHT));
+  const visibleWindow = $derived(flatRows.slice(startIndex, endIndex));
+
+  function rowKey(item: FlatRow, index: number): string {
+    if (item.kind === 'parent') return `p:${item.row.id}`;
+    if (item.kind === 'child') return `c:${item.row.id}`;
+    return `n:${index}`;
   }
 </script>
 
@@ -28,26 +118,26 @@
     </p>
   </header>
 
-  {#if state.metadataError}
-    <div class="error">Failed to load metadata: {state.metadataError}</div>
+  {#if picker.metadataError}
+    <div class="error">Failed to load metadata: {picker.metadataError}</div>
   {/if}
 
   <section class="controls">
     <div class="control-row filter-row">
       <span class="control-label">Filter</span>
       <FilterInput
-        filter={state.filter}
-        onchange={(next) => (state.filter = next)}
+        filter={picker.filter}
+        onchange={(next) => (picker.filter = next)}
       />
       <div class="time-controls">
         <label class="inline-label" for="time-range-select">Time range</label>
-        <select id="time-range-select" bind:value={state.timeRangeSeconds}>
+        <select id="time-range-select" bind:value={picker.timeRangeSeconds}>
           {#each TIME_RANGES as tr}
             <option value={tr.value}>{tr.label}</option>
           {/each}
         </select>
         <label class="toggle">
-          <input type="checkbox" bind:checked={state.matchSubtests} />
+          <input type="checkbox" bind:checked={picker.matchSubtests} />
           Match inside subtests
         </label>
       </div>
@@ -57,17 +147,17 @@
       <span class="control-label">Repos</span>
       <div class="chips">
         {#each PINNED_REPOS as repo}
-          {@const count = state.countForRepoChip(repo)}
-          <label class="chip" class:chip-on={state.selectedRepos.has(repo)}>
+          {@const count = picker.countForRepoChip(repo)}
+          <label class="chip" class:chip-on={picker.selectedRepos.has(repo)}>
             <input
               type="checkbox"
-              checked={state.selectedRepos.has(repo)}
-              onchange={() => state.toggleRepo(repo)}
+              checked={picker.selectedRepos.has(repo)}
+              onchange={() => picker.toggleRepo(repo)}
             />
             <span class="chip-name">{repo}</span>
             <span
               class="chip-count"
-              class:chip-count-dim={!state.selectedRepos.has(repo)}
+              class:chip-count-dim={!picker.selectedRepos.has(repo)}
             >
               {#if count === 'loading'}…{:else if typeof count === 'number'}{count.toLocaleString()}{:else}&nbsp;{/if}
             </span>
@@ -82,43 +172,47 @@
        signal that no rows are picked. -->
   <div class="status">
     <span>
-      {state.filteredParents.length.toLocaleString()} matching / {state.combined.filter(
+      {picker.filteredParents.length.toLocaleString()} matching / {picker.combined.filter(
         (r) => !r.isSubtest,
       ).length.toLocaleString()} total
     </span>
-    {#if state.anyLoading}<span class="loading-note">Loading…</span>{/if}
-    <span class="picked-count" class:muted={state.picked.size === 0}>
-      {state.picked.size} selected
+    {#if picker.anyLoading}<span class="loading-note">Loading…</span>{/if}
+    <span class="picked-count" class:muted={picker.picked.size === 0}>
+      {picker.picked.size} selected
     </span>
     <button
       type="button"
-      onclick={() => state.clearPicked()}
-      disabled={state.picked.size === 0}>Clear</button
+      onclick={() => picker.clearPicked()}
+      disabled={picker.picked.size === 0}>Clear</button
     >
     <button
       type="button"
       class="primary"
       onclick={addPicked}
-      disabled={state.picked.size === 0}>Add {state.picked.size}</button
+      disabled={picker.picked.size === 0}>Add {picker.picked.size}</button
     >
   </div>
 
-  {#if state.errors.length > 0}
+  {#if picker.errors.length > 0}
     <ul class="errors">
-      {#each state.errors as msg}<li>{msg}</li>{/each}
+      {#each picker.errors as msg}<li>{msg}</li>{/each}
     </ul>
   {/if}
 
-  <div class="table-wrap">
+  <div
+    class="table-wrap"
+    bind:this={scroller}
+    onscroll={onScroll}
+  >
     <table>
       <thead>
         {#snippet sortHeader(label: string, column: SortColumn)}
-          {@const active = state.sort?.column === column}
+          {@const active = picker.sort?.column === column}
           <th
             class="sortable"
             class:sortable-active={active}
             aria-sort={active
-              ? state.sort!.direction === 'asc'
+              ? picker.sort!.direction === 'asc'
                 ? 'ascending'
                 : 'descending'
               : 'none'}
@@ -126,11 +220,11 @@
             <button
               type="button"
               class="sort-btn"
-              onclick={() => state.onSortHeader(column)}
+              onclick={() => picker.onSortHeader(column)}
             >
               <span>{label}</span>
               <span class="sort-indicator" aria-hidden="true">
-                {#if active}{state.sort!.direction === 'asc' ? '▲' : '▼'}{:else}▲▼{/if}
+                {#if active}{picker.sort!.direction === 'asc' ? '▲' : '▼'}{:else}▲▼{/if}
               </span>
             </button>
           </th>
@@ -140,14 +234,14 @@
           <th class="col-check">
             <input
               type="checkbox"
-              checked={state.allRenderedPicked}
-              indeterminate={state.someRenderedPicked && !state.allRenderedPicked}
-              disabled={state.renderedRows.length === 0}
-              onchange={() => state.toggleSelectAll()}
-              aria-label={state.allRenderedPicked
+              checked={picker.allRenderedPicked}
+              indeterminate={picker.someRenderedPicked && !picker.allRenderedPicked}
+              disabled={picker.renderedRows.length === 0}
+              onchange={() => picker.toggleSelectAll()}
+              aria-label={picker.allRenderedPicked
                 ? 'Deselect all shown rows'
                 : 'Select all shown rows'}
-              title={state.allRenderedPicked
+              title={picker.allRenderedPicked
                 ? 'Deselect all shown rows'
                 : 'Select all shown rows'}
             />
@@ -163,7 +257,7 @@
       </thead>
       <tbody>
         {#snippet badge(field: FilterField, value: string, cls: string)}
-          {@const active = state.isChipActive(field, value)}
+          {@const active = picker.isChipActive(field, value)}
           <button
             type="button"
             class="badge {cls}"
@@ -171,141 +265,132 @@
             title={active
               ? `Remove filter ${field}:${value}`
               : `Filter to only ${field}:${value}`}
-            onclick={() => state.toggleFilterChip(field, value)}
+            onclick={() => picker.toggleFilterChip(field, value)}
           >
             <span class="badge-text">{value}</span>
             <span class="badge-cue" aria-hidden="true">{active ? '×' : '+'}</span>
           </button>
         {/snippet}
 
-        {#each state.visibleParents as row (row.id)}
-          {@const parentKey = row.key}
-          {@const allChildren = state.childrenByParent.get(parentKey) ?? []}
-          {@const children = state.childrenForParent(row)}
-          {@const isExpanded = state.isRowExpanded(parentKey)}
-          {@const awaitingSubtests =
-            isExpanded && row.hasSubtests && allChildren.length === 0}
-          <tr class:selected={state.picked.has(row.id)}>
-            <td class="col-check">
-              <input
-                type="checkbox"
-                checked={state.picked.has(row.id)}
-                onchange={(e) =>
-                  state.togglePick(
-                    row,
-                    (e.currentTarget as HTMLInputElement).checked,
-                  )}
-              />
-            </td>
-            <td class="col-disclose">
-              {#if row.hasSubtests}
-                <button
-                  type="button"
-                  class="disclose"
-                  class:disclose-open={isExpanded}
-                  aria-label={isExpanded ? 'Collapse subtests' : 'Expand subtests'}
-                  onclick={() => state.toggleExpanded(parentKey)}
-                >▶</button>
-              {/if}
-            </td>
-            <td>
-              {@render badge('suite', row.suite, 'badge-suite')}
-              {#if row.test}
-                {@render badge('test', row.test, 'badge-test')}
-              {/if}
-              {#if row.tags.length > 0}
-                <div class="tag-row">
-                  {#each row.tags as t}
-                    {@render badge('tag', t, 'badge-tag')}{' '}
-                  {/each}
-                </div>
-              {/if}
-            </td>
-            <td>
-              {#if row.application}
-                {@render badge('application', row.application, 'badge-app')}
-              {/if}
-            </td>
-            <td>{@render badge('repo', row.repository, 'badge-repo')}</td>
-            <td>{@render badge('platform', row.platform, 'badge-platform')}</td>
-            <td>
-              {#each row.options as o}
-                {@render badge('option', o, 'badge-option')}{' '}
-              {/each}
-            </td>
-            <td class="unit">{row.measurementUnit}</td>
+        {#if topPadding > 0}
+          <tr class="spacer" aria-hidden="true" style="height: {topPadding}px">
+            <td colspan="8"></td>
           </tr>
-          {#if isExpanded}
-            {#if awaitingSubtests}
-              <tr class="subtest-note">
-                <td colspan="8">Loading subtests…</td>
-              </tr>
-            {:else if allChildren.length === 0}
-              <tr class="subtest-note">
-                <td colspan="8">No subtests in loaded data.</td>
-              </tr>
-            {:else if children.length === 0}
-              <tr class="subtest-note">
-                <td colspan="8">No subtests match the current filter.</td>
-              </tr>
-            {:else}
-              {#each state.sortedChildren(children) as child (child.id)}
-                <tr class="subtest-row" class:selected={state.picked.has(child.id)}>
-                  <td class="col-check">
-                    <input
-                      type="checkbox"
-                      checked={state.picked.has(child.id)}
-                      onchange={(e) =>
-                        state.togglePick(
-                          child,
-                          (e.currentTarget as HTMLInputElement).checked,
-                        )}
-                    />
-                  </td>
-                  <td class="col-disclose"></td>
-                  <td class="subtest-cell">
-                    {@render badge('test', child.test || child.suite, 'badge-test')}
-                    {#if child.tags.length > 0}
-                      <div class="tag-row">
-                        {#each child.tags as t}
-                          {@render badge('tag', t, 'badge-tag')}{' '}
-                        {/each}
-                      </div>
-                    {/if}
-                  </td>
-                  <td>
-                    {#if child.application}
-                      {@render badge('application', child.application, 'badge-app')}
-                    {/if}
-                  </td>
-                  <td>{@render badge('repo', child.repository, 'badge-repo')}</td>
-                  <td>
-                    {@render badge('platform', child.platform, 'badge-platform')}
-                  </td>
-                  <td>
-                    {#each child.options as o}
-                      {@render badge('option', o, 'badge-option')}{' '}
+        {/if}
+        {#each visibleWindow as item, i (rowKey(item, startIndex + i))}
+          {#if item.kind === 'parent'}
+            {@const row = item.row}
+            {@const parentKey = row.key}
+            {@const isExpanded = picker.isRowExpanded(parentKey)}
+            <tr class:selected={picker.picked.has(row.id)}>
+              <td class="col-check">
+                <input
+                  type="checkbox"
+                  checked={picker.picked.has(row.id)}
+                  onchange={(e) =>
+                    picker.togglePick(
+                      row,
+                      (e.currentTarget as HTMLInputElement).checked,
+                    )}
+                />
+              </td>
+              <td class="col-disclose">
+                {#if row.hasSubtests}
+                  <button
+                    type="button"
+                    class="disclose"
+                    class:disclose-open={isExpanded}
+                    aria-label={isExpanded ? 'Collapse subtests' : 'Expand subtests'}
+                    onclick={() => picker.toggleExpanded(parentKey)}
+                  >▶</button>
+                {/if}
+              </td>
+              <td>
+                {@render badge('suite', row.suite, 'badge-suite')}
+                {#if row.test}
+                  {@render badge('test', row.test, 'badge-test')}
+                {/if}
+                {#if row.tags.length > 0}
+                  <div class="tag-row">
+                    {#each row.tags as t}
+                      {@render badge('tag', t, 'badge-tag')}{' '}
                     {/each}
-                  </td>
-                  <td class="unit">{child.measurementUnit}</td>
-                </tr>
-              {/each}
-            {/if}
+                  </div>
+                {/if}
+              </td>
+              <td>
+                {#if row.application}
+                  {@render badge('application', row.application, 'badge-app')}
+                {/if}
+              </td>
+              <td>{@render badge('repo', row.repository, 'badge-repo')}</td>
+              <td>{@render badge('platform', row.platform, 'badge-platform')}</td>
+              <td>
+                {#each row.options as o}
+                  {@render badge('option', o, 'badge-option')}{' '}
+                {/each}
+              </td>
+              <td class="unit">{row.measurementUnit}</td>
+            </tr>
+          {:else if item.kind === 'child'}
+            {@const child = item.row}
+            <tr class="subtest-row" class:selected={picker.picked.has(child.id)}>
+              <td class="col-check">
+                <input
+                  type="checkbox"
+                  checked={picker.picked.has(child.id)}
+                  onchange={(e) =>
+                    picker.togglePick(
+                      child,
+                      (e.currentTarget as HTMLInputElement).checked,
+                    )}
+                />
+              </td>
+              <td class="col-disclose"></td>
+              <td class="subtest-cell">
+                {@render badge('test', child.test || child.suite, 'badge-test')}
+                {#if child.tags.length > 0}
+                  <div class="tag-row">
+                    {#each child.tags as t}
+                      {@render badge('tag', t, 'badge-tag')}{' '}
+                    {/each}
+                  </div>
+                {/if}
+              </td>
+              <td>
+                {#if child.application}
+                  {@render badge('application', child.application, 'badge-app')}
+                {/if}
+              </td>
+              <td>{@render badge('repo', child.repository, 'badge-repo')}</td>
+              <td>
+                {@render badge('platform', child.platform, 'badge-platform')}
+              </td>
+              <td>
+                {#each child.options as o}
+                  {@render badge('option', o, 'badge-option')}{' '}
+                {/each}
+              </td>
+              <td class="unit">{child.measurementUnit}</td>
+            </tr>
+          {:else}
+            <tr class="subtest-note">
+              <td colspan="8">{item.message}</td>
+            </tr>
           {/if}
         {/each}
-        {#if state.visibleParents.length === 0}
+        {#if bottomPadding > 0}
+          <tr class="spacer" aria-hidden="true" style="height: {bottomPadding}px">
+            <td colspan="8"></td>
+          </tr>
+        {/if}
+        {#if flatRows.length === 0}
           <tr><td colspan="8" class="empty">
-            {#if state.anyLoading}Loading series…{:else}No matching series.{/if}
+            {#if picker.anyLoading}Loading series…{:else}No matching series.{/if}
           </td></tr>
         {/if}
       </tbody>
     </table>
-    {#if state.overflow > 0}
-      <div class="overflow-note">
-        Showing the first {RENDER_CAP.toLocaleString()} of {state.filteredParents.length.toLocaleString()}.
-        Narrow your filter to see more.
-      </div>
-    {/if}
   </div>
 </div>
 
@@ -674,12 +759,15 @@
     color: #57606a;
     padding: 24px;
   }
-  .overflow-note {
-    padding: 8px;
-    text-align: center;
-    color: #57606a;
-    background: #f6f8fa;
-    border-top: 1px solid #d0d7de;
+  /* Virtual-scroll spacer rows: their sole job is to occupy vertical space
+     for the rows we haven't rendered yet. No borders, no padding, no hover. */
+  .spacer td {
+    padding: 0;
+    border: 0;
+    background: transparent;
+  }
+  .spacer:hover td {
+    background: transparent;
   }
   .errors,
   .error {
