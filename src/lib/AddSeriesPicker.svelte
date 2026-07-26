@@ -37,11 +37,12 @@
 
   // User-visible controls.
   let selectedRepos = $state(new Set<string>(DEFAULT_REPOS));
-  // When on, the filter descends into subtests: a parent survives if it OR any
-  // of its children match, and the fatter subtests=1 payload is fetched. When
-  // off, only parents are considered (and only the subtests=0 payload is
-  // needed). Manually expanding a parent forces this on, since the user has
-  // clearly signalled they care about subtests.
+  // Filter semantic only: when on and the filter is active, a parent
+  // qualifies if it OR any of its children match, and parents that survived
+  // via a child are auto-expanded. The checkbox drives *only* this — the
+  // fatter subtests=1 fetch is triggered by `needSubtestsFetch` below, so
+  // manually expanding a row starts that fetch without also changing what
+  // the filter matches.
   let matchSubtests = $state(false);
   let timeRangeSeconds = $state(1209600); // 14 days, matches perfherder default.
   let filter = $state<Filter>(EMPTY_FILTER);
@@ -85,13 +86,24 @@
     }
   })();
 
+  // We need the fatter subtests=1 payload whenever the filter descends into
+  // subtests (matchSubtests) OR the user has manually expanded any row —
+  // either case makes child rows part of what's visible on screen.
+  const needSubtestsFetch = $derived.by(() => {
+    if (matchSubtests) return true;
+    for (const state of userExpansion.values()) {
+      if (state === 'user-open') return true;
+    }
+    return false;
+  });
+
   // Whenever inputs change, kick off fetches for any missing cache entries.
   $effect(() => {
     if (!metadataReady) return;
     for (const repo of selectedRepos) {
-      const key = cacheKey(repo, matchSubtests, timeRangeSeconds);
+      const key = cacheKey(repo, needSubtestsFetch, timeRangeSeconds);
       if (seriesCache.has(key) || loadingRepos.has(key)) continue;
-      loadRepo(repo, matchSubtests, timeRangeSeconds);
+      loadRepo(repo, needSubtestsFetch, timeRangeSeconds);
     }
   });
 
@@ -217,15 +229,14 @@
     // Flip whichever state the row is currently showing. A single override
     // map handles all four combinations (auto vs. no-auto × override vs. no
     // override): the resolved state comes from `isRowExpanded`, and the new
-    // override always wins on the next render.
+    // override always wins on the next render. The `needSubtestsFetch`
+    // derivation notices the new `user-open` entry and kicks off the
+    // subtests=1 fetch — we do not touch `matchSubtests`, which is now a
+    // pure filter semantic.
     const nextState = isRowExpanded(key) ? 'user-closed' : 'user-open';
     const next = new Map(userExpansion);
     next.set(key, nextState);
     userExpansion = next;
-    // Manual expansion signals the user cares about subtests: bump into
-    // subtest-matching mode so the fatter payload is fetched and future
-    // filters descend into children.
-    if (!matchSubtests) matchSubtests = true;
   }
 
   function clearPicked() {
