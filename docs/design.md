@@ -194,8 +194,16 @@ Users of this tool don't. The framework name is:
 
 Chip values are stored **lowercase** so equality is stable regardless of
 how a badge happened to be cased. Only known field names (`suite`, `test`,
-`application`, `repo`, `platform`, `option`, `tag`) become chips. Everything
-else stays as free text (typos are visible, not silently swallowed).
+`application`, `repo`, `platform`, `option`) become chips. Everything else
+stays as free text (typos are visible, not silently swallowed).
+
+**We used to expose a `tag:` field.** Per the Perfherder data model
+cheat sheet below, `tags` is a subset of `extra_options` whose membership
+reflects historical harness wiring, not a semantic distinction the user
+should reason about. A `tag:webrender` chip would silently omit rows
+where webrender is an option but not a tag — same string, arbitrary
+partition. The `option:` field is a strict superset and is what users
+actually want; the `tag:` chip was removed.
 
 ### Every badge in the table is a filter toggle
 
@@ -245,13 +253,15 @@ window `[startIndex, endIndex)` — driven by the `.table-wrap` scroller's
 `scrollTop` and `clientHeight`. Two spacer `<tr>` elements before and
 after the visible window occupy the space the un-rendered rows would.
 
-Row heights are estimated at `ESTIMATED_ROW_HEIGHT = 36`. Since real rows
-vary (~30–55px depending on tags and options wrapping), the total scroll
-area doesn't perfectly match the sum of actual rendered heights; the
-generous `OVERSCAN = 12` on each side absorbs the drift so the user never
-sees a blank strip while scrolling. If drift ever gets bad enough to be
-visible, upgrade to measured heights (each row reports its height via a
-ResizeObserver, and offsets become a running sum). ~50 more lines.
+Row heights are **exact**, not estimated. The multi-badge cells
+(Suite/Test and Options) apply `white-space: nowrap` so their content
+never wraps to a second line, which pins every parent and child row to
+`ROW_HEIGHT = 36`. That means `scrollTop / ROW_HEIGHT` is an accurate
+index and `startIndex * ROW_HEIGHT` is where the first rendered row
+actually sits — no drift as you scroll. If you add a new column, keep it
+one-line-tall too, or the picker starts jittering again. Subtest-note
+rows are shorter than 36px (a minor exception; they're rare enough that
+it doesn't compound).
 
 **Do not rename the picker instance back to `state`.** `const state = new
 PickerState()` inside a `.svelte` file collides with the `$state` rune:
@@ -286,9 +296,10 @@ Each signature has:
 - `tags` — a *subset* of extra_options that the perftest harness chose to
   promote. `fission` and `webrender` are always tags because they're
   globally appended in raptor/results.py; `nova` isn't a tag because it's
-  added by a per-test support class. **Don't rely on tag membership for
-  business logic — it reflects when things were wired up, not what they
-  are.**
+  added by a per-test support class. **We ignore this field entirely** —
+  the picker treats every extra_option uniformly. Don't reintroduce a
+  distinction: tag membership reflects when things were wired up, not
+  what they are.
 - `has_subtests`, `parent_signature` — parent/child link between rows.
   Fetched only when `subtests=1`.
 - `measurement_unit`, `should_alert`, `lower_is_better`

@@ -75,14 +75,13 @@ describe('toSeries', () => {
 
   it('handles missing/optional fields without throwing', () => {
     const [s] = toSeries(
-      { '1': raw({ test: undefined, application: undefined, extra_options: undefined, tags: undefined, measurement_unit: undefined }) },
+      { '1': raw({ test: undefined, application: undefined, extra_options: undefined, measurement_unit: undefined }) },
       'autoland',
       frameworks,
       optionMap,
     );
     expect(s.test).toBe('');
     expect(s.application).toBe('');
-    expect(s.tags).toEqual([]);
     expect(s.measurementUnit).toBe('');
   });
 
@@ -94,8 +93,7 @@ describe('toSeries', () => {
           test: 'MicroBench',
           application: 'Firefox',
           machine_platform: 'Linux2404-64',
-          tags: ['Fission'],
-          extra_options: ['WebRender'],
+          extra_options: ['Fission', 'WebRender'],
         }),
       },
       'Autoland',

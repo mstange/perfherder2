@@ -18,7 +18,6 @@ export const FILTER_FIELDS = [
   'repo',
   'platform',
   'option',
-  'tag',
 ] as const;
 
 export type FilterField = (typeof FILTER_FIELDS)[number];
@@ -85,8 +84,6 @@ export function chipMatchesRow(row: Series, chip: FilterChip): boolean {
       return row.test.toLowerCase() === v;
     case 'option':
       return row.options.some((o) => o.toLowerCase() === v);
-    case 'tag':
-      return row.tags.some((t) => t.toLowerCase() === v);
   }
 }
 
@@ -107,8 +104,6 @@ export function fieldValues(row: Series, field: FilterField): string[] {
       return row.test ? [row.test] : [];
     case 'option':
       return row.options;
-    case 'tag':
-      return row.tags;
   }
 }
 

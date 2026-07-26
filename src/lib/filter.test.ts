@@ -47,7 +47,6 @@ function s(overrides: Partial<Series> = {}): Series {
     application: 'firefox',
     options: ['opt', 'fission'],
     extraOptions: ['fission'],
-    tags: ['fission'],
     measurementUnit: 'score',
     hasSubtests: false,
     isSubtest: !!parentSignature,
@@ -109,10 +108,9 @@ describe('chipMatchesRow', () => {
     // Substring should NOT match, unlike free-text.
     expect(chipMatchesRow(s(), { field: 'platform', value: 'linux' })).toBe(false);
   });
-  it('matches option/tag membership', () => {
+  it('matches option membership', () => {
     expect(chipMatchesRow(s(), { field: 'option', value: 'fission' })).toBe(true);
     expect(chipMatchesRow(s(), { field: 'option', value: 'nova' })).toBe(false);
-    expect(chipMatchesRow(s(), { field: 'tag', value: 'fission' })).toBe(true);
   });
   it('is case-insensitive because chip values are pre-lowercased', () => {
     expect(chipMatchesRow(s({ application: 'Firefox' }), {
@@ -208,7 +206,6 @@ describe('fieldValues', () => {
       test: 'sub',
       application: 'firefox',
       options: ['opt', 'fission'],
-      tags: ['fission'],
     });
     expect(fieldValues(row, 'repo')).toEqual(['autoland']);
     expect(fieldValues(row, 'suite')).toEqual(['speedometer3']);
@@ -216,7 +213,6 @@ describe('fieldValues', () => {
     expect(fieldValues(row, 'application')).toEqual(['firefox']);
     expect(fieldValues(row, 'platform')).toEqual(['linux2404-64']);
     expect(fieldValues(row, 'option')).toEqual(['opt', 'fission']);
-    expect(fieldValues(row, 'tag')).toEqual(['fission']);
   });
   it('returns empty array for missing test / application', () => {
     expect(fieldValues(s({ test: '' }), 'test')).toEqual([]);

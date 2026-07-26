@@ -24,11 +24,11 @@
   // Broad filters can produce 25k rows; even one expanded parent adds a few
   // hundred subtests. We render only a scroll-window over a flat row list.
   //
-  // Assumes a roughly uniform row height: since rows can be one or two lines
-  // depending on tags/options, ESTIMATED_ROW_HEIGHT is an average and OVERSCAN
-  // is generous enough to cover the drift without noticeable pop-in.
-  const ESTIMATED_ROW_HEIGHT = 36;
-  const OVERSCAN = 12;
+  // Rows are constrained to a single visual line — multi-badge cells set
+  // `white-space: nowrap` so their badges don't wrap — so ROW_HEIGHT is
+  // exact and scrollTop-to-index math never drifts.
+  const ROW_HEIGHT = 36;
+  const OVERSCAN = 6;
 
   type FlatRow =
     | { kind: 'parent'; row: Series }
@@ -78,13 +78,13 @@
     return () => ro.disconnect();
   });
 
-  const totalHeight = $derived(flatRows.length * ESTIMATED_ROW_HEIGHT);
+  const totalHeight = $derived(flatRows.length * ROW_HEIGHT);
   const startIndex = $derived(
     Math.max(
       0,
       Math.min(
         flatRows.length,
-        Math.floor(scrollTop / ESTIMATED_ROW_HEIGHT) - OVERSCAN,
+        Math.floor(scrollTop / ROW_HEIGHT) - OVERSCAN,
       ),
     ),
   );
@@ -93,12 +93,12 @@
       0,
       Math.min(
         flatRows.length,
-        Math.ceil((scrollTop + viewportHeight) / ESTIMATED_ROW_HEIGHT) + OVERSCAN,
+        Math.ceil((scrollTop + viewportHeight) / ROW_HEIGHT) + OVERSCAN,
       ),
     ),
   );
-  const topPadding = $derived(startIndex * ESTIMATED_ROW_HEIGHT);
-  const bottomPadding = $derived(Math.max(0, totalHeight - endIndex * ESTIMATED_ROW_HEIGHT));
+  const topPadding = $derived(startIndex * ROW_HEIGHT);
+  const bottomPadding = $derived(Math.max(0, totalHeight - endIndex * ROW_HEIGHT));
   const visibleWindow = $derived(flatRows.slice(startIndex, endIndex));
 
   function rowKey(item: FlatRow, index: number): string {
@@ -316,17 +316,10 @@
                   >▶</button>
                 {/if}
               </td>
-              <td>
+              <td class="suite-test-cell">
                 {@render badge('suite', row.suite, 'badge-suite')}
                 {#if row.test}
                   {@render badge('test', row.test, 'badge-test')}
-                {/if}
-                {#if row.tags.length > 0}
-                  <div class="tag-row">
-                    {#each row.tags as t}
-                      {@render badge('tag', t, 'badge-tag')}{' '}
-                    {/each}
-                  </div>
                 {/if}
               </td>
               <td>
@@ -336,7 +329,7 @@
               </td>
               <td>{@render badge('repo', row.repository, 'badge-repo')}</td>
               <td>{@render badge('platform', row.platform, 'badge-platform')}</td>
-              <td>
+              <td class="options-cell">
                 {#each row.options as o}
                   {@render badge('option', o, 'badge-option')}{' '}
                 {/each}
@@ -358,15 +351,8 @@
                 />
               </td>
               <td class="col-disclose"></td>
-              <td class="subtest-cell">
+              <td class="subtest-cell suite-test-cell">
                 {@render badge('test', child.test || child.suite, 'badge-test')}
-                {#if child.tags.length > 0}
-                  <div class="tag-row">
-                    {#each child.tags as t}
-                      {@render badge('tag', t, 'badge-tag')}{' '}
-                    {/each}
-                  </div>
-                {/if}
               </td>
               <td>
                 {#if child.application}
@@ -377,7 +363,7 @@
               <td>
                 {@render badge('platform', child.platform, 'badge-platform')}
               </td>
-              <td>
+              <td class="options-cell">
                 {#each child.options as o}
                   {@render badge('option', o, 'badge-option')}{' '}
                 {/each}
@@ -694,11 +680,12 @@
     font-style: italic;
     background: #fafbfc;
   }
-  .tag-row {
-    margin-top: 2px;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 3px;
+  /* Clamp multi-badge cells to one visual line so every row has the same
+     height. If a cell has too many badges, the table wrapper scrolls
+     horizontally rather than the row growing taller. */
+  .suite-test-cell,
+  .options-cell {
+    white-space: nowrap;
   }
   /* Badges are now buttons — same visual as before, but the "+" / "×"
      affordance appears on hover, and always when the chip is active. */
@@ -743,9 +730,6 @@
   }
   .badge-active .badge-cue {
     color: #cf222e;
-  }
-  .badge-tag {
-    background: #ddf4ff;
   }
   .badge-repo {
     background: #ffeff7;

@@ -280,10 +280,6 @@
     background: #e5e7eb;
     color: #374151;
   }
-  .chip-field-tag {
-    background: #ddf4ff;
-    color: #0e4c74;
-  }
   .chip-field-suite,
   .chip-field-test {
     background: #dafbe1;

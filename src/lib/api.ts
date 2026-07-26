@@ -30,7 +30,6 @@ export type RawSignature = {
   test?: string | null;
   application?: string | null;
   extra_options?: string[];
-  tags?: string[];
   measurement_unit?: string;
   has_subtests?: boolean;
   parent_signature?: string | null;
@@ -52,7 +51,6 @@ export type Series = {
   application: string;
   options: string[];
   extraOptions: string[];
-  tags: string[];
   measurementUnit: string;
   hasSubtests: boolean;
   isSubtest: boolean;
@@ -140,7 +138,8 @@ export function toSeries(
     const suite = s.suite ?? '';
     const test = s.test ?? '';
     const application = s.application ?? '';
-    const tags = s.tags ?? [];
+    // `tags` are a subset of `extra_options` (see docs/design.md) — already
+    // covered by `options` above, so we don't feed them into searchText.
     const searchText = [
       suite,
       test,
@@ -149,7 +148,6 @@ export function toSeries(
       framework,
       repository,
       ...options,
-      ...tags,
     ]
       .join(' ')
       .toLowerCase();
@@ -170,7 +168,6 @@ export function toSeries(
       application,
       options,
       extraOptions: extra,
-      tags,
       measurementUnit: s.measurement_unit ?? '',
       hasSubtests: !!s.has_subtests,
       isSubtest: !!parentSignature,
