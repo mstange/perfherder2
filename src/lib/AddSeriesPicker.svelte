@@ -127,7 +127,9 @@
       <span class="control-label">Filter</span>
       <FilterInput
         filter={picker.filter}
-        onchange={(next) => (picker.filter = next)}
+        onchange={(next) => {
+          picker.filter = next;
+        }}
       />
       <div class="time-controls">
         <label class="inline-label" for="time-range-select">Time range</label>
