@@ -241,6 +241,35 @@
   }
 
   const anyLoading = $derived(loadingRepos.size > 0);
+
+  // Master checkbox scope: every row currently rendered in the DOM (parents
+  // plus their visible children when expanded). This maps to "what the user
+  // sees" — narrower and safer than "all matches" when the filter has 25k
+  // hits and the render cap is 500.
+  const renderedRows = $derived.by(() => {
+    const rows: Series[] = [];
+    for (const p of visibleParents) {
+      rows.push(p);
+      if (isRowExpanded(p.signatureHash)) {
+        for (const c of childrenForParent(p)) rows.push(c);
+      }
+    }
+    return rows;
+  });
+  const allRenderedPicked = $derived(
+    renderedRows.length > 0 && renderedRows.every((r) => picked.has(r.id)),
+  );
+  const someRenderedPicked = $derived(renderedRows.some((r) => picked.has(r.id)));
+
+  function toggleSelectAll() {
+    const next = new Map(picked);
+    if (allRenderedPicked) {
+      for (const r of renderedRows) next.delete(r.id);
+    } else {
+      for (const r of renderedRows) next.set(r.id, r);
+    }
+    picked = next;
+  }
 </script>
 
 <div class="picker">
@@ -360,7 +389,21 @@
         {/snippet}
 
         <tr>
-          <th class="col-check"></th>
+          <th class="col-check">
+            <input
+              type="checkbox"
+              checked={allRenderedPicked}
+              indeterminate={someRenderedPicked && !allRenderedPicked}
+              disabled={renderedRows.length === 0}
+              onchange={toggleSelectAll}
+              aria-label={allRenderedPicked
+                ? 'Deselect all shown rows'
+                : 'Select all shown rows'}
+              title={allRenderedPicked
+                ? 'Deselect all shown rows'
+                : 'Select all shown rows'}
+            />
+          </th>
           <th class="col-disclose"></th>
           {@render sortHeader('Suite / Test', 'suite')}
           {@render sortHeader('Application', 'application')}
