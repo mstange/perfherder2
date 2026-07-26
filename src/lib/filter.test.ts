@@ -5,6 +5,8 @@ import {
   cacheKey,
   chipMatchesRow,
   chipToString,
+  compareRows,
+  cycleSort,
   fieldValues,
   groupChildrenByParent,
   hasChip,
@@ -12,10 +14,12 @@ import {
   parseChip,
   pickCachedForRepo,
   removeChip,
+  sortKey,
   toggleChip,
   tokenizeFilter,
   type Filter,
   type FilterChip,
+  type SortState,
 } from './filter';
 
 function s(overrides: Partial<Series> = {}): Series {
@@ -228,6 +232,109 @@ describe('cacheKey', () => {
   it('includes repo, subtests flag, and interval', () => {
     expect(cacheKey('autoland', false, 1209600)).toBe('autoland|0|1209600');
     expect(cacheKey('autoland', true, 1209600)).toBe('autoland|1|1209600');
+  });
+});
+
+describe('cycleSort', () => {
+  it('starts a new column at ascending', () => {
+    expect(cycleSort(null, 'suite')).toEqual({ column: 'suite', direction: 'asc' });
+  });
+  it('cycles asc → desc on the same column', () => {
+    expect(cycleSort({ column: 'suite', direction: 'asc' }, 'suite')).toEqual({
+      column: 'suite',
+      direction: 'desc',
+    });
+  });
+  it('cycles desc → null on the same column', () => {
+    expect(cycleSort({ column: 'suite', direction: 'desc' }, 'suite')).toBeNull();
+  });
+  it('switching columns resets to asc regardless of prior direction', () => {
+    expect(cycleSort({ column: 'suite', direction: 'desc' }, 'repo')).toEqual({
+      column: 'repo',
+      direction: 'asc',
+    });
+  });
+});
+
+describe('sortKey', () => {
+  it('combines suite and test for a stable primary key', () => {
+    const row = s({ suite: 'speedometer3', test: 'total' });
+    // Just check both parts are represented.
+    expect(sortKey(row, 'suite')).toContain('speedometer3');
+    expect(sortKey(row, 'suite')).toContain('total');
+  });
+  it('is lowercase so case doesn\'t affect ordering', () => {
+    expect(sortKey(s({ suite: 'FOO' }), 'suite')).toBe(sortKey(s({ suite: 'foo' }), 'suite'));
+  });
+});
+
+describe('compareRows', () => {
+  const asc = (col: SortState['column']): SortState => ({ column: col, direction: 'asc' });
+  const desc = (col: SortState['column']): SortState => ({ column: col, direction: 'desc' });
+
+  it('returns 0 when there is no sort (preserves order)', () => {
+    expect(compareRows(s({ suite: 'a' }), s({ suite: 'z' }), null)).toBe(0);
+  });
+
+  it('sorts by suite ascending', () => {
+    const rows = [s({ suite: 'zeta' }), s({ suite: 'alpha' }), s({ suite: 'mu' })];
+    rows.sort((a, b) => compareRows(a, b, asc('suite')));
+    expect(rows.map((r) => r.suite)).toEqual(['alpha', 'mu', 'zeta']);
+  });
+
+  it('sorts descending flips the order', () => {
+    const rows = [s({ suite: 'alpha' }), s({ suite: 'zeta' })];
+    rows.sort((a, b) => compareRows(a, b, desc('suite')));
+    expect(rows.map((r) => r.suite)).toEqual(['zeta', 'alpha']);
+  });
+
+  it('breaks suite ties with test name', () => {
+    const rows = [
+      s({ suite: 'speedometer3', test: 'total' }),
+      s({ suite: 'speedometer3', test: 'aggregate' }),
+    ];
+    rows.sort((a, b) => compareRows(a, b, asc('suite')));
+    expect(rows.map((r) => r.test)).toEqual(['aggregate', 'total']);
+  });
+
+  it('sorts by repo / platform / application / unit', () => {
+    const rows = [
+      s({ repository: 'try', platform: 'linux', application: 'firefox', measurementUnit: 'ms' }),
+      s({ repository: 'autoland', platform: 'macos', application: 'chrome', measurementUnit: 'score' }),
+    ];
+    for (const col of ['repo', 'platform', 'application', 'unit'] as const) {
+      const copy = [...rows].sort((a, b) => compareRows(a, b, asc(col)));
+      const first = copy[0];
+      // First one should have the alphabetically-smaller value on the column.
+      switch (col) {
+        case 'repo':
+          expect(first.repository).toBe('autoland');
+          break;
+        case 'platform':
+          expect(first.platform).toBe('linux');
+          break;
+        case 'application':
+          expect(first.application).toBe('chrome');
+          break;
+        case 'unit':
+          expect(first.measurementUnit).toBe('ms');
+          break;
+      }
+    }
+  });
+
+  it('sorts by joined options string', () => {
+    const rows = [
+      s({ options: ['opt', 'webrender'] }),
+      s({ options: ['debug'] }),
+      s({ options: ['opt', 'fission'] }),
+    ];
+    rows.sort((a, b) => compareRows(a, b, asc('options')));
+    expect(rows.map((r) => r.options.join(' '))).toEqual([
+      'debug',
+      'opt fission',
+      'opt webrender',
+    ]);
   });
 });
 

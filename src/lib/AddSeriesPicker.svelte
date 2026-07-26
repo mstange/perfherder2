@@ -13,6 +13,8 @@
   import {
     EMPTY_FILTER,
     cacheKey,
+    compareRows,
+    cycleSort,
     groupChildrenByParent,
     hasChip,
     matchesRow,
@@ -21,6 +23,8 @@
     type Filter,
     type FilterChip,
     type FilterField,
+    type SortColumn,
+    type SortState,
   } from './filter';
   import FilterInput from './FilterInput.svelte';
 
@@ -34,6 +38,7 @@
   let includeSubtests = $state(false);
   let timeRangeSeconds = $state(1209600); // 14 days, matches perfherder default.
   let filter = $state<Filter>(EMPTY_FILTER);
+  let sort = $state<SortState | null>(null);
   let expanded = $state(new Set<string>()); // parent signature_hash values
 
   // Cached signature responses.
@@ -123,6 +128,7 @@
       if (row.isSubtest) continue;
       if (matchesRow(row, filter)) out.push(row);
     }
+    if (sort) out.sort((a, b) => compareRows(a, b, sort));
     return out;
   });
 
@@ -130,6 +136,17 @@
   const RENDER_CAP = 500;
   const visibleParents = $derived(filteredParents.slice(0, RENDER_CAP));
   const overflow = $derived(Math.max(0, filteredParents.length - RENDER_CAP));
+
+  // Children under an expanded parent: sort by the same column so a
+  // "sort by unit" ordering carries through into the subtest rows.
+  function sortedChildren(children: Series[]): Series[] {
+    if (!sort) return children;
+    return [...children].sort((a, b) => compareRows(a, b, sort));
+  }
+
+  function onSortHeader(column: SortColumn) {
+    sort = cycleSort(sort, column);
+  }
 
   function toggleRepo(repo: string) {
     const next = new Set(selectedRepos);
@@ -270,15 +287,39 @@
   <div class="table-wrap">
     <table>
       <thead>
+        {#snippet sortHeader(label: string, column: SortColumn)}
+          {@const active = sort?.column === column}
+          <th
+            class="sortable"
+            class:sortable-active={active}
+            aria-sort={active
+              ? sort!.direction === 'asc'
+                ? 'ascending'
+                : 'descending'
+              : 'none'}
+          >
+            <button
+              type="button"
+              class="sort-btn"
+              onclick={() => onSortHeader(column)}
+            >
+              <span>{label}</span>
+              <span class="sort-indicator" aria-hidden="true">
+                {#if active}{sort!.direction === 'asc' ? '▲' : '▼'}{:else}▲▼{/if}
+              </span>
+            </button>
+          </th>
+        {/snippet}
+
         <tr>
           <th class="col-check"></th>
           <th class="col-disclose"></th>
-          <th>Suite / Test</th>
-          <th>Application</th>
-          <th>Repo</th>
-          <th>Platform</th>
-          <th>Options</th>
-          <th>Unit</th>
+          {@render sortHeader('Suite / Test', 'suite')}
+          {@render sortHeader('Application', 'application')}
+          {@render sortHeader('Repo', 'repo')}
+          {@render sortHeader('Platform', 'platform')}
+          {@render sortHeader('Options', 'options')}
+          {@render sortHeader('Unit', 'unit')}
         </tr>
       </thead>
       <tbody>
@@ -360,7 +401,7 @@
                 <td colspan="8">No subtests in loaded data.</td>
               </tr>
             {:else}
-              {#each children as child (child.id)}
+              {#each sortedChildren(children) as child (child.id)}
                 <tr class="subtest-row" class:selected={picked.has(child.id)}>
                   <td class="col-check">
                     <input
@@ -583,8 +624,47 @@
     background: #f6f8fa;
     border-bottom: 1px solid #d0d7de;
     text-align: left;
-    padding: 6px 8px;
+    padding: 0;
     z-index: 1;
+  }
+  thead th:not(.sortable) {
+    padding: 6px 8px;
+  }
+  .sortable {
+    /* Ensure the header cell fills so the button occupies it entirely. */
+    background: #f6f8fa;
+  }
+  .sortable-active {
+    background: #ddf4ff;
+  }
+  .sort-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    padding: 6px 8px;
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+    font: inherit;
+    font-weight: 600;
+    text-align: left;
+    cursor: pointer;
+    color: inherit;
+  }
+  .sort-btn:hover {
+    background: rgba(0, 0, 0, 0.04);
+  }
+  .sort-indicator {
+    font-size: 9px;
+    color: #57606a;
+    opacity: 0.55;
+    letter-spacing: -1px;
+    font-variant: normal;
+  }
+  .sortable-active .sort-indicator {
+    color: #0969da;
+    opacity: 1;
   }
   tbody td {
     padding: 6px 8px;

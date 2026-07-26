@@ -164,6 +164,73 @@ export function toggleChip(filter: Filter, chip: FilterChip): Filter {
 }
 
 // ---------------------------------------------------------------------------
+// Column sorting
+
+export const SORT_COLUMNS = [
+  'suite',
+  'application',
+  'repo',
+  'platform',
+  'options',
+  'unit',
+] as const;
+
+export type SortColumn = (typeof SORT_COLUMNS)[number];
+
+export type SortDirection = 'asc' | 'desc';
+
+export interface SortState {
+  column: SortColumn;
+  direction: SortDirection;
+}
+
+// The user-clicked sort cycles asc → desc → cleared → asc. Passing null as
+// `current` means "no sort", and clicking a column starts at asc.
+export function cycleSort(
+  current: SortState | null,
+  column: SortColumn,
+): SortState | null {
+  if (!current || current.column !== column) return { column, direction: 'asc' };
+  if (current.direction === 'asc') return { column, direction: 'desc' };
+  return null;
+}
+
+// Canonical string used to compare rows for a given column. Multi-valued
+// columns (options) are joined so sorting stays deterministic.
+export function sortKey(row: Series, column: SortColumn): string {
+  switch (column) {
+    case 'suite':
+      // Suite is the primary text column; break ties with test name.
+      return `${row.suite}\u0000${row.test}`.toLowerCase();
+    case 'application':
+      return row.application.toLowerCase();
+    case 'repo':
+      return row.repository.toLowerCase();
+    case 'platform':
+      return row.platform.toLowerCase();
+    case 'options':
+      return row.options.join(' ').toLowerCase();
+    case 'unit':
+      return row.measurementUnit.toLowerCase();
+  }
+}
+
+// Comparator suitable for Array.prototype.sort. `sort` may be null to mean
+// "no sorting" (returns 0 for every pair, which keeps the caller's original
+// order when sort is stable, which it is in every modern engine).
+export function compareRows(
+  a: Series,
+  b: Series,
+  sort: SortState | null,
+): number {
+  if (!sort) return 0;
+  const ka = sortKey(a, sort.column);
+  const kb = sortKey(b, sort.column);
+  const cmp = ka < kb ? -1 : ka > kb ? 1 : 0;
+  return sort.direction === 'asc' ? cmp : -cmp;
+}
+
+// ---------------------------------------------------------------------------
 // Subtest grouping and cache helpers (unchanged)
 
 export function groupChildrenByParent(
