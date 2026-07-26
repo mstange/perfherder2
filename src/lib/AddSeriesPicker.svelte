@@ -236,14 +236,14 @@
           <th class="col-check">
             <input
               type="checkbox"
-              checked={picker.allRenderedPicked}
-              indeterminate={picker.someRenderedPicked && !picker.allRenderedPicked}
-              disabled={picker.renderedRows.length === 0}
+              checked={picker.allPickablePicked}
+              indeterminate={picker.somePickablePicked && !picker.allPickablePicked}
+              disabled={picker.pickableRows.length === 0}
               onchange={() => picker.toggleSelectAll()}
-              aria-label={picker.allRenderedPicked
+              aria-label={picker.allPickablePicked
                 ? 'Deselect all shown rows'
                 : 'Select all shown rows'}
-              title={picker.allRenderedPicked
+              title={picker.allPickablePicked
                 ? 'Deselect all shown rows'
                 : 'Select all shown rows'}
             />
@@ -284,11 +284,20 @@
             {@const row = item.row}
             {@const parentKey = row.key}
             {@const isExpanded = picker.isRowExpanded(parentKey)}
-            <tr class:selected={picker.picked.has(row.id)}>
+            {@const disabled = picker.isRowDisabled(row)}
+            <tr
+              class:selected={!disabled && picker.picked.has(row.id)}
+              class:row-disabled={disabled}
+              aria-disabled={disabled}
+            >
               <td class="col-check">
                 <input
                   type="checkbox"
                   checked={picker.picked.has(row.id)}
+                  disabled={disabled}
+                  title={disabled
+                    ? 'This row is shown because a subtest matched. Widen the filter to pick it.'
+                    : undefined}
                   onchange={(e) =>
                     picker.togglePick(
                       row,
@@ -626,6 +635,19 @@
   }
   tbody tr.selected:hover {
     background: #f7ecac;
+  }
+  /* Parent rows shown only because a subtest matched. The disclosure caret
+     stays live (users need it to collapse the tree), everything else looks
+     and behaves inert. */
+  tbody tr.row-disabled td {
+    color: #8c959f;
+  }
+  tbody tr.row-disabled .badge {
+    pointer-events: none;
+    opacity: 0.55;
+  }
+  tbody tr.row-disabled .col-check input {
+    cursor: not-allowed;
   }
   .col-check {
     width: 32px;

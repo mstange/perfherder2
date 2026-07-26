@@ -131,26 +131,37 @@ export class PickerState {
   anyLoading = $derived(this.loadingRepos.size > 0);
 
   // Master checkbox scope: every row the current filter+expansion would
-  // render. Virtual scrolling means most of these aren't in the DOM at any
-  // given moment, but they are all "shown to the user" as they scroll —
-  // so select-all covers everything the filter has surfaced.
-  renderedRows = $derived.by(() => {
+  // render *and* the user can actually pick. Virtual scrolling means most of
+  // these aren't in the DOM at any given moment, but they are all "shown to
+  // the user" as they scroll — so select-all covers everything the filter
+  // has surfaced. Parents that only survived because a child matched
+  // (`autoExpanded`) are excluded: their checkboxes are disabled in the
+  // template, so select-all mustn't try to include them either.
+  pickableRows = $derived.by(() => {
     const rows: Series[] = [];
     for (const p of this.filteredParents) {
-      rows.push(p);
+      if (!this.autoExpanded.has(p.key)) rows.push(p);
       if (this.isRowExpanded(p.key)) {
         for (const c of this.childrenForParent(p)) rows.push(c);
       }
     }
     return rows;
   });
-  allRenderedPicked = $derived(
-    this.renderedRows.length > 0 &&
-      this.renderedRows.every((r) => this.picked.has(r.id)),
+  allPickablePicked = $derived(
+    this.pickableRows.length > 0 &&
+      this.pickableRows.every((r) => this.picked.has(r.id)),
   );
-  someRenderedPicked = $derived(
-    this.renderedRows.some((r) => this.picked.has(r.id)),
+  somePickablePicked = $derived(
+    this.pickableRows.some((r) => this.picked.has(r.id)),
   );
+
+  // True when this row is shown but not directly pickable — a parent that
+  // only survived the filter via a matching child. The template greys the
+  // row out and disables its checkbox / badge clicks; the disclosure caret
+  // stays live so users can still collapse the subtest tree.
+  isRowDisabled(row: Series): boolean {
+    return !row.isSubtest && this.autoExpanded.has(row.key);
+  }
 
   constructor() {
     // Load framework + option-collection maps once. Cannot happen before
@@ -286,10 +297,10 @@ export class PickerState {
 
   toggleSelectAll(): void {
     const next = new Map(this.picked);
-    if (this.allRenderedPicked) {
-      for (const r of this.renderedRows) next.delete(r.id);
+    if (this.allPickablePicked) {
+      for (const r of this.pickableRows) next.delete(r.id);
     } else {
-      for (const r of this.renderedRows) next.set(r.id, r);
+      for (const r of this.pickableRows) next.set(r.id, r);
     }
     this.picked = next;
   }
