@@ -78,13 +78,35 @@ gets much slower or larger, revisit this trade-off.**
 ### Cache key: `repo|subtests|interval`, with a fallback preference
 
 The cache is keyed by the tuple that identifies a distinct API response.
-Toggling "Include subtests" naively switches the lookup key and would blank
-the list until the fatter response arrives. Fix, in
+Toggling "Match inside subtests" naively switches the lookup key and would
+blank the list until the fatter response arrives. Fix, in
 [filter.ts::pickCachedForRepo](../src/lib/filter.ts): **prefer the
 subtests=1 cache if loaded; fall back to subtests=0.** This is safe because
 a subtests=1 fetch is a strict superset of subtests=0 — the top-level rows
 are identical in both. Do not break this invariant without also revisiting
 the disclosure UX.
+
+### "Match inside subtests" is the filter semantic, not just a fetch flag
+
+The `matchSubtests` state (checkbox on the filter row) controls **two**
+things that used to be tangled:
+
+- **Fetch:** when on, we fetch the subtests=1 payload (via `cacheKey`),
+  so subtest rows exist in memory. Manually expanding any parent also
+  flips this on for the same reason.
+- **Filter semantic:** when on AND the filter is active, a parent qualifies
+  if it OR any of its children match. Parents that only match via a child
+  are auto-expanded, and under any expanded parent only the matched
+  children are rendered (see `childrenForParent` /
+  [filter.ts::matchParentWithChildren](../src/lib/filter.ts)).
+
+Why: with the old "include subtests" toggle, clicking a subtest badge
+added a `test:<name>` chip that no parent could satisfy (parent rows
+have an empty `test` field), so the list went empty. Descending the
+filter into subtests fixes that, and auto-expansion makes the *reason*
+a parent survived visible. Do not conflate `matchSubtests=false` with
+"hide subtests" — subtests are still visible under manually expanded
+parents in that mode; the flag only means "the filter does not descend."
 
 ### Framework is searchable but not shown
 

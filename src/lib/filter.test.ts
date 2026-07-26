@@ -10,7 +10,9 @@ import {
   fieldValues,
   groupChildrenByParent,
   hasChip,
+  isFilterActive,
   matchesRow,
+  matchParentWithChildren,
   parseChip,
   pickCachedForRepo,
   removeChip,
@@ -225,6 +227,114 @@ describe('groupChildrenByParent', () => {
   });
   it('returns an empty map when there are no subtests', () => {
     expect(groupChildrenByParent([s()]).size).toBe(0);
+  });
+});
+
+describe('isFilterActive', () => {
+  it('is false for the empty filter', () => {
+    expect(isFilterActive(empty)).toBe(false);
+  });
+  it('is false for whitespace-only text', () => {
+    expect(isFilterActive({ chips: [], text: '   ' })).toBe(false);
+  });
+  it('is true when text is non-empty', () => {
+    expect(isFilterActive({ chips: [], text: 'foo' })).toBe(true);
+  });
+  it('is true when any chip is present', () => {
+    expect(
+      isFilterActive({ chips: [{ field: 'repo', value: 'try' }], text: '' }),
+    ).toBe(true);
+  });
+});
+
+describe('matchParentWithChildren', () => {
+  // A parent with an empty test field (typical) that has three subtests.
+  const parent = s({
+    id: 1,
+    signatureHash: 'P',
+    hasSubtests: true,
+    test: '',
+    searchText: 'speedometer3 firefox linux2404-64 browsertime autoland opt fission',
+  });
+  const kidA = s({
+    id: 10,
+    isSubtest: true,
+    parentSignature: 'P',
+    signatureHash: 'C10',
+    test: 'React-Redux-TodoMVC',
+    searchText:
+      'speedometer3 react-redux-todomvc firefox linux2404-64 browsertime autoland opt fission',
+  });
+  const kidB = s({
+    id: 11,
+    isSubtest: true,
+    parentSignature: 'P',
+    signatureHash: 'C11',
+    test: 'Vanilla-JS-TodoMVC',
+    searchText:
+      'speedometer3 vanilla-js-todomvc firefox linux2404-64 browsertime autoland opt fission',
+  });
+  const kidC = s({
+    id: 12,
+    isSubtest: true,
+    parentSignature: 'P',
+    signatureHash: 'C12',
+    test: 'Angular2-TypeScript-TodoMVC',
+    searchText:
+      'speedometer3 angular2-typescript-todomvc firefox linux2404-64 browsertime autoland opt fission',
+  });
+
+  it('returns parent-only match when only the parent matches', () => {
+    const m = matchParentWithChildren(parent, [kidA, kidB, kidC], {
+      chips: [{ field: 'suite', value: 'speedometer3' }],
+      text: '',
+    });
+    expect(m?.selfMatched).toBe(true);
+    // Children whose suite is speedometer3 also match — they're all speedometer3.
+    expect(m?.matchedChildren.map((c) => c.id)).toEqual([10, 11, 12]);
+  });
+
+  it('promotes parent via a matching child even when parent itself does not match', () => {
+    // A test:react-redux-todomvc chip: parent has empty test → doesn't match;
+    // but kidA does. Parent should still be returned, with only kidA as the
+    // matched child.
+    const m = matchParentWithChildren(parent, [kidA, kidB, kidC], {
+      chips: [{ field: 'test', value: 'react-redux-todomvc' }],
+      text: '',
+    });
+    expect(m).not.toBeNull();
+    expect(m!.selfMatched).toBe(false);
+    expect(m!.matchedChildren.map((c) => c.id)).toEqual([10]);
+  });
+
+  it('returns null when neither parent nor any child matches', () => {
+    const m = matchParentWithChildren(parent, [kidA, kidB, kidC], {
+      chips: [{ field: 'test', value: 'nonexistent' }],
+      text: '',
+    });
+    expect(m).toBeNull();
+  });
+
+  it('with no children, degenerates to a self-match check', () => {
+    const noKids: Series[] = [];
+    expect(
+      matchParentWithChildren(parent, noKids, {
+        chips: [{ field: 'suite', value: 'speedometer3' }],
+        text: '',
+      }),
+    ).not.toBeNull();
+    expect(
+      matchParentWithChildren(parent, noKids, {
+        chips: [{ field: 'suite', value: 'other' }],
+        text: '',
+      }),
+    ).toBeNull();
+  });
+
+  it('with an empty filter (wildcard), returns all children as matches', () => {
+    const m = matchParentWithChildren(parent, [kidA, kidB, kidC], empty);
+    expect(m?.selfMatched).toBe(true);
+    expect(m?.matchedChildren.length).toBe(3);
   });
 });
 

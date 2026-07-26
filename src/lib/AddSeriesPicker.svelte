@@ -17,6 +17,8 @@
     cycleSort,
     groupChildrenByParent,
     hasChip,
+    isFilterActive,
+    matchParentWithChildren,
     matchesRow,
     pickCachedForRepo,
     toggleChip,
@@ -35,7 +37,12 @@
 
   // User-visible controls.
   let selectedRepos = $state(new Set<string>(DEFAULT_REPOS));
-  let includeSubtests = $state(false);
+  // When on, the filter descends into subtests: a parent survives if it OR any
+  // of its children match, and the fatter subtests=1 payload is fetched. When
+  // off, only parents are considered (and only the subtests=0 payload is
+  // needed). Manually expanding a parent forces this on, since the user has
+  // clearly signalled they care about subtests.
+  let matchSubtests = $state(false);
   let timeRangeSeconds = $state(1209600); // 14 days, matches perfherder default.
   let filter = $state<Filter>(EMPTY_FILTER);
   let sort = $state<SortState | null>(null);
@@ -77,9 +84,9 @@
   $effect(() => {
     if (!metadataReady) return;
     for (const repo of selectedRepos) {
-      const key = cacheKey(repo, includeSubtests, timeRangeSeconds);
+      const key = cacheKey(repo, matchSubtests, timeRangeSeconds);
       if (seriesCache.has(key) || loadingRepos.has(key)) continue;
-      loadRepo(repo, includeSubtests, timeRangeSeconds);
+      loadRepo(repo, matchSubtests, timeRangeSeconds);
     }
   });
 
@@ -121,21 +128,58 @@
 
   const childrenByParent = $derived(groupChildrenByParent(combined));
 
-  // Top-level rows: not subtests, matching the current filter.
-  const filteredParents = $derived.by(() => {
-    const out: Series[] = [];
+  const filterActive = $derived(isFilterActive(filter));
+
+  // Top-level rows and per-parent child bookkeeping.
+  //
+  // When "Match inside subtests" is on, a parent qualifies if it OR any of
+  // its children match the filter. Parents that qualify only through a child
+  // are auto-expanded so the reason for their presence is visible. When the
+  // filter is active, `matchedChildren` holds the exact subset of children
+  // that matched — the caller uses that to hide non-matching siblings under
+  // an expanded parent.
+  const filterResult = $derived.by(() => {
+    const parents: Series[] = [];
+    const autoExpanded = new Set<string>();
+    const matchedChildren = new Map<string, Series[]>();
     for (const row of combined) {
       if (row.isSubtest) continue;
-      if (matchesRow(row, filter)) out.push(row);
+      if (matchSubtests && filterActive) {
+        const kids = childrenByParent.get(row.signatureHash) ?? [];
+        const m = matchParentWithChildren(row, kids, filter);
+        if (!m) continue;
+        parents.push(row);
+        if (!m.selfMatched) autoExpanded.add(row.signatureHash);
+        matchedChildren.set(row.signatureHash, m.matchedChildren);
+      } else if (matchesRow(row, filter)) {
+        parents.push(row);
+      }
     }
-    if (sort) out.sort((a, b) => compareRows(a, b, sort));
-    return out;
+    if (sort) parents.sort((a, b) => compareRows(a, b, sort));
+    return { parents, autoExpanded, matchedChildren };
   });
+
+  const filteredParents = $derived(filterResult.parents);
+  const autoExpanded = $derived(filterResult.autoExpanded);
 
   // Cap top-level rendering.
   const RENDER_CAP = 500;
   const visibleParents = $derived(filteredParents.slice(0, RENDER_CAP));
   const overflow = $derived(Math.max(0, filteredParents.length - RENDER_CAP));
+
+  // Which children to show under an expanded parent. When the filter is
+  // active and we're in subtest-matching mode, only render the subset that
+  // matched — so a subtest-badge click reveals exactly the row the user
+  // clicked instead of 200 siblings.
+  function childrenForParent(parent: Series): Series[] {
+    const all = childrenByParent.get(parent.signatureHash) ?? [];
+    if (!matchSubtests || !filterActive) return all;
+    return filterResult.matchedChildren.get(parent.signatureHash) ?? all;
+  }
+
+  function isRowExpanded(hash: string): boolean {
+    return expanded.has(hash) || autoExpanded.has(hash);
+  }
 
   // Children under an expanded parent: sort by the same column so a
   // "sort by unit" ordering carries through into the subtest rows.
@@ -164,10 +208,16 @@
 
   function toggleExpanded(hash: string) {
     const next = new Set(expanded);
-    if (next.has(hash)) next.delete(hash);
+    // Reconcile with any auto-expansion: if the row is currently auto-open
+    // and the user clicks the caret, treat that as an explicit collapse
+    // request even if `expanded` didn't have the hash before.
+    if (next.has(hash) || autoExpanded.has(hash)) next.delete(hash);
     else next.add(hash);
     expanded = next;
-    if (!includeSubtests) includeSubtests = true;
+    // Manual expansion signals the user cares about subtests: bump into
+    // subtest-matching mode so the fatter payload is fetched and future
+    // filters descend into children.
+    if (!matchSubtests) matchSubtests = true;
   }
 
   function clearPicked() {
@@ -219,8 +269,8 @@
           {/each}
         </select>
         <label class="toggle">
-          <input type="checkbox" bind:checked={includeSubtests} />
-          Include subtests
+          <input type="checkbox" bind:checked={matchSubtests} />
+          Match inside subtests
         </label>
       </div>
     </div>
@@ -338,10 +388,11 @@
         {/snippet}
 
         {#each visibleParents as row (row.id)}
-          {@const children = childrenByParent.get(row.signatureHash) ?? []}
-          {@const isExpanded = expanded.has(row.signatureHash)}
+          {@const allChildren = childrenByParent.get(row.signatureHash) ?? []}
+          {@const children = childrenForParent(row)}
+          {@const isExpanded = isRowExpanded(row.signatureHash)}
           {@const awaitingSubtests =
-            isExpanded && row.hasSubtests && children.length === 0}
+            isExpanded && row.hasSubtests && allChildren.length === 0}
           <tr class:selected={picked.has(row.id)}>
             <td class="col-check">
               <input
@@ -394,9 +445,13 @@
               <tr class="subtest-note">
                 <td colspan="8">Loading subtests…</td>
               </tr>
-            {:else if children.length === 0}
+            {:else if allChildren.length === 0}
               <tr class="subtest-note">
                 <td colspan="8">No subtests in loaded data.</td>
+              </tr>
+            {:else if children.length === 0}
+              <tr class="subtest-note">
+                <td colspan="8">No subtests match the current filter.</td>
               </tr>
             {:else}
               {#each sortedChildren(children) as child (child.id)}

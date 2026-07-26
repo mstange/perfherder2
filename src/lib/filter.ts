@@ -112,6 +112,39 @@ export function fieldValues(row: Series, field: FilterField): string[] {
   }
 }
 
+// True if the filter has any user-authored constraint (chips or non-blank text).
+// Used to decide when to enter "subtest-aware" filtering — when there's no
+// constraint, everything matches trivially and children shouldn't be pruned.
+export function isFilterActive(filter: Filter): boolean {
+  return filter.chips.length > 0 || filter.text.trim().length > 0;
+}
+
+// Evaluate a parent against a filter while giving its subtests a chance to
+// match. Returns null if neither the parent nor any of its children match.
+// The `matchedChildren` array is the exact subset of `children` that matched;
+// when the caller renders subtests under this parent, it should use that
+// subset if the filter is active, so a subtest-badge click reveals only the
+// row the user clicked on rather than 200 unrelated siblings.
+export interface ParentMatch {
+  parent: Series;
+  selfMatched: boolean;
+  matchedChildren: Series[];
+}
+
+export function matchParentWithChildren(
+  parent: Series,
+  children: readonly Series[],
+  filter: Filter,
+): ParentMatch | null {
+  const selfMatched = matchesRow(parent, filter);
+  const matchedChildren: Series[] = [];
+  for (const c of children) {
+    if (matchesRow(c, filter)) matchedChildren.push(c);
+  }
+  if (!selfMatched && matchedChildren.length === 0) return null;
+  return { parent, selfMatched, matchedChildren };
+}
+
 export function matchesRow(row: Series, filter: Filter): boolean {
   // Chips of the same field OR together; different fields AND together.
   const chipsByField = new Map<FilterField, FilterChip[]>();
