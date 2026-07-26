@@ -46,15 +46,12 @@
   let timeRangeSeconds = $state(1209600); // 14 days, matches perfherder default.
   let filter = $state<Filter>(EMPTY_FILTER);
   let sort = $state<SortState | null>(null);
-  // Expansion state is keyed by `Series.key` = `${repo}|${signatureHash}`,
-  // not by hash alone. Two repos can share a hash for the same test, and
-  // keying by hash would toggle both together.
-  let expanded = $state(new Set<string>());
-  // Explicit "user wants this collapsed" overrides for auto-expanded rows.
-  // Without this, clicking the caret on an auto-expanded row is a no-op —
-  // `expanded` doesn't have it, so deletion is a no-op, and the row stays
-  // open on the next render because `autoExpanded` still contains it.
-  let collapsed = $state(new Set<string>());
+  // Explicit user overrides layered over the derived `autoExpanded` set.
+  // `user-open` and `user-closed` win over whatever the filter would auto-do,
+  // so clicking the caret on an auto-expanded row (to hide the subtests it
+  // just revealed) actually collapses it. Keyed by `Series.key`, not by
+  // signature_hash alone — two repos can share a hash for the same test.
+  let userExpansion = $state(new Map<string, 'user-open' | 'user-closed'>());
 
   // Cached signature responses.
   let seriesCache = $state(new Map<string, Series[]>());
@@ -186,8 +183,9 @@
   }
 
   function isRowExpanded(key: string): boolean {
-    if (collapsed.has(key)) return false;
-    return expanded.has(key) || autoExpanded.has(key);
+    const override = userExpansion.get(key);
+    if (override) return override === 'user-open';
+    return autoExpanded.has(key);
   }
 
   // Children under an expanded parent: sort by the same column so a
@@ -216,33 +214,14 @@
   }
 
   function toggleExpanded(key: string) {
-    // Three possible current states: user-opened (in `expanded`),
-    // auto-opened (in `autoExpanded`), or closed (neither, or in
-    // `collapsed`). We flip whichever bit corresponds to the row's current
-    // visible state.
-    if (isRowExpanded(key)) {
-      if (expanded.has(key)) {
-        const next = new Set(expanded);
-        next.delete(key);
-        expanded = next;
-      } else {
-        // Auto-expanded — the user wants it closed. Record that as an
-        // explicit override so the next render honors the collapse.
-        const next = new Set(collapsed);
-        next.add(key);
-        collapsed = next;
-      }
-    } else {
-      if (collapsed.has(key)) {
-        const next = new Set(collapsed);
-        next.delete(key);
-        collapsed = next;
-      } else {
-        const next = new Set(expanded);
-        next.add(key);
-        expanded = next;
-      }
-    }
+    // Flip whichever state the row is currently showing. A single override
+    // map handles all four combinations (auto vs. no-auto × override vs. no
+    // override): the resolved state comes from `isRowExpanded`, and the new
+    // override always wins on the next render.
+    const nextState = isRowExpanded(key) ? 'user-closed' : 'user-open';
+    const next = new Map(userExpansion);
+    next.set(key, nextState);
+    userExpansion = next;
     // Manual expansion signals the user cares about subtests: bump into
     // subtest-matching mode so the fatter payload is fetched and future
     // filters descend into children.
