@@ -220,9 +220,9 @@
         <col class="col-check-w" />
         <col class="col-disclose-w" />
         <col class="col-suite-w" />
-        <col class="col-app-w" />
         <col class="col-repo-w" />
         <col class="col-platform-w" />
+        <col class="col-app-w" />
         <col class="col-options-w" />
         <col class="col-unit-w" />
       </colgroup>
@@ -269,9 +269,9 @@
           </th>
           <th class="col-disclose"></th>
           {@render sortHeader('Suite / Test', 'suite')}
-          {@render sortHeader('Application', 'application')}
           {@render sortHeader('Repo', 'repo')}
           {@render sortHeader('Platform', 'platform')}
+          {@render sortHeader('Application', 'application')}
           {@render sortHeader('Options', 'options')}
           {@render sortHeader('Unit', 'unit')}
         </tr>
@@ -341,13 +341,13 @@
                   {@render badge('test', row.test, 'badge-test')}
                 {/if}
               </td>
+              <td>{@render badge('repo', row.repository, 'badge-repo')}</td>
+              <td>{@render badge('platform', row.platform, 'badge-platform')}</td>
               <td>
                 {#if row.application}
                   {@render badge('application', row.application, 'badge-app')}
                 {/if}
               </td>
-              <td>{@render badge('repo', row.repository, 'badge-repo')}</td>
-              <td>{@render badge('platform', row.platform, 'badge-platform')}</td>
               <td>
                 {#each row.options as o}
                   {@render badge('option', o, 'badge-option')}{' '}
@@ -373,14 +373,14 @@
               <td class="subtest-cell">
                 {@render badge('test', child.test || child.suite, 'badge-test')}
               </td>
+              <td>{@render badge('repo', child.repository, 'badge-repo')}</td>
+              <td>
+                {@render badge('platform', child.platform, 'badge-platform')}
+              </td>
               <td>
                 {#if child.application}
                   {@render badge('application', child.application, 'badge-app')}
                 {/if}
-              </td>
-              <td>{@render badge('repo', child.repository, 'badge-repo')}</td>
-              <td>
-                {@render badge('platform', child.platform, 'badge-platform')}
               </td>
               <td>
                 {#each child.options as o}
