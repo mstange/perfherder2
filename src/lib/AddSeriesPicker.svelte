@@ -10,6 +10,13 @@
     toSeries,
     type Series,
   } from './api';
+  import {
+    cacheKey,
+    groupChildrenByParent,
+    matchesRow,
+    pickCachedForRepo,
+    tokenizeFilter,
+  } from './filter';
 
   type Props = {
     onadd?: (series: Series[]) => void;
@@ -26,9 +33,6 @@
 
   // Cached signature responses keyed by "repo|subtests|interval" so toggling
   // options doesn't discard fetched series.
-  const cacheKey = (repo: string, sub: boolean, interval: number) =>
-    `${repo}|${sub ? 1 : 0}|${interval}`;
-
   let seriesCache = $state(new Map<string, Series[]>());
   let loadingRepos = $state(new Set<string>());
   let errors = $state<string[]>([]);
@@ -100,26 +104,13 @@
   const combined = $derived.by(() => {
     const rows: Series[] = [];
     for (const repo of selectedRepos) {
-      const withSub = seriesCache.get(cacheKey(repo, true, timeRangeSeconds));
-      const noSub = seriesCache.get(cacheKey(repo, false, timeRangeSeconds));
-      const data = withSub ?? noSub;
+      const data = pickCachedForRepo(seriesCache, repo, timeRangeSeconds);
       if (data) rows.push(...data);
     }
     return rows;
   });
 
-  // Group children by parent signature_hash for O(1) lookup on disclosure.
-  const childrenByParent = $derived.by(() => {
-    const m = new Map<string, Series[]>();
-    for (const r of combined) {
-      if (r.isSubtest && r.parentSignature) {
-        const arr = m.get(r.parentSignature);
-        if (arr) arr.push(r);
-        else m.set(r.parentSignature, [r]);
-      }
-    }
-    return m;
-  });
+  const childrenByParent = $derived(groupChildrenByParent(combined));
 
   const availablePlatforms = $derived.by(() => {
     const s = new Set<string>();
@@ -127,28 +118,14 @@
     return [...s].sort();
   });
 
-  const filterTokens = $derived(
-    filterText
-      .toLowerCase()
-      .split(/\s+/)
-      .filter((t) => t.length > 0),
-  );
-
-  function matches(row: Series): boolean {
-    if (selectedPlatforms.size > 0 && !selectedPlatforms.has(row.platform))
-      return false;
-    for (const t of filterTokens) {
-      if (!row.searchText.includes(t)) return false;
-    }
-    return true;
-  }
+  const filterTokens = $derived(tokenizeFilter(filterText));
 
   // Top-level rows: not subtests, matching the current filter.
   const filteredParents = $derived.by(() => {
     const out: Series[] = [];
     for (const row of combined) {
       if (row.isSubtest) continue;
-      if (matches(row)) out.push(row);
+      if (matchesRow(row, filterTokens, selectedPlatforms)) out.push(row);
     }
     return out;
   });
