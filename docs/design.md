@@ -253,15 +253,33 @@ window `[startIndex, endIndex)` — driven by the `.table-wrap` scroller's
 `scrollTop` and `clientHeight`. Two spacer `<tr>` elements before and
 after the visible window occupy the space the un-rendered rows would.
 
-Row heights are **exact**, not estimated. The multi-badge cells
-(Suite/Test and Options) apply `white-space: nowrap` so their content
-never wraps to a second line, which pins every parent and child row to
-`ROW_HEIGHT = 36`. That means `scrollTop / ROW_HEIGHT` is an accurate
-index and `startIndex * ROW_HEIGHT` is where the first rendered row
-actually sits — no drift as you scroll. If you add a new column, keep it
-one-line-tall too, or the picker starts jittering again. Subtest-note
-rows are shorter than 36px (a minor exception; they're rare enough that
-it doesn't compound).
+Row heights are **exact**, not estimated. The JS-side `ROW_HEIGHT`
+constant is exported to CSS as `--row-height` on the picker root, and
+every `tbody td` sets `height: var(--row-height); box-sizing: border-box;
+padding-block: 0; vertical-align: middle`. That means:
+
+- The JS constant and the CSS row height can't drift apart — they're the
+  same value, propagated from JS via `style:--row-height`.
+- Content is vertically centered inside a fixed-size box, so height
+  doesn't depend on padding + text metrics coincidentally landing at the
+  right value. Change the font, the badge padding, the border, whatever
+  — the row is still exactly one `--row-height` tall.
+- `scrollTop / ROW_HEIGHT` is an accurate index and `startIndex *
+  ROW_HEIGHT` is where the first rendered row actually sits — no
+  vertical drift as you scroll.
+
+If you need to change the row height, update the `ROW_HEIGHT` constant in
+[AddSeriesPicker.svelte](../src/lib/AddSeriesPicker.svelte); the CSS
+follows automatically.
+
+Column widths are also pinned. A `<colgroup>` above the `<thead>` gives
+each column a percentage width, and `table { table-layout: fixed }`
+means those percentages fully determine column widths — the content of
+the currently rendered virtual window can't push columns around during
+scrolling. `table { min-width: 64em }` is the floor; below it the
+`.table-wrap` scrolls horizontally. **Any new column needs an entry in
+the colgroup AND a matching `col.col-<name>-w { width: … }` rule**, or
+the fixed layout will collapse it to zero width.
 
 **Do not rename the picker instance back to `state`.** `const state = new
 PickerState()` inside a `.svelte` file collides with the `$state` rune:

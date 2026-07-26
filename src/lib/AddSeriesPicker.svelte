@@ -24,9 +24,14 @@
   // Broad filters can produce 25k rows; even one expanded parent adds a few
   // hundred subtests. We render only a scroll-window over a flat row list.
   //
-  // Rows are constrained to a single visual line — multi-badge cells set
-  // `white-space: nowrap` so their badges don't wrap — so ROW_HEIGHT is
-  // exact and scrollTop-to-index math never drifts.
+  // Rows are constrained to a single visual line. ROW_HEIGHT is exported
+  // to CSS as the `--row-height` custom property on the .picker root, and
+  // `tbody td` uses it as an explicit `height` — so the JS-side constant
+  // and the CSS-side row height cannot drift apart. Vertical centering is
+  // driven by `height + vertical-align: middle`, not by text metrics or
+  // padding, so changing fonts or badge styling doesn't move rows around.
+  // Column widths are pinned via <colgroup> + `table-layout: fixed` so
+  // they don't horizontally re-flow as new rows scroll in either.
   const ROW_HEIGHT = 36;
   const OVERSCAN = 6;
 
@@ -108,7 +113,7 @@
   }
 </script>
 
-<div class="picker">
+<div class="picker" style:--row-height="{ROW_HEIGHT}px">
   <header>
     <h2>Add series</h2>
     <p class="hint">
@@ -207,6 +212,20 @@
     onscroll={onScroll}
   >
     <table>
+      <!-- Column widths are pinned via `table-layout: fixed` so the columns
+           don't re-flow as new rows scroll into view. Percentages divide the
+           available width; the `min-width` on the table forces the wrapper
+           to scroll horizontally rather than let columns get too cramped. -->
+      <colgroup>
+        <col class="col-check-w" />
+        <col class="col-disclose-w" />
+        <col class="col-suite-w" />
+        <col class="col-app-w" />
+        <col class="col-repo-w" />
+        <col class="col-platform-w" />
+        <col class="col-options-w" />
+        <col class="col-unit-w" />
+      </colgroup>
       <thead>
         {#snippet sortHeader(label: string, column: SortColumn)}
           {@const active = picker.sort?.column === column}
@@ -316,7 +335,7 @@
                   >▶</button>
                 {/if}
               </td>
-              <td class="suite-test-cell">
+              <td>
                 {@render badge('suite', row.suite, 'badge-suite')}
                 {#if row.test}
                   {@render badge('test', row.test, 'badge-test')}
@@ -329,7 +348,7 @@
               </td>
               <td>{@render badge('repo', row.repository, 'badge-repo')}</td>
               <td>{@render badge('platform', row.platform, 'badge-platform')}</td>
-              <td class="options-cell">
+              <td>
                 {#each row.options as o}
                   {@render badge('option', o, 'badge-option')}{' '}
                 {/each}
@@ -351,7 +370,7 @@
                 />
               </td>
               <td class="col-disclose"></td>
-              <td class="subtest-cell suite-test-cell">
+              <td class="subtest-cell">
                 {@render badge('test', child.test || child.suite, 'badge-test')}
               </td>
               <td>
@@ -363,7 +382,7 @@
               <td>
                 {@render badge('platform', child.platform, 'badge-platform')}
               </td>
-              <td class="options-cell">
+              <td>
                 {#each child.options as o}
                   {@render badge('option', o, 'badge-option')}{' '}
                 {/each}
@@ -556,21 +575,41 @@
     max-height: 70vh;
   }
   table {
+    table-layout: fixed;
     width: 100%;
+    /* Floor for the whole table so columns never get too cramped. Below
+       this the wrapper (overflow: auto) shows a horizontal scrollbar. */
+    min-width: 64em;
     border-collapse: collapse;
     font-size: 13px;
   }
+  /* Fixed layout: only the widths on these <col> elements determine the
+     column widths — content in the currently rendered virtual window
+     can't push columns around during scrolling. Percentages divide the
+     table's actual width; the two narrow columns are pinned in px. */
+  col.col-check-w    { width: 32px; }
+  col.col-disclose-w { width: 24px; }
+  col.col-suite-w    { width: 26%; }
+  col.col-app-w      { width: 10%; }
+  col.col-repo-w     { width: 10%; }
+  col.col-platform-w { width: 16%; }
+  col.col-options-w  { width: 28%; }
+  col.col-unit-w     { width: 10%; }
   thead th {
     position: sticky;
     top: 0;
     background: #f6f8fa;
     border-bottom: 1px solid #d0d7de;
     text-align: left;
+    /* Same fixed-height rule as body cells so the sticky header lines up
+       cleanly against the first data row. */
+    height: var(--row-height);
+    box-sizing: border-box;
     padding: 0;
     z-index: 1;
   }
   thead th:not(.sortable) {
-    padding: 6px 8px;
+    padding: 0 8px;
   }
   .sortable {
     /* Ensure the header cell fills so the button occupies it entirely. */
@@ -584,7 +623,8 @@
     align-items: center;
     gap: 6px;
     width: 100%;
-    padding: 6px 8px;
+    height: 100%;
+    padding: 0 8px;
     background: transparent;
     border: 0;
     border-radius: 0;
@@ -609,9 +649,22 @@
     opacity: 1;
   }
   tbody td {
-    padding: 6px 8px;
+    /* Every cell is exactly one `--row-height` tall (the same constant
+       the virtualizer uses for scrollTop math — see ROW_HEIGHT). Content
+       is vertically centered inside that fixed box, so we don't depend
+       on padding + text metrics coincidentally landing at the right
+       height. `padding-block: 0` is critical: any top/bottom padding
+       would add to `height` and desync the box from the virtualizer. */
+    height: var(--row-height);
+    box-sizing: border-box;
+    padding: 0 8px;
+    vertical-align: middle;
     border-bottom: 1px solid #eaeef2;
-    vertical-align: top;
+    /* With table-layout: fixed, cells have a definite width, so we must
+       clip. Without this, an over-wide badge (e.g. a long platform name)
+       would visually overflow into the next column. */
+    overflow: hidden;
+    white-space: nowrap;
   }
   tbody tr:hover {
     background: #f6f8fa;
@@ -679,13 +732,6 @@
     color: #57606a;
     font-style: italic;
     background: #fafbfc;
-  }
-  /* Clamp multi-badge cells to one visual line so every row has the same
-     height. If a cell has too many badges, the table wrapper scrolls
-     horizontally rather than the row growing taller. */
-  .suite-test-cell,
-  .options-cell {
-    white-space: nowrap;
   }
   /* Badges are now buttons — same visual as before, but the "+" / "×"
      affordance appears on hover, and always when the chip is active. */
