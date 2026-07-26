@@ -1,10 +1,8 @@
 <script lang="ts">
   import { untrack } from 'svelte';
   import {
-    FILTER_FIELDS,
     chipToString,
     isFilterField,
-    parseChip,
     type Filter,
     type FilterChip,
   } from './filter';
@@ -182,51 +180,37 @@
   const chipClass = (field: string) => `chip-field chip-field-${field}`;
 </script>
 
-<div class="filter-column">
-  <div class="filter-input" role="search">
-    {#each filter.chips as chip (chipToString(chip))}
-      <span class="chip-pill" title={`Remove ${chip.field} filter`}>
-        <span class={chipClass(chip.field)}>{chip.field}</span>
-        <span class="chip-value">{chip.value}</span>
-        <button
-          type="button"
-          class="chip-remove"
-          aria-label={`Remove ${chip.field}:${chip.value}`}
-          onclick={() => removeChip(chip)}
-        >×</button>
-      </span>
-    {/each}
-    <!-- svelte-ignore a11y_autofocus -->
-    <input
-      bind:this={inputEl}
-      class="filter-text"
-      type="text"
-      placeholder={filter.chips.length === 0
-        ? "Filter — free text, or field:value (e.g. repo:autoland, application:chrome)"
-        : ''}
-      value={textValue}
-      oninput={onInput}
-      onkeydown={onKeydown}
-      autocomplete="off"
-      spellcheck="false"
-      autofocus
-    />
-  </div>
-
-  <div class="filter-hint">
-    <span>Fields:</span>
-    {#each FILTER_FIELDS as f, i}<code>{f}</code>{i < FILTER_FIELDS.length - 1 ? ' ' : ''}{/each}
-  </div>
+<div class="filter-input" role="search">
+  {#each filter.chips as chip (chipToString(chip))}
+    <span class="chip-pill" title={`Remove ${chip.field} filter`}>
+      <span class={chipClass(chip.field)}>{chip.field}</span>
+      <span class="chip-value">{chip.value}</span>
+      <button
+        type="button"
+        class="chip-remove"
+        aria-label={`Remove ${chip.field}:${chip.value}`}
+        onclick={() => removeChip(chip)}
+      >×</button>
+    </span>
+  {/each}
+  <!-- svelte-ignore a11y_autofocus -->
+  <input
+    bind:this={inputEl}
+    class="filter-text"
+    type="text"
+    placeholder={filter.chips.length === 0
+      ? "Filter — free text, or field:value (e.g. repo:autoland, application:chrome)"
+      : ''}
+    value={textValue}
+    oninput={onInput}
+    onkeydown={onKeydown}
+    autocomplete="off"
+    spellcheck="false"
+    autofocus
+  />
 </div>
 
 <style>
-  .filter-column {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    flex: 1;
-    min-width: 300px;
-  }
   .filter-input {
     display: flex;
     flex-wrap: wrap;
@@ -236,6 +220,10 @@
     background: #fff;
     border: 1px solid #d0d7de;
     border-radius: 6px;
+    /* Grow to fill the filter row (previously on the .filter-column
+       wrapper we dropped when removing the Fields hint). */
+    flex: 1;
+    min-width: 300px;
   }
   .filter-input:focus-within {
     border-color: #0969da;
@@ -311,16 +299,5 @@
   .chip-remove:hover {
     background: rgba(0, 0, 0, 0.08);
     color: #1f2328;
-  }
-  .filter-hint {
-    font-size: 11px;
-    color: #57606a;
-    padding-left: 4px;
-  }
-  .filter-hint code {
-    background: #f6f8fa;
-    padding: 0 3px;
-    border-radius: 3px;
-    font-size: 11px;
   }
 </style>
