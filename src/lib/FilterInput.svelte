@@ -11,8 +11,18 @@
   type Props = {
     filter: Filter;
     onchange: (next: Filter) => void;
+    // Coalesce free-text edits into a single commit after this many ms of
+    // typing quiet. Structural changes (chip add/remove, backspace-restore,
+    // Enter) always commit immediately. Set 0 to disable.
+    //
+    // Why: every commit re-runs the picker's filter pipeline, which walks
+    // every visible row and every badge inside it. On a 500-row list that
+    // costs ~100ms of Svelte-flush work per keystroke (measured), and the
+    // keypress handler blocks the input until it's done. Debouncing keeps
+    // the input responsive; the expensive work happens between keystrokes.
+    textDebounceMs?: number;
   };
-  let { filter, onchange }: Props = $props();
+  let { filter, onchange, textDebounceMs = 150 }: Props = $props();
 
   let inputEl: HTMLInputElement | undefined = $state();
 
@@ -20,16 +30,68 @@
   // to snip out `field:value` prefixes as chips whenever the user types a
   // trailing space, and we don't want that mid-flight parse to be observable
   // to the parent as a raw filter.text update.
-  //
-  // The effect below keeps textValue in sync when the parent replaces
-  // filter.text programmatically (e.g. a chip toggle from a badge click).
   let textValue = $state('');
+
+  // Snapshot of the filter we've most recently handed to the parent. Used
+  // to distinguish "the parent bounced our commit back" (ignore — the input
+  // already has the right text) from "the parent replaced filter.text
+  // externally" (adopt into textValue). Without this the debounce would
+  // clobber the input mid-typing, because during the debounce window
+  // `filter.text` still holds the pre-typing value.
+  let lastCommittedFilter: Filter = filter;
+
+  // A text-only edit that we've computed but haven't yet handed to the
+  // parent. Cleared when the timer fires (or we commit immediately for
+  // some other reason).
+  let pendingTimer: ReturnType<typeof setTimeout> | null = null;
+  let pendingFilter: Filter | null = null;
+
   $effect(() => {
-    if (filter.text !== textValue) textValue = filter.text;
+    // Adopt an external change to filter.text (parent replaced it without
+    // going through our commit path). Ignore echoes of our own commits.
+    if (filter.text !== lastCommittedFilter.text) {
+      textValue = filter.text;
+      lastCommittedFilter = filter;
+      // The pending debounce holds the pre-external text. Drop it so it
+      // can't fire and overwrite the value the parent just set.
+      cancelPending();
+    }
   });
 
-  function commit(next: Filter) {
+  // On teardown, drop any pending commit rather than firing it — the
+  // parent may be going away, and half-typed text isn't worth persisting.
+  $effect(() => () => cancelPending());
+
+  function cancelPending() {
+    if (pendingTimer !== null) {
+      clearTimeout(pendingTimer);
+      pendingTimer = null;
+    }
+    pendingFilter = null;
+  }
+
+  function commitNow(next: Filter) {
+    cancelPending();
+    lastCommittedFilter = next;
     onchange(next);
+  }
+
+  function scheduleTextCommit(next: Filter) {
+    pendingFilter = next;
+    if (textDebounceMs <= 0) {
+      flushPending();
+      return;
+    }
+    if (pendingTimer !== null) clearTimeout(pendingTimer);
+    pendingTimer = setTimeout(flushPending, textDebounceMs);
+  }
+
+  function flushPending() {
+    if (pendingTimer !== null) {
+      clearTimeout(pendingTimer);
+      pendingTimer = null;
+    }
+    if (pendingFilter) commitNow(pendingFilter);
   }
 
   // Called on every input event: try to extract completed `field:value`
@@ -67,7 +129,12 @@
       }
     }
     textValue = residue;
-    commit({ chips: nextChips, text: residue });
+    const next: Filter = { chips: nextChips, text: residue };
+    // Chip mutations are structural — commit immediately so the pill
+    // appears without lag. Pure free-text edits are debounced so each
+    // keystroke doesn't cascade through the whole filter pipeline.
+    if (chipsFromText.length > 0) commitNow(next);
+    else scheduleTextCommit(next);
   }
 
   function onInput(e: Event) {
@@ -84,14 +151,16 @@
       const next = filter.chips.slice(0, -1);
       const restored = chipToString(last);
       textValue = restored;
-      commit({ chips: next, text: restored });
+      commitNow({ chips: next, text: restored });
       return;
     }
     if (e.key === 'Enter') {
       // Commit whatever the user has typed as if they hit space — lets
-      // them submit a bare `field:value` without a trailing space.
+      // them submit a bare `field:value` without a trailing space. Flush
+      // any pending debounce so Enter is always immediate.
       e.preventDefault();
       reconcile(textValue + ' ');
+      flushPending();
     }
   }
 
@@ -99,7 +168,7 @@
     const next = filter.chips.filter(
       (c) => !(c.field === chip.field && c.value === chip.value),
     );
-    commit({ ...filter, chips: next });
+    commitNow({ ...filter, chips: next });
     inputEl?.focus();
   }
 
