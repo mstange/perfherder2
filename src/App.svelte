@@ -71,10 +71,9 @@
       <AddSeriesPicker
         onadd={handleAdd}
         onclose={() => app.setPickerOpen(false)}
-        initialFilter={app.pickerFilter}
-        initialRepos={app.pickerRepos}
+        initialView={app.pickerView}
         plotted={app.plottedColors}
-        onfilterchange={(f) => app.setPickerFilter(f)}
+        onviewchange={(v) => app.setPickerView(v)}
       />
     </div>
   </div>

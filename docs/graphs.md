@@ -261,7 +261,7 @@ screen and offers to unhide.
 
 ## URL state
 
-Everything the task listed is in the query string:
+The whole view is in the query string:
 
 | Param | Meaning |
 |---|---|
@@ -272,21 +272,56 @@ Everything the task listed is in the query string:
 | `picker` | `1` when the Add-series panel is open |
 | `pf` | Picker filter free text |
 | `pc` | Picker filter chips, `field:value` repeated |
+| `pr` | Picker repo selection, comma-separated |
+| `pi` | Picker signature interval, seconds; must be one of the dropdown's choices |
+| `psub` | `1` / `0` — the picker's "Match inside subtests" checkbox |
+| `psort` | Picker column sort, `<column>:<asc\|desc>` |
 
 If `sel` names a point that isn't in the loaded data (e.g. the range was
 narrowed), the selection is dropped rather than shown as a phantom —
 treeherder does the same (`verifySelectedDataPoint`).
 
-`pf` / `pc` are only written while `picker=1`; a closed panel's filter would
-be noise in every shared graph link.
+Everything from `pf` down is only written while `picker=1`; a closed panel's
+filter and knob positions would be noise in every shared graph link. They come
+back through `PickerState.seed` on the next mount, which is the only way they
+could survive — the panel is mounted fresh every time it opens.
+
+**Three of the picker params are three-valued**, and the third value is
+"absent". `pr`, `pi` and `psub` distinguish *unspecified* — let the panel apply
+its own default — from a concrete choice, which is why `pr=` (empty) and
+`psub=0` are written explicitly rather than omitted:
+
+- `pr=` is every repo chip unchecked. Omitting it would read as "use the
+  default two", so a deliberate empty selection wouldn't survive a reload.
+- `psub=0` is the checkbox unchecked. Omitting it would let the `test:`-chip
+  nudge in `PickerState.seed` turn subtest matching back on, undoing the
+  unchecking on every reload.
+- Absent is still the useful case for a hand-written link: `?picker=1&pc=test:fcp`
+  gets the nudge and shows something, and `AppState.derivePickerView` leaves
+  everything it has no opinion about unspecified for the same reason.
+
+A repo in `pr` that isn't one of Perfherder's pinned four gets a chip of its
+own (`PickerState.extraRepos`), so a link that selects `mozilla-release` shows
+where its rows came from and offers a way to switch it off. The chip is fixed
+at seed time rather than derived from `selectedRepos`, so unchecking it doesn't
+take the way back with it.
 
 **History granularity.** URL writes are not driven by an `$effect` — each
 mutation on `AppState` decides between `pushState` and `replaceState`.
 Discrete actions (add/remove series, pick a range, commit a zoom, select a
 point, open the panel) push, so the back button undoes them one at a time.
-Continuous ones (each frame of a zoom drag, each keystroke in the picker
-filter) replace. An effect can't tell those apart, which is why the sync is
-explicit.
+Continuous ones (each frame of a zoom drag) replace. An effect can't tell those
+apart, which is why the sync is explicit.
+
+Everything *inside* the panel replaces, including the discrete-feeling ones —
+a repo toggle, a new interval, a column-header click. Opening the panel is the
+push, and its contents belong to that entry: the back button steps through
+graph-level actions rather than walking backwards through knob positions
+within one panel session. It also falls out of the plumbing —
+`AddSeriesPicker` reports its whole state through one `onviewchange`, which
+can't tell a keystroke from a checkbox — and that report firing on mount is
+what turns whatever the seed left unspecified into the concrete values the URL
+then carries.
 
 ## Status
 

@@ -10,6 +10,7 @@
 
 import {
   DEFAULT_REPOS,
+  PINNED_REPOS,
   buildOptionMap,
   fetchFrameworks,
   fetchOptionCollections,
@@ -35,6 +36,7 @@ import {
   type SortColumn,
   type SortState,
 } from './filter';
+import type { PickerViewState } from './urlState';
 
 export type ExpansionOverride = 'user-open' | 'user-closed';
 
@@ -50,6 +52,14 @@ export class PickerState {
   timeRangeSeconds = $state(1209600); // 14 days, matches perfherder default.
   filter = $state<Filter>(EMPTY_FILTER);
   sort = $state<SortState | null>(null);
+  // Repo chips beyond Perfherder's pinned four, from a seed that named repos
+  // it doesn't pin — a graph of mozilla-release series, or a shared link whose
+  // `pr=` says so. Without these the repo would still be fetched and its rows
+  // still listed, with no chip to explain where they came from. Fixed at seed
+  // time rather than derived from `selectedRepos`, so unchecking such a chip
+  // doesn't take the chip — and the way back — with it.
+  extraRepos = $state<readonly string[]>([]);
+  repoChips = $derived([...PINNED_REPOS, ...this.extraRepos]);
   // Explicit user overrides layered over the derived `autoExpanded` set.
   // `user-open` / `user-closed` win over the filter's auto-open, so clicking
   // the caret on an auto-expanded row actually collapses it. Keyed by
@@ -259,23 +269,44 @@ export class PickerState {
   // One-time seeding from the app. The panel is mounted fresh every time it
   // opens, so this is where a starting point arrives — either carried in the
   // URL or derived from the series already plotted
-  // (AppState.derivePickerFilter). Not a binding: the picker owns both pieces
-  // of state afterwards.
+  // (AppState.derivePickerView). Not a binding: the picker owns all of this
+  // state afterwards and reports it back through `view`.
   //
   // Must be called during setup, before the constructor's fetch effect first
-  // runs, so the seeded repos are fetched instead of the defaults.
-  seed(filter: Filter, repos?: readonly string[]): void {
-    this.filter = filter;
-    // Parent rows carry no `test` of their own, so a `test:` chip matches
-    // nothing unless the filter descends into subtests — the same dead end the
-    // `fromSubtest` nudge in `toggleFilterChip` exists to avoid. It's easy to
-    // reach here: a filter derived from subtest series always has a `test:`
-    // chip, and so does any shared link whose picker filter had one.
-    if (filter.chips.some((c) => c.field === 'test')) this.matchSubtests = true;
-    // Repos are what gets fetched, so an empty seed means "keep the default"
-    // rather than "fetch nothing".
-    if (repos && repos.length > 0) this.selectedRepos = new Set(repos);
+  // runs, so the seeded repos and interval are fetched instead of the defaults.
+  seed(view: PickerViewState): void {
+    this.filter = view.filter;
+    this.sort = view.sort;
+    if (view.matchSubtests !== null) {
+      this.matchSubtests = view.matchSubtests;
+    } else if (view.filter.chips.some((c) => c.field === 'test')) {
+      // Parent rows carry no `test` of their own, so a `test:` chip matches
+      // nothing unless the filter descends into subtests — the same dead end
+      // the `fromSubtest` nudge in `toggleFilterChip` exists to avoid. It's
+      // easy to reach here: a filter derived from subtest series always has a
+      // `test:` chip. Only for an *unspecified* value: an explicit `psub=0`
+      // in a link is the user having unchecked the box, and it wins.
+      this.matchSubtests = true;
+    }
+    // Null means "unspecified", which keeps the defaults. An empty array is
+    // different: it's every chip unchecked, and it fetches nothing.
+    if (view.repos) {
+      this.selectedRepos = new Set(view.repos);
+      this.extraRepos = view.repos.filter((r) => !PINNED_REPOS.includes(r));
+    }
+    if (view.intervalSeconds !== null) this.timeRangeSeconds = view.intervalSeconds;
   }
+
+  // The counterpart to `seed`: everything the URL carries, resolved to the
+  // concrete values the controls are actually showing. AddSeriesPicker reports
+  // this upward on every change.
+  view = $derived<PickerViewState>({
+    filter: this.filter,
+    repos: [...this.selectedRepos],
+    intervalSeconds: this.timeRangeSeconds,
+    matchSubtests: this.matchSubtests,
+    sort: this.sort,
+  });
 
   onSortHeader(column: SortColumn): void {
     this.sort = cycleSort(this.sort, column);

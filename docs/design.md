@@ -436,9 +436,9 @@ and not focusable, so the drag is a pointer affordance only.
 The same observation that shapes the series list — a graph is one test
 sliced along one axis — says what you're most likely to add next: a
 sibling of what's already plotted. So `AppState.setPickerOpen(true)`
-seeds `pickerFilter` with `commonFilterChips(commonAttrs(...))`, and four
-plotted speedometer3 series open the picker on the seven rows that share
-their suite, platform and options instead of on all 25,000.
+seeds `pickerView.filter` with `commonFilterChips(commonAttrs(...))`, and
+four plotted speedometer3 series open the picker on the seven rows that
+share their suite, platform and options instead of on all 25,000.
 
 The rules that make this safe:
 
@@ -447,23 +447,31 @@ The rules that make this safe:
   handed over (`sameFilter`, plus the remembered `pickerFilterSeed`).
   So the prefill keeps following the series list — add a series, reopen,
   and it reflects the new set — but one edited chip pins it for good.
+  The filter is the only field the test looks at, and the prefill
+  replaces the *whole* view when it fires: reopening an untouched panel
+  therefore also returns its interval, subtest mode and sort to their
+  defaults, which is what a panel mounted fresh on every open did before
+  any of this reached the URL. "Untouched" means one thing, not five.
 - **The repository is a repo selection, not a chip.** The picker's
   checkbox row already *is* a repo filter, and it's what decides what
   gets fetched; a `repo:` chip would be a second mechanism that can't
   fetch anything and silently matches nothing when its repo is
-  unchecked. `AppState.pickerRepos` (the union of the plotted series'
+  unchecked. The prefill's `repos` (the union of the plotted series'
   repositories, not just a shared one — beta+central series need *both*
   fetched) seeds `PickerState.selectedRepos` instead. A useful
   side-effect: a central-only graph no longer pulls autoland's 4 MB.
 - **`PickerState.seed` must run during setup**, before the constructor's
   fetch effect first fires, or the picker fetches the default repos and
-  then the seeded ones.
+  interval and then the seeded ones.
 - **A `test:` chip in a seed turns on `matchSubtests`** — same dead end
   as the `fromSubtest` nudge above (parent rows have no `test` of their
   own, so the chip would match nothing), reached differently: any prefill
   derived from subtest series carries a `test:` chip, and so does any
-  shared link whose picker filter had one. That's a pre-existing bug in
-  the URL case, fixed by putting the nudge in `seed`.
+  hand-written link that filters on one. The nudge lives in `seed`, and
+  only fires when the seed leaves `matchSubtests` *unspecified*: a link
+  that says `psub=0` is the user having unchecked the box, and it wins.
+  That three-valued-ness is the whole reason `psub` is written even when
+  false — see "URL state" in graphs.md.
 - **Placeholder metadata is excluded** (`attrsForEntry` /
   `SeriesMeta.placeholder`). A signature with no data in the range gets a
   synthesized `suite: "signature 1234"`; prefilling on that would open
@@ -472,9 +480,9 @@ The rules that make this safe:
   one series plotted there's no header to render but that one series is
   exactly the context to search from.
 
-The prefill goes through the normal `pickerFilter` state, so it lands in
-the URL (`pc=` params) like any other filter and a shared link reopens
-on the same rows.
+The prefill goes through the normal `pickerView` state, so it lands in the
+URL (`pc=` / `pr=` params) like anything else the panel shows and a shared
+link reopens on the same rows.
 
 ### Rows already on the graph show their swatch, not a checkbox
 
@@ -712,8 +720,6 @@ these strings for display — you'll get bitten by edge cases.**
 
 ### Features
 
-- Persist the picker's sort in the URL query too (`sort=platform:desc`);
-  the filter is already there as `pc=` / `pf=`.
 - Column reordering + hide/show. Not worth it until someone asks.
 - Auto-complete inside the FilterInput (suggest values for `repo:` etc).
 - Actually plot the selected series on a graph — this is currently just

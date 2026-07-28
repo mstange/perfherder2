@@ -44,8 +44,10 @@ import { EMPTY_FILTER, isFilterActive, sameFilter, type Filter } from './filter'
 import { attrsForEntry, commonAttrs, commonFilterChips } from './seriesSummary';
 import { clampSpan, defaultSpan, presetSpan, roundSpan, type Span } from './timeRange';
 import {
+  EMPTY_PICKER_VIEW,
   parseViewState,
   serializeViewState,
+  type PickerViewState,
   type SelectedPoint,
   type SeriesEntryState,
   type ViewState,
@@ -92,7 +94,10 @@ export class AppState {
   zoom = $state<Span | null>(null);
   selectedPoint = $state<SelectedPoint | null>(null);
   pickerOpen = $state(false);
-  pickerFilter = $state<Filter>(EMPTY_FILTER);
+  // The Add-series panel's own state. One object rather than five fields: it
+  // arrives from the URL as a unit, the panel reports it back as a unit, and
+  // nothing here means anything while the panel is closed.
+  pickerView = $state<PickerViewState>(EMPTY_PICKER_VIEW);
 
   // ---- Caches -----------------------------------------------------------
   // Keyed by `${repo}|${signatureId}|${rangeStart}|${rangeEnd}`: the tuple
@@ -234,13 +239,6 @@ export class AppState {
   plottedColors = $derived.by(
     (): Map<string, string> => new Map(this.series.map((e) => [e.key, e.color])),
   );
-
-  // The repositories the plotted series live in — the set the picker should
-  // start from, so opening it can actually show their siblings rather than
-  // whatever its own default happens to be. Empty means "use that default".
-  pickerRepos = $derived.by((): string[] => [
-    ...new Set(this.seriesRefs.map((s) => s.repository)),
-  ]);
 
   // The push immediately before the selected one in the same series — the
   // "what landed in between" link needs it.
@@ -581,18 +579,31 @@ export class AppState {
     this.errorsByKey = new Map();
   }
 
-  // What the plotted series have in common, as a picker filter. Almost always
-  // the right place to start: a graph is nearly always one test sliced along
-  // one axis, and the series you want to add next is a sibling of the ones
-  // already on it.
+  // A picker starting point derived from the plotted series: what they have in
+  // common as a filter, plus the repositories they live in. Almost always the
+  // right place to start: a graph is nearly always one test sliced along one
+  // axis, and the series you want to add next is a sibling of the ones already
+  // on it. The repositories are part of it so the panel can actually show
+  // those siblings instead of whatever its own default happens to be.
   //
-  // Note this is the intersection over *one or more* series, not the
+  // Note the filter is the intersection over *one or more* series, not the
   // `splitCommonAttrs` version the series list renders — with a single series
   // plotted, that one series is exactly the context to search from.
-  private derivePickerFilter(): Filter {
+  //
+  // The interval, subtest mode and sort are left unspecified: the panel's own
+  // defaults are the right answer, and leaving `matchSubtests` null is what
+  // lets a derived `test:` chip turn it on (see PickerState.seed).
+  private derivePickerView(): PickerViewState {
     const sets = this.series.map((e) => attrsForEntry(e.ref, e.meta));
     const chips = commonFilterChips(commonAttrs(sets));
-    return chips.length > 0 ? { chips, text: '' } : EMPTY_FILTER;
+    const repos = [...new Set(this.seriesRefs.map((s) => s.repository))];
+    return {
+      ...EMPTY_PICKER_VIEW,
+      filter: chips.length > 0 ? { chips, text: '' } : EMPTY_FILTER,
+      // Empty means "nothing plotted to derive from", which is the panel's own
+      // default — not "check no repositories".
+      repos: repos.length > 0 ? repos : null,
+    };
   }
 
   // The last filter we derived, so we can tell an untouched prefill from one
@@ -605,23 +616,32 @@ export class AppState {
     // over. The second case is what keeps the prefill following the series
     // list — add a series, reopen, and the filter reflects the new set — while
     // a single edited chip pins it for good.
+    //
+    // The prefill replaces the whole view, so reopening an untouched panel also
+    // returns the interval, subtest mode and sort to their defaults. That's
+    // what a panel mounted fresh on every open did before any of this reached
+    // the URL, and it keeps "untouched" meaning one thing rather than five.
     if (
       open &&
-      (!isFilterActive(this.pickerFilter) ||
-        (this.pickerFilterSeed !== null && sameFilter(this.pickerFilter, this.pickerFilterSeed)))
+      (!isFilterActive(this.pickerView.filter) ||
+        (this.pickerFilterSeed !== null &&
+          sameFilter(this.pickerView.filter, this.pickerFilterSeed)))
     ) {
-      const seed = this.derivePickerFilter();
-      this.pickerFilterSeed = seed;
-      this.pickerFilter = seed;
+      const seed = this.derivePickerView();
+      this.pickerFilterSeed = seed.filter;
+      this.pickerView = seed;
     }
     this.pickerOpen = open;
     this.syncUrl('push');
   }
 
-  // Called as the user types in the picker; replace rather than push so the
-  // back button doesn't walk backwards through their keystrokes.
-  setPickerFilter(filter: Filter): void {
-    this.pickerFilter = filter;
+  // Called as the user works the panel: typing in the filter, toggling a repo,
+  // changing the interval, clicking a column header. Always `replace`, never
+  // `push` — the panel's controls belong to the history entry that opened it,
+  // so the back button steps through graph-level actions instead of walking
+  // backwards through keystrokes and knob positions inside one panel session.
+  setPickerView(view: PickerViewState): void {
+    this.pickerView = view;
     this.syncUrl('replace');
   }
 
@@ -632,7 +652,7 @@ export class AppState {
     zoom: this.zoom ? { start: this.zoom.start, end: this.zoom.end } : null,
     selected: this.selectedPoint,
     pickerOpen: this.pickerOpen,
-    pickerFilter: this.pickerFilter,
+    picker: this.pickerView,
   });
 
   // Set while applying a state parsed out of the URL, so the resulting
@@ -658,7 +678,7 @@ export class AppState {
       this.zoom = state.zoom ? clampSpan(state.zoom, this.range) : null;
       this.selectedPoint = state.selected;
       this.pickerOpen = state.pickerOpen;
-      this.pickerFilter = state.pickerFilter;
+      this.pickerView = state.picker;
     } finally {
       this.applying = false;
     }

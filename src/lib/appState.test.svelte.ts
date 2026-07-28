@@ -547,7 +547,7 @@ describe('AppState picker prefill', () => {
     return withApp('?series=mozilla-central,1,1&series=mozilla-central,2,1', async (app) => {
       await settle();
       app.setPickerOpen(true);
-      expect(app.pickerFilter).toEqual({
+      expect(app.pickerView.filter).toEqual({
         chips: [
           { field: 'suite', value: 'speedometer3' },
           { field: 'platform', value: 'macosx1500-aarch64-shippable' },
@@ -563,8 +563,8 @@ describe('AppState picker prefill', () => {
     return withApp('?series=mozilla-central,1,1&series=autoland,2,1', async (app) => {
       await settle();
       app.setPickerOpen(true);
-      expect(app.pickerFilter.chips.some((c) => c.field === 'repo')).toBe(false);
-      expect(app.pickerRepos).toEqual(['mozilla-central', 'autoland']);
+      expect(app.pickerView.filter.chips.some((c) => c.field === 'repo')).toBe(false);
+      expect(app.pickerView.repos).toEqual(['mozilla-central', 'autoland']);
     });
   });
 
@@ -575,7 +575,7 @@ describe('AppState picker prefill', () => {
       app.setPickerOpen(true);
       // Unlike the series list's header, one series is enough here: it is the
       // context to search from.
-      expect(app.pickerFilter.chips).toContainEqual({ field: 'application', value: 'chrome' });
+      expect(app.pickerView.filter.chips).toContainEqual({ field: 'application', value: 'chrome' });
     });
   });
 
@@ -588,8 +588,8 @@ describe('AppState picker prefill', () => {
     return withApp('?series=autoland,1,1', async (app) => {
       await settle();
       app.setPickerOpen(true);
-      expect(app.pickerFilter.chips).toContainEqual({ field: 'test', value: 'fcp' });
-      expect(app.pickerFilter.chips).toContainEqual({ field: 'option', value: 'cold' });
+      expect(app.pickerView.filter.chips).toContainEqual({ field: 'test', value: 'fcp' });
+      expect(app.pickerView.filter.chips).toContainEqual({ field: 'option', value: 'cold' });
     });
   });
 
@@ -599,9 +599,12 @@ describe('AppState picker prefill', () => {
       await settle();
       app.setPickerOpen(true);
       app.setPickerOpen(false);
-      app.setPickerFilter({ chips: [{ field: 'suite', value: 'jetstream3' }], text: 'chrome' });
+      app.setPickerView({
+        ...app.pickerView,
+        filter: { chips: [{ field: 'suite', value: 'jetstream3' }], text: 'chrome' },
+      });
       app.setPickerOpen(true);
-      expect(app.pickerFilter).toEqual({
+      expect(app.pickerView.filter).toEqual({
         chips: [{ field: 'suite', value: 'jetstream3' }],
         text: 'chrome',
       });
@@ -613,7 +616,7 @@ describe('AppState picker prefill', () => {
     return withApp('?series=mozilla-central,1,1', async (app) => {
       await settle();
       app.setPickerOpen(true);
-      expect(app.pickerFilter.chips).toContainEqual({ field: 'application', value: 'chrome' });
+      expect(app.pickerView.filter.chips).toContainEqual({ field: 'application', value: 'chrome' });
       // Adding a second series makes `application` differ, so it should drop
       // out of the prefill on the next open rather than pinning the picker to
       // a browser the set no longer shares.
@@ -621,8 +624,8 @@ describe('AppState picker prefill', () => {
       app.addSeries([{ repository: 'mozilla-central', signatureId: 2, frameworkId: 1 }]);
       await settle();
       app.setPickerOpen(true);
-      expect(app.pickerFilter.chips.some((c) => c.field === 'application')).toBe(false);
-      expect(app.pickerFilter.chips).toContainEqual({ field: 'suite', value: 'speedometer3' });
+      expect(app.pickerView.filter.chips.some((c) => c.field === 'application')).toBe(false);
+      expect(app.pickerView.filter.chips).toContainEqual({ field: 'suite', value: 'speedometer3' });
     });
   });
 
@@ -633,7 +636,7 @@ describe('AppState picker prefill', () => {
     return withApp('?series=mozilla-central,1,1&series=mozilla-central,2,1', async (app) => {
       await settle();
       app.setPickerOpen(true);
-      expect(app.pickerFilter.chips).toEqual([
+      expect(app.pickerView.filter.chips).toEqual([
         { field: 'suite', value: 'speedometer3' },
         { field: 'platform', value: 'macosx1500-aarch64-shippable' },
         { field: 'application', value: 'chrome' },
@@ -647,14 +650,14 @@ describe('AppState picker prefill', () => {
     return withApp('?series=mozilla-central,1,1', async (app) => {
       await settle();
       app.setPickerOpen(true);
-      expect(app.pickerFilter.chips).toEqual([]);
+      expect(app.pickerView.filter.chips).toEqual([]);
     });
   });
 
   it('prefills nothing when no series are plotted', () =>
     withApp('', (app) => {
       app.setPickerOpen(true);
-      expect(app.pickerFilter).toEqual({ chips: [], text: '' });
+      expect(app.pickerView.filter).toEqual({ chips: [], text: '' });
     }));
 
   it('does not prefill while the metadata is still in flight', () => {
@@ -663,7 +666,7 @@ describe('AppState picker prefill', () => {
       // No `settle()`: the summary fetch hasn't resolved, so there is nothing
       // to derive from. The next open picks it up.
       app.setPickerOpen(true);
-      expect(app.pickerFilter.chips).toEqual([]);
+      expect(app.pickerView.filter.chips).toEqual([]);
     });
   });
 
@@ -674,8 +677,83 @@ describe('AppState picker prefill', () => {
       app.setPickerOpen(true);
       expect(location.search).toContain('pc=suite:speedometer3');
       expect(location.search).toContain('pc=option:opt');
+      // The prefill's repos too — they decide which rows the filter has to
+      // work with, so a link without them opens on a different list.
+      expect(location.search).toContain('pr=mozilla-central');
     });
   });
+
+  it('resets an untouched panel to its defaults on reopen', () => {
+    stubSummaries(FOUR_BROWSERS);
+    return withApp('?series=mozilla-central,1,1', async (app) => {
+      await settle();
+      app.setPickerOpen(true);
+      app.setPickerView({ ...app.pickerView, intervalSeconds: 7776000, sort: null });
+      app.setPickerOpen(false);
+      // The filter is still the prefill, so the whole view is re-derived —
+      // the same thing a panel mounted fresh on every open used to do.
+      app.setPickerOpen(true);
+      expect(app.pickerView.intervalSeconds).toBeNull();
+    });
+  });
+});
+
+describe('AppState picker URL state', () => {
+  it('writes the whole panel state and reads it back', () =>
+    withApp('', async (app) => {
+      app.setPickerOpen(true);
+      app.setPickerView({
+        filter: { chips: [{ field: 'suite', value: 'speedometer3' }], text: 'chrome' },
+        repos: ['try', 'mozilla-beta'],
+        intervalSeconds: 604800,
+        matchSubtests: true,
+        sort: { column: 'platform', direction: 'desc' },
+      });
+      const shared = location.search;
+      // What a reload of the shared link builds.
+      await withApp(shared, (reloaded) => {
+        expect(reloaded.pickerOpen).toBe(true);
+        expect(reloaded.pickerView).toEqual(app.pickerView);
+      });
+    }));
+
+  it('replaces rather than pushes while the panel is worked', () =>
+    withApp('', (app) => {
+      const before = history.length;
+      app.setPickerOpen(true);
+      const afterOpen = history.length;
+      app.setPickerView({ ...app.pickerView, intervalSeconds: 604800 });
+      app.setPickerView({ ...app.pickerView, matchSubtests: true });
+      // Opening is one discrete action worth a history entry; the knobs inside
+      // belong to it.
+      expect(afterOpen).toBe(before + 1);
+      expect(history.length).toBe(afterOpen);
+    }));
+
+  it('drops the panel state from the URL when it closes', () =>
+    withApp('', (app) => {
+      app.setPickerOpen(true);
+      app.setPickerView({ ...app.pickerView, repos: ['try'], matchSubtests: true });
+      app.setPickerOpen(false);
+      expect(location.search).not.toContain('pr=');
+      expect(location.search).not.toContain('psub=');
+      expect(location.search).not.toContain('picker=');
+    }));
+
+  it('restores the panel state on a back navigation', () =>
+    withApp('?picker=1&pr=try&pi=604800&psub=1&psort=unit:asc', (app) => {
+      expect(app.pickerView.repos).toEqual(['try']);
+      app.setPickerView({ ...app.pickerView, repos: ['autoland'], matchSubtests: false });
+      app.onPopState('?picker=1&pr=try&pi=604800&psub=1&psort=unit:asc');
+      expect(app.pickerOpen).toBe(true);
+      expect(app.pickerView).toEqual({
+        filter: { chips: [], text: '' },
+        repos: ['try'],
+        intervalSeconds: 604800,
+        matchSubtests: true,
+        sort: { column: 'unit', direction: 'asc' },
+      });
+    }));
 });
 
 describe('AppState y domains', () => {

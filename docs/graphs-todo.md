@@ -48,14 +48,19 @@ Living checklist. Update in the same commit as the work it describes.
 - **Retrigger / delta-vs-previous readouts.** Treeherder's tooltip shows the
   delta from the previous data point and a retrigger count. We show the
   retrigger count; the delta is not implemented.
-- **History granularity.** Every discrete action pushes a history entry, and
-  a zoom drag replaces rather than pushes. Whether that's the right
-  granularity (should typing in the picker filter be undoable?) is untested
-  with real use.
+- **History granularity.** Every discrete action pushes a history entry; a
+  zoom drag and everything inside the Add-series panel replace. Whether that's
+  the right granularity (should a repo toggle in the picker be undoable?) is
+  untested with real use.
 - **Data volume.** No cap on how many series can be added; a 90-day range
   across 10 series with replicates may be tens of MB and hundreds of
   thousands of dots. Drawing is batched but not decimated. Measure before
   optimizing.
-- **The picker's own state** (selected repos, its interval, "match inside
-  subtests") is not in the URL — only its filter is, per the task. If shared
-  picker links become a thing, that's the gap.
+- **Picker state a link still can't carry.** Its filter, repos, interval,
+  subtest mode and sort now round-trip (see "URL state" in graphs.md), but the
+  scroll position, which rows are expanded, and which rows are checked-but-not-
+  yet-added do not. Expansion is the interesting one: it's a `Map` keyed by
+  `Series.key`, so it *could* be serialized, but a link that reopens on a
+  half-expanded tree seems more confusing than useful. The pending check set
+  deliberately doesn't persist — a shared link should not arrive with an
+  un-pressed "Add 4".

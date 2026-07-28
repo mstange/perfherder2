@@ -1,8 +1,9 @@
 <script lang="ts">
   import { untrack } from 'svelte';
-  import { PINNED_REPOS, TIME_RANGES, type Series } from './api';
-  import { EMPTY_FILTER, type Filter, type FilterField, type SortColumn } from './filter';
+  import { TIME_RANGES, type Series } from './api';
+  import { type FilterField, type SortColumn } from './filter';
   import { PickerState } from './pickerState.svelte';
+  import { EMPTY_PICKER_VIEW, type PickerViewState } from './urlState';
   import FilterInput from './FilterInput.svelte';
 
   type Props = {
@@ -11,20 +12,17 @@
     // makes Escape dismiss it.
     onclose?: () => void;
     // Seeded when the panel opens — from the URL, or from what the plotted
-    // series have in common — and reported back as the user types so the app
-    // can keep the URL in sync. The picker is mounted only while the panel is
-    // open, so this is how its filter survives a reload.
-    initialFilter?: Filter;
-    // Repositories to start with, so the seeded filter has the rows it refers
-    // to. Empty means "use the picker's own default".
-    initialRepos?: string[];
+    // series have in common — and reported back on every change so the app can
+    // keep the URL in sync. The picker is mounted only while the panel is open,
+    // so this is how its filter, repos, interval, subtest mode and sort
+    // survive a reload.
+    initialView?: PickerViewState;
     // Rows already on the graph: `${repository}|${signature id}` → the color
-    // it's drawn in. Not a one-time seed like the two above — see the effect
-    // below.
+    // it's drawn in. Not a one-time seed like the above — see the effect below.
     plotted?: ReadonlyMap<string, string>;
-    onfilterchange?: (filter: Filter) => void;
+    onviewchange?: (view: PickerViewState) => void;
   };
-  let { onadd, onclose, initialFilter, initialRepos, plotted, onfilterchange }: Props = $props();
+  let { onadd, onclose, initialView, plotted, onviewchange }: Props = $props();
 
   // All shared UI state lives on PickerState. This component is a thin
   // renderer over it. See pickerState.svelte.ts. Named `picker` (not
@@ -32,15 +30,18 @@
   // will otherwise interpret `$state(...)` as a store subscription on a
   // variable literally named `state` and blow up at runtime.
   const picker = new PickerState();
-  // A one-time seed, not a binding: after mount the picker owns its filter and
-  // its repo selection. `untrack` because reading a prop during setup is what
-  // Svelte's state_referenced_locally warning is about, and here it is
-  // intentional. This runs before the fetch effect, which `seed` relies on.
-  untrack(() => picker.seed(initialFilter ?? EMPTY_FILTER, initialRepos));
+  // A one-time seed, not a binding: after mount the picker owns all of this
+  // state. `untrack` because reading a prop during setup is what Svelte's
+  // state_referenced_locally warning is about, and here it is intentional.
+  // This runs before the fetch effect, which `seed` relies on.
+  untrack(() => picker.seed(initialView ?? EMPTY_PICKER_VIEW));
 
-  // Report filter edits upward so the URL can carry them.
+  // Report every change upward so the URL can carry it. This fires once on
+  // mount too, which is deliberate: it turns whatever the seed left
+  // unspecified into the concrete values the controls are showing, so the link
+  // says what the panel looks like rather than what it was asked for.
   $effect(() => {
-    onfilterchange?.(picker.filter);
+    onviewchange?.(picker.view);
   });
 
   // Synced rather than seeded once. Today the panel closes as soon as anything
@@ -198,7 +199,7 @@
     <div class="control-row">
       <span class="control-label">Repos</span>
       <div class="chips">
-        {#each PINNED_REPOS as repo}
+        {#each picker.repoChips as repo}
           {@const count = picker.countForRepoChip(repo)}
           <label class="chip" class:chip-on={picker.selectedRepos.has(repo)}>
             <input
