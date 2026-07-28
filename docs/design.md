@@ -45,7 +45,9 @@ architecture breaks.**
   every seam is exercisable without a DOM.
 - [src/lib/FilterInput.svelte](../src/lib/FilterInput.svelte) — the chip +
   text input widget. Owns its in-progress text value; publishes committed
-  chips + residual text upward via `onchange`.
+  chips + residual text upward via `onchange`. **That local copy is the
+  only piece of filter state not rendered straight from the prop, and it
+  has bitten us twice** — see "The one component that owns state" below.
 - [src/lib/AddSeriesPicker.svelte](../src/lib/AddSeriesPicker.svelte) —
   a thin renderer over `PickerState`. Instantiates the class and wires
   DOM events to its methods; adds no reactive state of its own.
@@ -229,6 +231,44 @@ should reason about. A `tag:webrender` chip would silently omit rows
 where webrender is an option but not a tag — same string, arbitrary
 partition. The `option:` field is a strict superset and is what users
 actually want; the `tag:` chip was removed.
+
+### The one component that owns state: FilterInput's `textValue`
+
+The chips in the filter box are rendered from `filter.chips` on every
+render, so they cannot disagree with what the picker is filtering by. The
+free-text half is different: it lives in the component, as `textValue`,
+because the parse that turns `field:value ` into a chip has to happen
+between keystrokes without the half-typed token being visible to the
+parent. Everything that has gone wrong in this widget has gone wrong there,
+in the same way — **the local copy diverging from the filter it stands
+for**, which reads to the user as "the filter box is empty but the list is
+still filtered":
+
+- `textValue` started at `''` instead of at `filter.text`, so a filter
+  that *arrived* with text in it drew an empty box over a filtered list.
+  Reachable two ways: a shared link carrying `pf=`, and reopening the
+  Add-series panel on a filter the user had typed into (the prefill made
+  that an everyday path). The adopt-effect can't cover it — it compares
+  `filter.text` against `lastCommittedFilter.text`, and at construction
+  those are the same object.
+- `reconcile` sets `textValue = residue`, and Svelte writes the `<input>`
+  only when that signal *changes*. Typing `application:chrome ` one
+  character at a time survives because the signal passes through the
+  partial token, but pasting it goes `'' → ''` and the pasted text stayed
+  in the box next to the chip it had just become. `reconcile` now pushes
+  the residue into the element when the two disagree.
+
+Hence [FilterInput.test.svelte.ts](../src/lib/FilterInput.test.svelte.ts):
+the one **committed component test**, mounting the real thing under
+happy-dom with `mount` + `flushSync`. This is not the puppeteer situation
+below — no browser, no download — and no other kind of test can see this
+class of bug, because every layer underneath is correct while it happens.
+It needed one config line: `resolve.conditions = ['browser']` under
+`VITEST`, or `svelte`'s node export wins and `mount()` comes from
+`index-server.js`.
+
+If you add state to a component, ask what happens on its *second* mount
+with a non-default prop.
 
 ### Every badge in the table is a filter toggle
 
@@ -577,7 +617,12 @@ Rules that keep this honest:
     where the effect machinery is stubbed out and `$effect.root` **silently
     never runs its callback**. Every reactive test passes vacuously or fails
     with `undefined`. If you ever see that, check this first.
-- **UI flows**: no committed component tests. During development, I've been
+- **Components**: one committed test, `FilterInput.test.svelte.ts` (see "The
+  one component that owns state"). `mount` + `flushSync` under happy-dom is
+  cheap and needs no browser, so the bar for adding another is just "does
+  this component own state that can disagree with its props" — for
+  everything else, test the `PickerState` / `AppState` seam instead.
+- **UI flows**: no committed browser tests. During development, I've been
   running a throwaway puppeteer smoke script (`smoke.mjs`) that types into
   the filter, clicks badges, checks headers. It's not in the repo because
   puppeteer downloads a ~200 MB Chromium and CI doesn't need it. If you

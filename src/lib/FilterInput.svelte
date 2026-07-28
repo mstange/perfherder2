@@ -29,7 +29,17 @@
   // to snip out `field:value` prefixes as chips whenever the user types a
   // trailing space, and we don't want that mid-flight parse to be observable
   // to the parent as a raw filter.text update.
-  let textValue = $state('');
+  //
+  // **Seeded from the prop, and it has to be.** This is the only part of the
+  // filter the input doesn't render straight out of `filter` — the chips come
+  // from `filter.chips` on every render, but the text lives here. Starting it
+  // at '' meant a filter that arrived with text already in it (a shared link
+  // carrying `pf=`, or reopening the panel on a filter the user left text in)
+  // rendered an empty-looking box over a list that was very much still
+  // filtered, with no way to see or clear the term doing it. The adopt-effect
+  // below can't cover for that: it fires only when `filter.text` differs from
+  // `lastCommittedFilter.text`, and at construction those are the same object.
+  let textValue = $state(untrack(() => filter.text));
 
   // Snapshot of the filter we've most recently handed to the parent. Used
   // to distinguish "the parent bounced our commit back" (ignore — the input
@@ -134,6 +144,14 @@
       }
     }
     textValue = residue;
+    // The <input> is `value={textValue}`, so Svelte writes the DOM only when
+    // that signal *changes* — and `residue` is often the value the signal
+    // already had, while the raw text the user put in the box is still sitting
+    // there. Typing a `field:value` token character by character gets away with
+    // it (the signal passes through the partial token on the way), but pasting
+    // one in goes from '' straight back to '', and the pasted text would stay
+    // visible next to the chip it just became. Push it explicitly.
+    if (inputEl && inputEl.value !== residue) inputEl.value = residue;
     const next: Filter = { chips: nextChips, text: residue };
     // Chip mutations are structural — commit immediately so the pill
     // appears without lag. Pure free-text edits are debounced so each
