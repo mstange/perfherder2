@@ -306,9 +306,17 @@
 </script>
 
 <!-- Events live on the wrapper, not on a canvas, because the overlay layer
-     sits on top of the data layer and would otherwise swallow them. `role`
-     is application: the arrow keys are ours, and assistive tech should pass
-     them through rather than use them for navigation. -->
+     sits on top of the data layer and would otherwise swallow them.
+
+     `role="application"` is right here: the arrow keys belong to the graph,
+     and assistive tech should pass them through rather than use them for its
+     own navigation. Svelte's a11y rules classify `application` as
+     non-interactive and so object to both the tabindex and the listeners —
+     the alternative they'd steer us to, wrapping all this in a <button>,
+     would have a screen reader announce a scatter plot as a button and imply
+     that Enter does something. The suppressions are the lesser evil. -->
+<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 <div
   class="chart"
   class:brushing={interaction === 'brush'}

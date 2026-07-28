@@ -178,6 +178,14 @@
   }
 
   const chipClass = (field: string) => `chip-field chip-field-${field}`;
+
+  // Take focus on mount. This used to be the `autofocus` attribute, but that
+  // is unreliable when the input appears in a panel rather than on initial
+  // page load, and it needed an a11y suppression. Reading `inputEl` makes
+  // this run once when the binding lands.
+  $effect(() => {
+    inputEl?.focus();
+  });
 </script>
 
 <div class="filter-input" role="search">
@@ -193,7 +201,6 @@
       >×</button>
     </span>
   {/each}
-  <!-- svelte-ignore a11y_autofocus -->
   <input
     bind:this={inputEl}
     class="filter-text"
@@ -206,7 +213,6 @@
     onkeydown={onKeydown}
     autocomplete="off"
     spellcheck="false"
-    autofocus
   />
 </div>
 

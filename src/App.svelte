@@ -23,19 +23,51 @@
     );
     app.setPickerOpen(false);
   }
+
+  // Send focus back where it came from when the panel closes, so dismissing
+  // it doesn't dump the user at the top of the document.
+  //
+  // `$effect.pre` matters: it runs *before* the DOM update that mounts the
+  // picker, so `activeElement` is still the button that opened it. A plain
+  // `$effect` would run after the picker's autofocused input had already
+  // taken focus, and we'd memorize an element that is about to be destroyed.
+  let restoreFocusTo: HTMLElement | null = null;
+  $effect.pre(() => {
+    if (app.pickerOpen) {
+      restoreFocusTo = document.activeElement as HTMLElement | null;
+    } else if (restoreFocusTo) {
+      const target = restoreFocusTo;
+      restoreFocusTo = null;
+      // After the DOM settles, or focus lands on the element being removed.
+      queueMicrotask(() => target.focus());
+    }
+  });
 </script>
 
 <svelte:window onpopstate={() => app.onPopState(location.search)} />
 
-<main>
+<!-- `inert` while the panel is open: real modality, so Tab can't wander into
+     the graphs behind the overlay. -->
+<main inert={app.pickerOpen}>
   <SeriesList {app} />
   <GraphPane {app} />
   <DetailsPane {app} />
 </main>
 
 {#if app.pickerOpen}
-  <div class="overlay" role="dialog" aria-modal="true" aria-label="Add series">
-    <div class="overlay-panel">
+  <!-- Backdrop. Clicking it dismisses; Escape is handled inside the picker.
+       svelte-ignore is deliberate: this is a click target of last resort, not
+       a control — everything it does is also reachable from the close button
+       and the Escape key. -->
+  <!-- svelte-ignore a11y_click_events_have_key_events -->
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <div
+    class="overlay"
+    onclick={(e) => {
+      if (e.target === e.currentTarget) app.setPickerOpen(false);
+    }}
+  >
+    <div class="overlay-panel" role="dialog" aria-modal="true" aria-label="Add series">
       <AddSeriesPicker
         onadd={handleAdd}
         onclose={() => app.setPickerOpen(false)}
