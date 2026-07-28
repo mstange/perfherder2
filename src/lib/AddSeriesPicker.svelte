@@ -1,13 +1,22 @@
 <script lang="ts">
+  import { untrack } from 'svelte';
   import { PINNED_REPOS, TIME_RANGES, type Series } from './api';
-  import type { FilterField, SortColumn } from './filter';
+  import type { Filter, FilterField, SortColumn } from './filter';
   import { PickerState } from './pickerState.svelte';
   import FilterInput from './FilterInput.svelte';
 
   type Props = {
     onadd?: (series: Series[]) => void;
+    // Set when the picker is shown as an overlay: adds a close button and
+    // makes Escape dismiss it.
+    onclose?: () => void;
+    // Seeded from the URL when the panel opens, and reported back as the user
+    // types so the app can keep the URL in sync. The picker is mounted only
+    // while the panel is open, so this is how its filter survives a reload.
+    initialFilter?: Filter;
+    onfilterchange?: (filter: Filter) => void;
   };
-  let { onadd }: Props = $props();
+  let { onadd, onclose, initialFilter, onfilterchange }: Props = $props();
 
   // All shared UI state lives on PickerState. This component is a thin
   // renderer over it. See pickerState.svelte.ts. Named `picker` (not
@@ -15,6 +24,16 @@
   // will otherwise interpret `$state(...)` as a store subscription on a
   // variable literally named `state` and blow up at runtime.
   const picker = new PickerState();
+  // A one-time seed, not a binding: after mount the picker owns its filter.
+  // `untrack` because reading a prop during setup is what Svelte's
+  // state_referenced_locally warning is about, and here it is intentional.
+  const seedFilter = untrack(() => initialFilter);
+  if (seedFilter) picker.filter = seedFilter;
+
+  // Report filter edits upward so the URL can carry them.
+  $effect(() => {
+    onfilterchange?.(picker.filter);
+  });
 
   function addPicked() {
     onadd?.(picker.pickedSeries());
@@ -113,14 +132,25 @@
   }
 </script>
 
+<svelte:window
+  onkeydown={(e) => {
+    if (e.key === 'Escape' && onclose) onclose();
+  }}
+/>
+
 <div class="picker" style:--row-height="{ROW_HEIGHT}px">
   <header>
-    <h2>Add series</h2>
-    <p class="hint">
-      One combined list across selected repos. Filter by clicking any badge or
-      by typing free text / <code>field:value</code> tokens. Expand a row to
-      see its subtests.
-    </p>
+    <div class="header-text">
+      <h2>Add series</h2>
+      <p class="hint">
+        One combined list across selected repos. Filter by clicking any badge or
+        by typing free text / <code>field:value</code> tokens. Expand a row to
+        see its subtests.
+      </p>
+    </div>
+    {#if onclose}
+      <button type="button" class="close" onclick={onclose} aria-label="Close">×</button>
+    {/if}
   </header>
 
   {#if picker.metadataError}
@@ -426,9 +456,30 @@
     color: #1f2328;
     font: 14px/1.4 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
   }
+  header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+  }
   header h2 {
     margin: 0 0 4px;
     font-size: 20px;
+  }
+  .close {
+    flex: none;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    font-size: 18px;
+    line-height: 1;
+    border: 1px solid #d0d7de;
+    border-radius: 6px;
+    background: #fff;
+    cursor: pointer;
+  }
+  .close:hover {
+    background: #f3f4f6;
   }
   .hint {
     margin: 0;
