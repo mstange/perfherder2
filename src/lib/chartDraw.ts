@@ -30,9 +30,10 @@ export type DrawOptions = {
   // (task requirement) — at overview density the lines are just noise.
   showLines: boolean;
   showAxes: boolean;
-  // Highlighted point, in data coordinates.
-  highlight: { x: number; y: number; color: string } | null;
 };
+
+// A highlighted point, in data coordinates.
+export type Highlight = { x: number; y: number; color: string };
 
 const AXIS_COLOR = '#d0d7de';
 const GRID_COLOR = '#eef1f4';
@@ -58,7 +59,6 @@ export function drawChart(ctx: CanvasRenderingContext2D, o: DrawOptions): void {
     for (const s of o.series) drawRunLine(ctx, o, s);
   }
   for (const s of o.series) drawDots(ctx, o, s);
-  if (o.highlight) drawHighlight(ctx, o);
   ctx.restore();
   if (o.showAxes) drawAxisLabels(ctx, o, vTicks, tTicks);
 }
@@ -180,13 +180,21 @@ function drawDots(ctx: CanvasRenderingContext2D, o: DrawOptions, s: DrawSeries):
   ctx.globalAlpha = 1;
 }
 
-function drawHighlight(ctx: CanvasRenderingContext2D, o: DrawOptions): void {
-  const h = o.highlight;
-  if (!h) return;
-  const x = o.geom.xScale.toPixel(h.x);
-  const y = o.geom.yScale.toPixel(h.y);
+// Drawn on the overlay layer, not with the data: the selection moves far more
+// often than 100k dots want to be repainted.
+export function drawHighlight(
+  ctx: CanvasRenderingContext2D,
+  geom: PlotGeometry,
+  h: Highlight,
+  dotRadius: number,
+): void {
+  const x = geom.xScale.toPixel(h.x);
+  const y = geom.yScale.toPixel(h.y);
+  // Off-plot selections (a point outside the zoomed window) must not paint
+  // over the axes.
+  if (x < geom.x0 || x > geom.x1 || y < geom.y0 || y > geom.y1) return;
   ctx.beginPath();
-  ctx.arc(x, y, o.dotRadius + 3, 0, Math.PI * 2);
+  ctx.arc(x, y, dotRadius + 3, 0, Math.PI * 2);
   ctx.fillStyle = h.color;
   ctx.fill();
   ctx.lineWidth = 2;

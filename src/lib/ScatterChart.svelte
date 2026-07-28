@@ -8,7 +8,7 @@
   // chartDraw.ts.
 
   import { hitTestAll, makeGeometry, type Padding, type Range } from './chart';
-  import { drawBrush, drawChart } from './chartDraw';
+  import { drawBrush, drawChart, drawHighlight } from './chartDraw';
   import type { SeriesEntry } from './appState.svelte';
 
   type Span = { start: number; end: number };
@@ -59,7 +59,13 @@
   const EDGE_GRAB_PX = 5;
 
   let wrapper: HTMLDivElement | undefined = $state();
-  let canvas: HTMLCanvasElement | undefined = $state();
+  // Two layers. The data layer is expensive (100k+ dots is normal) and only
+  // changes when the data or the domains do; the overlay carries the brush
+  // window and the selection ring, which change on every frame of a drag.
+  // Repainting only the overlay is the difference between a 130ms frame and
+  // a free one.
+  let dataCanvas: HTMLCanvasElement | undefined = $state();
+  let overlayCanvas: HTMLCanvasElement | undefined = $state();
   let width = $state(0);
   let height = $state(0);
 
@@ -92,21 +98,28 @@
     return () => ro.disconnect();
   });
 
-  $effect(() => {
-    if (!canvas || width <= 0 || height <= 0) return;
+  // Size a canvas to its CSS box in device pixels and hand back a context
+  // already scaled so callers can work in CSS pixels.
+  function prepare(canvas: HTMLCanvasElement): CanvasRenderingContext2D | null {
     const dpr = window.devicePixelRatio || 1;
     const bw = Math.round(width * dpr);
     const bh = Math.round(height * dpr);
     // Assigning width/height reallocates and clears the backing store, so
-    // only do it on an actual size change — this effect reruns on every frame
-    // of a zoom drag.
+    // only do it on an actual size change.
     if (canvas.width !== bw || canvas.height !== bh) {
       canvas.width = bw;
       canvas.height = bh;
     }
     const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+    if (!ctx) return null;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    return ctx;
+  }
+
+  $effect(() => {
+    if (!dataCanvas || width <= 0 || height <= 0) return;
+    const ctx = prepare(dataCanvas);
+    if (!ctx) return;
     drawChart(ctx, {
       geom,
       xDomain,
@@ -115,24 +128,36 @@
       dotRadius,
       showLines,
       showAxes,
-      highlight,
     });
+  });
+
+  $effect(() => {
+    if (!overlayCanvas || width <= 0 || height <= 0) return;
+    const ctx = prepare(overlayCanvas);
+    if (!ctx) return;
+    ctx.clearRect(0, 0, geom.width, geom.height);
     // In brush mode the window is persistent; in select mode it only exists
     // while the user is dragging out a zoom, but it still needs to be visible
     // or the drag has no feedback at all.
-    const window = interaction === 'brush' ? effectiveBrush : pending;
-    if (window) {
-      drawBrush(ctx, geom, geom.xScale.toPixel(window.start), geom.xScale.toPixel(window.end));
+    const brushSpan = interaction === 'brush' ? effectiveBrush : pending;
+    if (brushSpan) {
+      drawBrush(
+        ctx,
+        geom,
+        geom.xScale.toPixel(brushSpan.start),
+        geom.xScale.toPixel(brushSpan.end),
+      );
     }
+    if (highlight) drawHighlight(ctx, geom, highlight, dotRadius);
   });
 
   function localX(e: PointerEvent): number {
-    const rect = canvas!.getBoundingClientRect();
+    const rect = wrapper!.getBoundingClientRect();
     return e.clientX - rect.left;
   }
 
   function localY(e: PointerEvent): number {
-    const rect = canvas!.getBoundingClientRect();
+    const rect = wrapper!.getBoundingClientRect();
     return e.clientY - rect.top;
   }
 
@@ -151,7 +176,7 @@
   }
 
   function onPointerDown(e: PointerEvent): void {
-    if (e.button !== 0 || !canvas) return;
+    if (e.button !== 0 || !wrapper) return;
     const px = localX(e);
     const value = geom.xScale.toValue(px);
     dragMoved = false;
@@ -178,7 +203,7 @@
     } else {
       drag = { kind: 'new', anchor: value };
     }
-    canvas.setPointerCapture(e.pointerId);
+    wrapper.setPointerCapture(e.pointerId);
   }
 
   function hitAt(px: number, py: number) {
@@ -193,7 +218,7 @@
   }
 
   function onPointerMove(e: PointerEvent): void {
-    if (!canvas) return;
+    if (!wrapper) return;
     if (!drag) {
       // Hover feedback only matters where a click does something with a
       // point; the overview's clicks are about the window, not the dots.
@@ -214,8 +239,8 @@
   }
 
   function onPointerUp(e: PointerEvent): void {
-    if (!drag || !canvas) return;
-    canvas.releasePointerCapture(e.pointerId);
+    if (!drag || !wrapper) return;
+    wrapper.releasePointerCapture(e.pointerId);
     const kind = drag.kind;
     const wasDrag = dragMoved && pending !== null;
     const span = pending;
@@ -280,23 +305,28 @@
   }
 </script>
 
-<div class="chart" bind:this={wrapper}>
-  <canvas
-    bind:this={canvas}
-    style:width="100%"
-    style:height="100%"
-    class:brushing={interaction === 'brush'}
-    class:hovering
-    aria-label={ariaLabel}
-    tabindex={interaction === 'select' ? 0 : -1}
-    onpointerdown={onPointerDown}
-    onpointermove={onPointerMove}
-    onpointerup={onPointerUp}
-    onpointercancel={onPointerCancel}
-    onpointerleave={onPointerLeave}
-    ondblclick={onDoubleClick}
-    onkeydown={onKeyDown}
-  ></canvas>
+<!-- Events live on the wrapper, not on a canvas, because the overlay layer
+     sits on top of the data layer and would otherwise swallow them. `role`
+     is application: the arrow keys are ours, and assistive tech should pass
+     them through rather than use them for navigation. -->
+<div
+  class="chart"
+  class:brushing={interaction === 'brush'}
+  class:hovering
+  bind:this={wrapper}
+  role="application"
+  aria-label={ariaLabel}
+  tabindex={interaction === 'select' ? 0 : -1}
+  onpointerdown={onPointerDown}
+  onpointermove={onPointerMove}
+  onpointerup={onPointerUp}
+  onpointercancel={onPointerCancel}
+  onpointerleave={onPointerLeave}
+  ondblclick={onDoubleClick}
+  onkeydown={onKeyDown}
+>
+  <canvas bind:this={dataCanvas}></canvas>
+  <canvas bind:this={overlayCanvas}></canvas>
 </div>
 
 <style>
@@ -305,21 +335,25 @@
     width: 100%;
     height: 100%;
     min-height: 0;
-  }
-  canvas {
-    display: block;
     touch-action: none;
     cursor: crosshair;
   }
-  canvas.brushing {
+  .chart.brushing {
     /* The overview's whole job is horizontal window selection. */
     cursor: col-resize;
   }
-  canvas.hovering {
+  .chart.hovering {
     cursor: pointer;
   }
-  canvas:focus-visible {
+  .chart:focus-visible {
     outline: 2px solid #0969da;
     outline-offset: -2px;
+  }
+  canvas {
+    position: absolute;
+    inset: 0;
+    display: block;
+    width: 100%;
+    height: 100%;
   }
 </style>
