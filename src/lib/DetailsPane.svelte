@@ -36,7 +36,7 @@
     return rev.slice(0, 12);
   }
 
-  function jobDuration(startS: number, endS: number): string {
+  function jobDuration(startS: number | null, endS: number | null): string {
     if (!startS || !endS || endS < startS) return '';
     const total = endS - startS;
     const m = Math.floor(total / 60);

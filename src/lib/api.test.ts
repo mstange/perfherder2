@@ -25,6 +25,7 @@ function raw(overrides: Partial<RawSignature> = {}): RawSignature {
     option_collection_hash: 'H_OPT',
     machine_platform: 'linux2404-64',
     suite: 'speedometer3',
+    should_alert: null,
     ...overrides,
   };
 }
