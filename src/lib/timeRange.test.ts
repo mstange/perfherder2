@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   clampSpan,
+  describeSpan,
   defaultSpan,
   DEFAULT_RANGE_SECONDS,
   matchingPreset,
@@ -45,6 +46,18 @@ describe('matchingPreset', () => {
 
   it('returns null for a hand-picked span that matches no preset', () => {
     expect(matchingPreset({ start: NOW - 3 * DAY, end: NOW }, NOW)).toBeNull();
+  });
+});
+
+describe('describeSpan', () => {
+  it('omits the year when the span is inside the current one', () => {
+    const s = { start: Date.UTC(2026, 6, 14, 12), end: Date.UTC(2026, 6, 28, 12) };
+    expect(describeSpan(s, NOW)).not.toMatch(/2026/);
+  });
+
+  it('includes the year when the span reaches into another one', () => {
+    const s = { start: Date.UTC(2025, 11, 20, 12), end: Date.UTC(2026, 0, 5, 12) };
+    expect(describeSpan(s, NOW)).toMatch(/2025/);
   });
 });
 

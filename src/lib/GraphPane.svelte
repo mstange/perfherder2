@@ -78,12 +78,15 @@
       <span class="loading-slot" class:visible={app.anyLoading}>
         Loading {app.loadingCount}…
       </span>
-      {#if app.zoom}
-        <span>Zoomed: {describeSpan(app.zoom)}</span>
-        <button type="button" onclick={() => app.resetZoom()}>Reset zoom</button>
-      {:else}
-        <span class="hint">Drag the overview graph to zoom</span>
-      {/if}
+      <!-- Both the label and the button stay put whether or not there's a
+           zoom: swapping in a longer string used to push this whole group
+           onto a second row, shoving the graphs down mid-interaction. -->
+      <span class="zoom-label" class:hint={!app.zoom}>
+        {app.zoom ? `Zoomed: ${describeSpan(app.zoom)}` : 'Drag the overview to zoom'}
+      </span>
+      <button type="button" disabled={!app.zoom} onclick={() => app.resetZoom()}>
+        Reset zoom
+      </button>
     </div>
   </header>
 
@@ -188,6 +191,20 @@
   }
   .loading-slot.visible {
     visibility: visible;
+  }
+  .zoom-label {
+    /* Wide enough for the longest form ("Zoomed: Jul 19 – Jul 25") so the
+       row's width doesn't depend on whether a zoom is active. */
+    min-width: 23ch;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+  button:disabled {
+    opacity: 0.45;
+    cursor: default;
+  }
+  button:disabled:hover {
+    background: #fff;
   }
   .errors {
     display: flex;

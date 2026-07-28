@@ -52,10 +52,17 @@ export function matchingPreset(span: Span, nowMs: number): TimeRangePreset | nul
 }
 
 // Human description of an arbitrary span, for the label next to the presets.
-export function describeSpan(span: Span): string {
+// The year is dropped when the whole span is in the current one — it's the
+// common case, and the two date ranges in the header are wide enough to push
+// the controls onto a second row without that saving.
+export function describeSpan(span: Span, nowMs = Date.now()): string {
+  const thisYear = new Date(nowMs).getFullYear();
+  const spansOtherYear =
+    new Date(span.start).getFullYear() !== thisYear ||
+    new Date(span.end).getFullYear() !== thisYear;
   const fmt = (ms: number) =>
     new Date(ms).toLocaleDateString(undefined, {
-      year: 'numeric',
+      year: spansOtherYear ? 'numeric' : undefined,
       month: 'short',
       day: 'numeric',
     });
