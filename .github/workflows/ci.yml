@@ -1,0 +1,26 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          # Vite 8 needs Node 20.19+ / 22.12+; 24 is what this is developed on.
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      # The three gates CLAUDE.md asks for before every commit, in the order
+      # that fails fastest on the most likely mistake.
+      - run: npm run check
+      - run: npm test
+      - run: npm run build

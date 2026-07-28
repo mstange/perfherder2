@@ -14,8 +14,10 @@ non-trivial change should be checked against that document.
 - **Pure logic goes in `src/lib/filter.ts` (or a similar module) and gets
   a unit test in `filter.test.ts`.** Do not add business logic to
   `.svelte` files if it can live in a testable pure function.
-- **Run `npm test` and `npx svelte-check` before commits.** Both must be
-  clean. `npm run build` must also succeed.
+- **Run `npm run check` and `npm test` before commits.** Both must be
+  clean. `npm run build` must also succeed. These are the three steps
+  `.github/workflows/ci.yml` runs, so a green local run means a green CI
+  run.
 - **No committed browser tests.** During development, spawn puppeteer for
   smoke tests, then uninstall it before committing so `package.json`
   stays lean. See docs/design.md for the pattern.
