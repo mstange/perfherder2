@@ -22,3 +22,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Throwaway dev smoke script (see docs/design.md); needs a local puppeteer.
+smoke.mjs
