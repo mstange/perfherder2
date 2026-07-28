@@ -1,4 +1,8 @@
-import { defineConfig } from 'vite'
+// `vitest/config` rather than `vite`: it's the same `defineConfig` widened to
+// accept the `test` block below. Importing it from `vite` type-checks fine
+// until `tsc -p tsconfig.node.json` (i.e. `npm run check`) reaches this file
+// and rejects `test` as an unknown property.
+import { defineConfig } from 'vitest/config'
 import { svelte } from '@sveltejs/vite-plugin-svelte'
 
 // https://vite.dev/config/

@@ -708,8 +708,15 @@ Rules that keep this honest:
   puppeteer downloads a ~200 MB Chromium and CI doesn't need it. If you
   need to reproduce the pattern, `npm install --save-dev puppeteer`, write
   the script, run it against `npm run dev`, then remove.
-- Every commit runs `npx svelte-check` cleanly and `npm run build` cleanly.
-  Keep both green.
+- Every commit runs `npm run check` and `npm run build` cleanly. Keep both
+  green: [.github/workflows/ci.yml](../.github/workflows/ci.yml) runs those
+  two plus `npm test` on every push and pull request, so a red CI is a
+  local check that wasn't run.
+  - `npm run check` is `svelte-check` over `tsconfig.app.json` *and* `tsc`
+    over `tsconfig.node.json`. The second half is why `vite.config.ts`
+    imports `defineConfig` from `vitest/config` rather than from `vite` —
+    `vite`'s narrower type rejects the `test` block, and bare
+    `npx svelte-check` never looks at the file to notice.
 
 ## Perfherder data model, cheat sheet
 
