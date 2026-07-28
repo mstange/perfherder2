@@ -124,7 +124,7 @@
       geom,
       xDomain,
       yDomain,
-      series: series.map((s) => ({ color: s.color, data: s.data })),
+      series: series.map((s) => ({ color: s.color, symbol: s.symbol, data: s.data })),
       dotRadius,
       showLines,
       showAxes,

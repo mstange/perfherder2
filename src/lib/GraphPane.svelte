@@ -14,6 +14,14 @@
   const DETAIL_PAD = { left: 56, right: 12, top: 8, bottom: 20 };
   const OVERVIEW_PAD = { left: 56, right: 12, top: 4, bottom: 16 };
 
+  // Big enough for a circle, a square and a diamond to be told apart — the
+  // point of carrying treeherder's symbols at all. (Treeherder's own dots are
+  // bigger still, but it never draws more than six series, and only after a
+  // y-padding that leaves the data in half the plot height.) The overview stays
+  // small: it's a density map, not something you read point by point.
+  const DETAIL_DOT = 3;
+  const OVERVIEW_DOT = 1.25;
+
   const xDetail = $derived({ min: app.detailSpan.start, max: app.detailSpan.end });
   const xFull = $derived({ min: app.range.start, max: app.range.end });
 
@@ -114,7 +122,7 @@
       xDomain={xFull}
       yDomain={app.fullYDomain}
       pad={OVERVIEW_PAD}
-      dotRadius={1}
+      dotRadius={OVERVIEW_DOT}
       showLines={false}
       showAxes={true}
       interaction="brush"
@@ -131,7 +139,7 @@
       xDomain={xDetail}
       yDomain={app.detailYDomain}
       pad={DETAIL_PAD}
-      dotRadius={2}
+      dotRadius={DETAIL_DOT}
       showLines={true}
       showAxes={true}
       interaction="select"

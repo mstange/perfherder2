@@ -72,7 +72,13 @@
            including `application`, which isn't part of the server-composed
            `name` and so was missing before. -->
       <section class="series">
-        <span class="swatch" style:background={sel.entry.color} aria-hidden="true"></span>
+        <!-- Same shape vocabulary as the series list, so the two agree about
+             which series this is. -->
+        <span
+          class="swatch {sel.entry.symbol.shape}"
+          style:background={sel.entry.color}
+          aria-hidden="true"
+        ></span>
         <div>
           <div class="title">
             {sel.entry.meta ? seriesLabel(sel.entry.meta) : `signature ${sel.entry.ref.signatureId}`}
@@ -343,6 +349,16 @@
     height: 10px;
     margin-top: 3px;
     border-radius: 2px;
+  }
+  .swatch.circle {
+    border-radius: 50%;
+  }
+  .swatch.diamond {
+    width: 8px;
+    height: 8px;
+    margin: 4px 1px 0;
+    border-radius: 1px;
+    transform: rotate(45deg);
   }
   .title {
     font-weight: 600;

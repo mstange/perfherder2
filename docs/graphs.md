@@ -170,15 +170,19 @@ Decisions carried over from treeherder:
   does and users are used to comparing shapes rather than absolute values.
   Revisit if it bites.
 - x-axis is push timestamp, not job submit time.
-- Series colors come from a fixed palette assigned in add order.
+- Series colors *and* dot symbols come from treeherder's own lists, assigned
+  in add order. See "Series look" below.
 
 Deliberate deviations:
 
 - **No tooltip and no hover/click arrow panel.** Clicking a dot fills the
   right-hand pane instead.
 - **Smaller dots.** Treeherder uses `DOT_SIZE = 5`; at high point counts the
-  plot turns into a solid blob. We use radius 2 in the detail graph and 1 in
-  the overview.
+  plot turns into a solid blob. We use radius 3 in the detail graph and 1.25
+  in the overview — big enough to read the symbol shapes below, small enough
+  that six series' replicates don't merge. Measured: the size makes no
+  difference to redraw cost (median 16.6 ms either way on a live brush drag
+  over 91k points), so it's purely a legibility call.
 - **No connecting lines in the overview graph**, per the task. The detail
   graph does draw them (treeherder's `VictoryLine`), one polyline per series
   through the per-run mean.
@@ -186,9 +190,67 @@ Deliberate deviations:
   each side, so data occupies under half the plot height. We pad by 5%.
 - **The graph fills the remaining viewport**, rather than treeherder's fixed
   `CHART_WIDTH = 1350`.
-- **Larger color palette.** Treeherder cycles 6 colors × 6 symbols; we use a
-  12-color categorical palette and no symbol variation (symbols are hard to
-  distinguish at radius 2).
+- **Colors and symbols past the sixth series.** See below — we keep
+  treeherder's six of each, but treeherder stops drawing after six series and
+  we don't.
+
+## Series look: treeherder's colors and symbols
+
+Both lists are lifted from treeherder's
+`ui/perfherder/perf-helpers/constants.js` (`graphColors`, `graphSymbols`), so
+the same series looks the same in both tools — [chart.ts](../src/lib/chart.ts)
+`SERIES_COLORS` / `SERIES_SYMBOLS`.
+
+**They are stored in the order treeherder hands them out, which is the reverse
+of the order it declares them.** Treeherder treats both lists as stacks:
+`helpers.js::createGraphData` calls `.pop()` per series, and `LegendCard`
+pushes a color back when a series is removed. So the first series on a
+treeherder graph is blue-bell with a filled circle — not dark-puce with a
+hollow diamond, which is what copying the arrays verbatim would give you. If
+you ever re-sync these lists, re-check that, because nothing else in the app
+can tell the difference:
+
+| # | color | symbol |
+|---|---|---|
+| 1 | `#464876` blue-bell | filled circle |
+| 2 | `#16BCDE` cerulean | hollow circle |
+| 3 | `#C92D2F` fire-red | filled square |
+| 4 | `#921181` purple | hollow square |
+| 5 | `#FFB851` orange | filled diamond |
+| 6 | `#4C3146` dark-puce | hollow diamond |
+
+Color and symbol advance together, so within six series each has a unique
+color *and* a unique shape. **Past six, treeherder gives up** —
+`createGraphData` leaves the seventh series with no color and `visible: false`.
+We plot as many as you add, so the lists have to keep going, and cycling both
+in lockstep would make the seventh series identical to the first.
+`styleForIndex` advances the symbol one extra step per wrap, which keeps every
+(color, symbol) pair unique for 36 series and leaves the first six exactly as
+treeherder pairs them.
+
+Drawing details, in [chartDraw.ts](../src/lib/chartDraw.ts):
+
+- The three shapes are area-matched (`SQUARE_HALF_SIDE`,
+  `DIAMOND_HALF_DIAGONAL`). A square of side 2r covers 4r² against a circle's
+  πr² and a diamond's 2r², so without scaling the squares read as the biggest
+  series on the graph and the diamonds as the smallest.
+- A series is still one batched path: filled symbols get one `fill()`, hollow
+  ones one `stroke()`. That keeps the per-series cost at one rasterization
+  pass, which is what makes 20k dots per series affordable.
+- **Hollow symbols are not filled white**, though treeherder fills them.
+  Our dots are translucent so a dense cluster reads as density; an opaque
+  fill would flatten those clusters into blobs and a translucent white one
+  would smear over the series behind.
+- The stroke thins with the radius (`min(1.5, max(0.75, r/2))`), or the
+  overview's 1.25px symbols would close up into solid dots.
+
+**The series list and details pane carry the shape too**, because a legend
+that showed only half of the encoding would make the shapes unreadable. There,
+shape is the identity and *fill means visible* (see `.swatch.off`) — so the
+swatch deliberately doesn't mirror the symbol's own filled/hollow state, which
+would collide with the visibility toggle. The picker's "already plotted"
+swatch stays a plain square: it answers "do you already have this one", and
+the graph isn't on screen to compare against.
 
 **Hiding a series** keeps it in the list, in the URL, and in its color slot —
 only the drawing stops. Everything downstream of `AppState.visibleSeries`

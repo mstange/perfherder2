@@ -32,7 +32,14 @@ import {
   type SeriesMeta,
   type SeriesRef,
 } from './graphData';
-import { colorForIndex, lowerBound, padDomain, unionRange, type Range } from './chart';
+import {
+  lowerBound,
+  padDomain,
+  styleForIndex,
+  unionRange,
+  type Range,
+  type SeriesSymbol,
+} from './chart';
 import { EMPTY_FILTER, isFilterActive, sameFilter, type Filter } from './filter';
 import { attrsForEntry, commonAttrs, commonFilterChips } from './seriesSummary';
 import { clampSpan, defaultSpan, presetSpan, roundSpan, type Span } from './timeRange';
@@ -48,7 +55,10 @@ import {
 export type SeriesEntry = {
   ref: SeriesRef;
   key: string;
+  // Color and dot shape both come from the series' position in the list, the
+  // way treeherder assigns them — see chart.ts::styleForIndex.
   color: string;
+  symbol: SeriesSymbol;
   // Hidden series stay in the list and in the URL, they just aren't drawn or
   // hit-tested. Their color slot is kept, so unhiding doesn't recolor the
   // rest of the graph.
@@ -112,10 +122,12 @@ export class AppState {
     this.seriesRefs.map((ref, i) => {
       const key = dataKey(ref, this.range);
       const loaded = this.seriesCache.get(key);
+      const style = styleForIndex(i);
       return {
         ref,
         key: seriesKey(ref),
-        color: colorForIndex(i),
+        color: style.color,
+        symbol: style.symbol,
         visible: ref.visible,
         meta: loaded?.meta ?? null,
         data: loaded?.data ?? EMPTY_SERIES_DATA,

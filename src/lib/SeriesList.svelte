@@ -218,10 +218,16 @@
       >
         <!-- The swatch doubles as the show/hide control: it's the thing that
              ties the card to the graph, so it's where you look to ask "is
-             this one on?". -->
+             this one on?".
+             It carries the series' dot *shape* as well as its color, because
+             the graph now distinguishes series by both and a legend that only
+             showed half of that would make the shapes unreadable. The shape is
+             the identity; the fill still means "being drawn" (see `.off`), so
+             this deliberately doesn't mirror the symbol's own fill/outline —
+             that would collide with the visibility state. -->
         <button
           type="button"
-          class="swatch"
+          class="swatch {entry.symbol.shape}"
           class:off={!entry.visible}
           style:--series-color={entry.color}
           aria-pressed={entry.visible}
@@ -367,9 +373,24 @@
     margin-top: 2px;
     padding: 0;
     border: 1px solid var(--series-color);
-    border-radius: 3px;
     background: var(--series-color);
     cursor: pointer;
+  }
+  .swatch.circle {
+    border-radius: 50%;
+  }
+  .swatch.square {
+    border-radius: 2px;
+  }
+  .swatch.diamond {
+    /* Rotated rather than clipped, so the 1px border follows the shape. The
+       grid slot is 12px wide, so shrink it to keep the corners inside: a
+       12px square on the diagonal would be 17px across. */
+    width: 9px;
+    height: 9px;
+    margin: 3px 1px 0;
+    border-radius: 1px;
+    transform: rotate(45deg);
   }
   .swatch.off {
     /* Hollow, not grey: the color still identifies the series, the fill says

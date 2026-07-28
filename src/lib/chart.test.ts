@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import {
-  colorForIndex,
   formatTickValue,
   formatValue,
   hitTestAll,
@@ -12,6 +11,8 @@ import {
   padDomain,
   pickTimeStep,
   SERIES_COLORS,
+  SERIES_SYMBOLS,
+  styleForIndex,
   timeTicks,
   unionRange,
   valueTicks,
@@ -252,9 +253,53 @@ describe('makeGeometry', () => {
   });
 });
 
-describe('colorForIndex', () => {
-  it('cycles the palette', () => {
-    expect(colorForIndex(0)).toBe(SERIES_COLORS[0]);
-    expect(colorForIndex(SERIES_COLORS.length)).toBe(SERIES_COLORS[0]);
+describe('styleForIndex', () => {
+  // The first six are treeherder's, in the order treeherder hands them out —
+  // which is the reverse of the order its constants file declares them, because
+  // it pops both lists. Getting this wrong would give every shared graph a
+  // different look from the treeherder equivalent, and nothing else in the app
+  // would notice.
+  it('matches treeherder for the first six series', () => {
+    expect([0, 1, 2, 3, 4, 5].map((i) => styleForIndex(i).color)).toEqual([
+      '#464876',
+      '#16BCDE',
+      '#C92D2F',
+      '#921181',
+      '#FFB851',
+      '#4C3146',
+    ]);
+    expect([0, 1, 2, 3, 4, 5].map((i) => styleForIndex(i).symbol)).toEqual([
+      { shape: 'circle', filled: true },
+      { shape: 'circle', filled: false },
+      { shape: 'square', filled: true },
+      { shape: 'square', filled: false },
+      { shape: 'diamond', filled: true },
+      { shape: 'diamond', filled: false },
+    ]);
+  });
+
+  it('cycles the colors', () => {
+    expect(styleForIndex(SERIES_COLORS.length).color).toBe(SERIES_COLORS[0]);
+  });
+
+  it('never repeats a (color, symbol) pair within 36 series', () => {
+    const seen = new Set<string>();
+    for (let i = 0; i < SERIES_COLORS.length * SERIES_SYMBOLS.length; i++) {
+      const s = styleForIndex(i);
+      seen.add(`${s.color}|${s.symbol.shape}|${s.symbol.filled}`);
+    }
+    expect(seen.size).toBe(36);
+  });
+
+  it('gives the seventh series a different symbol from the first', () => {
+    // Where treeherder simply stops drawing. Same color, so the shape is all
+    // that separates them.
+    expect(styleForIndex(6).color).toBe(styleForIndex(0).color);
+    expect(styleForIndex(6).symbol).not.toEqual(styleForIndex(0).symbol);
+  });
+
+  it('is defined for junk indices', () => {
+    expect(styleForIndex(-1)).toEqual(styleForIndex(0));
+    expect(styleForIndex(1.7).color).toBe(SERIES_COLORS[1]);
   });
 });

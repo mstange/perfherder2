@@ -12,11 +12,14 @@ import {
   valueTicks,
   type PlotGeometry,
   type Range,
+  type SeriesShape,
+  type SeriesSymbol,
 } from './chart';
 import type { SeriesData } from './graphData';
 
 export type DrawSeries = {
   color: string;
+  symbol: SeriesSymbol;
   data: SeriesData;
 };
 
@@ -155,15 +158,58 @@ function lowerBoundRuns(runs: { x: number }[], x: number): number {
   return lo;
 }
 
+// Shape scaling, so the three symbols carry about the same amount of ink at a
+// given `dotRadius`: a square of side 2r covers 4r² against a circle's πr², a
+// diamond with half-diagonal r only 2r². Without this the squares read as the
+// biggest series on the graph and the diamonds as the smallest.
+const SQUARE_HALF_SIDE = 0.886; // √(π)/2
+const DIAMOND_HALF_DIAGONAL = 1.253; // √(π/2)
+
+// Trace one symbol as its own subpath. Each ends closed, so a batched path can
+// be filled or stroked in one go.
+function traceSymbol(
+  ctx: CanvasRenderingContext2D,
+  shape: SeriesShape,
+  x: number,
+  y: number,
+  r: number,
+): void {
+  if (shape === 'square') {
+    const h = r * SQUARE_HALF_SIDE;
+    ctx.rect(x - h, y - h, h * 2, h * 2);
+    return;
+  }
+  if (shape === 'diamond') {
+    const d = r * DIAMOND_HALF_DIAGONAL;
+    ctx.moveTo(x, y - d);
+    ctx.lineTo(x + d, y);
+    ctx.lineTo(x, y + d);
+    ctx.lineTo(x - d, y);
+    ctx.closePath();
+    return;
+  }
+  // `moveTo` first, or the arc is joined to the previous subpath by a line.
+  ctx.moveTo(x + r, y);
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+}
+
 // All dots of one series in a single path. Batching matters: a 90-day range
-// with replicates is easily 20k dots per series, and one fill() beats 20k.
+// with replicates is easily 20k dots per series, and one fill() beats 20k. An
+// outline symbol is the same single path, stroked instead of filled — so it
+// costs one extra rasterization pass over the path, not per-dot state changes.
+//
+// Outline symbols are deliberately *not* filled white the way treeherder fills
+// them. Our dots are translucent so that a dense cluster reads as density; an
+// opaque fill would turn those clusters into flat blobs, and a translucent
+// white one into a milky smear over the series behind.
 function drawDots(ctx: CanvasRenderingContext2D, o: DrawOptions, s: DrawSeries): void {
   const points = s.data.points;
   if (points.length === 0) return;
   const { geom } = o;
   const r = o.dotRadius;
+  // The widest a symbol reaches from its centre, for the cull below.
+  const reach = r * DIAMOND_HALF_DIAGONAL + 1;
   const start = lowerBound(points, o.xDomain.min);
-  ctx.fillStyle = s.color;
   ctx.globalAlpha = 0.75;
   ctx.beginPath();
   for (let i = start; i < points.length; i++) {
@@ -172,11 +218,19 @@ function drawDots(ctx: CanvasRenderingContext2D, o: DrawOptions, s: DrawSeries):
     const x = geom.xScale.toPixel(p.x);
     const y = geom.yScale.toPixel(p.y);
     // Cheap vertical cull: points can sit outside a zoomed y domain.
-    if (y < geom.y0 - r || y > geom.y1 + r) continue;
-    ctx.moveTo(x + r, y);
-    ctx.arc(x, y, r, 0, Math.PI * 2);
+    if (y < geom.y0 - reach || y > geom.y1 + reach) continue;
+    traceSymbol(ctx, s.symbol.shape, x, y, r);
   }
-  ctx.fill();
+  if (s.symbol.filled) {
+    ctx.fillStyle = s.color;
+    ctx.fill();
+  } else {
+    ctx.strokeStyle = s.color;
+    // Thin enough that the hole in the middle survives at the overview's dot
+    // size, where a 1.5px stroke would close a 1px-radius ring into a blob.
+    ctx.lineWidth = Math.min(1.5, Math.max(0.75, r * 0.5));
+    ctx.stroke();
+  }
   ctx.globalAlpha = 1;
 }
 

@@ -336,30 +336,58 @@ export function makeGeometry(
 }
 
 // ---------------------------------------------------------------------------
-// Colors
+// Series styles: colors and symbols
 // ---------------------------------------------------------------------------
 
-// Treeherder cycles 6 colors crossed with 6 symbols. Symbols are illegible at
-// our dot size, so we use a wider color palette instead. The first six are
-// treeherder's, so a graph looks familiar; the rest extend it while staying
-// distinguishable on white.
+// Treeherder's palette and symbol set, taken from
+// `ui/perfherder/perf-helpers/constants.js` (`graphColors`, `graphSymbols`) —
+// but **listed in the order treeherder actually hands them out**, which is the
+// reverse of how it declares them. It keeps both lists as stacks and calls
+// `.pop()` per series in `helpers.js::createGraphData` (and pushes a color back
+// when a series is removed), so the first series on a treeherder graph is
+// blue-bell with a filled circle, not dark-puce with a hollow diamond.
+//
+// Colors and symbols advance together, so within the first six series each has
+// both a unique color and a unique shape — the same series looks the same here
+// as it does on treeherder.
 export const SERIES_COLORS = [
-  '#4C3146',
-  '#FFB851',
-  '#921181',
-  '#C92D2F',
-  '#16BCDE',
-  '#464876',
-  '#1B7F3B',
-  '#B36B00',
-  '#2B6CB0',
-  '#7A3E9D',
-  '#0F766E',
-  '#9C1C4D',
+  '#464876', // blue-bell
+  '#16BCDE', // cerulean
+  '#C92D2F', // fire-red
+  '#921181', // purple
+  '#FFB851', // orange
+  '#4C3146', // dark-puce
 ];
 
-// Assigned by position in the series list, so colors are stable across
+export type SeriesShape = 'circle' | 'square' | 'diamond';
+// `filled: false` is treeherder's "outline": drawn as the shape's edge only.
+export type SeriesSymbol = { shape: SeriesShape; filled: boolean };
+
+export const SERIES_SYMBOLS: SeriesSymbol[] = [
+  { shape: 'circle', filled: true },
+  { shape: 'circle', filled: false },
+  { shape: 'square', filled: true },
+  { shape: 'square', filled: false },
+  { shape: 'diamond', filled: true },
+  { shape: 'diamond', filled: false },
+];
+
+export type SeriesStyle = { color: string; symbol: SeriesSymbol };
+
+// Assigned by position in the series list, so a series keeps its look across
 // reloads of the same URL (the URL preserves series order).
-export function colorForIndex(index: number): string {
-  return SERIES_COLORS[index % SERIES_COLORS.length];
+//
+// Treeherder stops drawing after six series — `createGraphData` leaves the
+// seventh with no color and `visible: false`. We plot as many as you add, so
+// the two lists have to keep going, and if they simply cycled in lockstep the
+// seventh series would be indistinguishable from the first. Advancing the
+// symbol one extra step per wrap keeps every (color, symbol) pair unique for
+// 36 series while leaving the first six exactly as treeherder pairs them.
+export function styleForIndex(index: number): SeriesStyle {
+  const i = Math.max(0, Math.floor(index));
+  const wraps = Math.floor(i / SERIES_COLORS.length);
+  return {
+    color: SERIES_COLORS[i % SERIES_COLORS.length],
+    symbol: SERIES_SYMBOLS[(i + wraps) % SERIES_SYMBOLS.length],
+  };
 }
