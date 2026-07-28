@@ -151,10 +151,14 @@ export function serializeViewState(state: ViewState): string {
     const { repository, signatureId, datumId, replicateIndex } = state.selected;
     p.set('sel', `${repository},${signatureId},${datumId},${replicateIndex}`);
   }
-  if (state.pickerOpen) p.set('picker', '1');
-  if (state.pickerFilter.text) p.set('pf', state.pickerFilter.text);
-  for (const chip of state.pickerFilter.chips) {
-    p.append('pc', `${chip.field}:${chip.value}`);
+  // The filter only means anything while the panel is open — carrying it in
+  // the URL of a closed panel would be noise in every shared graph link.
+  if (state.pickerOpen) {
+    p.set('picker', '1');
+    if (state.pickerFilter.text) p.set('pf', state.pickerFilter.text);
+    for (const chip of state.pickerFilter.chips) {
+      p.append('pc', `${chip.field}:${chip.value}`);
+    }
   }
 
   // URLSearchParams percent-encodes commas and colons, which makes these URLs

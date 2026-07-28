@@ -101,11 +101,22 @@ describe('serializeViewState', () => {
     const s = serializeViewState(
       state({
         series: [{ repository: 'autoland', signatureId: 1, frameworkId: 13 }],
+        pickerOpen: true,
         pickerFilter: { chips: [{ field: 'repo', value: 'autoland' }], text: '' },
       }),
     );
     expect(s).toContain('series=autoland,1,13');
     expect(s).toContain('pc=repo:autoland');
+  });
+
+  it('omits the picker filter when the panel is closed', () => {
+    const s = serializeViewState(
+      state({
+        pickerOpen: false,
+        pickerFilter: { chips: [{ field: 'repo', value: 'autoland' }], text: 'foo' },
+      }),
+    );
+    expect(s).toBe('');
   });
 
   it('round-trips a fully populated state', () => {
@@ -130,7 +141,7 @@ describe('serializeViewState', () => {
   });
 
   it('round-trips free text containing spaces', () => {
-    const s = state({ pickerFilter: { chips: [], text: 'a b  c' } });
+    const s = state({ pickerOpen: true, pickerFilter: { chips: [], text: 'a b  c' } });
     expect(parseViewState(`?${serializeViewState(s)}`).pickerFilter.text).toBe('a b  c');
   });
 });
