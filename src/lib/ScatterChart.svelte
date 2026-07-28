@@ -30,6 +30,7 @@
     brush?: Span | null;
     onselect?: (hit: { seriesIndex: number; pointIndex: number } | null) => void;
     onbrush?: (span: Span | null, live: boolean) => void;
+    onkeymove?: (axis: 'run' | 'replicate', delta: number) => void;
     ariaLabel: string;
   };
 
@@ -46,6 +47,7 @@
     brush = null,
     onselect,
     onbrush,
+    onkeymove,
     ariaLabel,
   }: Props = $props();
 
@@ -73,6 +75,8 @@
   // Distinguishes a click from a drag: a plain click in 'select' mode must
   // select a point, not zoom into a zero-width span.
   let dragMoved = false;
+  // True while the cursor is over a hittable dot, so the cursor can say so.
+  let hovering = $state(false);
 
   const geom = $derived(makeGeometry(width, height, pad, xDomain, yDomain));
   const effectiveBrush = $derived(pending ?? brush);
@@ -106,13 +110,12 @@
       showAxes,
       highlight,
     });
-    if (interaction === 'brush' && effectiveBrush) {
-      drawBrush(
-        ctx,
-        geom,
-        geom.xScale.toPixel(effectiveBrush.start),
-        geom.xScale.toPixel(effectiveBrush.end),
-      );
+    // In brush mode the window is persistent; in select mode it only exists
+    // while the user is dragging out a zoom, but it still needs to be visible
+    // or the drag has no feedback at all.
+    const window = interaction === 'brush' ? effectiveBrush : pending;
+    if (window) {
+      drawBrush(ctx, geom, geom.xScale.toPixel(window.start), geom.xScale.toPixel(window.end));
     }
   });
 
@@ -171,8 +174,25 @@
     canvas.setPointerCapture(e.pointerId);
   }
 
+  function hitAt(px: number, py: number) {
+    return hitTestAll(
+      series.map((s) => ({ points: s.data.points })),
+      geom.xScale,
+      geom.yScale,
+      px,
+      py,
+      HIT_RADIUS,
+    );
+  }
+
   function onPointerMove(e: PointerEvent): void {
-    if (!drag || !canvas) return;
+    if (!canvas) return;
+    if (!drag) {
+      // Hover feedback only matters where a click does something with a
+      // point; the overview's clicks are about the window, not the dots.
+      if (interaction === 'select') hovering = hitAt(localX(e), localY(e)) !== null;
+      return;
+    }
     dragMoved = true;
     const value = geom.xScale.toValue(localX(e));
     if (drag.kind === 'move') {
@@ -189,6 +209,7 @@
   function onPointerUp(e: PointerEvent): void {
     if (!drag || !canvas) return;
     canvas.releasePointerCapture(e.pointerId);
+    const kind = drag.kind;
     const wasDrag = dragMoved && pending !== null;
     const span = pending;
     drag = null;
@@ -200,19 +221,13 @@
     }
     // A click, not a drag.
     if (interaction === 'select') {
-      const px = localX(e);
-      const py = localY(e);
-      const hit = hitTestAll(
-        series.map((s) => ({ points: s.data.points })),
-        geom.xScale,
-        geom.yScale,
-        px,
-        py,
-        HIT_RADIUS,
-      );
+      const hit = hitAt(localX(e), localY(e));
       onselect?.(hit ? { seriesIndex: hit.seriesIndex, pointIndex: hit.pointIndex } : null);
-    } else {
-      // Clicking outside the window in the overview clears the zoom.
+    } else if (kind === 'new') {
+      // Clicking the overview *outside* the window clears the zoom. A click
+      // inside it (which would have started a move) must not — throwing away
+      // the zoom because the user tapped the thing they were about to drag
+      // is the kind of surprise that makes people distrust a control.
       onbrush?.(null, false);
     }
   }
@@ -222,8 +237,39 @@
     pending = null;
   }
 
+  function onPointerLeave(): void {
+    hovering = false;
+  }
+
   function onDoubleClick(): void {
     if (interaction === 'select') onbrush?.(null, false);
+  }
+
+  // The graph is focusable so a point can be reached without a pointer.
+  // Arrow keys walk the selection; Escape clears it.
+  function onKeyDown(e: KeyboardEvent): void {
+    if (interaction !== 'select') return;
+    switch (e.key) {
+      case 'ArrowLeft':
+        onkeymove?.('run', -1);
+        break;
+      case 'ArrowRight':
+        onkeymove?.('run', 1);
+        break;
+      case 'ArrowUp':
+        onkeymove?.('replicate', -1);
+        break;
+      case 'ArrowDown':
+        onkeymove?.('replicate', 1);
+        break;
+      case 'Escape':
+        onselect?.(null);
+        break;
+      default:
+        return;
+    }
+    // Only reached for keys we handled — otherwise the page scrolls under us.
+    e.preventDefault();
   }
 </script>
 
@@ -233,12 +279,16 @@
     style:width="100%"
     style:height="100%"
     class:brushing={interaction === 'brush'}
+    class:hovering
     aria-label={ariaLabel}
+    tabindex={interaction === 'select' ? 0 : -1}
     onpointerdown={onPointerDown}
     onpointermove={onPointerMove}
     onpointerup={onPointerUp}
     onpointercancel={onPointerCancel}
+    onpointerleave={onPointerLeave}
     ondblclick={onDoubleClick}
+    onkeydown={onKeyDown}
   ></canvas>
 </div>
 
@@ -257,5 +307,12 @@
   canvas.brushing {
     /* The overview's whole job is horizontal window selection. */
     cursor: col-resize;
+  }
+  canvas.hovering {
+    cursor: pointer;
+  }
+  canvas:focus-visible {
+    outline: 2px solid #0969da;
+    outline-offset: -2px;
   }
 </style>

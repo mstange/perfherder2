@@ -17,8 +17,10 @@
   const xDetail = $derived({ min: app.detailSpan.start, max: app.detailSpan.end });
   const xFull = $derived({ min: app.range.start, max: app.range.end });
 
-  // Re-evaluated on every render rather than cached, so the highlighted preset
-  // decays to "custom" as the baked-in absolute range ages.
+  // Recomputed whenever the range changes. `Date.now()` isn't reactive, so a
+  // range that ages out of its preset while the tab sits open keeps its
+  // highlight until something else changes — harmless, and the alternative is
+  // a timer that exists only to un-highlight a button.
   const activePreset = $derived(matchingPreset(app.range, Date.now()));
 
   const highlight = $derived.by(() => {
@@ -110,7 +112,9 @@
       {highlight}
       onselect={onDetailSelect}
       onbrush={(span) => app.setZoom(span)}
-      ariaLabel="Detail graph; click a point to inspect it"
+      onkeymove={(axis, delta) =>
+        axis === 'run' ? app.stepRun(delta) : app.stepReplicate(delta)}
+      ariaLabel="Detail graph; click a point to inspect it, or use the arrow keys"
     />
     {#if app.series.length === 0}
       <p class="overlay-note">Add a series to see data.</p>

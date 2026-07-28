@@ -349,6 +349,57 @@ export class AppState {
     this.syncUrl('push');
   }
 
+  // Keyboard navigation. Left/right walk the selected series run by run;
+  // up/down walk the replicates inside the current run. Stepping replicate by
+  // replicate horizontally would mean twenty presses to cross one push.
+  stepRun(delta: number): void {
+    const sel = this.selection;
+    if (!sel) {
+      this.selectFirstPoint();
+      return;
+    }
+    const runs = sel.entry.data.runs;
+    const i = runs.indexOf(sel.run);
+    if (i === -1) return;
+    const next = runs[clampIndex(i + delta, runs.length)];
+    this.selectPoint({
+      repository: sel.entry.ref.repository,
+      signatureId: sel.entry.ref.signatureId,
+      datumId: next.datumId,
+      // Keep the replicate slot where possible, so walking a series compares
+      // like with like instead of jumping around inside each run.
+      replicateIndex: Math.min(sel.replicateIndex, next.values.length - 1),
+    });
+  }
+
+  stepReplicate(delta: number): void {
+    const sel = this.selection;
+    if (!sel) {
+      this.selectFirstPoint();
+      return;
+    }
+    this.selectPoint({
+      repository: sel.entry.ref.repository,
+      signatureId: sel.entry.ref.signatureId,
+      datumId: sel.run.datumId,
+      replicateIndex: clampIndex(sel.replicateIndex + delta, sel.run.values.length),
+    });
+  }
+
+  private selectFirstPoint(): void {
+    for (const entry of this.series) {
+      const point = entry.data.points[0];
+      if (!point) continue;
+      this.selectPoint({
+        repository: entry.ref.repository,
+        signatureId: entry.ref.signatureId,
+        datumId: point.datumId,
+        replicateIndex: point.replicateIndex,
+      });
+      return;
+    }
+  }
+
   setPickerOpen(open: boolean): void {
     this.pickerOpen = open;
     this.syncUrl('push');
@@ -404,6 +455,10 @@ export class AppState {
   onPopState(search: string): void {
     this.applyViewState(parseViewState(search));
   }
+}
+
+function clampIndex(i: number, length: number): number {
+  return Math.max(0, Math.min(length - 1, i));
 }
 
 // Extent of every plotted value, optionally restricted to a time window.
