@@ -716,7 +716,37 @@ export function extentOf(series: SeriesEntry[], span: Span | null): Range {
       if (y < min) min = y;
       if (y > max) max = y;
     }
+    // The connecting line enters and leaves the window between runs that may
+    // both sit outside it, and that visible stretch of line has to fit too —
+    // otherwise a window whose only content is a line crossing it (or one
+    // holding a few high dots from another series) clips the line away.
+    // Runs *inside* the window need no special handling: a run's mean lies
+    // between its own replicates, which the loop above already covered.
+    const line = lineEdgeExtent(s.data.runs, span);
+    if (line) {
+      if (line.min < min) min = line.min;
+      if (line.max > max) max = line.max;
+    }
     if (Number.isFinite(min)) ranges.push({ min, max });
   }
   return unionRange(ranges) ?? { min: 0, max: 1 };
+}
+
+// Where the run line crosses the two edges of `span`, interpolated between the
+// runs bracketing each edge. Null when the line doesn't reach into the window
+// from outside on either side.
+function lineEdgeExtent(runs: Run[], span: Span): Range | null {
+  if (runs.length < 2) return null;
+  const edges: number[] = [];
+  for (const at of [span.start, span.end]) {
+    const i = lowerBound(runs, at);
+    // Needs a run on each side: at the ends of the series the line simply
+    // stops, and a run exactly on the edge is already a point in the window.
+    if (i === 0 || i >= runs.length || runs[i].x === at) continue;
+    const a = runs[i - 1];
+    const b = runs[i];
+    edges.push(a.mean + ((b.mean - a.mean) * (at - a.x)) / (b.x - a.x));
+  }
+  if (edges.length === 0) return null;
+  return { min: Math.min(...edges), max: Math.max(...edges) };
 }

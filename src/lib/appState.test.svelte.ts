@@ -4,8 +4,9 @@
 
 import { flushSync } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { AppState } from './appState.svelte';
+import { AppState, extentOf, type SeriesEntry } from './appState.svelte';
 import type { Job, Push, RawDatum, RawSummary } from './graphApi';
+import { buildSeriesData, metaFromSummary, seriesKey } from './graphData';
 
 const DAY = 86400000;
 const NOW = Date.UTC(2026, 6, 27, 12, 0, 0);
@@ -39,6 +40,23 @@ function summary(signatureId: number, data: RawDatum[]): RawSummary {
     parent_signature: null,
     should_alert: true,
     data,
+  };
+}
+
+// A loaded, visible series entry — enough of one for the pure helpers below,
+// which only look at `data`.
+function entry(s: RawSummary): SeriesEntry {
+  const ref = { repository: 'autoland', signatureId: s.signature_id, frameworkId: 1 };
+  return {
+    ref,
+    key: seriesKey(ref),
+    color: '#000',
+    symbol: { shape: 'circle', filled: true },
+    visible: true,
+    meta: metaFromSummary(s),
+    data: buildSeriesData(s),
+    loading: false,
+    error: null,
   };
 }
 
@@ -768,4 +786,44 @@ describe('AppState y domains', () => {
       app.setZoom({ start: firstPushDay - 3600000, end: firstPushDay + 3600000 });
       expect(app.detailYDomain.max).toBeLessThan(150);
     }));
+});
+
+describe('extentOf', () => {
+  // Two runs a day apart, means 100 and 200, with nothing in between.
+  const DAY_1 = Date.UTC(2026, 6, 21, 6, 0, 0);
+  const DAY_2 = DAY_1 + DAY;
+  const SLOPED = entry(
+    summary(1, [
+      datum({ id: 10, value: 100, push_id: 1, push_timestamp: '2026-07-21T06:00:00' }),
+      datum({ id: 11, value: 200, push_id: 2, push_timestamp: '2026-07-22T06:00:00' }),
+    ]),
+  );
+
+  it('covers the whole series when there is no window', () => {
+    expect(extentOf([SLOPED], null)).toEqual({ min: 100, max: 200 });
+  });
+
+  it('covers the run line where it crosses a window with no points of its own', () => {
+    // Quarter to half way between the two runs: the line runs 125..150 there.
+    const span = { start: DAY_1 + DAY / 4, end: DAY_1 + DAY / 2 };
+    expect(extentOf([SLOPED], span)).toEqual({ min: 125, max: 150 });
+  });
+
+  it('unions a series whose only contribution is its line with one that has points', () => {
+    const flat = entry(
+      summary(2, [
+        datum({ id: 20, value: 500, push_id: 3, push_timestamp: '2026-07-21T12:00:00' }),
+      ]),
+    );
+    const span = { start: DAY_1 + DAY / 4, end: DAY_1 + DAY / 2 };
+    expect(extentOf([SLOPED, flat], span)).toEqual({ min: 125, max: 500 });
+  });
+
+  it('does not extrapolate past the ends of a series', () => {
+    // Window entirely to the right of both runs: no line to show.
+    expect(extentOf([SLOPED], { start: DAY_2 + DAY, end: DAY_2 + 2 * DAY })).toEqual({
+      min: 0,
+      max: 1,
+    });
+  });
 });

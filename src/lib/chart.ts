@@ -212,9 +212,9 @@ export function formatTimestamp(ms: number): string {
 // Hit-testing
 // ---------------------------------------------------------------------------
 
-// Index of the first point whose x is >= `x`. Points must be x-sorted, which
-// buildSeriesData guarantees.
-export function lowerBound(points: SeriesPoint[], x: number): number {
+// Index of the first entry whose x is >= `x`. The array must be x-sorted, which
+// buildSeriesData guarantees for both `points` and `runs`.
+export function lowerBound(points: readonly { x: number }[], x: number): number {
   let lo = 0;
   let hi = points.length;
   while (lo < hi) {

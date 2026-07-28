@@ -188,6 +188,16 @@ Deliberate deviations:
   through the per-run mean.
 - **Tighter y padding.** Treeherder pads the y domain by `(max-min)/1.8` on
   each side, so data occupies under half the plot height. We pad by 5%.
+- **The detail graph derives its y domain from the zoom window** instead of
+  keeping a separate y zoom in the URL, so zooming in on a flat stretch
+  doesn't leave it as a horizontal line at the bottom of the plot. The window
+  extent has to account for the *run lines*, not just the dots: a series can
+  have runs on both sides of a narrow window and none inside it, and the
+  stretch of line crossing the window still has to fit. `extentOf` therefore
+  interpolates each series' line at both window edges and folds those two
+  values in. Without it, a series that is off-scale from the others
+  (speedometer3 cpuTime is ~0 ms for cstm-car-m and ~100 s for fenix)
+  disappears whenever the zoom lands between two of its pushes.
 - **The graph fills the remaining viewport**, rather than treeherder's fixed
   `CHART_WIDTH = 1350`.
 - **Colors and symbols past the sixth series.** See below — we keep

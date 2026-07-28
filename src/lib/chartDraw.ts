@@ -126,7 +126,7 @@ function drawAxisLabels(
 function drawRunLine(ctx: CanvasRenderingContext2D, o: DrawOptions, s: DrawSeries): void {
   const runs = s.data.runs;
   if (runs.length < 2) return;
-  const lo = Math.max(0, lowerBoundRuns(runs, o.xDomain.min) - 1);
+  const lo = Math.max(0, lowerBound(runs, o.xDomain.min) - 1);
   ctx.strokeStyle = s.color;
   ctx.globalAlpha = 0.55;
   ctx.lineWidth = 1;
@@ -145,17 +145,6 @@ function drawRunLine(ctx: CanvasRenderingContext2D, o: DrawOptions, s: DrawSerie
   }
   ctx.stroke();
   ctx.globalAlpha = 1;
-}
-
-function lowerBoundRuns(runs: { x: number }[], x: number): number {
-  let lo = 0;
-  let hi = runs.length;
-  while (lo < hi) {
-    const mid = (lo + hi) >> 1;
-    if (runs[mid].x < x) lo = mid + 1;
-    else hi = mid;
-  }
-  return lo;
 }
 
 // Shape scaling, so the three symbols carry about the same amount of ink at a
