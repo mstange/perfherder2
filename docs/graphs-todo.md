@@ -4,37 +4,49 @@ Living checklist. Update in the same commit as the work it describes.
 
 ## Done
 
-_(nothing yet)_
+- `graphApi.ts` — summary / push / job / repository fetches
+- `graphData.ts` — flat API rows → push/run/replicate structure (+ tests)
+- `chart.ts` — scales, ticks, y-domain, plot geometry, hit-testing (+ tests)
+- `chartDraw.ts` — canvas painting (grid, axes, run lines, dots, brush)
+- `timeRange.ts` — presets ↔ absolute bounds (+ tests)
+- `urlState.ts` — parse/serialize the whole view state (+ tests)
+- `appState.svelte.ts` — reactive state, fetch orchestration, URL sync
+- Three-pane shell; Add-series picker as a lazily-mounted overlay
+- `ScatterChart.svelte` — one canvas component for both graphs
+- Overview graph with brush-to-zoom (create / move / resize the window)
+- Detail graph: drag to zoom, double-click to reset, click to select
+- `DetailsPane.svelte` — build / run / replicate, with external links
+- URL sync both directions, including back-button support
 
-## In progress
+## Next
 
-- [ ] `graphApi.ts` — summary / push / job fetches
-
-## Planned
-
-- [ ] `graphData.ts` — flat API rows → push/run/replicate structure (+ tests)
-- [ ] `chart.ts` — scales, tick generation, y-domain, hit-testing (+ tests)
-- [ ] `palette.ts` — series color assignment
-- [ ] `urlState.ts` — parse/serialize the whole view state (+ tests)
-- [ ] `appState.svelte.ts` — reactive app state, fetch orchestration
-- [ ] Three-pane shell; Add-series picker becomes an overlay
-- [ ] `ScatterChart.svelte` — canvas detail graph, axes, lines
-- [ ] Overview graph + brush-to-zoom
-- [ ] Click-to-select + right-hand details pane
-- [ ] URL sync both directions
-- [ ] Relative time-range control that bakes absolute bounds into the URL
+- [ ] Hover feedback in the detail graph (cursor changes over a hittable dot).
+- [ ] Keyboard access to the graphs: today a point can only be selected with
+      a pointer. At minimum, arrow keys to step between points of the
+      selected series.
+- [ ] Per-series visibility toggle (treeherder's legend cards can hide a
+      series without removing it).
+- [ ] Series list: drag to reorder, rather than only ↑/↓ buttons.
 
 ## Open questions / deferred
 
-- **Mixed units on one y-axis.** Following treeherder for now. A per-series
-  normalized mode ("% of first value") would be the obvious fix.
+- **Mixed units on one y-axis.** Following treeherder for now; the axis says
+  "mixed units" when it happens. A per-series normalized mode ("% of the
+  first value") would be the real fix.
 - **Alert markers.** Treeherder highlights alert summaries on the graph and
-  can create alerts from the tooltip. Not implemented; needs auth for the
-  create path, and the display path needs `/performance/alertsummary/`.
-- **Series visibility toggle** (treeherder's legend cards can hide a series
-  without removing it). Planned but not in the first cut.
-- **Retrigger count / delta vs previous point** — treeherder shows these in
-  the tooltip. Candidates for the details pane later.
+  can create alerts from the tooltip. Not implemented; the create path needs
+  auth, the display path needs `/performance/alertsummary/`.
+- **Retrigger / delta-vs-previous readouts.** Treeherder's tooltip shows the
+  delta from the previous data point and a retrigger count. We show the
+  retrigger count; the delta is not implemented.
+- **History granularity.** Every discrete action pushes a history entry, and
+  a zoom drag replaces rather than pushes. Whether that's the right
+  granularity (should typing in the picker filter be undoable?) is untested
+  with real use.
 - **Data volume.** No cap on how many series can be added; a 90-day range
-  across 10 series with replicates may be tens of MB. Measure before
+  across 10 series with replicates may be tens of MB and hundreds of
+  thousands of dots. Drawing is batched but not decimated. Measure before
   optimizing.
+- **The picker's own state** (selected repos, its interval, "match inside
+  subtests") is not in the URL — only its filter is, per the task. If shared
+  picker links become a thing, that's the gap.

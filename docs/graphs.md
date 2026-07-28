@@ -85,6 +85,32 @@ Clicking a dot needs more than the summary payload carries:
 
 Both are fetched lazily on selection and cached by id.
 
+## Code map
+
+- [graphApi.ts](../src/lib/graphApi.ts) — the three endpoints, plus
+  `/repository/` for hg-vs-git link shapes. Network only.
+- [graphData.ts](../src/lib/graphData.ts) — **pure**. Flat rows →
+  push/run/replicate, plus the flat arrays the renderer walks.
+- [chart.ts](../src/lib/chart.ts) — **pure**. Scales, domains, ticks,
+  formatting, plot geometry, hit-testing, palette.
+- [chartDraw.ts](../src/lib/chartDraw.ts) — canvas painting. Imperative, but
+  takes all its coordinates from a `PlotGeometry`.
+- [timeRange.ts](../src/lib/timeRange.ts) — **pure**. Presets ↔ absolute
+  bounds.
+- [urlState.ts](../src/lib/urlState.ts) — **pure**. Query string ↔ `ViewState`.
+- [appState.svelte.ts](../src/lib/appState.svelte.ts) — the reactive core.
+- [ScatterChart.svelte](../src/lib/ScatterChart.svelte) — one canvas component
+  serving both graphs, parameterized by `interaction: 'select' | 'brush'`.
+- [SeriesList.svelte](../src/lib/SeriesList.svelte),
+  [GraphPane.svelte](../src/lib/GraphPane.svelte),
+  [DetailsPane.svelte](../src/lib/DetailsPane.svelte) — the three panes.
+
+**Do not put a `SeriesData` inside a `$state` object or array.** Svelte 5
+deep-proxies plain objects and arrays assigned to `$state`, and a proxied
+20k-element point array turns every read in the draw loop into a proxy trap.
+The series caches are `Map`s (which Svelte does not proxy) that get replaced
+wholesale to trigger reactivity — the same pattern the picker uses.
+
 ## Rendering
 
 **Canvas, not SVG.** A single series over 90 days with replicates is easily
@@ -136,6 +162,17 @@ Everything the task listed is in the query string:
 If `sel` names a point that isn't in the loaded data (e.g. the range was
 narrowed), the selection is dropped rather than shown as a phantom —
 treeherder does the same (`verifySelectedDataPoint`).
+
+`pf` / `pc` are only written while `picker=1`; a closed panel's filter would
+be noise in every shared graph link.
+
+**History granularity.** URL writes are not driven by an `$effect` — each
+mutation on `AppState` decides between `pushState` and `replaceState`.
+Discrete actions (add/remove series, pick a range, commit a zoom, select a
+point, open the panel) push, so the back button undoes them one at a time.
+Continuous ones (each frame of a zoom drag, each keystroke in the picker
+filter) replace. An effect can't tell those apart, which is why the sync is
+explicit.
 
 ## Status
 
