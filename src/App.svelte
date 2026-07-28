@@ -46,6 +46,13 @@
 
 <svelte:window onpopstate={() => app.onPopState(location.search)} />
 
+<!-- Declarative rather than an `$effect` writing `document.title`: Svelte
+     already owns this element, and the title is a plain function of the state.
+     index.html carries a static fallback for the pre-hydration moment. -->
+<svelte:head>
+  <title>{app.pageTitle}</title>
+</svelte:head>
+
 <!-- `inert` while the panel is open: real modality, so Tab can't wander into
      the graphs behind the overlay. -->
 <main inert={app.pickerOpen}>

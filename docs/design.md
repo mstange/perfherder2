@@ -33,8 +33,8 @@ architecture breaks.**
   ramp. Unit-tested.
 - [src/lib/seriesSummary.ts](../src/lib/seriesSummary.ts) — **pure logic**.
   Splits a list of series into the attributes they all share and the ones
-  that distinguish each; see "The series list shows differences, not
-  descriptions" below. Unit-tested.
+  that distinguish each, and names the page from the shared half; see "The
+  series list shows differences, not descriptions" below. Unit-tested.
 - [src/lib/filter.ts](../src/lib/filter.ts) — **pure logic**. Filter
   model (chips + free text), `matchesRow`, sort comparator, cache-key +
   fallback picker, child grouping. Unit-tested.
@@ -327,6 +327,31 @@ The details pane is the counterweight: it shows the selected series'
 That includes `application`, which is not part of the server-composed
 `name` string and so has to be read off `SeriesMeta` explicitly — it was
 missing from that pane for exactly that reason.
+
+**`document.title` reuses the same intersection**
+([`documentTitle`](../src/lib/seriesSummary.ts), rendered by a
+`<svelte:head>` in App.svelte). It used to be a static
+"Perfherder Graphs — Add Series" in index.html, which named a dialog that
+is closed almost all the time. Naming a graph by what its series *share*
+is the same insight as the header: a graph is nearly always one test
+sliced along one axis, and the shared part names the whole thing, with the
+count saying how many slices. Two differences from the header:
+
+- **The fields are a fixed subset, ordered coarse-to-fine**: suite, test,
+  application, platform. A tab strip shows perhaps twenty characters, so
+  the most identifying part has to come first and the long platform string
+  has to trail. `repo` and `options` are left out entirely — context and
+  noise respectively, and either would push the test name out of view.
+- **A single series still gets named**, unlike the header, which suppresses
+  itself below two series because hoisting would leave the card blank.
+  There's no card to leave blank here.
+
+The title narrows as fetches land ("2 series" → the first-loaded series'
+attributes → the true intersection). That churn is accepted: the
+alternative is showing the bare app name until every fetch is in, which
+would leave a shared link nameless for a second and permanently if one
+series failed. index.html keeps a plain "Perfherder Graphs" for the
+pre-mount moment.
 
 ### Drag-to-reorder uses pointer events, and moves nothing until the drop
 

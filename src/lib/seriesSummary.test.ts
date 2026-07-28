@@ -6,6 +6,7 @@ import {
   attrsFromMeta,
   commonAttrs,
   commonFilterChips,
+  documentTitle,
   isEmptyAttrs,
   NO_ATTRS,
   splitCommonAttrs,
@@ -247,5 +248,49 @@ describe('attrChips', () => {
 
   it('is empty for empty attributes', () => {
     expect(attrChips(NO_ATTRS)).toEqual([]);
+  });
+});
+
+describe('documentTitle', () => {
+  const S3 = attrs({ suite: 'speedometer3', test: 'cpuTime', platform: 'android-hw-a55' });
+
+  it('is the bare app name with nothing plotted', () => {
+    expect(documentTitle([], false)).toBe('Perfherder Graphs');
+  });
+
+  it('names a single series by its own attributes, coarse to fine', () => {
+    expect(documentTitle([S3], false)).toBe(
+      'speedometer3 · cpuTime · firefox · android-hw-a55 — Perfherder Graphs',
+    );
+  });
+
+  it('names several series by what they share, and counts them', () => {
+    // Three browsers of one test: the application drops out of the shared part,
+    // so the count is what says there is more than one line on the graph.
+    const sets = [
+      S3,
+      attrs({ ...S3, application: 'chrome' }),
+      attrs({ ...S3, application: 'safari' }),
+    ];
+    expect(documentTitle(sets, false)).toBe(
+      'speedometer3 · cpuTime · android-hw-a55 · 3 series — Perfherder Graphs',
+    );
+  });
+
+  it('falls back to the count when the series share nothing', () => {
+    const sets = [S3, attrs({ suite: 'ts_paint', test: '', platform: 'linux', application: '' })];
+    expect(documentTitle(sets, false)).toBe('2 series — Perfherder Graphs');
+  });
+
+  it('says how many series there are before their metadata lands', () => {
+    // `attrsForEntry` yields null for a series still loading, or one the
+    // summary endpoint said nothing about.
+    expect(documentTitle([null, null], false)).toBe('2 series — Perfherder Graphs');
+    expect(documentTitle([null], false)).toBe('1 series — Perfherder Graphs');
+  });
+
+  it('names the Add-series panel while it is open', () => {
+    expect(documentTitle([S3], true)).toBe('Add series — Perfherder Graphs');
+    expect(documentTitle([], true)).toBe('Add series — Perfherder Graphs');
   });
 });

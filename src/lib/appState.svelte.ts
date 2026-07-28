@@ -43,7 +43,12 @@ import {
   type SeriesSymbol,
 } from './chart';
 import { EMPTY_FILTER, isFilterActive, sameFilter, type Filter } from './filter';
-import { attrsForEntry, commonAttrs, commonFilterChips } from './seriesSummary';
+import {
+  attrsForEntry,
+  commonAttrs,
+  commonFilterChips,
+  documentTitle,
+} from './seriesSummary';
 import { clampSpan, defaultSpan, presetSpan, roundSpan, type Span } from './timeRange';
 import {
   EMPTY_PICKER_VIEW,
@@ -260,6 +265,15 @@ export class AppState {
   // has to be part of it.
   plottedColors = $derived.by(
     (): Map<string, string> => new Map(this.series.map((e) => [e.key, e.color])),
+  );
+
+  // What the tab says. Derived from the series rather than fixed in index.html,
+  // where it used to name the Add-series dialog no matter what was plotted.
+  pageTitle = $derived(
+    documentTitle(
+      this.series.map((e) => attrsForEntry(e.ref, e.meta)),
+      this.pickerOpen,
+    ),
   );
 
   // The push immediately before the selected one in the same series — the

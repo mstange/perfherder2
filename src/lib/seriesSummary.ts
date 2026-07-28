@@ -161,6 +161,47 @@ export function commonFilterChips(common: SeriesAttrs): FilterChip[] {
   return chips;
 }
 
+export const APP_NAME = 'Perfherder Graphs';
+
+// Attributes worth putting in a title, coarse-to-fine: the front of the string
+// is all a tab strip shows, so the most identifying part goes first and the
+// long platform string trails.
+//
+// `repo` is left out — it's context rather than identity, and series from
+// different repositories don't share one anyway. So are `options`: "opt
+// fission webrender" is noise in a tab, and it would push the test name out of
+// the visible part.
+const TITLE_FIELDS: ScalarField[] = ['suite', 'test', 'application', 'platform'];
+
+// `document.title` for a set of plotted series. They're named by what they
+// have in *common*, the same factoring the list pane's header uses: a graph is
+// nearly always one test sliced along one axis, and the shared part is what
+// names the whole thing. The count then says how many slices, since
+// "speedometer3 cpuTime" alone would read as a single graph when it's really
+// three browsers overlaid.
+//
+// Metadata arrives per series, so this narrows as fetches land — from
+// "3 series" to the first-loaded series' attributes to the true intersection.
+// Titles that settle as data loads are normal; the alternative is showing the
+// bare app name until every fetch is in, which would leave a shared link
+// nameless for a second and forever if one series failed.
+export function documentTitle(
+  sets: readonly (SeriesAttrs | null)[],
+  pickerOpen: boolean,
+): string {
+  // The one case the old static title was actually right about.
+  if (pickerOpen) return `Add series — ${APP_NAME}`;
+  if (sets.length === 0) return APP_NAME;
+
+  const common = commonAttrs(sets);
+  const parts = TITLE_FIELDS.map((f) => common[f]).filter((v) => v !== '');
+  if (sets.length > 1) parts.push(`${sets.length} series`);
+  // Reached when a lone series has no usable metadata yet — nothing shared and
+  // no count to fall back on.
+  if (parts.length === 0) return `1 series — ${APP_NAME}`;
+  return `${parts.join(' · ')} — ${APP_NAME}`;
+}
+
 export function attrChips(attrs: SeriesAttrs): AttrChip[] {
   const chips: AttrChip[] = [];
   for (const field of CHIP_ORDER) {

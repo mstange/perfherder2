@@ -791,6 +791,38 @@ describe('AppState y domains', () => {
     }));
 });
 
+describe('AppState page title', () => {
+  it('names the plotted series once their metadata lands', () =>
+    withApp('?series=autoland,1,1', async (app) => {
+      // Before the fetch resolves there is nothing to name it by.
+      expect(app.pageTitle).toBe('1 series — Perfherder Graphs');
+      await settle();
+      expect(app.pageTitle).toBe(
+        'ts_paint · firefox · linux2404-64-shippable — Perfherder Graphs',
+      );
+    }));
+
+  it('counts them when there is more than one', () =>
+    withApp('?series=autoland,1,1&series=autoland,2,1', async (app) => {
+      await settle();
+      expect(app.pageTitle).toContain('2 series');
+    }));
+
+  it('names the panel while it is open, whatever is plotted', () =>
+    withApp('?series=autoland,1,1', async (app) => {
+      await settle();
+      app.setPickerOpen(true);
+      expect(app.pageTitle).toBe('Add series — Perfherder Graphs');
+      app.setPickerOpen(false);
+      expect(app.pageTitle).toContain('ts_paint');
+    }));
+
+  it('is the bare app name with nothing plotted', () =>
+    withApp('', (app) => {
+      expect(app.pageTitle).toBe('Perfherder Graphs');
+    }));
+});
+
 describe('AppState replicate drawing', () => {
   // SAMPLE: one run of three replicates (100/110/120, mean 110) and one of two
   // (200/210, mean 205).
