@@ -446,7 +446,12 @@
 </div>
 
 <style>
+  /* Fills whatever box the host gives it (the overlay panel stretches to the
+     viewport) and never exceeds it: `flex: 1` + `min-height: 0` lets the
+     table below shrink instead of pushing the picker past its container. */
   .picker {
+    flex: 1;
+    min-height: 0;
     display: flex;
     flex-direction: column;
     gap: 12px;
@@ -624,11 +629,17 @@
     color: #ffffffcc;
     border-color: #94d3a2;
   }
+  /* The one scroller in the dialog: it absorbs all the leftover height
+     (`flex: 1`) rather than sizing to its (possibly 25k-row) content. The
+     `min-height: 0` is what actually allows the shrink — flex items default
+     to `min-height: auto`, i.e. their content height, which is how the
+     overlay ended up scrolling. */
   .table-wrap {
+    flex: 1;
+    min-height: 0;
     border: 1px solid #d0d7de;
     border-radius: 6px;
     overflow: auto;
-    max-height: 70vh;
   }
   table {
     table-layout: fixed;

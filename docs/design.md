@@ -241,6 +241,26 @@ Several places take care to not shift the list under the user's cursor:
 occupy the same space as the "loaded" state.** This is the single biggest
 polish issue in dashboards, and we've paid the tax already.
 
+### The Add-series dialog has exactly one scroller
+
+`.overlay` (fixed, `inset: 0`, 24px padding) stretches `.overlay-panel` to
+the available height; the panel, `.picker` and `.table-wrap` then form a
+flex-column chain in which every element carries `min-height: 0` and the
+table wrapper carries `flex: 1`. The series table absorbs all leftover
+height and is the only thing that scrolls.
+
+`min-height: 0` is the load-bearing part: flex items default to
+`min-height: auto` (their content height), and the table's content height
+is the whole 25k-row list — which is how the overlay itself used to
+scroll, dragging the sticky table header off-screen with it.
+
+So: **nothing between `.overlay` and `.table-wrap` may be sized by its
+content**, and new chrome inside the picker (error banners, extra control
+rows) is free to appear and disappear — it just takes height from the
+table instead of growing the dialog. There is deliberately no fallback
+scroller for extremely short viewports; below roughly 450px of height the
+table shrinks toward zero rows rather than the dialog overflowing.
+
 ### Whitespace between adjacent badges (Svelte gotcha)
 
 Svelte's compiler strips whitespace between adjacent template elements. A

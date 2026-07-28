@@ -90,18 +90,26 @@
     background: #fff;
     color: #1f2328;
   }
+  /* The panel is stretched to exactly the space between the backdrop's
+     padding edges — never taller. Everything inside it (see the flex chain
+     down to the picker's .table-wrap) shares that fixed budget, so the only
+     scrollable element in the dialog is the series table itself. Nothing
+     here may grow with content, or the overlay starts scrolling as a whole
+     and the sticky table header scrolls out of view with it. */
   .overlay {
     position: fixed;
     inset: 0;
     background: rgba(31, 35, 40, 0.35);
     display: flex;
-    align-items: flex-start;
+    align-items: stretch;
     justify-content: center;
     padding: 24px;
-    overflow: auto;
     z-index: 10;
   }
   .overlay-panel {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
     background: #fff;
     border-radius: 8px;
     box-shadow: 0 12px 40px rgba(31, 35, 40, 0.3);
