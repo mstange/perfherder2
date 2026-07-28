@@ -304,6 +304,19 @@ variable literally named `state` and fails at runtime with
 
 - **Pure logic** (`filter.ts`, parts of `api.ts`): vitest, no DOM. Run with
   `npm test`. This is where new invariants should be pinned.
+- **Reactive state** (`appState.svelte.ts`, and `pickerState.svelte.ts` when
+  someone gets to it): also vitest, driving the real class inside an
+  `$effect.root` with `fetch` stubbed. Two pieces of setup make that
+  possible, both in [vite.config.ts](../vite.config.ts):
+  - Runes only compile in files the Svelte plugin processes — that means a
+    name ending in `.svelte.ts`. Vitest's default glob wants `.test.ts` at
+    the end, so these files are named `<thing>.test.svelte.ts` and the
+    `include` glob is widened to match.
+  - The test environment is `happy-dom`, not node. This isn't about needing
+    a DOM: under the node environment vite compiles Svelte modules for SSR,
+    where the effect machinery is stubbed out and `$effect.root` **silently
+    never runs its callback**. Every reactive test passes vacuously or fails
+    with `undefined`. If you ever see that, check this first.
 - **UI flows**: no committed component tests. During development, I've been
   running a throwaway puppeteer smoke script (`smoke.mjs`) that types into
   the filter, clicks badges, checks headers. It's not in the repo because

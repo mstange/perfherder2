@@ -17,16 +17,25 @@ Living checklist. Update in the same commit as the work it describes.
 - Detail graph: drag to zoom, double-click to reset, click to select
 - `DetailsPane.svelte` — build / run / replicate, with external links
 - URL sync both directions, including back-button support
+- Keyboard navigation (arrow keys walk runs and replicates), hover feedback,
+  and a focusable detail graph
+- Layered canvases: dots on one, brush + selection ring on another, so a
+  zoom drag repaints only the cheap layer
+- Bounded caches with request cancellation; failed fetches surface a banner
+  with Retry instead of retrying in a loop
+- Modal behaviour for the picker overlay (inert background, backdrop click,
+  focus restore)
+- Unit tests for the reactive state (see docs/design.md → Testing)
 
 ## Next
 
-- [ ] Hover feedback in the detail graph (cursor changes over a hittable dot).
-- [ ] Keyboard access to the graphs: today a point can only be selected with
-      a pointer. At minimum, arrow keys to step between points of the
-      selected series.
 - [ ] Per-series visibility toggle (treeherder's legend cards can hide a
       series without removing it).
 - [ ] Series list: drag to reorder, rather than only ↑/↓ buttons.
+- [ ] A full repaint of the detail graph at 100k+ dots takes ~60ms, which is
+      one dropped frame on a discrete action like resetting the zoom.
+      Decimating the overview by pixel column would be the first thing to
+      try if that starts to matter.
 
 ## Open questions / deferred
 

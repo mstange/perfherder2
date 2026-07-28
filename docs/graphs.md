@@ -85,6 +85,20 @@ Clicking a dot needs more than the summary payload carries:
 
 Both are fetched lazily on selection and cached by id.
 
+### Caching and failure
+
+Series data is cached under `(repo, signature, rangeStart, rangeEnd)` — the
+tuple that identifies one API response. Entries outside the current
+(series × range) set are **pruned**, and their in-flight fetches aborted:
+without that, every click on a range preset leaves a full set of point arrays
+behind, megabytes each, for the lifetime of the tab. Going Back to a previous
+range therefore refetches. That trade is deliberate.
+
+A failed fetch records an error against the key. That record is load-bearing:
+a failure leaves no cache entry, so the loading effect would otherwise re-fire
+on the state change the failure itself caused and hammer the API in a loop.
+Recovery is the explicit Retry button.
+
 ## Code map
 
 - [graphApi.ts](../src/lib/graphApi.ts) — the three endpoints, plus
@@ -117,6 +131,15 @@ wholesale to trigger reactivity — the same pattern the picker uses.
 20k+ points; treeherder's Victory/SVG approach creates a DOM node per point
 and is visibly slow past a few thousand. We draw to a `<canvas>` and hit-test
 in JS against the same coordinate transform.
+
+**Two canvas layers per graph.** The data layer (grid, axes, run lines, dots)
+only repaints when the data or the domains change. The overlay layer (brush
+window, selection ring) repaints on every frame of a drag. Measured with 8
+series over 90 days — 111k plotted replicates — dragging the overview brush:
+one combined layer gave p90 25ms frames and a 134ms worst frame, because
+moving the window repainted all 111k dots; split, the same drag is p90 17ms,
+worst 18ms. Pointer and keyboard events live on the wrapper `<div>`, since
+the overlay canvas would otherwise swallow them.
 
 Decisions carried over from treeherder:
 
