@@ -99,6 +99,10 @@ export class AppState {
 
   pushCache = $state(new Map<string, Push>());
   jobCache = $state(new Map<string, Job>());
+  // `${repo}|${jobId}` lookups that came back an error. A negative cache, so
+  // the pane can say "unavailable" instead of spinning on "loading…" forever,
+  // and so the selection effect doesn't retry a lookup that will keep failing.
+  private jobLookupFailed = $state(new Set<string>());
   repoInfo = $state(new Map<string, RepositoryInfo>());
 
   // ---- Derived ----------------------------------------------------------
@@ -189,8 +193,22 @@ export class AppState {
 
   selectedJob = $derived.by((): Job | null => {
     const sel = this.selection;
-    if (!sel) return null;
+    if (!sel || sel.run.jobId === null) return null;
     return this.jobCache.get(`${sel.entry.ref.repository}|${sel.run.jobId}`) ?? null;
+  });
+
+  // Why the job details are or aren't on screen. `expired` is the common case
+  // for anything older than treeherder's job retention window: the datum's
+  // `job_id` is null, so there is nothing to fetch and never will be. Without
+  // distinguishing it from `loading`, the pane sat on "loading…" forever.
+  selectedJobStatus = $derived.by((): 'loaded' | 'loading' | 'expired' | 'failed' => {
+    const sel = this.selection;
+    if (!sel) return 'loading';
+    if (sel.run.jobId === null) return 'expired';
+    if (this.selectedJob) return 'loaded';
+    return this.jobLookupFailed.has(`${sel.entry.ref.repository}|${sel.run.jobId}`)
+      ? 'failed'
+      : 'loading';
   });
 
   // The push immediately before the selected one in the same series — the
@@ -307,15 +325,27 @@ export class AppState {
     }
   }
 
-  private async loadJob(repository: string, jobId: number): Promise<void> {
-    const key = `job|${repository}|${jobId}`;
-    if (this.jobCache.has(`${repository}|${jobId}`) || this.detailRequests.has(key)) return;
+  private async loadJob(repository: string, jobId: number | null): Promise<void> {
+    // Nothing to look up for an expired job. Requesting `/jobs/null/` is not
+    // harmless either — treeherder answers it with a 500.
+    if (jobId === null) return;
+    const cacheKey = `${repository}|${jobId}`;
+    const key = `job|${cacheKey}`;
+    if (
+      this.jobCache.has(cacheKey) ||
+      this.detailRequests.has(key) ||
+      this.jobLookupFailed.has(cacheKey)
+    ) {
+      return;
+    }
     this.detailRequests.add(key);
     try {
       const job = await fetchJob(repository, jobId);
-      this.jobCache = new Map(this.jobCache).set(`${repository}|${jobId}`, job);
+      this.jobCache = new Map(this.jobCache).set(cacheKey, job);
     } catch {
-      // As above.
+      // As above — but remember the failure, so the pane can report it and
+      // the selection effect doesn't reissue the same doomed lookup.
+      this.jobLookupFailed = new Set(this.jobLookupFailed).add(cacheKey);
     } finally {
       this.detailRequests.delete(key);
     }

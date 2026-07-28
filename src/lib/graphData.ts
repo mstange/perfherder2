@@ -16,7 +16,9 @@ import { parseApiDate, type RawSummary } from './graphApi';
 // plus its replicates.
 export type Run = {
   datumId: number;
-  jobId: number;
+  // Null when treeherder has already expired the job — see RawDatum.job_id.
+  // Everything else about the point (value, push, revision) survives.
+  jobId: number | null;
   pushId: number;
   // Push timestamp in ms — the x coordinate shared by every replicate of this
   // run. We plot against push time, not job submit time, like treeherder.
@@ -166,7 +168,9 @@ export function buildSeriesData(summary: RawSummary | null): SeriesData {
 
   const runs = [...runByDatumId.values()];
   for (const run of runs) run.mean = mean(run.values);
-  runs.sort((a, b) => a.x - b.x || a.pushId - b.pushId || a.jobId - b.jobId);
+  // `jobId` is only a tiebreaker for retriggers of one push; expired jobs sort
+  // as 0, which keeps the comparator total instead of returning NaN.
+  runs.sort((a, b) => a.x - b.x || a.pushId - b.pushId || (a.jobId ?? 0) - (b.jobId ?? 0));
 
   const pushById = new Map<number, PushGroup>();
   const pushes: PushGroup[] = [];

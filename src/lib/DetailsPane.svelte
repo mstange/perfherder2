@@ -124,10 +124,19 @@
         <dl>
           <dt>Job</dt>
           <dd>
-            <a href={jobsUrl(repo, sel.push.revision, sel.run.jobId)} target="_blank" rel="noopener">
-              {sel.run.jobId}
-            </a>
-            on treeherder
+            {#if sel.run.jobId !== null}
+              <a
+                href={jobsUrl(repo, sel.push.revision, sel.run.jobId)}
+                target="_blank"
+                rel="noopener">{sel.run.jobId}</a
+              >
+              on treeherder
+            {:else}
+              <a href={jobsUrl(repo, sel.push.revision)} target="_blank" rel="noopener">
+                this push
+              </a>
+              on treeherder
+            {/if}
           </dd>
           {#if app.selectedJob}
             {@const job = app.selectedJob}
@@ -149,8 +158,19 @@
                 </a>
               </dd>
             {/if}
+          {:else if app.selectedJobStatus === 'expired'}
+            <!-- Treeherder keeps performance data much longer than the jobs
+                 that produced it, so for older points there is no job row to
+                 describe. Say that, rather than spin on "loading…". -->
+            <dt>Details</dt>
+            <dd class="muted">
+              Job expired — treeherder drops job records after a few months.
+            </dd>
+          {:else if app.selectedJobStatus === 'failed'}
+            <dt>Details</dt>
+            <dd class="muted">Job lookup failed.</dd>
           {:else}
-            <dt>Type</dt>
+            <dt>Details</dt>
             <dd class="muted">loading…</dd>
           {/if}
           {#if retriggerCount > 0}

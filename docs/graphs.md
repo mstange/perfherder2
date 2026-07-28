@@ -85,6 +85,24 @@ Clicking a dot needs more than the summary payload carries:
 
 Both are fetched lazily on selection and cached by id.
 
+**`job_id` is frequently null, and that is not an error.** Treeherder keeps
+performance data far longer than the jobs that produced it — roughly four
+months for jobs — and nulls out the datum's `job_id` when the job row goes
+away. On a one-year range, most points have no job: for signature 5276320 on
+mozilla-central in July 2026, 583 of 860 datums were null, all of them older
+than the end of March. Pushes are *not* expired the same way, so the Build
+section of the pane keeps working for those points.
+
+Consequences, all in `Run.jobId: number | null`:
+
+- Never request `/jobs/null/` — treeherder answers that with a **500**.
+- The pane reports `expired` rather than "loading…". `selectedJobStatus`
+  on `AppState` is the four-state version of this (`loaded` / `loading` /
+  `expired` / `failed`); a failed lookup is remembered in a negative cache
+  so the selection effect can't reissue it and the pane can't hang.
+- The "Job" link degrades to the push's job list, with no `selectedJob`
+  parameter.
+
 ### Caching and failure
 
 Series data is cached under `(repo, signature, rangeStart, rangeEnd)` — the

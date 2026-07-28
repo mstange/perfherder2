@@ -31,6 +31,13 @@ describe('jobsUrl', () => {
   it('omits selectedJob when there is no job', () => {
     expect(new URL(jobsUrl('autoland', 'abc123')).searchParams.has('selectedJob')).toBe(false);
   });
+
+  // An expired job arrives as an explicit null, not as a missing argument.
+  it('omits selectedJob for an expired job rather than passing null through', () => {
+    const url = new URL(jobsUrl('autoland', 'abc123', null));
+    expect(url.searchParams.has('selectedJob')).toBe(false);
+    expect(url.searchParams.get('revision')).toBe('abc123');
+  });
 });
 
 describe('revisionUrl', () => {

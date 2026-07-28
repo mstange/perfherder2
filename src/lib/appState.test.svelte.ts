@@ -364,6 +364,66 @@ describe('AppState selection', () => {
     }));
 });
 
+// Treeherder expires job rows long before the performance data that points at
+// them, so `job_id: null` is normal for anything more than a few months old.
+// These cases used to leave the details pane on "loading…" indefinitely.
+describe('AppState job details', () => {
+  const jobCalls = () =>
+    fetchMock.mock.calls.filter((c) => String(c[0]).includes('/jobs/')).length;
+
+  it('reports a loaded job', () =>
+    withApp('?series=autoland,1,1&sel=autoland,1,10,0', async (app) => {
+      // Two rounds: the job lookup can only be issued once the series data
+      // has landed and resolved the selection.
+      await settle();
+      await settle();
+      expect(app.selectedJobStatus).toBe('loaded');
+      expect(app.selectedJob).not.toBeNull();
+    }));
+
+  it('reports an expired job without requesting it', () => {
+    const expired = summary(1, [datum({ id: 10, value: 100, push_id: 1, job_id: null })]);
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.includes('/performance/summary/')) return json([expired]);
+      return json({});
+    });
+    return withApp('?series=autoland,1,1&sel=autoland,1,10,0', async (app) => {
+      await settle();
+      expect(app.selection?.run.jobId).toBeNull();
+      expect(app.selectedJobStatus).toBe('expired');
+      expect(app.selectedJob).toBeNull();
+      // `/jobs/null/` is a 500 on the real API — never ask for it.
+      expect(jobCalls()).toBe(0);
+    });
+  });
+
+  it('reports a failed job lookup once instead of retrying it', () => {
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.includes('/performance/summary/')) return json([SAMPLE]);
+      if (url.includes('/jobs/')) {
+        return { ok: false, status: 404, statusText: 'Not Found' } as Response;
+      }
+      return json({});
+    });
+    return withApp('?series=autoland,1,1&sel=autoland,1,10,0', async (app) => {
+      await settle();
+      expect(app.selectedJobStatus).toBe('failed');
+      expect(jobCalls()).toBe(1);
+      // Moving within the same run re-runs the selection effect; the negative
+      // cache has to stop it reissuing the same doomed lookup.
+      app.selectPoint({
+        repository: 'autoland',
+        signatureId: 1,
+        datumId: 10,
+        replicateIndex: 1,
+      });
+      await settle();
+      expect(app.selectedJobStatus).toBe('failed');
+      expect(jobCalls()).toBe(1);
+    });
+  });
+});
+
 describe('AppState URL sync', () => {
   it('writes the view back to the query string', () =>
     withApp('?series=autoland,1,1', (app) => {

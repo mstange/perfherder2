@@ -13,10 +13,13 @@ export type RepoLinkInfo = {
   url: string;
 };
 
-// Treeherder's jobs view, scrolled to the given job.
-export function jobsUrl(repo: string, revision: string, jobId?: number): string {
+// Treeherder's jobs view, scrolled to the given job. `jobId` is nullable
+// because an expired job has none — the push's job list is still the right
+// place to send someone, it just can't be pre-selected. (Passing the null
+// through as `selectedJob=null` would be worse than omitting it.)
+export function jobsUrl(repo: string, revision: string, jobId?: number | null): string {
   const params = new URLSearchParams({ repo, revision, group_state: 'expanded' });
-  if (jobId !== undefined) params.set('selectedJob', String(jobId));
+  if (jobId !== undefined && jobId !== null) params.set('selectedJob', String(jobId));
   return `${TREEHERDER_ORIGIN}/jobs?${params}`;
 }
 

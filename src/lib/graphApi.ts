@@ -14,7 +14,10 @@ import { API_BASE, fetchJson } from './http';
 // `replicates=true` the backend emits one of these *per replicate value*, all
 // sharing the same `id` (datum id), `job_id`, `push_id` and `push_timestamp`.
 export type RawDatum = {
-  job_id: number;
+  // Null once treeherder has expired the job row this datum came from — it
+  // keeps performance data far longer than jobs (~4 months), and nulls the
+  // FK on the way out. Perf data older than that has no job to look up.
+  job_id: number | null;
   id: number;
   value: number;
   // Naive ISO string in UTC, e.g. "2026-07-21T06:38:40" — no zone suffix.
