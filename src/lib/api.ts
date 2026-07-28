@@ -4,7 +4,7 @@
 // repo. Everything else (frameworks, option collections) is small metadata
 // used to give the raw rows human-readable names.
 
-const BASE = 'https://treeherder.mozilla.org/api';
+import { API_BASE as BASE, fetchJson } from './http';
 
 export type Framework = { id: number; name: string };
 
@@ -71,12 +71,6 @@ export type Series = {
   // Precomputed lowercase haystack for fast text filtering.
   searchText: string;
 };
-
-async function fetchJson<T>(url: string): Promise<T> {
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText} for ${url}`);
-  return res.json() as Promise<T>;
-}
 
 export function fetchFrameworks(): Promise<Framework[]> {
   return fetchJson<Framework[]>(`${BASE}/performance/framework/`);
