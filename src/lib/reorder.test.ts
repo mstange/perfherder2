@@ -203,17 +203,19 @@ describe('dragOffsets', () => {
     expect(dragOffsets(dragGeometry(BOXES, 1), 1, 17)[1]).toBe(17);
   });
 
-  it('previews the committed layout exactly, at a slot’s drop position', () => {
-    // Ties the two halves of the module together: park the card in slot `to`
-    // and the transforms describe precisely the layout `reorderSeries` will
-    // produce. That equality is what lets `animate:flip` cover the commit
-    // without anything jumping.
-    for (const boxes of [BOXES, stack([100, 40, 40])]) {
+  it('is the committed layout exactly, at a slot’s drop position', () => {
+    // Park the lifted card on a slot and the transforms describe precisely the
+    // layout `reorderSeries` produces. That is why the drop is cheap: every
+    // card except the lifted one has matching before/after rects, so
+    // `animate:flip` leaves them alone. Checked against a real re-layout, with
+    // tall-card fixtures.
+    for (const boxes of [BOXES, stack([100, 40, 40]), stack([40, 40, 100])]) {
       for (let from = 0; from < boxes.length; from++) {
         const geom = dragGeometry(boxes, from);
         for (let to = 0; to < boxes.length; to++) {
           const offsets = dragOffsets(geom, to, geom.slots[to]);
           const drawnTop = boxes.map((b, j) => b.top + offsets[j]);
+          // Read back in the order the commit will put them in.
           const order = [...boxes.keys()];
           order.splice(to, 0, ...order.splice(from, 1));
           expect(order.map((j) => drawnTop[j])).toEqual(

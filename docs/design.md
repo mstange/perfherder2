@@ -355,6 +355,27 @@ The mechanism, split between
   jumps. The corollary: the neighbours' `transition: transform` is scoped
   to `.sliding` (present only during a drag), because a transition still
   running when flip starts would fight it over the same property.
+
+  Two details of Svelte's implementation make this work, and both are
+  worth knowing before touching it. Flip takes its `from` rect
+  *synchronously* during reconciliation, while the drag transform is
+  still applied, but applies the animation in a *microtask*, by which
+  time the child effect has cleared it — so `from` is the card's visual
+  position and `to` is its new layout slot, which is what we want. And it
+  skips the animation entirely when those two rects match, which is the
+  common case here: `dragOffsets` already describes the committed layout
+  (see `reorder.test.ts`), so on a settled drop only the lifted card
+  animates at all. Note also that flip bakes
+  `getComputedStyle(node).transform` into every keyframe, so an inline
+  transform left on a flipped element gets added on top of the
+  translation rather than replaced.
+
+  **A drop must not make the user wait.** An earlier attempt let the
+  cards transition into place first and committed only once they had
+  stopped, which removes the handover entirely — but it means the app
+  disagrees with what you just did for the length of an animation, and
+  that reads as lag however correct it is. The order commits on
+  `pointerup`, full stop.
 - **The geometry is a list of slot positions, measured once.**
   `dragGeometry` returns, per slot, the `dy` at which the lifted card
   lands in that slot *exactly*: aligned tops with the card currently

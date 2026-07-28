@@ -97,6 +97,11 @@ export function dropIndex({ slots }: DragGeometry, dy: number): number {
 // How far to translate each card mid-drag. The lifted card follows the pointer
 // exactly; everything between its origin and its target steps aside by one
 // `displacement`; everything else stays put.
+//
+// Note that at `dy === slots[to]` these offsets describe the committed layout
+// exactly — the cards are already where `reorderSeries` will put them. That is
+// what keeps the drop cheap: `animate:flip` has nothing to do for any card but
+// the lifted one, because their before/after rects match.
 export function dragOffsets(geom: DragGeometry, to: number, dy: number): number[] {
   const { from, slots, displacement: shift } = geom;
   return slots.map((_, j) => {
