@@ -17,7 +17,12 @@ architecture breaks.**
 
 ## Architecture
 
-- [src/lib/api.ts](../src/lib/api.ts) — types, network calls, `toSeries`
+- [src/lib/http.ts](../src/lib/http.ts) — the only place that calls `fetch`.
+  Validates every response against a valibot schema; see "Validating API
+  responses" below. `HttpError` and `SchemaError` both keep their messages
+  short enough for an error banner.
+- [src/lib/api.ts](../src/lib/api.ts) — schemas + inferred types, network
+  calls, `toSeries`
   (raw signature → enriched `Series`). Framework map + option-collection map
   are fetched once and passed in. `toSeries` bakes `Series.key`
   (`${repo}|${signatureHash}`) and `Series.parentKey` in at construction,
@@ -320,10 +325,56 @@ the compiler interprets `$state(...)` calls as store subscriptions on a
 variable literally named `state` and fails at runtime with
 `store_invalid_shape`. The convention in this file is `picker`.
 
+### Validating API responses
+
+Every response is checked against a [valibot](https://valibot.dev) schema in
+[http.ts](../src/lib/http.ts) before the app sees it, and **every API type is
+inferred from its schema** (`v.InferOutput`) rather than written twice. That
+inference is the main point: a hand-written type is an unverified assertion,
+and ours were wrong — `RawDatum.job_id` claimed `number` while a third of
+live rows are `null`, and the hand-written test fixtures asserting it were
+written from the same wrong belief, so nothing contradicted it.
+
+Rules that keep this honest:
+
+- **Write schemas against treeherder's serializers, not against samples.**
+  The producers are in `~/code/treeherder`:
+  `webapp/api/performance_data.py` (`PerformanceSignatureViewSet.list`
+  hand-builds the signature rows; `PerformanceSummary.list` the datums),
+  `webapp/api/performance_serializers.py`, `webapp/api/serializers.py`
+  (`PushSerializer`, `JobProjectSerializer`, `RepositorySerializer`) and
+  `webapp/api/jobs.py` (`retrieve` adds `logs` and `task_id`). Sampling can
+  only show you what happens to be in the sample: every job we sampled had
+  finished, so no sample would ever reveal that `to_timestamp()` returns
+  `None` and a *running* job has a null `end_timestamp`.
+- **The checkout can lag production.** Production sends a `push.branch` that
+  the checked-out `PushSerializer` doesn't list. Read both.
+- **Unknown fields are not errors.** All schemas use `v.object`, which
+  ignores keys we don't declare, so treeherder adding a field can't break us.
+- **A mismatch is fatal, deliberately.** `SchemaError` rejects the whole
+  response (short message for the UI, full issue list to `console.error`).
+  The alternative — dropping bad rows — hides exactly the drift we want to
+  hear about; the plan is that a loud failure gets reported and the schema
+  gets fixed. Consequence to accept: one changed field can take out a repo's
+  whole series list until we ship a fix.
+- **Cost, measured, on the 22 MB / 54k-row signatures response:** `JSON.parse`
+  25 ms, validation +52 ms, against a ~5 s download — about 1%. Peak heap
+  +18 MB transiently, since valibot builds a validated copy; that copy is
+  short-lived because `toSeries` immediately projects it into `Series` rows.
+  Bundle +2.4 KB gzipped. None of that justified a sampling shortcut.
+- **[schema.test.ts](../src/lib/schema.test.ts) runs recorded real payloads
+  through the schemas**, with the refresh commands in its header comment.
+  It also asserts the fixtures still *cover* the variants that matter (a null
+  `job_id`, each optional field present and absent, hg and git repos) — a
+  re-record that quietly drops those would otherwise stay green and useless.
+
 ## Testing
 
 - **Pure logic** (`filter.ts`, parts of `api.ts`): vitest, no DOM. Run with
   `npm test`. This is where new invariants should be pinned.
+- **API shapes**: `schema.test.ts` (see above). Prefer adding a recorded
+  payload over hand-writing a fixture whenever the question is "what does
+  treeherder actually send?".
 - **Reactive state** (`appState.svelte.ts`, and `pickerState.svelte.ts` when
   someone gets to it): also vitest, driving the real class inside an
   `$effect.root` with `fetch` stubbed. Two pieces of setup make that

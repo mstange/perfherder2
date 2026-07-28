@@ -1,0 +1,271 @@
+{
+ "270403": {
+  "application": "fenix",
+  "extra_options": [
+   "cold",
+   "fission",
+   "webrender"
+  ],
+  "framework_id": 13,
+  "id": 270403,
+  "machine_platform": "android-hw-a55-14-0-aarch64-shippable",
+  "measurement_unit": "ms",
+  "option_collection_hash": "102210fe594ee9b33d82058545b1ed14f4c8206e",
+  "should_alert": true,
+  "signature_hash": "9806e9f3de42b5b4786f13fd9fa46673b1762250",
+  "suite": "bing-search-restaurants",
+  "tags": [
+   "cold",
+   "fission",
+   "webrender"
+  ],
+  "test": "PerceptualSpeedIndex"
+ },
+ "303330": {
+  "application": "firefox",
+  "extra_options": [
+   "e10s",
+   "fission",
+   "stylo",
+   "webrender-sw"
+  ],
+  "framework_id": 1,
+  "has_subtests": true,
+  "id": 303330,
+  "machine_platform": "macosx1470-64-shippable",
+  "option_collection_hash": "102210fe594ee9b33d82058545b1ed14f4c8206e",
+  "should_alert": true,
+  "signature_hash": "05c1e61dfd47ee2773c29b42a899d0dec777aeb2",
+  "suite": "tp5o_webext"
+ },
+ "304416": {
+  "application": "firefox",
+  "extra_options": [
+   "e10s",
+   "fission",
+   "stylo",
+   "webrender"
+  ],
+  "framework_id": 1,
+  "id": 304416,
+  "machine_platform": "macosx1470-64-shippable",
+  "measurement_unit": "ms",
+  "option_collection_hash": "102210fe594ee9b33d82058545b1ed14f4c8206e",
+  "parent_signature": "812f8e5314a097f53ee2daf285c82c214928fab7",
+  "should_alert": true,
+  "signature_hash": "301b9064a6c2e5c9b34b334732bb6ed1300fd0f2",
+  "suite": "pdfpaint",
+  "test": "vesta.pdf"
+ },
+ "5064827": {
+  "extra_options": [
+   "instrumented"
+  ],
+  "framework_id": 2,
+  "id": 5064827,
+  "machine_platform": "win64-nightlyasrelease",
+  "option_collection_hash": "102210fe594ee9b33d82058545b1ed14f4c8206e",
+  "parent_signature": "fe3a4ab0cf6d5ee54050b012926f57b7daf10af8",
+  "should_alert": null,
+  "signature_hash": "fa91f40bfad8a246e3309649780af0a03bfc41f9",
+  "suite": "XUL section sizes",
+  "test": ".bss"
+ },
+ "5275952": {
+  "application": "firefox",
+  "extra_options": [
+   "fission",
+   "webrender"
+  ],
+  "framework_id": 13,
+  "id": 5275952,
+  "lower_is_better": false,
+  "machine_platform": "windows11-64-24h2-shippable",
+  "measurement_unit": "score",
+  "option_collection_hash": "102210fe594ee9b33d82058545b1ed14f4c8206e",
+  "parent_signature": "dea44ebb55324d7dfa3142d5a0bfdceea38bf04d",
+  "should_alert": null,
+  "signature_hash": "e0bf5d40930a6e2af7f44688482ec5be1f68f82c",
+  "suite": "youtube-playback-hfr",
+  "tags": [
+   "fission",
+   "webrender"
+  ],
+  "test": "VP91440p60fps@0.5X_decoded_frames"
+ },
+ "5277071": {
+  "application": "firefox",
+  "extra_options": [
+   "fission",
+   "webrender"
+  ],
+  "framework_id": 13,
+  "id": 5277071,
+  "machine_platform": "windows11-64-24h2-shippable",
+  "measurement_unit": "score",
+  "option_collection_hash": "102210fe594ee9b33d82058545b1ed14f4c8206e",
+  "parent_signature": "1da1e754820acc94b45e3065a75316da0b895bba",
+  "should_alert": null,
+  "signature_hash": "34110511ab17dde4e54cf102077faf6cef19ae97",
+  "suite": "youtube-playback-widevine-hfr",
+  "tags": [
+   "fission",
+   "webrender"
+  ],
+  "test": "VP9720pMQ60fps@1.75X_dropped_frames"
+ },
+ "5279188": {
+  "application": "firefox",
+  "framework_id": 15,
+  "id": 5279188,
+  "machine_platform": "windows11-64-24h2-shippable",
+  "measurement_unit": "ms",
+  "option_collection_hash": "102210fe594ee9b33d82058545b1ed14f4c8206e",
+  "should_alert": false,
+  "signature_hash": "7ba18dd9ab3cdf639cd690672205e5cc6fed67ca",
+  "suite": "browser_ml_engine_perf.js",
+  "test": "EXAMPLE-decoding-latency"
+ },
+ "5307219": {
+  "application": "firefox",
+  "extra_options": [
+   "e10s",
+   "fission",
+   "stylo",
+   "webrender"
+  ],
+  "framework_id": 1,
+  "has_subtests": true,
+  "id": 5307219,
+  "machine_platform": "windows11-64-24h2-shippable",
+  "option_collection_hash": "102210fe594ee9b33d82058545b1ed14f4c8206e",
+  "should_alert": true,
+  "signature_hash": "ec12de0440c8a0fd15671c7fb22fb8f3f3de4c31",
+  "suite": "perf_reftest"
+ },
+ "5318197": {
+  "application": "custom-car",
+  "framework_id": 13,
+  "id": 5318197,
+  "lower_is_better": false,
+  "machine_platform": "windows11-64-24h2-shippable",
+  "measurement_unit": "score",
+  "option_collection_hash": "102210fe594ee9b33d82058545b1ed14f4c8206e",
+  "parent_signature": "83eb0ff9712d6e751e3ab694d7691a41ee6afe71",
+  "should_alert": true,
+  "signature_hash": "c4d0425b7c0e6779c0148cc80dc7e9908435756d",
+  "suite": "jetstream3",
+  "test": "bomb-workers-Geometric"
+ },
+ "5325908": {
+  "application": "chrome",
+  "framework_id": 13,
+  "id": 5325908,
+  "lower_is_better": false,
+  "machine_platform": "macosx1470-64-shippable",
+  "measurement_unit": "score",
+  "option_collection_hash": "102210fe594ee9b33d82058545b1ed14f4c8206e",
+  "parent_signature": "45e9e11741c3e8c36b659b712fc654d86a0862e5",
+  "should_alert": null,
+  "signature_hash": "01029686827c0f37067854853f9affa0525cfc3b",
+  "suite": "jetstream2",
+  "test": "Babylon-First"
+ },
+ "5447362": {
+  "extra_options": [
+   "instrumented",
+   "taskcluster-projects/970387039909/machineTypes/c3d-standard-16-lssd"
+  ],
+  "framework_id": 2,
+  "id": 5447362,
+  "machine_platform": "osx-aarch64-shippable",
+  "option_collection_hash": "102210fe594ee9b33d82058545b1ed14f4c8206e",
+  "parent_signature": "dbb0de6852788211a2250827a101a6945aa754c4",
+  "should_alert": null,
+  "signature_hash": "3152011e948713caee32202d1942b1ba7fcb84b7",
+  "suite": "build times",
+  "test": "export"
+ },
+ "5508032": {
+  "framework_id": 6,
+  "id": 5508032,
+  "machine_platform": "windows10-64-2009-shippable-qr",
+  "option_collection_hash": "102210fe594ee9b33d82058545b1ed14f4c8206e",
+  "should_alert": true,
+  "signature_hash": "a9748efd69d791e87d023114ca774a83c69451e6",
+  "suite": "BenchSign_SHA3_224_HMAC",
+  "test": "16k"
+ },
+ "5702261": {
+  "application": "firefox",
+  "extra_options": [
+   "fission",
+   "webrender"
+  ],
+  "framework_id": 13,
+  "id": 5702261,
+  "machine_platform": "linux2404-64-shippable",
+  "measurement_unit": "ms",
+  "option_collection_hash": "102210fe594ee9b33d82058545b1ed14f4c8206e",
+  "parent_signature": "3134ee927ddcf4dc90829e6d22c20c0bda124efa",
+  "should_alert": true,
+  "signature_hash": "1543a697e6c7a1dee90c85a9951dc202622c046c",
+  "suite": "stylebench",
+  "tags": [
+   "fission",
+   "webrender"
+  ],
+  "test": "Nth pseudo classes/Removing classes - 0/Sync"
+ },
+ "5852646": {
+  "framework_id": 18,
+  "has_subtests": true,
+  "id": 5852646,
+  "machine_platform": "windows11-64-25h2",
+  "measurement_unit": "s",
+  "option_collection_hash": "102210fe594ee9b33d82058545b1ed14f4c8206e",
+  "should_alert": false,
+  "signature_hash": "4d359a2ebbd13d0c6f9eca08a88e6529ae38f227",
+  "suite": "verify-device"
+ },
+ "5922249": {
+  "application": "firefox",
+  "extra_options": [
+   "e10s",
+   "fission",
+   "nova",
+   "stylo",
+   "webrender"
+  ],
+  "framework_id": 1,
+  "id": 5922249,
+  "machine_platform": "macosx1470-64-shippable",
+  "measurement_unit": "ms",
+  "option_collection_hash": "102210fe594ee9b33d82058545b1ed14f4c8206e",
+  "parent_signature": "525ac4131e0f6a611c34bf8c3912b863117335d0",
+  "should_alert": true,
+  "signature_hash": "1e8d116a5b9d90590d82a85a0fe3cbb018bd5d84",
+  "suite": "pdfpaint",
+  "test": "issue13916.pdf"
+ },
+ "5925111": {
+  "application": "firefox",
+  "extra_options": [
+   "e10s",
+   "fission",
+   "nova",
+   "stylo",
+   "webrender-sw"
+  ],
+  "framework_id": 1,
+  "id": 5925111,
+  "machine_platform": "windows11-64-24h2-shippable",
+  "measurement_unit": "1/FPS",
+  "option_collection_hash": "102210fe594ee9b33d82058545b1ed14f4c8206e",
+  "parent_signature": "bed82d4985c021f6e2648cd46c48f2a908097994",
+  "should_alert": false,
+  "signature_hash": "bcfb86a88de6f24c6e18fe5d9b39d327c40a440f",
+  "suite": "tp5o_scroll",
+  "test": "CSSOM.bild.de"
+ }
+}

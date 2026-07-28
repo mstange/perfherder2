@@ -1,0 +1,171 @@
+[
+ {
+  "alert_change_type": null,
+  "alert_threshold": 2.0,
+  "application": "firefox",
+  "data": [
+   {
+    "id": 2082737755,
+    "job_id": null,
+    "push_id": 1691411,
+    "push_timestamp": "2025-07-28T09:34:14",
+    "revision": "98b3f60f53d81b2621c1a18abc5b144ef43b9a3a",
+    "submit_time": null,
+    "value": 1380.4506499999989
+   },
+   {
+    "id": 2083051603,
+    "job_id": null,
+    "push_id": 1691785,
+    "push_timestamp": "2025-07-28T16:44:45",
+    "revision": "1d8c4ad21ed7547360c15615b93baaf5a09e78d2",
+    "submit_time": null,
+    "value": 1380.674849999994
+   },
+   {
+    "id": 2084041257,
+    "job_id": null,
+    "push_id": 1692909,
+    "push_timestamp": "2025-07-29T21:04:51",
+    "revision": "2ea6d2269b5c30f23edce29f980b85dde8ca4ce1",
+    "submit_time": null,
+    "value": 1377.6356000000087
+   },
+   {
+    "id": 2084538022,
+    "job_id": null,
+    "push_id": 1693223,
+    "push_timestamp": "2025-07-30T09:25:27",
+    "revision": "320fe0da2b9f0462e2afaa418ce3560763ecadb2",
+    "submit_time": null,
+    "value": 1380.3282500000187
+   },
+   {
+    "id": 2084987133,
+    "job_id": null,
+    "push_id": 1693780,
+    "push_timestamp": "2025-07-30T21:32:01",
+    "revision": "565d0976338ae3aacddf5694af026bf22e81f153",
+    "submit_time": null,
+    "value": 1375.1535500000173
+   },
+   {
+    "id": 2085218010,
+    "job_id": null,
+    "push_id": 1693987,
+    "push_timestamp": "2025-07-31T04:35:31",
+    "revision": "eb2b9607e7b8f901ada02bb6ed7113a0a6640833",
+    "submit_time": null,
+    "value": 1367.1977999999945
+   },
+   {
+    "id": 2085591795,
+    "job_id": null,
+    "push_id": 1694356,
+    "push_timestamp": "2025-07-31T15:37:14",
+    "revision": "d34398f3889876cdcd3766561306d4e49e29ddf4",
+    "submit_time": null,
+    "value": 1373.6466500000097
+   },
+   {
+    "id": 2085999569,
+    "job_id": null,
+    "push_id": 1694889,
+    "push_timestamp": "2025-08-01T04:30:50",
+    "revision": "3aa49d22daec85ab6d133e78cdc66f060116ae7c",
+    "submit_time": null,
+    "value": 1369.3747500000463
+   },
+   {
+    "id": 2384881142,
+    "job_id": 556637099,
+    "push_id": 1871529,
+    "push_timestamp": "2026-03-30T09:33:32",
+    "revision": "381df99d5fa440f09960e020224cc87918380c4c",
+    "submit_time": null,
+    "value": 1298.2746999999508
+   },
+   {
+    "id": 2384881142,
+    "job_id": 556637099,
+    "push_id": 1871529,
+    "push_timestamp": "2026-03-30T09:33:32",
+    "revision": "381df99d5fa440f09960e020224cc87918380c4c",
+    "submit_time": null,
+    "value": 1274.580700000006
+   },
+   {
+    "id": 2384881142,
+    "job_id": 556637099,
+    "push_id": 1871529,
+    "push_timestamp": "2026-03-30T09:33:32",
+    "revision": "381df99d5fa440f09960e020224cc87918380c4c",
+    "submit_time": null,
+    "value": 1379.9460000000108
+   },
+   {
+    "id": 2384881142,
+    "job_id": 556637099,
+    "push_id": 1871529,
+    "push_timestamp": "2026-03-30T09:33:32",
+    "revision": "381df99d5fa440f09960e020224cc87918380c4c",
+    "submit_time": null,
+    "value": 1296.2995999999985
+   },
+   {
+    "id": 2384881142,
+    "job_id": 556637099,
+    "push_id": 1871529,
+    "push_timestamp": "2026-03-30T09:33:32",
+    "revision": "381df99d5fa440f09960e020224cc87918380c4c",
+    "submit_time": null,
+    "value": 1238.77429999999
+   },
+   {
+    "id": 2384881142,
+    "job_id": 556637099,
+    "push_id": 1871529,
+    "push_timestamp": "2026-03-30T09:33:32",
+    "revision": "381df99d5fa440f09960e020224cc87918380c4c",
+    "submit_time": null,
+    "value": 1302.5256000000518
+   },
+   {
+    "id": 2384881142,
+    "job_id": 556637099,
+    "push_id": 1871529,
+    "push_timestamp": "2026-03-30T09:33:32",
+    "revision": "381df99d5fa440f09960e020224cc87918380c4c",
+    "submit_time": null,
+    "value": 1336.8274999999958
+   },
+   {
+    "id": 2384881142,
+    "job_id": 556637099,
+    "push_id": 1871529,
+    "push_timestamp": "2026-03-30T09:33:32",
+    "revision": "381df99d5fa440f09960e020224cc87918380c4c",
+    "submit_time": null,
+    "value": 1292.650099999999
+   }
+  ],
+  "framework_id": 12,
+  "has_subtests": false,
+  "job_ids": [],
+  "lower_is_better": true,
+  "measurement_unit": "ms",
+  "name": "damp custom.jsdebugger.stepIn.big-bundle.DAMP opt e10s fission stylo webrender",
+  "parent_signature": 5309052,
+  "platform": "windows11-64-24h2-shippable",
+  "repository_id": 1,
+  "repository_name": "mozilla-central",
+  "should_alert": true,
+  "signature_hash": "e59d118c117c066ce163f28fbfca2327c8f72306",
+  "signature_id": 5310381,
+  "submit_times": [],
+  "suite": "damp",
+  "tags": "",
+  "test": "custom.jsdebugger.stepIn.big-bundle.DAMP",
+  "values": []
+ }
+]

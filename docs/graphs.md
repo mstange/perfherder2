@@ -120,7 +120,11 @@ Recovery is the explicit Retry button.
 ## Code map
 
 - [graphApi.ts](../src/lib/graphApi.ts) — the three endpoints, plus
-  `/repository/` for hg-vs-git link shapes. Network only.
+  `/repository/` for hg-vs-git link shapes. Network and the valibot schemas
+  that every response is validated against; the `Raw*`, `Push` and `Job`
+  types are inferred from those schemas. See design.md, "Validating API
+  responses" — including why nullability is transcribed from treeherder's
+  serializers rather than from sampled payloads.
 - [graphData.ts](../src/lib/graphData.ts) — **pure**. Flat rows →
   push/run/replicate, plus the flat arrays the renderer walks.
 - [chart.ts](../src/lib/chart.ts) — **pure**. Scales, domains, ticks,

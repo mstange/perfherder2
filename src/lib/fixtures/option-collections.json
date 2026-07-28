@@ -1,0 +1,50 @@
+[
+ {
+  "option_collection_hash": "01f561ac4ab15d6a23a57976bba4dbcc423b9cbb",
+  "options": [
+   {
+    "name": "release"
+   }
+  ]
+ },
+ {
+  "option_collection_hash": "03abd064e50ec12b8c7309950268531d78c63f60",
+  "options": [
+   {
+    "name": "asan"
+   }
+  ]
+ },
+ {
+  "option_collection_hash": "0492e0df40077c04b1943dc1aadb32c659080fac",
+  "options": [
+   {
+    "name": "fuzz"
+   }
+  ]
+ },
+ {
+  "option_collection_hash": "07523927973c128520eb9b8598bda2ce98a37579",
+  "options": [
+   {
+    "name": "aarch64"
+   }
+  ]
+ },
+ {
+  "option_collection_hash": "0abf8f46ab88f391a783de2bd230d3f2ce5570e9",
+  "options": [
+   {
+    "name": "mingw32-32"
+   }
+  ]
+ },
+ {
+  "option_collection_hash": "0cc61e31c0f6a2e2bff834386ceb88a7ca0882a6",
+  "options": [
+   {
+    "name": "arm-opt"
+   }
+  ]
+ }
+]

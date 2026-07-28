@@ -6,6 +6,9 @@
     "module": "esnext",
     "types": ["svelte", "vite/client"],
     "allowArbitraryExtensions": true,
+    // For the recorded API payloads in src/lib/fixtures/, which schema.test.ts
+    // imports directly.
+    "resolveJsonModule": true,
     "noEmit": true,
     /**
      * Typecheck JS in `.svelte` and `.js` files by default.

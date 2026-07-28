@@ -8,85 +8,119 @@
 // See docs/graphs.md for why we pass absolute startday/endday instead of
 // treeherder's relative `interval`, and for the replicates quirk.
 
+import * as v from 'valibot';
 import { API_BASE, fetchJson } from './http';
+
+// ---- Schemas -------------------------------------------------------------
+// As in api.ts: types are inferred, `v.object` tolerates fields we don't
+// declare, and nullability comes from treeherder's serializers rather than
+// from whatever a sample happened to contain.
 
 // One row of `data[]` in a performance/summary response. With
 // `replicates=true` the backend emits one of these *per replicate value*, all
 // sharing the same `id` (datum id), `job_id`, `push_id` and `push_timestamp`.
-export type RawDatum = {
+// Producer: `PerformanceDatumSerializer` + the hand-built dicts in
+// `PerformanceSummary.list`.
+export const RawDatumSchema = v.object({
   // Null once treeherder has expired the job row this datum came from — it
   // keeps performance data far longer than jobs (~4 months), and nulls the
   // FK on the way out. Perf data older than that has no job to look up.
-  job_id: number | null;
-  id: number;
-  value: number;
+  // 153,301 of 412,451 live rows sampled over a year were null.
+  job_id: v.nullable(v.number()),
+  id: v.number(),
+  value: v.number(),
   // Naive ISO string in UTC, e.g. "2026-07-21T06:38:40" — no zone suffix.
-  push_timestamp: string;
-  push_id: number;
-  revision: string;
-  submit_time: string | null;
-};
+  push_timestamp: v.string(),
+  push_id: v.number(),
+  revision: v.string(),
+  // `allow_null=True, default=None` on the serializer, and null in every row
+  // we've observed.
+  submit_time: v.nullish(v.string()),
+});
+export type RawDatum = v.InferOutput<typeof RawDatumSchema>;
 
-export type RawSummary = {
-  signature_id: number;
-  framework_id: number;
-  signature_hash: string;
-  platform: string;
-  test: string;
-  suite: string;
-  lower_is_better: boolean;
-  has_subtests: boolean;
-  measurement_unit: string | null;
-  application: string;
-  repository_name: string;
-  repository_id: number;
+// Producer: `PerformanceSummarySerializer`. Note `tags` is a plain space-
+// separated string here, unlike the list the signatures endpoint returns for
+// the same column — a good example of why one schema per endpoint, not per
+// database table.
+export const RawSummarySchema = v.object({
+  signature_id: v.number(),
+  framework_id: v.number(),
+  signature_hash: v.string(),
+  platform: v.string(),
+  // "" for a summary series, per the model's `blank=True`.
+  test: v.string(),
+  suite: v.string(),
+  lower_is_better: v.boolean(),
+  has_subtests: v.boolean(),
+  measurement_unit: v.nullable(v.string()),
+  application: v.string(),
+  repository_name: v.string(),
+  repository_id: v.number(),
   // "<suite> <test> <option_name> <extra_options>", composed server-side.
-  name: string;
-  parent_signature: number | null;
-  should_alert: boolean | null;
-  data: RawDatum[];
-};
+  name: v.string(),
+  // The parent's signature *id* — not its hash, unlike the signatures
+  // endpoint's `parent_signature`.
+  parent_signature: v.nullable(v.number()),
+  should_alert: v.nullable(v.boolean()),
+  data: v.array(RawDatumSchema),
+});
+export type RawSummary = v.InferOutput<typeof RawSummarySchema>;
 
 // A revision inside a push. `comments` is the full commit message.
-export type PushRevision = {
-  revision: string;
-  author: string;
-  comments: string;
-};
+export const PushRevisionSchema = v.object({
+  revision: v.string(),
+  author: v.string(),
+  comments: v.string(),
+});
+export type PushRevision = v.InferOutput<typeof PushRevisionSchema>;
 
-export type Push = {
-  id: number;
-  revision: string;
-  author: string;
+// Producer: `PushSerializer`. `revisions` is capped at 20 by the serializer,
+// so `revision_count` is the only source for the real total.
+export const PushSchema = v.object({
+  id: v.number(),
+  revision: v.string(),
+  author: v.string(),
   // Seconds since epoch (unlike the datum's ISO string).
-  push_timestamp: number;
-  revisions: PushRevision[];
-  revision_count: number;
-};
+  push_timestamp: v.number(),
+  revisions: v.array(PushRevisionSchema),
+  revision_count: v.number(),
+});
+export type Push = v.InferOutput<typeof PushSchema>;
 
-export type JobLog = { name: string; url: string };
+export const JobLogSchema = v.object({ name: v.string(), url: v.string() });
+export type JobLog = v.InferOutput<typeof JobLogSchema>;
 
-export type Job = {
-  id: number;
-  job_type_name: string;
-  job_type_symbol: string;
-  job_group_name: string;
-  job_group_symbol: string;
-  platform: string;
-  machine_name: string;
+// Producer: `JobProjectSerializer.to_representation`, plus the extras that
+// `JobsViewSet.retrieve` bolts on (`logs`, and `task_id` only when the job
+// has taskcluster metadata).
+//
+// The three timestamps go through `to_timestamp()`, which returns None for a
+// datetime that isn't set — so a running job has a null `end_timestamp`, and
+// a pending one a null `start_timestamp` too. Sampling completed jobs would
+// never have shown that.
+export const JobSchema = v.object({
+  id: v.number(),
+  job_type_name: v.string(),
+  job_type_symbol: v.string(),
+  job_group_name: v.string(),
+  job_group_symbol: v.string(),
+  platform: v.string(),
+  machine_name: v.string(),
   // "success" | "testfailed" | "busted" | ...
-  result: string;
+  result: v.string(),
   // "completed" | "running" | "pending"
-  state: string;
-  submit_timestamp: number;
-  start_timestamp: number;
-  end_timestamp: number;
-  who: string;
-  tier: number;
-  push_id: number;
-  task_id?: string;
-  logs?: JobLog[];
-};
+  state: v.string(),
+  submit_timestamp: v.nullable(v.number()),
+  start_timestamp: v.nullable(v.number()),
+  end_timestamp: v.nullable(v.number()),
+  who: v.string(),
+  tier: v.number(),
+  push_id: v.number(),
+  task_id: v.optional(v.string()),
+  logs: v.optional(v.array(JobLogSchema)),
+});
+export type Job = v.InferOutput<typeof JobSchema>;
 
 // The summary endpoint's startday/endday are parsed as naive UTC datetimes,
 // so we must not send a "Z" or an offset — `toISOString().slice(0, 19)` is
@@ -130,7 +164,8 @@ export async function fetchSummary(
   endMs: number,
   signal?: AbortSignal,
 ): Promise<RawSummary | null> {
-  const list = await fetchJson<RawSummary[]>(
+  const list = await fetchJson(
+    v.array(RawSummarySchema),
     summaryUrl(repository, signatureId, frameworkId, startMs, endMs),
     signal,
   );
@@ -142,7 +177,8 @@ export function fetchPush(
   pushId: number,
   signal?: AbortSignal,
 ): Promise<Push> {
-  return fetchJson<Push>(
+  return fetchJson(
+    PushSchema,
     `${API_BASE}/project/${encodeURIComponent(repository)}/push/${pushId}/`,
     signal,
   );
@@ -153,19 +189,24 @@ export function fetchJob(
   jobId: number,
   signal?: AbortSignal,
 ): Promise<Job> {
-  return fetchJson<Job>(
+  return fetchJson(
+    JobSchema,
     `${API_BASE}/project/${encodeURIComponent(repository)}/jobs/${jobId}/`,
     signal,
   );
 }
 
-export type RepositoryInfo = {
-  id: number;
-  name: string;
-  dvcs_type: string;
-  url: string;
-};
+// Producer: `RepositorySerializer` with `fields = "__all__"`, so this is a
+// small subset of a much wider row.
+export const RepositoryInfoSchema = v.object({
+  id: v.number(),
+  name: v.string(),
+  // "hg" or "git"; decides the pushlog and revision URL shapes.
+  dvcs_type: v.string(),
+  url: v.string(),
+});
+export type RepositoryInfo = v.InferOutput<typeof RepositoryInfoSchema>;
 
 export function fetchRepositories(signal?: AbortSignal): Promise<RepositoryInfo[]> {
-  return fetchJson<RepositoryInfo[]>(`${API_BASE}/repository/`, signal);
+  return fetchJson(v.array(RepositoryInfoSchema), `${API_BASE}/repository/`, signal);
 }

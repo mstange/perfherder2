@@ -1,0 +1,78 @@
+[
+ {
+  "accepts_pull_requests": false,
+  "active_status": "active",
+  "codebase": "gecko",
+  "description": "The destination for automatically landed Firefox commits.",
+  "dvcs_type": "hg",
+  "expire_performance_data": false,
+  "id": 77,
+  "is_try_repo": false,
+  "life_cycle_order": null,
+  "name": "autoland",
+  "performance_alerts_enabled": true,
+  "repository_group": {
+   "description": "Collection of repositories where code initially lands in the development process",
+   "name": "development"
+  },
+  "tc_root_url": "https://firefox-ci-tc.services.mozilla.com",
+  "url": "https://hg.mozilla.org/integration/autoland"
+ },
+ {
+  "accepts_pull_requests": false,
+  "active_status": "active",
+  "codebase": "gecko",
+  "description": "",
+  "dvcs_type": "hg",
+  "expire_performance_data": false,
+  "id": 1,
+  "is_try_repo": false,
+  "life_cycle_order": 10,
+  "name": "mozilla-central",
+  "performance_alerts_enabled": false,
+  "repository_group": {
+   "description": "Collection of repositories where code initially lands in the development process",
+   "name": "development"
+  },
+  "tc_root_url": "https://firefox-ci-tc.services.mozilla.com",
+  "url": "https://hg.mozilla.org/mozilla-central"
+ },
+ {
+  "accepts_pull_requests": false,
+  "active_status": "active",
+  "codebase": "gecko",
+  "description": "",
+  "dvcs_type": "hg",
+  "expire_performance_data": true,
+  "id": 4,
+  "is_try_repo": true,
+  "life_cycle_order": null,
+  "name": "try",
+  "performance_alerts_enabled": false,
+  "repository_group": {
+   "description": "Collection of repositories where code initially lands in the development process",
+   "name": "development"
+  },
+  "tc_root_url": "https://firefox-ci-tc.services.mozilla.com",
+  "url": "https://hg.mozilla.org/try"
+ },
+ {
+  "accepts_pull_requests": false,
+  "active_status": "active",
+  "codebase": "firefox-ios",
+  "description": "",
+  "dvcs_type": "git",
+  "expire_performance_data": false,
+  "id": 131,
+  "is_try_repo": false,
+  "life_cycle_order": null,
+  "name": "firefox-ios",
+  "performance_alerts_enabled": true,
+  "repository_group": {
+   "description": "Repositories for https://github.com/mozilla-mobile",
+   "name": "mobile"
+  },
+  "tc_root_url": "https://firefox-ci-tc.services.mozilla.com",
+  "url": "https://github.com/mozilla-mobile/firefox-ios"
+ }
+]

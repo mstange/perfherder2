@@ -5,7 +5,7 @@
 import { flushSync } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AppState } from './appState.svelte';
-import type { RawDatum, RawSummary } from './graphApi';
+import type { Job, Push, RawDatum, RawSummary } from './graphApi';
 
 const DAY = 86400000;
 const NOW = Date.UTC(2026, 6, 27, 12, 0, 0);
@@ -51,12 +51,53 @@ const SAMPLE = summary(1, [
   datum({ id: 11, value: 210, push_id: 2, push_timestamp: '2026-07-22T06:00:00' }),
 ]);
 
+// Detail payloads have to be schema-valid now, not just truthy: the fetch
+// layer validates every response (see http.ts), so `{}` would be rejected the
+// same way a treeherder shape change would be.
+function push(overrides: Partial<Push> = {}): Push {
+  return {
+    id: 1,
+    revision: 'a'.repeat(40),
+    author: 'someone@mozilla.com',
+    push_timestamp: 1784548800,
+    revision_count: 1,
+    revisions: [
+      { revision: 'a'.repeat(40), author: 'someone@mozilla.com', comments: 'Bug 1 - do a thing' },
+    ],
+    ...overrides,
+  };
+}
+
+function job(overrides: Partial<Job> = {}): Job {
+  return {
+    id: 510,
+    job_type_name: 'test-linux2404-64-shippable/opt-talos-g1',
+    job_type_symbol: 'g1',
+    job_group_name: 'Talos performance tests',
+    job_group_symbol: 'T',
+    platform: 'linux2404-64-shippable',
+    machine_name: 'i-0abc',
+    result: 'success',
+    state: 'completed',
+    submit_timestamp: 1784548000,
+    start_timestamp: 1784548400,
+    end_timestamp: 1784549000,
+    who: 'someone@mozilla.com',
+    tier: 1,
+    push_id: 1,
+    task_id: 'VS4H7qUmRhq7nn_ENn1fxw',
+    ...overrides,
+  };
+}
+
 let fetchMock: ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
   fetchMock = vi.fn(async (url: string) => {
     if (url.includes('/performance/summary/')) return json([SAMPLE]);
     if (url.includes('/repository/')) return json([]);
+    if (url.includes('/push/')) return json(push());
+    if (url.includes('/jobs/')) return json(job());
     return json({});
   });
   vi.stubGlobal('fetch', fetchMock);

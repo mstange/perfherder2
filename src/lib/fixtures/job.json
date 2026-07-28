@@ -1,0 +1,66 @@
+{
+ "build_architecture": "-",
+ "build_os": "-",
+ "build_platform": "macosx1470-64-shippable",
+ "build_platform_id": 74,
+ "build_system_type": "taskcluster",
+ "end_timestamp": 1774860636,
+ "failure_classification_id": 1,
+ "id": 556607898,
+ "job_group_description": "",
+ "job_group_id": 991,
+ "job_group_name": "Talos performance tests",
+ "job_group_symbol": "T",
+ "job_guid": "552e07ee-a526-461a-bb9e-7fc4367d5fc7/0",
+ "job_type_description": "",
+ "job_type_id": 17330,
+ "job_type_name": "test-macosx1470-64-shippable/opt-talos-perf-reftest",
+ "job_type_symbol": "p",
+ "last_modified": "2026-03-30T08:50:36.366007",
+ "logs": [
+  {
+   "name": "errorsummary_json",
+   "url": "https://firefox-ci-tc.services.mozilla.com/api/queue/v1/task/VS4H7qUmRhq7nn_ENn1fxw/runs/0/artifacts/public/test_info/perf-reftest_errorsummary.log"
+  },
+  {
+   "name": "live_backing_log",
+   "url": "https://firefox-ci-tc.services.mozilla.com/api/queue/v1/task/VS4H7qUmRhq7nn_ENn1fxw/runs/0/artifacts/public/logs/live_backing.log"
+  },
+  {
+   "name": "perfherder-data-fetch-content.json",
+   "url": "https://firefox-ci-tc.services.mozilla.com/api/queue/v1/task/VS4H7qUmRhq7nn_ENn1fxw/runs/0/artifacts/public/fetch/perfherder-data-fetch-content.json"
+  },
+  {
+   "name": "perfherder-data.json",
+   "url": "https://firefox-ci-tc.services.mozilla.com/api/queue/v1/task/VS4H7qUmRhq7nn_ENn1fxw/runs/0/artifacts/public/test_info/perfherder-data.json"
+  },
+  {
+   "name": "perfherder-data-mozharness-actions.json",
+   "url": "https://firefox-ci-tc.services.mozilla.com/api/queue/v1/task/VS4H7qUmRhq7nn_ENn1fxw/runs/0/artifacts/public/build/perfherder-data-mozharness-actions.json"
+  }
+ ],
+ "machine_name": "macmini-r8-42",
+ "machine_platform_architecture": "-",
+ "machine_platform_os": "-",
+ "option_collection_hash": "102210fe594ee9b33d82058545b1ed14f4c8206e",
+ "platform": "macosx1470-64-shippable",
+ "platform_option": "opt",
+ "push_id": 1871418,
+ "reason": "scheduled",
+ "ref_data_name": "8c23b43cf3ff13136800835c2915a29b3c5d9ed9",
+ "resource_uri": "/api/project/autoland/jobs/556607898/",
+ "result": "success",
+ "result_set_id": 1871418,
+ "retry_id": 0,
+ "signature": "8c23b43cf3ff13136800835c2915a29b3c5d9ed9",
+ "start_timestamp": 1774860003,
+ "state": "completed",
+ "submit_timestamp": 1774852581,
+ "task_id": "VS4H7qUmRhq7nn_ENn1fxw",
+ "taskcluster_metadata": {
+  "retry_id": 0,
+  "task_id": "VS4H7qUmRhq7nn_ENn1fxw"
+ },
+ "tier": 1,
+ "who": "flodolo@mozilla.com"
+}

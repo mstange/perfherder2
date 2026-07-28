@@ -1,0 +1,18 @@
+{
+ "author": "flodolo@mozilla.com",
+ "branch": null,
+ "id": 1871418,
+ "push_timestamp": 1774852495,
+ "repository_id": 77,
+ "revision": "381df99d5fa440f09960e020224cc87918380c4c",
+ "revision_count": 1,
+ "revisions": [
+  {
+   "author": "Francesco Lodolo <flod@lodolo.net>",
+   "comments": "Bug 2026117 - Update language names used in Focus language switcher, r=android-reviewers,mcarare\n\nDifferential Revision: https://phabricator.services.mozilla.com/D289729\n",
+   "repository_id": 77,
+   "result_set_id": 1871418,
+   "revision": "381df99d5fa440f09960e020224cc87918380c4c"
+  }
+ ]
+}
