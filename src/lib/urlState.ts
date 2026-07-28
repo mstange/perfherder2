@@ -18,12 +18,14 @@ import {
   type SortColumn,
   type SortState,
 } from './filter';
-import type { SeriesRef } from './graphData';
+import { MEAN_REPLICATE, type SeriesRef } from './graphData';
 
 export type SelectedPoint = {
   repository: string;
   signatureId: number;
   datumId: number;
+  // A real replicate index, or MEAN_REPLICATE for the run's mean — which is
+  // what a click selects while replicate drawing is off.
   replicateIndex: number;
 };
 
@@ -69,6 +71,10 @@ export type ViewState = {
   // Sub-range shown by the detail graph. Null means "same as range".
   zoom: { start: number; end: number } | null;
   selected: SelectedPoint | null;
+  // Whether the graphs draw every replicate or one dot per run at its mean.
+  // Two-valued, not three: unlike the picker's fields there is no caller with
+  // no opinion, so an absent param simply means the default (on).
+  showReplicates: boolean;
   pickerOpen: boolean;
   picker: PickerViewState;
 };
@@ -78,6 +84,7 @@ export const EMPTY_VIEW_STATE: ViewState = {
   range: null,
   zoom: null,
   selected: null,
+  showReplicates: true,
   pickerOpen: false,
   picker: EMPTY_PICKER_VIEW,
 };
@@ -130,7 +137,7 @@ function parseSelected(s: string | null): SelectedPoint | null {
   if (!repository || signatureId === null || datumId === null || replicateIndex === null) {
     return null;
   }
-  if (replicateIndex < 0) return null;
+  if (replicateIndex < MEAN_REPLICATE) return null;
   return { repository, signatureId, datumId, replicateIndex };
 }
 
@@ -215,6 +222,7 @@ export function parseViewState(search: string): ViewState {
     range,
     zoom,
     selected: parseSelected(p.get('sel')),
+    showReplicates: p.get('reps') !== '0',
     pickerOpen: p.get('picker') === '1',
     picker: {
       filter: {
@@ -247,6 +255,8 @@ export function serializeViewState(state: ViewState): string {
     const { repository, signatureId, datumId, replicateIndex } = state.selected;
     p.set('sel', `${repository},${signatureId},${datumId},${replicateIndex}`);
   }
+  // Only written when off, so the common case keeps links short.
+  if (!state.showReplicates) p.set('reps', '0');
   // The panel's state only means anything while it's open — carrying it in the
   // URL of a closed panel would be noise in every shared graph link.
   if (state.pickerOpen) {

@@ -253,7 +253,9 @@
               {:else if entry.error}
                 <span class="error" title={entry.error}>failed</span>
               {:else}
-                {entry.data.points.length.toLocaleString()} points
+                <!-- What's plotted, not what was fetched, so the count agrees
+                     with the graph when replicate drawing is off. -->
+                {entry.plot.points.length.toLocaleString()} points
               {/if}
             </span>
           </div>

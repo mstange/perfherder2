@@ -36,12 +36,29 @@ export type PushGroup = {
   runs: Run[];
 };
 
-// A single plotted dot: one replicate of one run.
+// A single plotted dot: one replicate of one run, or — in the `means` point
+// set — a whole run at its mean.
 export type SeriesPoint = {
   x: number;
   y: number;
   datumId: number;
+  // Index into the run's `values`, or MEAN_REPLICATE for the run's mean.
   replicateIndex: number;
+};
+
+// Stands in for "not one replicate, but the run's mean" everywhere a replicate
+// index is expected: in a SeriesPoint, in the selection state, and in the URL's
+// `sel` triple. Negative, so it can never collide with a real index.
+export const MEAN_REPLICATE = -1;
+
+// One way of plotting a series: the dots, plus their precomputed y extent.
+// The extent is worth carrying because the y domain wants it on every range
+// change and rescanning 20k points per series per change is wasteful.
+export type PlotPoints = {
+  // Sorted by x, which every consumer relies on for its binary searches.
+  points: SeriesPoint[];
+  minY: number;
+  maxY: number;
 };
 
 export type SeriesData = {
@@ -49,10 +66,15 @@ export type SeriesData = {
   // Flattened, sorted by x. One entry per run; the detail graph's connecting
   // line goes through these.
   runs: Run[];
-  // Flattened, sorted by x. One entry per replicate; these are the dots.
-  points: SeriesPoint[];
-  minY: number;
-  maxY: number;
+  // Two ways to plot the same runs. `replicates` is one dot per replicate —
+  // what the graphs draw by default, and the whole reason to fetch with
+  // `replicates=true`. `means` is one dot per run, at the same y the
+  // connecting line passes through, for when the replicate cloud is more
+  // noise than signal (see AppState.showReplicates). Both are materialized at
+  // build time rather than derived on demand: drawing and hit-testing want a
+  // plain x-sorted array on every frame of a drag.
+  replicates: PlotPoints;
+  means: PlotPoints;
   runByDatumId: Map<number, Run>;
   pushById: Map<number, PushGroup>;
 };
@@ -147,9 +169,8 @@ export function seriesLabel(meta: SeriesMeta): string {
 export const EMPTY_SERIES_DATA: SeriesData = {
   pushes: [],
   runs: [],
-  points: [],
-  minY: 0,
-  maxY: 0,
+  replicates: { points: [], minY: 0, maxY: 0 },
+  means: { points: [], minY: 0, maxY: 0 },
   runByDatumId: new Map(),
   pushById: new Map(),
 };
@@ -199,8 +220,11 @@ export function buildSeriesData(summary: RawSummary | null): SeriesData {
   const pushById = new Map<number, PushGroup>();
   const pushes: PushGroup[] = [];
   const points: SeriesPoint[] = [];
+  const meanPoints: SeriesPoint[] = [];
   let minY = Infinity;
   let maxY = -Infinity;
+  let meanMinY = Infinity;
+  let meanMaxY = -Infinity;
 
   for (const run of runs) {
     let push = pushById.get(run.pushId);
@@ -217,11 +241,27 @@ export function buildSeriesData(summary: RawSummary | null): SeriesData {
       if (y < minY) minY = y;
       if (y > maxY) maxY = y;
     }
+
+    meanPoints.push({
+      x: run.x,
+      y: run.mean,
+      datumId: run.datumId,
+      replicateIndex: MEAN_REPLICATE,
+    });
+    if (run.mean < meanMinY) meanMinY = run.mean;
+    if (run.mean > meanMaxY) meanMaxY = run.mean;
   }
 
   if (points.length === 0) return EMPTY_SERIES_DATA;
 
-  return { pushes, runs, points, minY, maxY, runByDatumId, pushById };
+  return {
+    pushes,
+    runs,
+    replicates: { points, minY, maxY },
+    means: { points: meanPoints, minY: meanMinY, maxY: meanMaxY },
+    runByDatumId,
+    pushById,
+  };
 }
 
 // Resolve a URL-level selection triple against loaded data. Returns null when
@@ -243,6 +283,11 @@ export function resolvePoint(
   if (!run) return null;
   const push = data.pushById.get(run.pushId);
   if (!push) return null;
+  // A mean selection stays a mean selection even with replicates drawn, so
+  // toggling them on doesn't silently reinterpret the link you followed.
+  if (replicateIndex === MEAN_REPLICATE) {
+    return { run, push, replicateIndex: MEAN_REPLICATE, value: run.mean };
+  }
   const idx = replicateIndex >= 0 && replicateIndex < run.values.length ? replicateIndex : 0;
   return { run, push, replicateIndex: idx, value: run.values[idx] };
 }

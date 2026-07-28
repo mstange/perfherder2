@@ -3,6 +3,7 @@ import type { RawDatum, RawSummary } from './graphApi';
 import { parseApiDate } from './graphApi';
 import {
   buildSeriesData,
+  MEAN_REPLICATE,
   metaFromSummary,
   resolvePoint,
   seriesKey,
@@ -50,8 +51,8 @@ describe('parseApiDate', () => {
 
 describe('buildSeriesData', () => {
   it('returns empty data for a missing or empty summary', () => {
-    expect(buildSeriesData(null).points).toEqual([]);
-    expect(buildSeriesData(summary([])).points).toEqual([]);
+    expect(buildSeriesData(null).replicates.points).toEqual([]);
+    expect(buildSeriesData(summary([])).replicates.points).toEqual([]);
   });
 
   it('groups rows sharing a datum id into one run with N replicates', () => {
@@ -65,8 +66,8 @@ describe('buildSeriesData', () => {
     expect(data.runs).toHaveLength(1);
     expect(data.runs[0].values).toEqual([10, 12, 14]);
     expect(data.runs[0].mean).toBe(12);
-    expect(data.points).toHaveLength(3);
-    expect(data.points.map((p) => p.replicateIndex)).toEqual([0, 1, 2]);
+    expect(data.replicates.points).toHaveLength(3);
+    expect(data.replicates.points.map((p) => p.replicateIndex)).toEqual([0, 1, 2]);
   });
 
   it('groups runs sharing a push id — retriggers', () => {
@@ -90,7 +91,7 @@ describe('buildSeriesData', () => {
       ]),
     );
     expect(data.runs.map((r) => r.datumId)).toEqual([1, 2]);
-    expect(data.points.map((p) => p.y)).toEqual([10, 20]);
+    expect(data.replicates.points.map((p) => p.y)).toEqual([10, 20]);
   });
 
   it('regroups a datum whose rows are not contiguous', () => {
@@ -113,8 +114,8 @@ describe('buildSeriesData', () => {
         datum({ id: 2, value: 50 }),
       ]),
     );
-    expect(data.minY).toBe(10);
-    expect(data.maxY).toBe(99);
+    expect(data.replicates.minY).toBe(10);
+    expect(data.replicates.maxY).toBe(99);
   });
 
   it('drops non-finite values instead of poisoning the extent', () => {
@@ -125,8 +126,29 @@ describe('buildSeriesData', () => {
         datum({ id: 2, value: null as unknown as number }),
       ]),
     );
-    expect(data.points).toHaveLength(1);
-    expect(data.maxY).toBe(10);
+    expect(data.replicates.points).toHaveLength(1);
+    expect(data.replicates.maxY).toBe(10);
+  });
+
+  it('builds one mean point per run, with its own tighter extent', () => {
+    const data = buildSeriesData(
+      summary([
+        datum({ id: 1, value: 10, push_timestamp: '2026-07-21T00:00:00' }),
+        datum({ id: 1, value: 30, push_timestamp: '2026-07-21T00:00:00' }),
+        datum({ id: 2, value: 50, push_timestamp: '2026-07-22T00:00:00' }),
+        datum({ id: 2, value: 70, push_timestamp: '2026-07-22T00:00:00' }),
+      ]),
+    );
+    expect(data.means.points.map((p) => p.y)).toEqual([20, 60]);
+    expect(data.means.points.map((p) => p.datumId)).toEqual([1, 2]);
+    // The mean dots share the y the connecting line already passes through, so
+    // they must carry the sentinel rather than a replicate index.
+    expect(data.means.points.map((p) => p.replicateIndex)).toEqual([
+      MEAN_REPLICATE,
+      MEAN_REPLICATE,
+    ]);
+    expect([data.means.minY, data.means.maxY]).toEqual([20, 60]);
+    expect([data.replicates.minY, data.replicates.maxY]).toEqual([10, 70]);
   });
 });
 
@@ -150,6 +172,12 @@ describe('resolvePoint', () => {
 
   it('clamps an out-of-range replicate index to the first replicate', () => {
     expect(resolvePoint(data, 1, 9)?.replicateIndex).toBe(0);
+  });
+
+  it('resolves the mean sentinel to the run mean, not to a replicate', () => {
+    const r = resolvePoint(data, 1, MEAN_REPLICATE);
+    expect(r?.value).toBe(11);
+    expect(r?.replicateIndex).toBe(MEAN_REPLICATE);
   });
 });
 

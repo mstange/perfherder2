@@ -15,12 +15,17 @@ import {
   type SeriesShape,
   type SeriesSymbol,
 } from './chart';
-import type { SeriesData } from './graphData';
+import type { Run, SeriesPoint } from './graphData';
 
 export type DrawSeries = {
   color: string;
   symbol: SeriesSymbol;
-  data: SeriesData;
+  // The dots to draw — every replicate, or one per run at its mean. The caller
+  // picks (see AppState.showReplicates); drawing doesn't care which it got.
+  points: SeriesPoint[];
+  // The run line always goes through the per-run means, whichever point set is
+  // being drawn, so it needs the runs regardless.
+  runs: Run[];
 };
 
 export type DrawOptions = {
@@ -124,7 +129,7 @@ function drawAxisLabels(
 // skipped except for the one on each side, so the line still enters and
 // leaves the plot area instead of stopping at the edge.
 function drawRunLine(ctx: CanvasRenderingContext2D, o: DrawOptions, s: DrawSeries): void {
-  const runs = s.data.runs;
+  const runs = s.runs;
   if (runs.length < 2) return;
   const lo = Math.max(0, lowerBound(runs, o.xDomain.min) - 1);
   ctx.strokeStyle = s.color;
@@ -192,7 +197,7 @@ function traceSymbol(
 // opaque fill would turn those clusters into flat blobs, and a translucent
 // white one into a milky smear over the series behind.
 function drawDots(ctx: CanvasRenderingContext2D, o: DrawOptions, s: DrawSeries): void {
-  const points = s.data.points;
+  const points = s.points;
   if (points.length === 0) return;
   const { geom } = o;
   const r = o.dotRadius;

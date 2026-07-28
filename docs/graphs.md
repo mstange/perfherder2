@@ -47,11 +47,40 @@ than living in the left pane — it needs the full width for its table.
 
 ### Replicates
 
-`replicates=true` is **always on** (task requirement; treeherder makes it a
-toggle). The backend then emits one row per replicate value, all sharing the
-same datum `id`, `job_id`, `push_id` and `push_timestamp`. When a datum has no
-replicates recorded, the backend falls back to emitting a single row with the
-summary `value`. So "a run always has at least one value" holds.
+`replicates=true` is **always on** in the *fetch* (task requirement;
+treeherder makes it a fetch-level toggle). The backend then emits one row per
+replicate value, all sharing the same datum `id`, `job_id`, `push_id` and
+`push_timestamp`. When a datum has no replicates recorded, the backend falls
+back to emitting a single row with the summary `value`. So "a run always has at
+least one value" holds.
+
+*Drawing* them is a toggle (`AppState.showReplicates`, `reps=0` in the URL,
+the "Replicates" checkbox above the graphs). Off, each run collapses to a
+single dot at its mean — the same y the connecting line already passes
+through — which takes a 90-day range from ~20k dots per series to a few
+hundred and stops a real step in the data being buried in scatter.
+
+Keeping this on the drawing side rather than the fetch side is deliberate:
+toggling is then instant and allocation-free rather than a refetch of every
+series, and the details pane can still list a run's individual replicates in
+either mode. `buildSeriesData` materializes both point sets up front
+(`SeriesData.replicates` and `.means`, each a `PlotPoints` with its own
+precomputed y extent); `AppState` picks one into `SeriesEntry.plot`, and
+*everything* downstream — both graphs, both y domains, hit-testing, keyboard
+stepping, the series list's point count — reads `plot` rather than re-deriving
+the choice. That single choke point is what keeps the graph, the y axis and
+the click targets from disagreeing about which dots exist.
+
+Selecting a mean dot needs a way to say "not a replicate": that is
+`MEAN_REPLICATE = -1`, which flows through `SelectedPoint.replicateIndex` and
+the URL's `sel` unchanged. A selection is deliberately *not* rewritten when
+the toggle flips — a mean selection is still valid with replicates drawn, and
+a replicate selection still names a real value with them hidden, so coercing
+it either way would throw away the point the user was looking at. The
+consequence is that with replicates hidden, a replicate selection draws its
+ring on a value that has no dot; that's honest (the ring shows where that
+replicate sits relative to the mean) and reachable only by deliberately
+picking one from the pane's replicate list.
 
 ### The three-level hierarchy
 
@@ -126,7 +155,8 @@ Recovery is the explicit Retry button.
   responses" — including why nullability is transcribed from treeherder's
   serializers rather than from sampled payloads.
 - [graphData.ts](../src/lib/graphData.ts) — **pure**. Flat rows →
-  push/run/replicate, plus the flat arrays the renderer walks.
+  push/run/replicate, plus the flat arrays the renderer walks — both of them,
+  see "Replicates" above.
 - [chart.ts](../src/lib/chart.ts) — **pure**. Scales, domains, ticks,
   formatting, plot geometry, hit-testing, palette.
 - [chartDraw.ts](../src/lib/chartDraw.ts) — canvas painting. Imperative, but
@@ -278,7 +308,8 @@ The whole view is in the query string:
 | `series` | Repeated. Each is `repo,signatureId,frameworkId[,0]`; the trailing `0` means hidden and is omitted when visible. **Order is significant** — it drives legend order and color assignment. |
 | `range` | Absolute full time range, `<startMs>,<endMs>` |
 | `zoom` | Absolute zoomed range, `<startMs>,<endMs>`; absent when not zoomed |
-| `sel` | Selected point, `<repo>,<signatureId>,<datumId>,<replicateIndex>` |
+| `sel` | Selected point, `<repo>,<signatureId>,<datumId>,<replicateIndex>`. A `replicateIndex` of `-1` (`MEAN_REPLICATE`) means the run's *mean* rather than one of its replicates — what a click selects while `reps=0` |
+| `reps` | `0` to draw one dot per run at its mean instead of every replicate. Omitted when on, which is the default |
 | `picker` | `1` when the Add-series panel is open |
 | `pf` | Picker filter free text |
 | `pc` | Picker filter chips, `field:value` repeated |

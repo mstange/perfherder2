@@ -124,7 +124,12 @@
       geom,
       xDomain,
       yDomain,
-      series: series.map((s) => ({ color: s.color, symbol: s.symbol, data: s.data })),
+      series: series.map((s) => ({
+        color: s.color,
+        symbol: s.symbol,
+        points: s.plot.points,
+        runs: s.data.runs,
+      })),
       dotRadius,
       showLines,
       showAxes,
@@ -208,7 +213,7 @@
 
   function hitAt(px: number, py: number) {
     return hitTestAll(
-      series.map((s) => ({ points: s.data.points })),
+      series.map((s) => ({ points: s.plot.points })),
       geom.xScale,
       geom.yScale,
       px,

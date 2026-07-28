@@ -27,7 +27,11 @@ subtests.
   that produced it, and the build/push it came from, with links out to
   treeherder, the pushlog and Bugzilla.
 
-Replicates are always plotted — one dot per replicate value, not one per run.
+Replicates are plotted individually by default — one dot per replicate value,
+not one per run. The **Replicates** checkbox above the graphs collapses each
+run to a single dot at its mean, which is much easier to read on a long range.
+Either way replicates are fetched, so the toggle is instant and the right-hand
+pane still lists a run's individual values.
 
 **The URL is the view.** Series and their order, the absolute time range, the
 zoom, the selected point and the picker's state all live in the query string,

@@ -4,7 +4,7 @@
 
   import type { AppState } from './appState.svelte';
   import { formatTimestamp, formatValue } from './chart';
-  import { seriesLabel } from './graphData';
+  import { MEAN_REPLICATE, seriesLabel } from './graphData';
   import {
     bugsInComment,
     bugUrl,
@@ -31,6 +31,9 @@
 
   const replicateValues = $derived(sel ? sel.run.values : []);
   const runMean = $derived(sel ? sel.run.mean : 0);
+  // Clicking a dot with replicate drawing off selects the run itself, so the
+  // headline value is the mean and there is no "replicate i of n" to report.
+  const meanSelected = $derived(sel?.replicateIndex === MEAN_REPLICATE);
 
   function shortRev(rev: string): string {
     return rev.slice(0, 12);
@@ -103,7 +106,7 @@
       </section>
 
       <section>
-        <h3>Replicate</h3>
+        <h3>{meanSelected ? 'Run mean' : 'Replicate'}</h3>
         <p class="value">
           {formatValue(sel.value)}
           {#if sel.entry.meta?.measurementUnit}
@@ -114,11 +117,19 @@
           </span>
         </p>
         <dl>
-          <dt>Replicate</dt>
-          <dd>{sel.replicateIndex + 1} of {replicateValues.length}</dd>
-          <dt>Run mean</dt>
-          <dd>{formatValue(runMean)}</dd>
+          {#if meanSelected}
+            <dt>Replicates</dt>
+            <dd>{replicateValues.length} averaged</dd>
+          {:else}
+            <dt>Replicate</dt>
+            <dd>{sel.replicateIndex + 1} of {replicateValues.length}</dd>
+            <dt>Run mean</dt>
+            <dd>{formatValue(runMean)}</dd>
+          {/if}
         </dl>
+        <!-- Listed whether or not the dots are drawn: with replicates hidden
+             this is the only way to see a run's spread, and picking one from
+             here moves the selection ring onto that value. -->
         {#if replicateValues.length > 1}
           <ol class="replicates">
             {#each replicateValues as v, i}

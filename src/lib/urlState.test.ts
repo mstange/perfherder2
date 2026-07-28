@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { MEAN_REPLICATE } from './graphData';
 import {
   EMPTY_PICKER_VIEW,
   EMPTY_VIEW_STATE,
@@ -78,9 +79,17 @@ describe('parseViewState', () => {
     });
   });
 
-  it('rejects a selection missing a component or with a negative index', () => {
+  // -1 is MEAN_REPLICATE — "the run's mean", which is what a click selects
+  // while replicate drawing is off. Anything below it is nonsense.
+  it('parses a mean selection', () => {
+    expect(parseViewState('?sel=autoland,42,999,-1').selected?.replicateIndex).toBe(
+      MEAN_REPLICATE,
+    );
+  });
+
+  it('rejects a selection missing a component or with an index below the sentinel', () => {
     expect(parseViewState('?sel=autoland,42,999').selected).toBeNull();
-    expect(parseViewState('?sel=autoland,42,999,-1').selected).toBeNull();
+    expect(parseViewState('?sel=autoland,42,999,-2').selected).toBeNull();
   });
 
   it('parses picker state and filter', () => {
@@ -208,6 +217,7 @@ describe('serializeViewState', () => {
       range: { start: T0, end: T1 },
       zoom: { start: T0 + 1000, end: T1 - 1000 },
       selected: { repository: 'try', signatureId: 2, datumId: 77, replicateIndex: 4 },
+      showReplicates: false,
       pickerOpen: true,
       picker: {
         filter: {
@@ -224,6 +234,15 @@ describe('serializeViewState', () => {
       },
     });
     expect(parseViewState(`?${serializeViewState(full)}`)).toEqual(full);
+  });
+
+  // On is the default, so only the off state is worth a param — see the
+  // comment on ViewState.showReplicates.
+  it('writes the replicate flag only when replicate drawing is off', () => {
+    expect(serializeViewState(state({ showReplicates: true }))).toBe('');
+    expect(serializeViewState(state({ showReplicates: false }))).toBe('reps=0');
+    expect(parseViewState('').showReplicates).toBe(true);
+    expect(parseViewState('?reps=0').showReplicates).toBe(false);
   });
 
   it('round-trips free text containing spaces', () => {

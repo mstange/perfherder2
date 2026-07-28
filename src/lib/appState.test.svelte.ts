@@ -6,7 +6,7 @@ import { flushSync } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AppState, extentOf, type SeriesEntry } from './appState.svelte';
 import type { Job, Push, RawDatum, RawSummary } from './graphApi';
-import { buildSeriesData, metaFromSummary, seriesKey } from './graphData';
+import { buildSeriesData, MEAN_REPLICATE, metaFromSummary, seriesKey } from './graphData';
 
 const DAY = 86400000;
 const NOW = Date.UTC(2026, 6, 27, 12, 0, 0);
@@ -44,9 +44,11 @@ function summary(signatureId: number, data: RawDatum[]): RawSummary {
 }
 
 // A loaded, visible series entry — enough of one for the pure helpers below,
-// which only look at `data`.
-function entry(s: RawSummary): SeriesEntry {
+// which only look at `data` and `plot`. `showReplicates` picks which point set
+// lands in `plot` in the real app; here the caller says.
+function entry(s: RawSummary, showReplicates = true): SeriesEntry {
   const ref = { repository: 'autoland', signatureId: s.signature_id, frameworkId: 1 };
+  const data = buildSeriesData(s);
   return {
     ref,
     key: seriesKey(ref),
@@ -54,7 +56,8 @@ function entry(s: RawSummary): SeriesEntry {
     symbol: { shape: 'circle', filled: true },
     visible: true,
     meta: metaFromSummary(s),
-    data: buildSeriesData(s),
+    data,
+    plot: showReplicates ? data.replicates : data.means,
     loading: false,
     error: null,
   };
@@ -178,7 +181,7 @@ describe('AppState loading', () => {
         String(c[0]).includes('/performance/summary/'),
       );
       expect(summaryCalls).toHaveLength(1);
-      expect(app.series[0].data.points).toHaveLength(5);
+      expect(app.series[0].data.replicates.points).toHaveLength(5);
       expect(app.series[0].meta?.options).toBe('opt');
       expect(app.series[0].loading).toBe(false);
     }));
@@ -785,6 +788,90 @@ describe('AppState y domains', () => {
       const firstPushDay = Date.UTC(2026, 6, 21, 6, 0, 0);
       app.setZoom({ start: firstPushDay - 3600000, end: firstPushDay + 3600000 });
       expect(app.detailYDomain.max).toBeLessThan(150);
+    }));
+});
+
+describe('AppState replicate drawing', () => {
+  // SAMPLE: one run of three replicates (100/110/120, mean 110) and one of two
+  // (200/210, mean 205).
+  it('collapses each run to one dot at its mean when turned off', () =>
+    withApp('?series=autoland,1,1', async (app) => {
+      await settle();
+      expect(app.showReplicates).toBe(true);
+      expect(app.series[0].plot.points).toHaveLength(5);
+
+      app.setShowReplicates(false);
+      expect(app.series[0].plot.points.map((p) => p.y)).toEqual([110, 205]);
+      // Still one dot per run, so the graph is not empty and `hasData` holds.
+      expect(app.hasData).toBe(true);
+    }));
+
+  it('tightens the y domain to the means, since that is what is drawn', () =>
+    withApp('?series=autoland,1,1', async (app) => {
+      await settle();
+      expect(app.fullYDomain.min).toBeLessThan(100);
+      expect(app.fullYDomain.max).toBeGreaterThan(210);
+
+      app.setShowReplicates(false);
+      expect(app.fullYDomain.min).toBeGreaterThan(100);
+      expect(app.fullYDomain.max).toBeLessThan(210);
+    }));
+
+  it('is a drawing choice, so toggling it refetches nothing', () =>
+    withApp('?series=autoland,1,1', async (app) => {
+      await settle();
+      const before = fetchMock.mock.calls.length;
+      app.setShowReplicates(false);
+      app.setShowReplicates(true);
+      await settle();
+      expect(fetchMock.mock.calls.length).toBe(before);
+    }));
+
+  it('round-trips through the URL', () =>
+    withApp('?series=autoland,1,1', async (app) => {
+      await settle();
+      app.setShowReplicates(false);
+      expect(location.search).toContain('reps=0');
+      app.setShowReplicates(true);
+      expect(location.search).not.toContain('reps');
+    }));
+
+  it('restores the off state from the URL', () =>
+    withApp('?series=autoland,1,1&reps=0', async (app) => {
+      await settle();
+      expect(app.showReplicates).toBe(false);
+      expect(app.series[0].plot.points).toHaveLength(2);
+    }));
+
+  it('selects the run mean rather than a hidden replicate', () =>
+    withApp('?series=autoland,1,1&reps=0', async (app) => {
+      await settle();
+      // The keyboard entry point goes through the drawn point set.
+      app.stepRun(1);
+      expect(app.selectedPoint?.replicateIndex).toBe(MEAN_REPLICATE);
+      expect(app.selection?.value).toBe(110);
+      // Walking to the next run keeps the mean, rather than falling back to a
+      // replicate the user can't see.
+      app.stepRun(1);
+      expect(app.selection?.value).toBe(205);
+      expect(app.selectedPoint?.replicateIndex).toBe(MEAN_REPLICATE);
+    }));
+
+  it('does not step replicates while they are hidden', () =>
+    withApp('?series=autoland,1,1&reps=0&sel=autoland,1,10,-1', async (app) => {
+      await settle();
+      app.stepReplicate(1);
+      expect(app.selectedPoint?.replicateIndex).toBe(MEAN_REPLICATE);
+    }));
+
+  it('keeps a replicate selection across a toggle instead of rewriting it', () =>
+    withApp('?series=autoland,1,1&sel=autoland,1,10,2', async (app) => {
+      await settle();
+      expect(app.selection?.value).toBe(120);
+      app.setShowReplicates(false);
+      expect(app.selection?.value).toBe(120);
+      app.setShowReplicates(true);
+      expect(app.selection?.replicateIndex).toBe(2);
     }));
 });
 

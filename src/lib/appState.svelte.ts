@@ -22,10 +22,12 @@ import {
 import {
   buildSeriesData,
   EMPTY_SERIES_DATA,
+  MEAN_REPLICATE,
   metaFromSummary,
   placeholderMeta,
   resolvePoint,
   seriesKey,
+  type PlotPoints,
   type PushGroup,
   type Run,
   type SeriesData,
@@ -67,6 +69,11 @@ export type SeriesEntry = {
   visible: boolean;
   meta: SeriesMeta | null;
   data: SeriesData;
+  // Which of `data`'s two point sets is in play, per `showReplicates`. Picked
+  // once here so that everything downstream — both graphs, the y domains,
+  // hit-testing, keyboard stepping, the series list's point count — draws and
+  // talks about the same dots without each re-deriving the choice.
+  plot: PlotPoints;
   loading: boolean;
   error: string | null;
 };
@@ -76,6 +83,7 @@ export type Selection = {
   entry: SeriesEntry;
   push: PushGroup;
   run: Run;
+  // MEAN_REPLICATE when the run's mean is what's selected.
   replicateIndex: number;
   value: number;
 };
@@ -93,6 +101,15 @@ export class AppState {
   // null means "the detail graph shows the whole range".
   zoom = $state<Span | null>(null);
   selectedPoint = $state<SelectedPoint | null>(null);
+  // With replicates on, every replicate of every run is a dot — the default,
+  // and the reason we fetch with `replicates=true` at all. Off, each run
+  // collapses to one dot at its mean, which is where the connecting line
+  // already goes: a 90-day range drops from ~20k dots per series to a few
+  // hundred, and a real step in the data stops being buried in scatter. This
+  // is a *drawing* choice only; the fetch is unchanged, so toggling it is
+  // instant and the details pane can still list a run's individual
+  // replicates either way.
+  showReplicates = $state(true);
   pickerOpen = $state(false);
   // The Add-series panel's own state. One object rather than five fields: it
   // arrives from the URL as a unit, the panel reports it back as a unit, and
@@ -128,6 +145,7 @@ export class AppState {
       const key = dataKey(ref, this.range);
       const loaded = this.seriesCache.get(key);
       const style = styleForIndex(i);
+      const data = loaded?.data ?? EMPTY_SERIES_DATA;
       return {
         ref,
         key: seriesKey(ref),
@@ -135,7 +153,8 @@ export class AppState {
         symbol: style.symbol,
         visible: ref.visible,
         meta: loaded?.meta ?? null,
-        data: loaded?.data ?? EMPTY_SERIES_DATA,
+        data,
+        plot: this.showReplicates ? data.replicates : data.means,
         loading: this.loadingKeys.has(key),
         error: this.errorsByKey.get(key) ?? null,
       };
@@ -147,7 +166,7 @@ export class AppState {
   visibleSeries = $derived(this.series.filter((s) => s.visible));
   anyLoading = $derived(this.series.some((s) => s.loading));
   loadingCount = $derived(this.series.filter((s) => s.loading).length);
-  hasData = $derived(this.visibleSeries.some((s) => s.data.points.length > 0));
+  hasData = $derived(this.visibleSeries.some((s) => s.plot.points.length > 0));
   failedSeries = $derived(this.series.filter((s) => s.error !== null));
 
   // The detail graph's x domain.
@@ -500,6 +519,16 @@ export class AppState {
     this.setZoom(null);
   }
 
+  setShowReplicates(on: boolean): void {
+    if (this.showReplicates === on) return;
+    this.showReplicates = on;
+    // The selection deliberately survives: a mean selection is still a valid
+    // mean selection with replicates drawn, and a replicate selection still
+    // names a real value with them hidden. Coercing it either way would lose
+    // the point the user was looking at for the sake of tidiness.
+    this.syncUrl('push');
+  }
+
   // `mode` is 'replace' for keyboard stepping: holding an arrow key fires at
   // the key-repeat rate, and a history entry per repeat would bury whatever
   // the user actually wants to go back to.
@@ -527,8 +556,13 @@ export class AppState {
         signatureId: sel.entry.ref.signatureId,
         datumId: next.datumId,
         // Keep the replicate slot where possible, so walking a series compares
-        // like with like instead of jumping around inside each run.
-        replicateIndex: Math.min(sel.replicateIndex, next.values.length - 1),
+        // like with like instead of jumping around inside each run. A mean
+        // selection stays a mean selection — MEAN_REPLICATE is below every
+        // real index, so the clamp leaves it alone.
+        replicateIndex:
+          sel.replicateIndex === MEAN_REPLICATE
+            ? MEAN_REPLICATE
+            : Math.min(sel.replicateIndex, next.values.length - 1),
       },
       'replace',
     );
@@ -540,12 +574,20 @@ export class AppState {
       this.selectFirstPoint();
       return;
     }
+    // With replicates hidden there is nothing to walk: every run is one dot,
+    // and stepping would park the selection ring on a value that isn't drawn.
+    if (!this.showReplicates) return;
     this.selectPoint(
       {
         repository: sel.entry.ref.repository,
         signatureId: sel.entry.ref.signatureId,
         datumId: sel.run.datumId,
-        replicateIndex: clampIndex(sel.replicateIndex + delta, sel.run.values.length),
+        // A mean selection has no slot to step from; enter the list at its
+        // first replicate rather than jumping to the last one for a -1 delta.
+        replicateIndex:
+          sel.replicateIndex === MEAN_REPLICATE
+            ? 0
+            : clampIndex(sel.replicateIndex + delta, sel.run.values.length),
       },
       'replace',
     );
@@ -553,7 +595,7 @@ export class AppState {
 
   private selectFirstPoint(): void {
     for (const entry of this.visibleSeries) {
-      const point = entry.data.points[0];
+      const point = entry.plot.points[0];
       if (!point) continue;
       this.selectPoint({
         repository: entry.ref.repository,
@@ -651,6 +693,7 @@ export class AppState {
     range: { start: this.range.start, end: this.range.end },
     zoom: this.zoom ? { start: this.zoom.start, end: this.zoom.end } : null,
     selected: this.selectedPoint,
+    showReplicates: this.showReplicates,
     pickerOpen: this.pickerOpen,
     picker: this.pickerView,
   });
@@ -677,6 +720,7 @@ export class AppState {
         : defaultSpan(now);
       this.zoom = state.zoom ? clampSpan(state.zoom, this.range) : null;
       this.selectedPoint = state.selected;
+      this.showReplicates = state.showReplicates;
       this.pickerOpen = state.pickerOpen;
       this.pickerView = state.picker;
     } finally {
@@ -701,11 +745,11 @@ function clampIndex(i: number, length: number): number {
 export function extentOf(series: SeriesEntry[], span: Span | null): Range {
   const ranges: Range[] = [];
   for (const s of series) {
-    const points = s.data.points;
+    const points = s.plot.points;
     if (points.length === 0) continue;
     if (!span) {
       // The whole-series extent is precomputed at build time.
-      ranges.push({ min: s.data.minY, max: s.data.maxY });
+      ranges.push({ min: s.plot.minY, max: s.plot.maxY });
       continue;
     }
     const lo = lowerBound(points, span.start);

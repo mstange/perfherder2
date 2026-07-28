@@ -57,7 +57,10 @@
     // The index is into the array the chart was given — the visible subset,
     // not the full list.
     const entry = app.visibleSeries[hit.seriesIndex];
-    const point = entry?.data.points[hit.pointIndex];
+    // Indices are into the point set the chart was handed, which is the one
+    // `showReplicates` chose — so with replicates off this yields the run's
+    // MEAN_REPLICATE point, not a replicate the user can't see.
+    const point = entry?.plot.points[hit.pointIndex];
     if (!entry || !point) return;
     app.selectPoint({
       repository: entry.ref.repository,
@@ -85,6 +88,17 @@
         {describeSpan(app.range)}
       </span>
     </div>
+    <!-- A drawing switch, not a fetch switch: replicates are always fetched,
+         so this is instant and the details pane keeps listing them either
+         way. -->
+    <label class="replicates" title="Draw every replicate, or one dot per run at its mean">
+      <input
+        type="checkbox"
+        checked={app.showReplicates}
+        onchange={(e) => app.setShowReplicates(e.currentTarget.checked)}
+      />
+      Replicates
+    </label>
     <div class="zoom-state">
       <!-- The loading slot is always present so the header doesn't reflow
            when a fetch starts or finishes. -->
@@ -188,6 +202,17 @@
   }
   .label {
     color: #57606a;
+  }
+  .replicates {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+  .replicates input {
+    margin: 0;
+    cursor: pointer;
   }
   .span-text {
     margin-left: 6px;
