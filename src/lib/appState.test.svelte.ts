@@ -890,10 +890,27 @@ describe('extentOf', () => {
     expect(extentOf([SLOPED], null)).toEqual({ min: 100, max: 200 });
   });
 
-  it('covers the run line where it crosses a window with no points of its own', () => {
-    // Quarter to half way between the two runs: the line runs 125..150 there.
+  it('covers the connecting line where it crosses a window with no points of its own', () => {
+    // Quarter to half way between the two pushes: the line runs 125..150 there.
     const span = { start: DAY_1 + DAY / 4, end: DAY_1 + DAY / 2 };
     expect(extentOf([SLOPED], span)).toEqual({ min: 125, max: 150 });
+  });
+
+  it('interpolates from the push means, not from individual retriggers', () => {
+    // Same two timestamps, but the first push is retriggered: means 100 and 300
+    // for its two runs, so the line leaves it at 200 rather than at either dot.
+    const retriggered = entry(
+      summary(3, [
+        datum({ id: 30, value: 100, push_id: 1, push_timestamp: '2026-07-21T06:00:00' }),
+        datum({ id: 31, value: 300, push_id: 1, push_timestamp: '2026-07-21T06:00:00' }),
+        datum({ id: 32, value: 400, push_id: 2, push_timestamp: '2026-07-22T06:00:00' }),
+      ]),
+    );
+    // Half way across: 200 → 400 gives 300. Interpolating between individual
+    // runs would have used 300 (the second retrigger) as the left vertex and
+    // landed on 350.
+    const span = { start: DAY_1 + DAY / 2, end: DAY_1 + DAY / 2 };
+    expect(extentOf([retriggered], span)).toEqual({ min: 300, max: 300 });
   });
 
   it('unions a series whose only contribution is its line with one that has points', () => {

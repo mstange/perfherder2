@@ -81,6 +81,25 @@ describe('buildSeriesData', () => {
     expect(data.pushes).toHaveLength(2);
     expect(data.pushes[0].runs.map((r) => r.jobId)).toEqual([500, 501]);
     expect(data.pushes[1].runs.map((r) => r.jobId)).toEqual([502]);
+    // One value per build, averaged across the retriggers.
+    expect(data.pushes.map((p) => p.mean)).toEqual([15, 30]);
+  });
+
+  it('weights each retrigger equally in the push mean, not each replicate', () => {
+    const data = buildSeriesData(
+      summary([
+        // One job with four replicates averaging 10…
+        datum({ id: 1, value: 7, push_id: 7, job_id: 500 }),
+        datum({ id: 1, value: 9, push_id: 7, job_id: 500 }),
+        datum({ id: 1, value: 11, push_id: 7, job_id: 500 }),
+        datum({ id: 1, value: 13, push_id: 7, job_id: 500 }),
+        // …and a retrigger with one replicate at 20.
+        datum({ id: 2, value: 20, push_id: 7, job_id: 501 }),
+      ]),
+    );
+    // Mean of the run means: (10 + 20) / 2. Pooling all five replicates would
+    // give 12, letting the four-replicate job outvote the retrigger.
+    expect(data.pushes[0].mean).toBe(15);
   });
 
   it('sorts runs by push time even when the server order is scrambled', () => {

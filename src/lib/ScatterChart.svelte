@@ -128,7 +128,7 @@
         color: s.color,
         symbol: s.symbol,
         points: s.plot.points,
-        runs: s.data.runs,
+        pushes: s.data.pushes,
       })),
       dotRadius,
       showLines,

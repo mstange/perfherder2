@@ -15,7 +15,7 @@ import {
   type SeriesShape,
   type SeriesSymbol,
 } from './chart';
-import type { Run, SeriesPoint } from './graphData';
+import type { PushGroup, SeriesPoint } from './graphData';
 
 export type DrawSeries = {
   color: string;
@@ -23,9 +23,9 @@ export type DrawSeries = {
   // The dots to draw — every replicate, or one per run at its mean. The caller
   // picks (see AppState.showReplicates); drawing doesn't care which it got.
   points: SeriesPoint[];
-  // The run line always goes through the per-run means, whichever point set is
-  // being drawn, so it needs the runs regardless.
-  runs: Run[];
+  // The connecting line goes through the per-push means whichever point set is
+  // being drawn, so it needs the pushes regardless.
+  pushes: PushGroup[];
 };
 
 export type DrawOptions = {
@@ -64,7 +64,7 @@ export function drawChart(ctx: CanvasRenderingContext2D, o: DrawOptions): void {
   ctx.rect(geom.x0, geom.y0, geom.plotWidth, geom.plotHeight);
   ctx.clip();
   if (o.showLines) {
-    for (const s of o.series) drawRunLine(ctx, o, s);
+    for (const s of o.series) drawPushLine(ctx, o, s);
   }
   for (const s of o.series) drawDots(ctx, o, s);
   ctx.restore();
@@ -125,28 +125,32 @@ function drawAxisLabels(
   }
 }
 
-// One polyline through the per-run means. Runs outside the x domain are
+// One polyline through the per-push means. Pushes outside the x domain are
 // skipped except for the one on each side, so the line still enters and
 // leaves the plot area instead of stopping at the edge.
-function drawRunLine(ctx: CanvasRenderingContext2D, o: DrawOptions, s: DrawSeries): void {
-  const runs = s.runs;
-  if (runs.length < 2) return;
-  const lo = Math.max(0, lowerBound(runs, o.xDomain.min) - 1);
+//
+// Per *push*, not per run: retriggers of one push share a push timestamp, so
+// walking runs put two or more vertices at the same x and drew a vertical
+// zigzag there instead of a trend through one value per build.
+function drawPushLine(ctx: CanvasRenderingContext2D, o: DrawOptions, s: DrawSeries): void {
+  const pushes = s.pushes;
+  if (pushes.length < 2) return;
+  const lo = Math.max(0, lowerBound(pushes, o.xDomain.min) - 1);
   ctx.strokeStyle = s.color;
   ctx.globalAlpha = 0.55;
   ctx.lineWidth = 1;
   ctx.beginPath();
   let started = false;
-  for (let i = lo; i < runs.length; i++) {
-    const r = runs[i];
-    const x = o.geom.xScale.toPixel(r.x);
-    const y = o.geom.yScale.toPixel(r.mean);
+  for (let i = lo; i < pushes.length; i++) {
+    const p = pushes[i];
+    const x = o.geom.xScale.toPixel(p.x);
+    const y = o.geom.yScale.toPixel(p.mean);
     if (started) ctx.lineTo(x, y);
     else {
       ctx.moveTo(x, y);
       started = true;
     }
-    if (r.x > o.xDomain.max) break;
+    if (p.x > o.xDomain.max) break;
   }
   ctx.stroke();
   ctx.globalAlpha = 1;

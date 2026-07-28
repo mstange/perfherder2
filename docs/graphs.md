@@ -56,9 +56,14 @@ least one value" holds.
 
 *Drawing* them is a toggle (`AppState.showReplicates`, `reps=0` in the URL,
 the "Replicates" checkbox above the graphs). Off, each run collapses to a
-single dot at its mean — the same y the connecting line already passes
-through — which takes a 90-day range from ~20k dots per series to a few
-hundred and stops a real step in the data being buried in scatter.
+single dot at its mean, which takes a 90-day range from ~20k dots per series
+to a few hundred and stops a real step in the data being buried in scatter.
+
+Still one dot per *run*, note — not per push. A retriggered push keeps one dot
+per retrigger, straddling the line's single vertex for that push. Collapsing
+to one dot per push would need a second sentinel alongside `MEAN_REPLICATE`
+and a push-level selection in the details pane, and it would hide that a build
+was retriggered at all.
 
 Keeping this on the drawing side rather than the fetch side is deliberate:
 toggling is then instant and allocation-free rather than a refetch of every
@@ -215,17 +220,30 @@ Deliberate deviations:
   over 91k points), so it's purely a legibility call.
 - **No connecting lines in the overview graph**, per the task. The detail
   graph does draw them (treeherder's `VictoryLine`), one polyline per series
-  through the per-run mean.
+  through the **per-push** mean — `PushGroup.mean`, the mean of that push's
+  runs' means. Per push rather than per run because retriggers of one push
+  share a push timestamp: joining runs put two or more vertices at the same x
+  and drew a vertical zigzag there instead of a trend through one value per
+  build. It also means the line can legitimately sit off a retriggered push's
+  individual dots, which is why the details pane spells out `Push mean`
+  whenever a push has more than one run.
+
+  The mean is over the runs' means, *not* over all their replicates pooled: a
+  retrigger is an independent sample of machine and run-to-run noise, so each
+  job counts once however many replicates it recorded. The two coincide when
+  the retriggers ran the same number of replicates, which is the normal case.
 - **Tighter y padding.** Treeherder pads the y domain by `(max-min)/1.8` on
   each side, so data occupies under half the plot height. We pad by 5%.
 - **The detail graph derives its y domain from the zoom window** instead of
   keeping a separate y zoom in the URL, so zooming in on a flat stretch
   doesn't leave it as a horizontal line at the bottom of the plot. The window
-  extent has to account for the *run lines*, not just the dots: a series can
-  have runs on both sides of a narrow window and none inside it, and the
+  extent has to account for the *connecting lines*, not just the dots: a series
+  can have pushes on both sides of a narrow window and none inside it, and the
   stretch of line crossing the window still has to fit. `extentOf` therefore
-  interpolates each series' line at both window edges and folds those two
-  values in. Without it, a series that is off-scale from the others
+  interpolates each series' line at both window edges — between the same push
+  vertices `chartDraw` joins, so the domain can't disagree with what gets
+  painted — and folds those two values in. Without it, a series off-scale from
+  the others
   (speedometer3 cpuTime is ~0 ms for cstm-car-m and ~100 s for fenix)
   disappears whenever the zoom lands between two of its pushes.
 - **The graph fills the remaining viewport**, rather than treeherder's fixed

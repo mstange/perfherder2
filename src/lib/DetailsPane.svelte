@@ -210,6 +210,12 @@
           {#if retriggerCount > 0}
             <dt>Retriggers</dt>
             <dd>{retriggerCount} other run{retriggerCount === 1 ? '' : 's'} of this push</dd>
+            <!-- Worth spelling out only when there is more than one run:
+                 otherwise it just repeats the run mean. This is the value the
+                 connecting line passes through, which is why the line can sit
+                 off a retriggered push's individual dots. -->
+            <dt>Push mean</dt>
+            <dd>{formatValue(sel.push.mean)}</dd>
           {/if}
         </dl>
       </section>

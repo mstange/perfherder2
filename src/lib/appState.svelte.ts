@@ -103,9 +103,12 @@ export class AppState {
   selectedPoint = $state<SelectedPoint | null>(null);
   // With replicates on, every replicate of every run is a dot — the default,
   // and the reason we fetch with `replicates=true` at all. Off, each run
-  // collapses to one dot at its mean, which is where the connecting line
-  // already goes: a 90-day range drops from ~20k dots per series to a few
-  // hundred, and a real step in the data stops being buried in scatter. This
+  // collapses to one dot at its mean: a 90-day range drops from ~20k dots per
+  // series to a few hundred, and a real step in the data stops being buried in
+  // scatter. (Still one dot per *run*, so a retriggered push keeps one dot per
+  // retrigger, straddling the line's single vertex for that push. Collapsing
+  // to one dot per push would need a second sentinel and a push-level
+  // selection, and would hide that a build was retriggered at all.) This
   // is a *drawing* choice only; the fetch is unchanged, so toggling it is
   // instant and the details pane can still list a run's individual
   // replicates either way.
@@ -760,13 +763,14 @@ export function extentOf(series: SeriesEntry[], span: Span | null): Range {
       if (y < min) min = y;
       if (y > max) max = y;
     }
-    // The connecting line enters and leaves the window between runs that may
+    // The connecting line enters and leaves the window between pushes that may
     // both sit outside it, and that visible stretch of line has to fit too —
     // otherwise a window whose only content is a line crossing it (or one
     // holding a few high dots from another series) clips the line away.
-    // Runs *inside* the window need no special handling: a run's mean lies
-    // between its own replicates, which the loop above already covered.
-    const line = lineEdgeExtent(s.data.runs, span);
+    // Pushes *inside* the window need no special handling: a push mean is an
+    // average of its runs' means, each of which lies between its own
+    // replicates, so it can't escape whichever dots the loop above covered.
+    const line = lineEdgeExtent(s.data.pushes, span);
     if (line) {
       if (line.min < min) min = line.min;
       if (line.max > max) max = line.max;
@@ -776,19 +780,20 @@ export function extentOf(series: SeriesEntry[], span: Span | null): Range {
   return unionRange(ranges) ?? { min: 0, max: 1 };
 }
 
-// Where the run line crosses the two edges of `span`, interpolated between the
-// runs bracketing each edge. Null when the line doesn't reach into the window
-// from outside on either side.
-function lineEdgeExtent(runs: Run[], span: Span): Range | null {
-  if (runs.length < 2) return null;
+// Where the connecting line crosses the two edges of `span`, interpolated
+// between the pushes bracketing each edge — the same vertices chartDraw joins,
+// so the domain can't disagree with what gets painted. Null when the line
+// doesn't reach into the window from outside on either side.
+function lineEdgeExtent(pushes: PushGroup[], span: Span): Range | null {
+  if (pushes.length < 2) return null;
   const edges: number[] = [];
   for (const at of [span.start, span.end]) {
-    const i = lowerBound(runs, at);
-    // Needs a run on each side: at the ends of the series the line simply
-    // stops, and a run exactly on the edge is already a point in the window.
-    if (i === 0 || i >= runs.length || runs[i].x === at) continue;
-    const a = runs[i - 1];
-    const b = runs[i];
+    const i = lowerBound(pushes, at);
+    // Needs a push on each side: at the ends of the series the line simply
+    // stops, and a push exactly on the edge is already inside the window.
+    if (i === 0 || i >= pushes.length || pushes[i].x === at) continue;
+    const a = pushes[i - 1];
+    const b = pushes[i];
     edges.push(a.mean + ((b.mean - a.mean) * (at - a.x)) / (b.x - a.x));
   }
   if (edges.length === 0) return null;

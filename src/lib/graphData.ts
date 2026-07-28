@@ -34,6 +34,13 @@ export type PushGroup = {
   revision: string;
   x: number;
   runs: Run[];
+  // This series' one value for this build, and what the connecting line joins.
+  // The mean of the runs' means, *not* of all their replicates pooled: a
+  // retrigger is an independent sample of machine and run-to-run noise, so
+  // each job should count once regardless of how many replicates it recorded.
+  // (The two coincide whenever the retriggers ran the same number of
+  // replicates, which is the normal case.)
+  mean: number;
 };
 
 // A single plotted dot: one replicate of one run, or — in the `means` point
@@ -229,7 +236,7 @@ export function buildSeriesData(summary: RawSummary | null): SeriesData {
   for (const run of runs) {
     let push = pushById.get(run.pushId);
     if (!push) {
-      push = { pushId: run.pushId, revision: run.revision, x: run.x, runs: [] };
+      push = { pushId: run.pushId, revision: run.revision, x: run.x, runs: [], mean: 0 };
       pushById.set(run.pushId, push);
       pushes.push(push);
     }
@@ -253,6 +260,8 @@ export function buildSeriesData(summary: RawSummary | null): SeriesData {
   }
 
   if (points.length === 0) return EMPTY_SERIES_DATA;
+
+  for (const push of pushes) push.mean = mean(push.runs.map((r) => r.mean));
 
   return {
     pushes,
