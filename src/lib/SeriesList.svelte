@@ -10,9 +10,11 @@
   import {
     autoScrollDelta,
     clampDy,
+    dragGeometry,
     dragOffsets,
     dropIndex,
     type CardBox,
+    type DragGeometry,
   } from './reorder';
   import {
     attrChips,
@@ -67,7 +69,10 @@
 
   // Measured once per drag. Not `$state`: only `drag` drives rendering.
   let listEl!: HTMLElement;
-  let boxes: CardBox[] = [];
+  let geom: DragGeometry = { from: -1, slots: [], displacement: 0 };
+  // The pointer that owns the drag. A second finger landing on another card's
+  // handle must not end this one.
+  let dragPointer = -1;
   let startY = 0;
   let pointerY = 0;
   let scrollRaf = 0;
@@ -89,10 +94,12 @@
     // committing — that would measure a layout that is about to change.
     if (e.button !== 0 || drag) return;
     const listTop = listEl.getBoundingClientRect().top;
-    boxes = [...listEl.querySelectorAll('.card')].map((card) => {
+    const boxes: CardBox[] = [...listEl.querySelectorAll('.card')].map((card) => {
       const r = card.getBoundingClientRect();
       return { top: r.top - listTop + listEl.scrollTop, height: r.height };
     });
+    geom = dragGeometry(boxes, index);
+    dragPointer = e.pointerId;
     startY = contentY(e.clientY);
     pointerY = e.clientY;
     maxScroll = Math.max(0, listEl.scrollHeight - listEl.clientHeight);
@@ -107,7 +114,7 @@
   }
 
   function onPointerMove(e: PointerEvent): void {
-    if (!drag) return;
+    if (!drag || e.pointerId !== dragPointer) return;
     pointerY = e.clientY;
     updateDrag();
   }
@@ -115,9 +122,9 @@
   function updateDrag(): void {
     if (!drag) return;
     // Clamped, so the card can't be dragged out of the list and off the panel.
-    const dy = clampDy(boxes, drag.from, contentY(pointerY) - startY);
-    const to = dropIndex(boxes, drag.from, dy);
-    drag = { from: drag.from, to, offsets: dragOffsets(boxes, drag.from, to, dy) };
+    const dy = clampDy(geom, contentY(pointerY) - startY);
+    const to = dropIndex(geom, dy);
+    drag = { from: geom.from, to, offsets: dragOffsets(geom, to, dy) };
   }
 
   function autoScroll(): void {
@@ -136,14 +143,30 @@
     scrollRaf = requestAnimationFrame(autoScroll);
   }
 
-  function onPointerUp(): void {
-    cancelAnimationFrame(scrollRaf);
+  function onPointerUp(e: PointerEvent): void {
+    if (!drag || e.pointerId !== dragPointer) return;
     const d = drag;
     // Dropping the transforms and committing the order in the same update is
     // what makes `animate:flip` land: it measures the cards where the drag left
     // them and animates to the new layout.
+    endDrag();
+    if (d.to !== d.from) app.reorderSeries(d.from, d.to);
+  }
+
+  // Escape, or the browser taking the gesture away from us (`pointercancel`
+  // fires for a scroll or a system gesture claiming the pointer). Both put the
+  // cards back where they were: a drag the user didn't finish shouldn't commit
+  // an order they were still choosing. Nothing to undo, since the drag never
+  // touched app state.
+  function cancelDrag(e?: PointerEvent): void {
+    if (!drag || (e && e.pointerId !== dragPointer)) return;
+    endDrag();
+  }
+
+  function endDrag(): void {
+    cancelAnimationFrame(scrollRaf);
+    dragPointer = -1;
     drag = null;
-    if (d && d.to !== d.from) app.reorderSeries(d.from, d.to);
   }
 </script>
 
@@ -154,6 +177,10 @@
 {#snippet chipRow(chips: AttrChip[])}{#each chips as chip, i}{#if i > 0}<span class="sep"
       >·</span
     >{' '}{/if}<span class="attr {chip.field}">{chip.value}</span>{' '}{/each}{/snippet}
+
+<!-- Declarative, so there's no listener lifecycle to get wrong; the handler is
+     a no-op unless a drag is in flight. -->
+<svelte:window onkeydown={(e) => e.key === 'Escape' && cancelDrag()} />
 
 <aside class="series-list">
   <header>
@@ -234,7 +261,7 @@
             onpointerdown={(e) => onPointerDown(e, i)}
             onpointermove={onPointerMove}
             onpointerup={onPointerUp}
-            onpointercancel={onPointerUp}>⠿</span
+            onpointercancel={cancelDrag}>⠿</span
           >
           <button
             type="button"

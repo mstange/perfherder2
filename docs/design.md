@@ -355,24 +355,39 @@ The mechanism, split between
   jumps. The corollary: the neighbours' `transition: transform` is scoped
   to `.sliding` (present only during a drag), because a transition still
   running when flip starts would fight it over the same property.
+- **The geometry is a list of slot positions, measured once.**
+  `dragGeometry` returns, per slot, the `dy` at which the lifted card
+  lands in that slot *exactly*: aligned tops with the card currently
+  there for slots above the origin, aligned bottoms for slots below.
+  That's not an approximation — splice the card out and back in, and the
+  cards in between each shift by one `displacement`, which works out to
+  precisely those two alignments. Every other question is then arithmetic
+  on that one array, and the per-move path never touches the DOM. (Same
+  shape as the profiler's `Reorderable`, which is where the approach comes
+  from.)
+- **A card takes the slot it is nearest**, so the threshold between two
+  slots is the midpoint between their drop positions — *half* a card's
+  travel. The obvious-looking alternative, swapping when the dragged
+  card's centre crosses its neighbour's centre, is a whole slot too late:
+  the list only rearranges once you have dragged past the place you were
+  aiming for, which reads as lag. Reordering as soon as the card is more
+  in the new slot than the old one is what makes it feel direct.
+- **Slot positions come from the frozen layout, not from where cards have
+  slid to.** The thresholds must not move under the pointer, or a card
+  stepping aside immediately satisfies the reverse test and oscillates.
 - **Cards are not a uniform height** — a card's text wraps to one, two or
   three lines depending on how much distinguishes it — so nothing may
   assume a row pitch. `displacement` reads the gap back out of the
-  measured boxes, and `dropIndex` counts frozen midpoints.
-- **Midpoints come from the frozen layout, not from where cards have slid
-  to.** A card sliding out from under the pointer would otherwise
-  immediately satisfy the reverse test and oscillate.
+  measured boxes, and the top/bottom alignment rule above is what keeps
+  the slot positions exact for mixed heights. `reorder.test.ts` checks
+  them against an actual re-layout, on fixtures with one card much taller
+  than its neighbours, rather than against the same sum written twice.
 - **`clampDy` keeps the lifted card in the list**, so it can't be dragged
-  out over the graph or off the panel. The clamp is on the card's *centre*
-  — between the first and last cards' centres — because that is exactly
-  the range in which `dropIndex` still reaches the end slots. Clamping the
-  card's box inside the content instead would make the end slots
-  unreachable whenever the dragged card is taller than the card at that
-  end. It follows that `dropIndex` has to be inclusive on the far side
-  (`c <= centre` below the origin, `c < centre` above it): at the clamp the
-  two centres coincide exactly, and both directions have to resolve
-  outwards. The two comparisons still swap at the same place, so the
-  interaction is symmetric.
+  out over the graph or off the panel. Clamping to the first and last
+  *slot positions* is what makes both ends reachable and keeps the card
+  inside the content at the same time: at the clamp the card is sitting
+  *in* the end slot, so `dropIndex` agrees by construction and there is
+  no overhang to tolerate.
 - **Boxes are measured in the scroller's content coordinates**, so
   auto-scrolling mid-drag doesn't invalidate them.
 - **Auto-scroll is clamped to the pre-drag scroll range.** A translated
@@ -383,6 +398,14 @@ The mechanism, split between
   a list taller than its scroller can't otherwise be fully reordered.)
 - `touch-action: none` on the handle, or the browser claims the gesture
   for scrolling before we see a `pointermove`.
+- **Escape and `pointercancel` abort rather than commit.** A drag the
+  user didn't finish shouldn't decide an order they were still choosing,
+  and since the drag never touched app state there is nothing to undo —
+  dropping the transforms puts the cards back. The `keydown` handler
+  lives on `<svelte:window>` so there's no listener lifetime to manage;
+  it's a no-op unless a drag is in flight. The drag also records its
+  `pointerId`, so a second finger landing on another card's handle can't
+  end it.
 
 The ↑/↓ buttons stay as the keyboard path: the handle is `aria-hidden`
 and not focusable, so the drag is a pointer affordance only.
