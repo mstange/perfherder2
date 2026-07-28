@@ -39,11 +39,14 @@ view as time passes.
 
 ```sh
 npm install
-npm run dev      # vite dev server
-npm test         # vitest, pure-logic unit tests
-npx svelte-check # types + a11y; must be clean
+npm run dev     # vite dev server
+npm run check   # svelte-check (types + a11y) and tsc over the vite config
+npm test        # vitest, pure-logic unit tests
 npm run build
 ```
+
+The last three must all be clean; [.github/workflows/ci.yml](.github/workflows/ci.yml)
+runs exactly those, in that order, on every push and pull request.
 
 ## Where to read next
 
@@ -57,3 +60,12 @@ npm run build
 
 Both design docs are meant to be read before making non-trivial changes;
 they record the *why* behind things that look arbitrary.
+
+## License
+
+[Mozilla Public License 2.0](LICENSE.txt), the same license as
+[treeherder](https://github.com/mozilla/treeherder) itself. The license
+applies to every file in the repository unless a file states otherwise.
+
+This project is governed by Mozilla's
+[Community Participation Guidelines](CODE_OF_CONDUCT.md).
