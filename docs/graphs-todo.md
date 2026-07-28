@@ -26,12 +26,12 @@ Living checklist. Update in the same commit as the work it describes.
 - Modal behaviour for the picker overlay (inert background, backdrop click,
   focus restore)
 - Unit tests for the reactive state (see docs/design.md → Testing)
-
 - Per-series visibility (click the swatch), carried in the URL
+- Drag-to-reorder in the series list, with the ↑/↓ buttons as the
+  keyboard-reachable equivalent
 
 ## Next
 
-- [ ] Series list: drag to reorder, rather than only ↑/↓ buttons.
 - [ ] A full repaint of the detail graph at 100k+ dots takes ~60ms, which is
       one dropped frame on a discrete action like resetting the zoom.
       Decimating the overview by pixel column would be the first thing to

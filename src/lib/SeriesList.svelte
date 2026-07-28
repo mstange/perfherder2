@@ -6,6 +6,29 @@
 
   type Props = { app: AppState };
   let { app }: Props = $props();
+
+  // Drag-to-reorder. Only the handle is `draggable`, so the card's text stays
+  // selectable — browsers disable selection inside a draggable element. The
+  // ↑/↓ buttons remain the keyboard-reachable equivalent.
+  let dragFrom = $state<number | null>(null);
+  let dragOver = $state<number | null>(null);
+
+  function onDragStart(e: DragEvent, index: number): void {
+    dragFrom = index;
+    if (!e.dataTransfer) return;
+    e.dataTransfer.effectAllowed = 'move';
+    // Firefox won't start a drag without data on the transfer.
+    e.dataTransfer.setData('text/plain', String(index));
+    // Drag the whole card, not the four-pixel handle the pointer is on.
+    const card = (e.currentTarget as HTMLElement).closest('.card');
+    if (card) e.dataTransfer.setDragImage(card, 20, 20);
+  }
+
+  function onDrop(index: number): void {
+    if (dragFrom !== null) app.reorderSeries(dragFrom, index);
+    dragFrom = null;
+    dragOver = null;
+  }
 </script>
 
 <aside class="series-list">
@@ -23,7 +46,25 @@
       </p>
     {/if}
     {#each app.series as entry, i (entry.key)}
-      <div class="card" class:hidden-series={!entry.visible} role="listitem">
+      <div
+        class="card"
+        class:hidden-series={!entry.visible}
+        class:dragging={dragFrom === i}
+        class:drag-over={dragOver === i && dragFrom !== null && dragFrom !== i}
+        role="listitem"
+        ondragover={(e) => {
+          if (dragFrom === null) return;
+          e.preventDefault();
+          dragOver = i;
+        }}
+        ondragleave={() => {
+          if (dragOver === i) dragOver = null;
+        }}
+        ondrop={(e) => {
+          e.preventDefault();
+          onDrop(i);
+        }}
+      >
         <!-- The swatch doubles as the show/hide control: it's the thing that
              ties the card to the graph, so it's where you look to ask "is
              this one on?". -->
@@ -62,6 +103,18 @@
           </div>
         </div>
         <div class="actions">
+          <!-- svelte-ignore a11y_no_static_element_interactions -->
+          <span
+            class="handle"
+            draggable="true"
+            title="Drag to reorder"
+            aria-hidden="true"
+            ondragstart={(e) => onDragStart(e, i)}
+            ondragend={() => {
+              dragFrom = null;
+              dragOver = null;
+            }}>⠿</span
+          >
           <button
             type="button"
             class="icon"
@@ -160,6 +213,27 @@
   }
   .card.hidden-series .text {
     opacity: 0.55;
+  }
+  .card.dragging {
+    opacity: 0.4;
+  }
+  .card.drag-over {
+    /* An inset outline rather than a border: a border would change the card's
+       height and shuffle every card below it mid-drag. */
+    outline: 2px solid #0969da;
+    outline-offset: -2px;
+  }
+  .handle {
+    display: block;
+    width: 20px;
+    text-align: center;
+    color: #8c959f;
+    cursor: grab;
+    user-select: none;
+    line-height: 1.2;
+  }
+  .handle:active {
+    cursor: grabbing;
   }
   .text {
     min-width: 0;

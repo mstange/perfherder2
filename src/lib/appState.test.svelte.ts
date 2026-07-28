@@ -176,6 +176,23 @@ describe('AppState series list', () => {
       expect(app.series.map((s) => s.ref.signatureId)).toEqual([2, 1]);
     }));
 
+  it('reorders to an arbitrary position, as a drag does', () =>
+    withApp('?series=autoland,1,1&series=autoland,2,1&series=autoland,3,1', (app) => {
+      app.reorderSeries(0, 2);
+      expect(app.series.map((s) => s.ref.signatureId)).toEqual([2, 3, 1]);
+      app.reorderSeries(2, 0);
+      expect(app.series.map((s) => s.ref.signatureId)).toEqual([1, 2, 3]);
+    }));
+
+  it('clamps a reorder past the end and ignores a no-op', () =>
+    withApp('?series=autoland,1,1&series=autoland,2,1', (app) => {
+      app.reorderSeries(0, 99);
+      expect(app.series.map((s) => s.ref.signatureId)).toEqual([2, 1]);
+      const before = app.seriesRefs;
+      app.reorderSeries(0, 0);
+      expect(app.seriesRefs).toBe(before);
+    }));
+
   it('ignores a move off either end', () =>
     withApp('?series=autoland,1,1&series=autoland,2,1', (app) => {
       app.moveSeries(0, -1);

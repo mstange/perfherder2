@@ -409,16 +409,23 @@ export class AppState {
     this.syncUrl('push');
   }
 
-  // Move a series up or down the list. Order decides both legend order and
-  // color, so this is a real user-facing action rather than cosmetics.
-  moveSeries(index: number, delta: number): void {
-    const target = index + delta;
-    if (index < 0 || index >= this.seriesRefs.length) return;
-    if (target < 0 || target >= this.seriesRefs.length) return;
+  // Order decides both legend order and color, so reordering is a real
+  // user-facing action rather than cosmetics.
+  reorderSeries(from: number, to: number): void {
+    const n = this.seriesRefs.length;
+    if (from < 0 || from >= n) return;
+    const target = Math.max(0, Math.min(n - 1, to));
+    if (target === from) return;
     const next = [...this.seriesRefs];
-    [next[index], next[target]] = [next[target], next[index]];
+    const [moved] = next.splice(from, 1);
+    next.splice(target, 0, moved);
     this.seriesRefs = next;
     this.syncUrl('push');
+  }
+
+  // The keyboard path; drag-and-drop goes through reorderSeries directly.
+  moveSeries(index: number, delta: number): void {
+    this.reorderSeries(index, index + delta);
   }
 
   setRangePreset(seconds: number, now = Date.now()): void {
