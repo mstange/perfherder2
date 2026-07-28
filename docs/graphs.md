@@ -1,0 +1,141 @@
+# Graphs view — design and status
+
+Companion to [design.md](design.md), which covers the "Add series" picker.
+This file covers the graphs half of the app: layout, data model, rendering,
+selection, and URL state.
+
+Treeherder's implementation lives in `~/code/treeherder/ui/perfherder/graphs/`
+(`GraphsView.jsx`, `GraphsContainer.jsx`, `GraphTooltip.jsx`). Where we follow
+it, the decision is recorded below so it can be revisited; where we deviate
+deliberately, the deviation is called out.
+
+## Layout
+
+Three panes, filling the viewport, no page scroll:
+
+```
+┌──────────────┬────────────────────────────────┬───────────────┐
+│ Series list  │  overview graph (thin, full    │ Selection     │
+│ (left)       │  time range, no lines)         │ details       │
+│              ├────────────────────────────────┤ (right)       │
+│ + Add series │  detail graph (zoomed range)   │ build / run / │
+│              │                                │ replicate     │
+└──────────────┴────────────────────────────────┴───────────────┘
+```
+
+The "Add series" picker opens as an overlay panel over the whole area rather
+than living in the left pane — it needs the full width for its table.
+
+## Data model
+
+### Fetch
+
+`GET /api/performance/summary/` with
+`repository`, `signature=<signature id>`, `framework`, `all_data=true`,
+`replicates=true`, and `startday`/`endday`.
+
+- **We pass `startday`/`endday` (absolute), treeherder passes `interval`
+  (relative).** This is the deviation the task called for: a URL that says
+  "last 14 days" points at a moving window, so a linked data point silently
+  falls out of range over time. Absolute bounds keep permalinks stable. The
+  UI still offers "Last N days" buttons; they compute absolute bounds at
+  click time and bake those into the URL.
+- Format is naive ISO (`YYYY-MM-DDTHH:mm:ss`), interpreted by the backend as
+  UTC. The backend filters `push_timestamp > startday AND < endday`.
+- `all_data=true` is required to get the per-datum `data` array at all; without
+  it the endpoint returns aggregate `values`.
+
+### Replicates
+
+`replicates=true` is **always on** (task requirement; treeherder makes it a
+toggle). The backend then emits one row per replicate value, all sharing the
+same datum `id`, `job_id`, `push_id` and `push_timestamp`. When a datum has no
+replicates recorded, the backend falls back to emitting a single row with the
+summary `value`. So "a run always has at least one value" holds.
+
+### The three-level hierarchy
+
+Flat API rows are grouped into the structure the right-hand pane displays:
+
+```
+push   (push_id, revision, push_timestamp)   ← "build" in the task description
+└─ run (job_id, datum id)                    ← "job"
+   └─ replicate (index, value)
+```
+
+`push_id` groups retriggers of the same build; `job_id` distinguishes them.
+Replicate index is positional within a datum — the API gives no replicate id,
+and the order is the DB row order of `performancedatumreplicate`.
+
+A **plotted point** is one replicate. Its identity is
+`(signatureId, datumId, replicateIndex)`; that triple is what the URL stores
+and what hit-testing returns. `datumId` alone is what treeherder stores
+(`selected=<signature_id>,<dataPointId>`), which is ambiguous once replicates
+are on — hence the extra index.
+
+### Push and job details
+
+Clicking a dot needs more than the summary payload carries:
+
+- push: `GET /api/project/<repo>/push/<pushId>/` → revision, author,
+  `push_timestamp`, and `revisions[]` with per-commit `comments`.
+- job: `GET /api/project/<repo>/jobs/<jobId>/` → job type name, machine,
+  result, timestamps, and log links.
+
+Both are fetched lazily on selection and cached by id.
+
+## Rendering
+
+**Canvas, not SVG.** A single series over 90 days with replicates is easily
+20k+ points; treeherder's Victory/SVG approach creates a DOM node per point
+and is visibly slow past a few thousand. We draw to a `<canvas>` and hit-test
+in JS against the same coordinate transform.
+
+Decisions carried over from treeherder:
+
+- One shared linear y-axis for all visible series, even when their units
+  differ. Mixing units on one axis is questionable, but it's what Perfherder
+  does and users are used to comparing shapes rather than absolute values.
+  Revisit if it bites.
+- x-axis is push timestamp, not job submit time.
+- Series colors come from a fixed palette assigned in add order.
+
+Deliberate deviations:
+
+- **No tooltip and no hover/click arrow panel.** Clicking a dot fills the
+  right-hand pane instead.
+- **Smaller dots.** Treeherder uses `DOT_SIZE = 5`; at high point counts the
+  plot turns into a solid blob. We use radius 2 in the detail graph and 1 in
+  the overview.
+- **No connecting lines in the overview graph**, per the task. The detail
+  graph does draw them (treeherder's `VictoryLine`), one polyline per series
+  through the per-run mean.
+- **Tighter y padding.** Treeherder pads the y domain by `(max-min)/1.8` on
+  each side, so data occupies under half the plot height. We pad by 5%.
+- **The graph fills the remaining viewport**, rather than treeherder's fixed
+  `CHART_WIDTH = 1350`.
+- **Larger color palette.** Treeherder cycles 6 colors × 6 symbols; we use a
+  12-color categorical palette and no symbol variation (symbols are hard to
+  distinguish at radius 2).
+
+## URL state
+
+Everything the task listed is in the query string:
+
+| Param | Meaning |
+|---|---|
+| `series` | Repeated/comma-joined `repo,signatureId,frameworkId`. **Order is significant** — it drives legend order and color assignment. |
+| `range` | Absolute full time range, `<startMs>,<endMs>` |
+| `zoom` | Absolute zoomed range, `<startMs>,<endMs>`; absent when not zoomed |
+| `sel` | Selected point, `<signatureId>,<datumId>,<replicateIndex>` |
+| `picker` | `1` when the Add-series panel is open |
+| `pf` | Picker filter free text |
+| `pc` | Picker filter chips, `field:value` repeated |
+
+If `sel` names a point that isn't in the loaded data (e.g. the range was
+narrowed), the selection is dropped rather than shown as a phantom —
+treeherder does the same (`verifySelectedDataPoint`).
+
+## Status
+
+See [graphs-todo.md](graphs-todo.md).
