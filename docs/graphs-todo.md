@@ -27,10 +27,10 @@ Living checklist. Update in the same commit as the work it describes.
   focus restore)
 - Unit tests for the reactive state (see docs/design.md → Testing)
 
+- Per-series visibility (click the swatch), carried in the URL
+
 ## Next
 
-- [ ] Per-series visibility toggle (treeherder's legend cards can hide a
-      series without removing it).
 - [ ] Series list: drag to reorder, rather than only ↑/↓ buttons.
 - [ ] A full repaint of the detail graph at 100k+ dots takes ~60ms, which is
       one dropped frame on a discrete action like resetting the zoom.

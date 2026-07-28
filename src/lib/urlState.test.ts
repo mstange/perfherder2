@@ -21,20 +21,25 @@ describe('parseViewState', () => {
   it('parses repeated series params in order', () => {
     const s = parseViewState('?series=autoland,1,13&series=mozilla-central,2,1');
     expect(s.series).toEqual([
-      { repository: 'autoland', signatureId: 1, frameworkId: 13 },
-      { repository: 'mozilla-central', signatureId: 2, frameworkId: 1 },
+      { repository: 'autoland', signatureId: 1, frameworkId: 13, visible: true },
+      { repository: 'mozilla-central', signatureId: 2, frameworkId: 1, visible: true },
     ]);
   });
 
-  it('accepts several triples packed into one series param', () => {
-    const s = parseViewState('?series=autoland,1,13,try,2,1');
-    expect(s.series).toHaveLength(2);
-    expect(s.series[1]).toEqual({ repository: 'try', signatureId: 2, frameworkId: 1 });
+  it('treats a three-field entry as visible', () => {
+    expect(parseViewState('?series=autoland,1,13').series[0].visible).toBe(true);
+  });
+
+  it('reads an explicit visibility flag', () => {
+    const s = parseViewState('?series=autoland,1,13,0&series=try,2,1,1');
+    expect(s.series.map((e) => e.visible)).toEqual([false, true]);
   });
 
   it('drops malformed series entries but keeps the good ones', () => {
     const s = parseViewState('?series=autoland,notanumber,13&series=try,5,1');
-    expect(s.series).toEqual([{ repository: 'try', signatureId: 5, frameworkId: 1 }]);
+    expect(s.series).toEqual([
+      { repository: 'try', signatureId: 5, frameworkId: 1, visible: true },
+    ]);
   });
 
   it('dedupes the same repo+signature appearing twice', () => {
@@ -100,7 +105,7 @@ describe('serializeViewState', () => {
   it('leaves commas and colons unencoded for readability', () => {
     const s = serializeViewState(
       state({
-        series: [{ repository: 'autoland', signatureId: 1, frameworkId: 13 }],
+        series: [{ repository: 'autoland', signatureId: 1, frameworkId: 13, visible: true }],
         pickerOpen: true,
         pickerFilter: { chips: [{ field: 'repo', value: 'autoland' }], text: '' },
       }),
@@ -122,8 +127,8 @@ describe('serializeViewState', () => {
   it('round-trips a fully populated state', () => {
     const full = state({
       series: [
-        { repository: 'autoland', signatureId: 1, frameworkId: 13 },
-        { repository: 'try', signatureId: 2, frameworkId: 1 },
+        { repository: 'autoland', signatureId: 1, frameworkId: 13, visible: true },
+        { repository: 'try', signatureId: 2, frameworkId: 1, visible: false },
       ],
       range: { start: T0, end: T1 },
       zoom: { start: T0 + 1000, end: T1 - 1000 },

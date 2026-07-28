@@ -23,14 +23,17 @@
   // a timer that exists only to un-highlight a button.
   const activePreset = $derived(matchingPreset(app.range, Date.now()));
 
+  // Only draw the selection ring when the point is actually plotted; a
+  // hidden series' selection stays in the URL but not on the canvas.
   const highlight = $derived.by(() => {
     const sel = app.selection;
-    return sel ? { x: sel.run.x, y: sel.value, color: sel.entry.color } : null;
+    if (!sel || !sel.entry.visible) return null;
+    return { x: sel.run.x, y: sel.value, color: sel.entry.color };
   });
 
   const unitLabel = $derived.by(() => {
     const units = new Set(
-      app.series.map((s) => s.meta?.measurementUnit).filter((u): u is string => !!u),
+      app.visibleSeries.map((s) => s.meta?.measurementUnit).filter((u): u is string => !!u),
     );
     if (units.size === 0) return '';
     // Several units on one axis is a known wart (see docs/graphs.md); at
@@ -43,7 +46,9 @@
       app.selectPoint(null);
       return;
     }
-    const entry = app.series[hit.seriesIndex];
+    // The index is into the array the chart was given — the visible subset,
+    // not the full list.
+    const entry = app.visibleSeries[hit.seriesIndex];
     const point = entry?.data.points[hit.pointIndex];
     if (!entry || !point) return;
     app.selectPoint({
@@ -105,7 +110,7 @@
 
   <div class="overview">
     <ScatterChart
-      series={app.series}
+      series={app.visibleSeries}
       xDomain={xFull}
       yDomain={app.fullYDomain}
       pad={OVERVIEW_PAD}
@@ -122,7 +127,7 @@
   <div class="detail">
     {#if unitLabel}<span class="unit">{unitLabel}</span>{/if}
     <ScatterChart
-      series={app.series}
+      series={app.visibleSeries}
       xDomain={xDetail}
       yDomain={app.detailYDomain}
       pad={DETAIL_PAD}
@@ -139,6 +144,8 @@
     />
     {#if app.series.length === 0}
       <p class="overlay-note">Add a series to see data.</p>
+    {:else if app.visibleSeries.length === 0}
+      <p class="overlay-note">Every series is hidden.</p>
     {:else if !app.hasData}
       <p class="overlay-note">
         {app.anyLoading ? 'Loading…' : 'No data in this time range.'}

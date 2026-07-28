@@ -168,13 +168,20 @@ Deliberate deviations:
   12-color categorical palette and no symbol variation (symbols are hard to
   distinguish at radius 2).
 
+**Hiding a series** keeps it in the list, in the URL, and in its color slot —
+only the drawing stops. Everything downstream of `AppState.visibleSeries`
+(both y domains, hit-testing, the "no data" note, keyboard stepping) works off
+the visible subset, so a hidden series can't influence the plot. A selection
+belonging to a hidden series survives; the details pane says why it isn't on
+screen and offers to unhide.
+
 ## URL state
 
 Everything the task listed is in the query string:
 
 | Param | Meaning |
 |---|---|
-| `series` | Repeated/comma-joined `repo,signatureId,frameworkId`. **Order is significant** — it drives legend order and color assignment. |
+| `series` | Repeated. Each is `repo,signatureId,frameworkId[,0]`; the trailing `0` means hidden and is omitted when visible. **Order is significant** — it drives legend order and color assignment. |
 | `range` | Absolute full time range, `<startMs>,<endMs>` |
 | `zoom` | Absolute zoomed range, `<startMs>,<endMs>`; absent when not zoomed |
 | `sel` | Selected point, `<repo>,<signatureId>,<datumId>,<replicateIndex>` |

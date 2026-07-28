@@ -38,6 +38,7 @@ import {
   parseViewState,
   serializeViewState,
   type SelectedPoint,
+  type SeriesEntryState,
   type ViewState,
 } from './urlState';
 
@@ -46,6 +47,10 @@ export type SeriesEntry = {
   ref: SeriesRef;
   key: string;
   color: string;
+  // Hidden series stay in the list and in the URL, they just aren't drawn or
+  // hit-tested. Their color slot is kept, so unhiding doesn't recolor the
+  // rest of the graph.
+  visible: boolean;
   meta: SeriesMeta | null;
   data: SeriesData;
   loading: boolean;
@@ -69,7 +74,7 @@ function dataKey(ref: SeriesRef, span: Span): string {
 
 export class AppState {
   // ---- View state (mirrored in the URL) ---------------------------------
-  seriesRefs = $state<SeriesRef[]>([]);
+  seriesRefs = $state<SeriesEntryState[]>([]);
   range = $state<Span>(defaultSpan(Date.now()));
   // null means "the detail graph shows the whole range".
   zoom = $state<Span | null>(null);
@@ -105,6 +110,7 @@ export class AppState {
         ref,
         key: seriesKey(ref),
         color: colorForIndex(i),
+        visible: ref.visible,
         meta: loaded?.meta ?? null,
         data: loaded?.data ?? EMPTY_SERIES_DATA,
         loading: this.loadingKeys.has(key),
@@ -113,9 +119,12 @@ export class AppState {
     }),
   );
 
+  // What the graphs actually draw. Everything downstream of here — domains,
+  // hit-testing, the "no data" note — works off this, not off `series`.
+  visibleSeries = $derived(this.series.filter((s) => s.visible));
   anyLoading = $derived(this.series.some((s) => s.loading));
   loadingCount = $derived(this.series.filter((s) => s.loading).length);
-  hasData = $derived(this.series.some((s) => s.data.points.length > 0));
+  hasData = $derived(this.visibleSeries.some((s) => s.data.points.length > 0));
   failedSeries = $derived(this.series.filter((s) => s.error !== null));
 
   // The detail graph's x domain.
@@ -124,7 +133,7 @@ export class AppState {
   // Shared y domain across every visible series, over the whole range. The
   // overview graph uses this one.
   fullYDomain = $derived.by((): Range => {
-    const e = extentOf(this.series, null);
+    const e = extentOf(this.visibleSeries, null);
     return padDomain(e.min, e.max);
   });
 
@@ -133,7 +142,7 @@ export class AppState {
   // bottom of the plot. Treeherder keeps a y zoom in its URL instead; we
   // derive it, which is one less thing to get out of sync.
   detailYDomain = $derived.by((): Range => {
-    const e = extentOf(this.series, this.detailSpan);
+    const e = extentOf(this.visibleSeries, this.detailSpan);
     return padDomain(e.min, e.max);
   });
 
@@ -163,8 +172,13 @@ export class AppState {
   selectionInView = $derived.by((): boolean => {
     const sel = this.selection;
     if (!sel) return true;
+    if (!sel.entry.visible) return false;
     return sel.run.x >= this.detailSpan.start && sel.run.x <= this.detailSpan.end;
   });
+
+  // Distinguishes the two reasons a selected point might not be on screen, so
+  // the details pane can offer the right way out of each.
+  selectionHiddenBySeries = $derived(this.selection ? !this.selection.entry.visible : false);
 
   // Push / job details for the selection, once fetched.
   selectedPush = $derived.by((): Push | null => {
@@ -349,9 +363,26 @@ export class AppState {
       if (next.some((s) => s.repository === ref.repository && s.signatureId === ref.signatureId)) {
         continue;
       }
-      next.push(ref);
+      next.push({ ...ref, visible: true });
     }
     this.seriesRefs = next;
+    this.syncUrl('push');
+  }
+
+  // Hiding keeps the series in the list, its color slot, and the URL — it's
+  // "stop drawing this", not "remove it".
+  toggleSeriesVisibility(ref: SeriesRef): void {
+    this.seriesRefs = this.seriesRefs.map((s) =>
+      s.repository === ref.repository && s.signatureId === ref.signatureId
+        ? { ...s, visible: !s.visible }
+        : s,
+    );
+    this.syncUrl('push');
+  }
+
+  showAllSeries(): void {
+    if (this.seriesRefs.every((s) => s.visible)) return;
+    this.seriesRefs = this.seriesRefs.map((s) => (s.visible ? s : { ...s, visible: true }));
     this.syncUrl('push');
   }
 
@@ -466,7 +497,7 @@ export class AppState {
   }
 
   private selectFirstPoint(): void {
-    for (const entry of this.series) {
+    for (const entry of this.visibleSeries) {
       const point = entry.data.points[0];
       if (!point) continue;
       this.selectPoint({

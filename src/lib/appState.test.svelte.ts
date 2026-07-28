@@ -102,7 +102,7 @@ describe('AppState construction', () => {
       `?series=autoland,1,1&range=${NOW - DAY},${NOW}&zoom=${NOW - DAY / 2},${NOW}&sel=autoland,1,10,2`,
       (app) => {
         expect(app.seriesRefs).toEqual([
-          { repository: 'autoland', signatureId: 1, frameworkId: 1 },
+          { repository: 'autoland', signatureId: 1, frameworkId: 1, visible: true },
         ]);
         expect(app.range).toEqual({ start: NOW - DAY, end: NOW });
         expect(app.zoom).toEqual({ start: NOW - DAY / 2, end: NOW });
@@ -193,6 +193,62 @@ describe('AppState series list', () => {
     withApp('?series=autoland,1,1&series=autoland,2,1&sel=autoland,2,10,0', (app) => {
       app.removeSeries(ref(1));
       expect(app.selectedPoint?.signatureId).toBe(2);
+    }));
+});
+
+describe('AppState visibility', () => {
+  const ref = (id: number) => ({ repository: 'autoland', signatureId: id, frameworkId: 1 });
+
+  it('adds series visible', () =>
+    withApp('', (app) => {
+      app.addSeries([ref(1)]);
+      expect(app.visibleSeries).toHaveLength(1);
+    }));
+
+  it('hides and shows without removing or recoloring', () =>
+    withApp('?series=autoland,1,1&series=autoland,2,1', (app) => {
+      const colors = app.series.map((s) => s.color);
+      app.toggleSeriesVisibility(ref(1));
+      expect(app.series).toHaveLength(2);
+      expect(app.visibleSeries.map((s) => s.ref.signatureId)).toEqual([2]);
+      expect(app.series.map((s) => s.color)).toEqual(colors);
+      app.toggleSeriesVisibility(ref(1));
+      expect(app.visibleSeries).toHaveLength(2);
+    }));
+
+  it('round-trips the hidden flag through the URL', () =>
+    withApp('?series=autoland,1,1,0&series=autoland,2,1', (app) => {
+      expect(app.visibleSeries.map((s) => s.ref.signatureId)).toEqual([2]);
+      app.showAllSeries();
+      expect(location.search).not.toContain(',0');
+      expect(app.visibleSeries).toHaveLength(2);
+    }));
+
+  it('ignores hidden series when computing whether there is data', () =>
+    withApp('?series=autoland,1,1', async (app) => {
+      await settle();
+      expect(app.hasData).toBe(true);
+      app.toggleSeriesVisibility(ref(1));
+      expect(app.hasData).toBe(false);
+    }));
+
+  it('reports a selection hidden by its series, separately from zoom', () =>
+    withApp('?series=autoland,1,1&sel=autoland,1,10,0', async (app) => {
+      await settle();
+      expect(app.selectionHiddenBySeries).toBe(false);
+      app.toggleSeriesVisibility(ref(1));
+      expect(app.selectionHiddenBySeries).toBe(true);
+      expect(app.selectionInView).toBe(false);
+      // The selection itself survives — hiding is not removing.
+      expect(app.selection?.value).toBe(100);
+    }));
+
+  it('does not step the keyboard selection into a hidden series', () =>
+    withApp('?series=autoland,1,1', async (app) => {
+      await settle();
+      app.toggleSeriesVisibility(ref(1));
+      app.stepRun(1);
+      expect(app.selectedPoint).toBeNull();
     }));
 });
 

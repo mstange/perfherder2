@@ -23,8 +23,20 @@
       </p>
     {/if}
     {#each app.series as entry, i (entry.key)}
-      <div class="card" role="listitem">
-        <span class="swatch" style:background={entry.color} aria-hidden="true"></span>
+      <div class="card" class:hidden-series={!entry.visible} role="listitem">
+        <!-- The swatch doubles as the show/hide control: it's the thing that
+             ties the card to the graph, so it's where you look to ask "is
+             this one on?". -->
+        <button
+          type="button"
+          class="swatch"
+          class:off={!entry.visible}
+          style:--series-color={entry.color}
+          aria-pressed={entry.visible}
+          title={entry.visible ? 'Hide this series' : 'Show this series'}
+          aria-label={entry.visible ? 'Hide this series' : 'Show this series'}
+          onclick={() => app.toggleSeriesVisibility(entry.ref)}
+        ></button>
         <div class="text">
           <div class="title" title={entry.meta?.name ?? ''}>
             {entry.meta ? seriesLabel(entry.meta) : `signature ${entry.ref.signatureId}`}
@@ -123,7 +135,7 @@
   }
   .card {
     display: grid;
-    grid-template-columns: 10px 1fr auto;
+    grid-template-columns: 12px 1fr auto;
     gap: 8px;
     align-items: start;
     padding: 8px;
@@ -132,10 +144,22 @@
     border-radius: 6px;
   }
   .swatch {
-    width: 10px;
-    height: 10px;
-    margin-top: 3px;
-    border-radius: 2px;
+    width: 12px;
+    height: 12px;
+    margin-top: 2px;
+    padding: 0;
+    border: 1px solid var(--series-color);
+    border-radius: 3px;
+    background: var(--series-color);
+    cursor: pointer;
+  }
+  .swatch.off {
+    /* Hollow, not grey: the color still identifies the series, the fill says
+       whether it's being drawn. */
+    background: transparent;
+  }
+  .card.hidden-series .text {
+    opacity: 0.55;
   }
   .text {
     min-width: 0;

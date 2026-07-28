@@ -52,7 +52,14 @@
     <p class="empty">Click a point in the graph to see its build, run and value.</p>
   {:else}
     <div class="scroll">
-      {#if !app.selectionInView}
+      {#if app.selectionHiddenBySeries}
+        <p class="offscreen">
+          This series is hidden.
+          <button type="button" onclick={() => app.toggleSeriesVisibility(sel.entry.ref)}>
+            Show it
+          </button>
+        </p>
+      {:else if !app.selectionInView}
         <p class="offscreen">
           This point is outside the zoomed range.
           <button type="button" onclick={() => app.resetZoom()}>Show it</button>

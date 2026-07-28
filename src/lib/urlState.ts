@@ -19,8 +19,13 @@ export type SelectedPoint = {
   replicateIndex: number;
 };
 
+// A series in the URL: its identity plus whether it's currently plotted.
+// Hiding keeps it in the list (and in the link) without drawing it — the same
+// thing treeherder's legend cards do.
+export type SeriesEntryState = SeriesRef & { visible: boolean };
+
 export type ViewState = {
-  series: SeriesRef[];
+  series: SeriesEntryState[];
   // Full range shown by the overview graph.
   range: { start: number; end: number } | null;
   // Sub-range shown by the detail graph. Null means "same as range".
@@ -59,17 +64,21 @@ function parseSpan(s: string | null): { start: number; end: number } | null {
   return { start, end };
 }
 
-function parseSeriesEntry(entry: string): SeriesRef | null {
-  // "<repo>,<signatureId>,<frameworkId>". Treeherder's equivalent is
-  // "<repo>,<signature>,<visible>,<framework>"; we dropped the visibility
-  // flag (no per-series hide yet) and the legacy 40-char-hash signature form.
+// "<repo>,<signatureId>,<frameworkId>[,<visible>]". Treeherder's equivalent
+// is "<repo>,<signature>,<visible>,<framework>"; we keep the visibility flag
+// but put it last so it can be omitted, and we dropped the legacy
+// 40-char-hash form of the signature.
+function parseSeriesEntry(entry: string): SeriesEntryState | null {
   const parts = entry.split(',');
   if (parts.length < 3) return null;
   const repository = parts[0].trim();
   const signatureId = parseInteger(parts[1]);
   const frameworkId = parseInteger(parts[2]);
   if (!repository || signatureId === null || frameworkId === null) return null;
-  return { repository, signatureId, frameworkId };
+  // Anything other than an explicit "0" means visible, so a hand-written
+  // three-field entry behaves the way you'd expect.
+  const visible = parts.length < 4 || parts[3].trim() !== '0';
+  return { repository, signatureId, frameworkId, visible };
 }
 
 function parseSelected(s: string | null): SelectedPoint | null {
@@ -103,16 +112,17 @@ function parseChips(values: string[]): FilterChip[] {
 export function parseViewState(search: string): ViewState {
   const p = new URLSearchParams(search);
 
-  // `series` may repeat, and each occurrence may itself hold several
-  // comma-joined triples — allow either so hand-edited URLs work.
-  const series: SeriesRef[] = [];
+  // One entry per `series` param, repeated. (An earlier version also packed
+  // several entries into one param; that became ambiguous once entries could
+  // be three or four fields long.)
+  const series: SeriesEntryState[] = [];
   for (const raw of p.getAll('series')) {
-    const parts = raw.split(',');
-    for (let i = 0; i + 2 < parts.length; i += 3) {
-      const ref = parseSeriesEntry(parts.slice(i, i + 3).join(','));
-      if (ref && !series.some((s) => s.repository === ref.repository && s.signatureId === ref.signatureId)) {
-        series.push(ref);
-      }
+    const ref = parseSeriesEntry(raw);
+    if (
+      ref &&
+      !series.some((s) => s.repository === ref.repository && s.signatureId === ref.signatureId)
+    ) {
+      series.push(ref);
     }
   }
 
@@ -143,7 +153,9 @@ export function serializeViewState(state: ViewState): string {
   const p = new URLSearchParams();
 
   for (const s of state.series) {
-    p.append('series', `${s.repository},${s.signatureId},${s.frameworkId}`);
+    // The visibility flag is omitted in the common case, keeping links short.
+    const base = `${s.repository},${s.signatureId},${s.frameworkId}`;
+    p.append('series', s.visible ? base : `${base},0`);
   }
   if (state.range) p.set('range', `${state.range.start},${state.range.end}`);
   if (state.zoom) p.set('zoom', `${state.zoom.start},${state.zoom.end}`);
