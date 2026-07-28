@@ -146,6 +146,25 @@ export class PickerState {
   autoExpanded = $derived(this.filterResult.autoExpanded);
   anyLoading = $derived(this.loadingRepos.size > 0);
 
+  // What the row list has to say for itself. Three of these look the same from
+  // the template — an empty table — and mean very different things, so the
+  // distinction is drawn once here rather than as a chain of `{#if}`s.
+  //
+  // `loading` includes the stretch before `metadataReady`: the fetch effect
+  // waits on the framework and option-collection maps, so nothing is in flight
+  // yet and `anyLoading` is false. Without that clause the list claimed "no
+  // matching series" for the length of two requests it had not yet made. A
+  // failed metadata load is excluded — `metadataReady` never becomes true after
+  // one, and the panel's error banner is already saying so.
+  listStatus = $derived.by((): 'rows' | 'loading' | 'no-repos' | 'no-matches' => {
+    if (this.filteredParents.length > 0) return 'rows';
+    if (this.anyLoading || (!this.metadataReady && this.metadataError === null)) return 'loading';
+    // Nothing is fetched for a repo that isn't checked, so an empty list here
+    // is the repo row's doing, not the filter's.
+    if (this.selectedRepos.size === 0) return 'no-repos';
+    return 'no-matches';
+  });
+
   // Master checkbox scope: every row the current filter+expansion would
   // render *and* the user can actually pick. Virtual scrolling means most of
   // these aren't in the DOM at any given moment, but they are all "shown to

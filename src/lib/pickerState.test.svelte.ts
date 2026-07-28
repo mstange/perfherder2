@@ -254,6 +254,60 @@ describe('PickerState.view', () => {
     ));
 });
 
+describe('PickerState.listStatus', () => {
+  it('is loading before the metadata lands', () =>
+    withPicker(
+      (p) => p.seed(view({ repos: ['autoland'] })),
+      // No `settle()`: the framework and option-collection fetches haven't
+      // resolved, so no signature fetch has even started and `anyLoading` is
+      // still false. This is the window in which the list used to claim there
+      // were no matching series.
+      (p) => {
+        expect(p.anyLoading).toBe(false);
+        expect(p.listStatus).toBe('loading');
+      },
+    ));
+
+  it('says which kind of empty it is', async () => {
+    // Nothing checked: nothing is fetched either, so this is the repo row's
+    // doing and pointing at the filter would be a wild goose chase.
+    await withPicker(
+      (p) => p.seed(view({ repos: [] })),
+      async (p) => {
+        await settle();
+        expect(p.listStatus).toBe('no-repos');
+      },
+    );
+    // A repo that answered with no rows: a filter problem, or an empty repo.
+    signatures = {};
+    await withPicker(
+      (p) => p.seed(view({ repos: ['autoland'] })),
+      async (p) => {
+        await settle();
+        expect(p.listStatus).toBe('no-matches');
+      },
+    );
+  });
+
+  it('stops loading when the metadata fetch fails', () => {
+    fetchMock.mockImplementation(async (url: string) =>
+      String(url).includes('/performance/framework/')
+        ? ({ ok: false, status: 500, statusText: '' } as Response)
+        : json({}),
+    );
+    return withPicker(
+      (p) => p.seed(view({ repos: ['autoland'] })),
+      async (p) => {
+        await settle();
+        // `metadataReady` never becomes true after a failure, so without the
+        // error clause the list would shimmer forever behind an error banner.
+        expect(p.metadataError).not.toBeNull();
+        expect(p.listStatus).not.toBe('loading');
+      },
+    );
+  });
+});
+
 describe('PickerState.plotted', () => {
   it('leaves rows already on the graph out of the pickable set', () => {
     signatures = { '1': signature(1), '2': signature(2) };

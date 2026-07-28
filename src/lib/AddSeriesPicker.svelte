@@ -141,6 +141,14 @@
   const bottomPadding = $derived(Math.max(0, totalHeight - endIndex * ROW_HEIGHT));
   const visibleWindow = $derived(flatRows.slice(startIndex, endIndex));
 
+  // Placeholder rows for the loading state: as many as fit the scroller, so
+  // the block covers the area the real rows will and no more. Reusing
+  // `viewportHeight` means it tracks a resized window for free, and — since the
+  // header shares the scroller — it also means the loading state carries the
+  // same vertical scrollbar the loaded list does, so no column shifts when the
+  // rows arrive.
+  const skeletonCount = $derived(Math.max(1, Math.floor(viewportHeight / ROW_HEIGHT)));
+
   function rowKey(item: FlatRow, index: number): string {
     if (item.kind === 'parent') return `p:${item.row.id}`;
     if (item.kind === 'child') return `c:${item.row.id}`;
@@ -256,6 +264,7 @@
     class="table-wrap"
     bind:this={scroller}
     onscroll={onScroll}
+    aria-busy={picker.listStatus === 'loading'}
   >
     <table>
       <!-- Column widths are pinned via `table-layout: fixed` so the columns
@@ -462,9 +471,33 @@
             <td colspan="8"></td>
           </tr>
         {/if}
-        {#if flatRows.length === 0}
+        {#if picker.listStatus === 'loading'}
+          <!-- Placeholder rows, not one line of centered text: they say "rows
+               are coming, and here is the shape of them", they fill the space
+               the real rows will occupy so nothing jumps when a 22 MB payload
+               lands, and they make a slow fetch look like progress rather than
+               like an empty table. Hidden from assistive technology, which
+               gets `aria-busy` on the scroller and the status row's
+               "Loading…" instead of eight bars per row. -->
+          {#each Array(skeletonCount) as _, i (i)}
+            <tr class="skeleton" aria-hidden="true">
+              <td class="col-check"></td>
+              <td class="col-disclose"></td>
+              <td><span class="skeleton-bar"></span></td>
+              <td><span class="skeleton-bar"></span></td>
+              <td><span class="skeleton-bar"></span></td>
+              <td><span class="skeleton-bar"></span></td>
+              <td><span class="skeleton-bar"></span></td>
+              <td><span class="skeleton-bar"></span></td>
+            </tr>
+          {/each}
+        {:else if picker.listStatus !== 'rows'}
           <tr><td colspan="8" class="empty">
-            {#if picker.anyLoading}Loading series…{:else}No matching series.{/if}
+            {#if picker.listStatus === 'no-repos'}
+              No repositories selected — check one above.
+            {:else}
+              No matching series.
+            {/if}
           </td></tr>
         {/if}
       </tbody>
@@ -927,6 +960,30 @@
     text-align: center;
     color: #57606a;
     padding: 24px;
+  }
+  /* Loading placeholders: one grey bar per content column, pulsing together.
+     Only `opacity` animates, so this costs nothing while the main thread is
+     parsing a 22 MB response. */
+  .skeleton:hover {
+    background: transparent;
+  }
+  .skeleton-bar {
+    display: block;
+    width: 70%;
+    height: 14px;
+    border-radius: 7px;
+    background: #eaeef2;
+    animation: skeleton-pulse 1.2s ease-in-out infinite;
+  }
+  @keyframes skeleton-pulse {
+    50% {
+      opacity: 0.4;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .skeleton-bar {
+      animation: none;
+    }
   }
   /* Virtual-scroll spacer rows: their sole job is to occupy vertical space
      for the rows we haven't rendered yet. No borders, no padding, no hover. */

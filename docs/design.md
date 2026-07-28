@@ -523,9 +523,37 @@ Several places take care to not shift the list under the user's cursor:
 - `picked-count` has `min-width: 9ch` so "0 selected" → "12 selected"
   doesn't nudge the buttons horizontally.
 
+- The list itself fills with placeholder rows while it loads, one
+  `--row-height` each (see below), rather than showing one line of centered
+  text in an otherwise empty table.
+
 **When adding new UI, budget for the "loading" and "empty" states so they
 occupy the same space as the "loaded" state.** This is the single biggest
 polish issue in dashboards, and we've paid the tax already.
+
+### An empty list has four reasons, and says which
+
+`PickerState.listStatus` names them, because three of them render as the
+same empty table and mean different things:
+
+- **`loading`** — placeholder rows. This deliberately includes the stretch
+  before `metadataReady`: the fetch effect waits on the framework and
+  option-collection maps, so no signature request is in flight yet and
+  `anyLoading` is false. The list used to claim "No matching series" for
+  the length of two requests it had not yet made. A *failed* metadata load
+  is excluded, or the placeholders would pulse forever behind the error
+  banner.
+- **`no-repos`** — nothing is checked, so nothing was fetched. Pointing at
+  the filter here sends the user hunting in the wrong control.
+- **`no-matches`** — data arrived and the filter excluded all of it.
+- **`rows`** — the normal case.
+
+The placeholders are plain grey bars pulsing on `opacity` alone, sized in
+percentages of their columns. They're `aria-hidden`, with `aria-busy` on the
+scroller and the status row's "Loading…" carrying the same information for
+assistive tech. Their count comes from the scroller height the virtualizer
+already measures, so they fill the visible area exactly and track a resized
+window for free.
 
 ### The Add-series dialog has exactly one scroller
 
