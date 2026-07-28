@@ -86,6 +86,12 @@ export class AppState {
   private seriesCache = $state(new Map<string, LoadedSeries>());
   private loadingKeys = $state(new Set<string>());
   private errorsByKey = $state(new Map<string, string>());
+  // Abort handles for in-flight series fetches, so a range change can cancel
+  // requests nobody is waiting for any more. Not reactive: purely bookkeeping.
+  private inFlight = new Map<string, AbortController>();
+  // Detail lookups that have been issued but haven't landed yet. Without this,
+  // the selection effect re-firing before a fetch resolves issues a duplicate.
+  private detailRequests = new Set<string>();
 
   pushCache = $state(new Map<string, Push>());
   jobCache = $state(new Map<string, Job>());
@@ -202,6 +208,8 @@ export class AppState {
   // ---- Loading ----------------------------------------------------------
   private async loadSeries(ref: SeriesRef, span: Span, key: string): Promise<void> {
     this.loadingKeys = new Set(this.loadingKeys).add(key);
+    const controller = new AbortController();
+    this.inFlight.set(key, controller);
     try {
       const summary = await fetchSummary(
         ref.repository,
@@ -209,6 +217,7 @@ export class AppState {
         ref.frameworkId,
         span.start,
         span.end,
+        controller.signal,
       );
       const next = new Map(this.seriesCache);
       // A signature with no data in range still has metadata worth showing in
@@ -236,8 +245,13 @@ export class AppState {
         this.errorsByKey = errs;
       }
     } catch (e) {
-      this.errorsByKey = new Map(this.errorsByKey).set(key, (e as Error).message);
+      // An abort is us cancelling a fetch nobody wants any more, not a
+      // failure to report.
+      if (!controller.signal.aborted) {
+        this.errorsByKey = new Map(this.errorsByKey).set(key, (e as Error).message);
+      }
     } finally {
+      this.inFlight.delete(key);
       const done = new Set(this.loadingKeys);
       done.delete(key);
       this.loadingKeys = done;
@@ -245,26 +259,58 @@ export class AppState {
   }
 
   private async loadPush(repository: string, pushId: number): Promise<void> {
-    const key = `${repository}|${pushId}`;
-    if (this.pushCache.has(key)) return;
+    const key = `push|${repository}|${pushId}`;
+    if (this.pushCache.has(`${repository}|${pushId}`) || this.detailRequests.has(key)) return;
+    this.detailRequests.add(key);
     try {
       const push = await fetchPush(repository, pushId);
-      this.pushCache = new Map(this.pushCache).set(key, push);
+      this.pushCache = new Map(this.pushCache).set(`${repository}|${pushId}`, push);
     } catch {
-      // Detail panes degrade to "unavailable"; a failed lookup here should
-      // never take the graph down with it.
+      // The details pane degrades to "loading…" rather than showing an error:
+      // a failed metadata lookup should never take the graph down with it.
+    } finally {
+      this.detailRequests.delete(key);
     }
   }
 
   private async loadJob(repository: string, jobId: number): Promise<void> {
-    const key = `${repository}|${jobId}`;
-    if (this.jobCache.has(key)) return;
+    const key = `job|${repository}|${jobId}`;
+    if (this.jobCache.has(`${repository}|${jobId}`) || this.detailRequests.has(key)) return;
+    this.detailRequests.add(key);
     try {
       const job = await fetchJob(repository, jobId);
-      this.jobCache = new Map(this.jobCache).set(key, job);
+      this.jobCache = new Map(this.jobCache).set(`${repository}|${jobId}`, job);
     } catch {
       // As above.
+    } finally {
+      this.detailRequests.delete(key);
     }
+  }
+
+  // Drop series data that no longer belongs to any (current series, current
+  // range) pair, and cancel fetches for it. Without this, every click on a
+  // range preset leaves a full set of point arrays behind — megabytes each
+  // for a wide range — for the lifetime of the tab.
+  //
+  // The cost is that going Back to a previous range refetches. That's a
+  // predictable trade: bounded memory over a warm back button.
+  private pruneSeriesCache(): void {
+    const wanted = new Set(this.seriesRefs.map((ref) => dataKey(ref, this.range)));
+
+    for (const [key, controller] of this.inFlight) {
+      if (!wanted.has(key)) controller.abort();
+    }
+    const cache = new Map<string, LoadedSeries>();
+    for (const [key, value] of this.seriesCache) {
+      if (wanted.has(key)) cache.set(key, value);
+    }
+    if (cache.size !== this.seriesCache.size) this.seriesCache = cache;
+
+    const errors = new Map<string, string>();
+    for (const [key, value] of this.errorsByKey) {
+      if (wanted.has(key)) errors.set(key, value);
+    }
+    if (errors.size !== this.errorsByKey.size) this.errorsByKey = errors;
   }
 
   private async loadRepositories(): Promise<void> {
@@ -301,12 +347,14 @@ export class AppState {
     ) {
       this.selectedPoint = null;
     }
+    this.pruneSeriesCache();
     this.syncUrl('push');
   }
 
   clearSeries(): void {
     this.seriesRefs = [];
     this.selectedPoint = null;
+    this.pruneSeriesCache();
     this.syncUrl('push');
   }
 
@@ -331,6 +379,7 @@ export class AppState {
     // A zoom expressed in absolute time may fall partly or wholly outside the
     // new range; clamp it, and drop it if it no longer narrows anything.
     this.zoom = this.zoom ? clampSpan(this.zoom, span) : null;
+    this.pruneSeriesCache();
     this.syncUrl('push');
   }
 
@@ -449,6 +498,7 @@ export class AppState {
     } finally {
       this.applying = false;
     }
+    this.pruneSeriesCache();
   }
 
   // Wired to `popstate` by App.svelte.

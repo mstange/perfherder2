@@ -115,6 +115,9 @@ export function seriesLabel(meta: SeriesMeta): string {
   return meta.test ? `${meta.suite} · ${meta.test}` : meta.suite;
 }
 
+// Shared by every series that has no data. Nothing may mutate it — the
+// collections inside are handed out to callers as if they were that series'
+// own. Everything that builds real data allocates fresh containers.
 export const EMPTY_SERIES_DATA: SeriesData = {
   pushes: [],
   runs: [],

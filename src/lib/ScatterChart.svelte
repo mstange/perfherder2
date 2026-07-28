@@ -95,8 +95,15 @@
   $effect(() => {
     if (!canvas || width <= 0 || height <= 0) return;
     const dpr = window.devicePixelRatio || 1;
-    canvas.width = Math.round(width * dpr);
-    canvas.height = Math.round(height * dpr);
+    const bw = Math.round(width * dpr);
+    const bh = Math.round(height * dpr);
+    // Assigning width/height reallocates and clears the backing store, so
+    // only do it on an actual size change — this effect reruns on every frame
+    // of a zoom drag.
+    if (canvas.width !== bw || canvas.height !== bh) {
+      canvas.width = bw;
+      canvas.height = bh;
+    }
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
