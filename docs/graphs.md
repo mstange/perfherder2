@@ -68,10 +68,11 @@ Replicate index is positional within a datum — the API gives no replicate id,
 and the order is the DB row order of `performancedatumreplicate`.
 
 A **plotted point** is one replicate. Its identity is
-`(signatureId, datumId, replicateIndex)`; that triple is what the URL stores
-and what hit-testing returns. `datumId` alone is what treeherder stores
-(`selected=<signature_id>,<dataPointId>`), which is ambiguous once replicates
-are on — hence the extra index.
+`(repository, signatureId, datumId, replicateIndex)`; that's what the URL
+stores and what hit-testing resolves to. `datumId` alone is what treeherder
+stores (`selected=<signature_id>,<dataPointId>`), which is ambiguous once
+replicates are on — hence the extra index. The repo is included because
+signature ids are only unique per repo, matching `Series.key` in the picker.
 
 ### Push and job details
 
@@ -127,7 +128,7 @@ Everything the task listed is in the query string:
 | `series` | Repeated/comma-joined `repo,signatureId,frameworkId`. **Order is significant** — it drives legend order and color assignment. |
 | `range` | Absolute full time range, `<startMs>,<endMs>` |
 | `zoom` | Absolute zoomed range, `<startMs>,<endMs>`; absent when not zoomed |
-| `sel` | Selected point, `<signatureId>,<datumId>,<replicateIndex>` |
+| `sel` | Selected point, `<repo>,<signatureId>,<datumId>,<replicateIndex>` |
 | `picker` | `1` when the Add-series panel is open |
 | `pf` | Picker filter free text |
 | `pc` | Picker filter chips, `field:value` repeated |
