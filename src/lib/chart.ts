@@ -264,6 +264,77 @@ export function hitTestSeries(
   return best === -1 ? null : { pointIndex: best, distanceSq: bestDist };
 }
 
+// Nearest point across several series. Returns the series index too, so the
+// caller can turn it back into a selection.
+export function hitTestAll(
+  list: { points: SeriesPoint[] }[],
+  xScale: Scale,
+  yScale: Scale,
+  px: number,
+  py: number,
+  radius: number,
+): Hit | null {
+  let best: Hit | null = null;
+  for (let s = 0; s < list.length; s++) {
+    const hit = hitTestSeries(list[s].points, xScale, yScale, px, py, radius);
+    if (hit && (!best || hit.distanceSq < best.distanceSq)) {
+      best = { seriesIndex: s, pointIndex: hit.pointIndex, distanceSq: hit.distanceSq };
+    }
+  }
+  return best;
+}
+
+// ---------------------------------------------------------------------------
+// Plot geometry
+// ---------------------------------------------------------------------------
+
+export type Padding = { left: number; right: number; top: number; bottom: number };
+
+export type PlotGeometry = {
+  width: number;
+  height: number;
+  pad: Padding;
+  // Plot area in canvas coordinates.
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+  plotWidth: number;
+  plotHeight: number;
+  xScale: Scale;
+  yScale: Scale;
+};
+
+// The two graphs share their left padding so their plot areas line up
+// vertically; that alignment is what makes the overview readable as a map of
+// the detail graph.
+export function makeGeometry(
+  width: number,
+  height: number,
+  pad: Padding,
+  xDomain: Range,
+  yDomain: Range,
+): PlotGeometry {
+  const x0 = pad.left;
+  const x1 = Math.max(pad.left + 1, width - pad.right);
+  const y0 = pad.top;
+  const y1 = Math.max(pad.top + 1, height - pad.bottom);
+  return {
+    width,
+    height,
+    pad,
+    x0,
+    y0,
+    x1,
+    y1,
+    plotWidth: x1 - x0,
+    plotHeight: y1 - y0,
+    xScale: makeScale(xDomain.min, xDomain.max, x0, x1),
+    // Inverted: larger values are higher on screen.
+    yScale: makeScale(yDomain.min, yDomain.max, y1, y0),
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Colors
 // ---------------------------------------------------------------------------

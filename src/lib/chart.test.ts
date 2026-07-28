@@ -3,8 +3,10 @@ import {
   colorForIndex,
   formatTickValue,
   formatValue,
+  hitTestAll,
   hitTestSeries,
   lowerBound,
+  makeGeometry,
   makeScale,
   niceStep,
   padDomain,
@@ -208,6 +210,45 @@ describe('hitTestSeries', () => {
   it('reports squared distance so callers can compare across series', () => {
     const hit = hitTestSeries(points, xScale, yScale, 13, 14, 10);
     expect(hit?.distanceSq).toBe(25);
+  });
+});
+
+describe('hitTestAll', () => {
+  const xScale = makeScale(0, 100, 0, 100);
+  const yScale = makeScale(0, 100, 0, 100);
+  const a = { points: [{ x: 10, y: 10, datumId: 1, replicateIndex: 0 }] };
+  const b = { points: [{ x: 12, y: 12, datumId: 2, replicateIndex: 0 }] };
+
+  it('picks the closest point across series', () => {
+    expect(hitTestAll([a, b], xScale, yScale, 12, 12, 10)?.seriesIndex).toBe(1);
+    expect(hitTestAll([a, b], xScale, yScale, 10, 10, 10)?.seriesIndex).toBe(0);
+  });
+
+  it('returns null when every series misses', () => {
+    expect(hitTestAll([a, b], xScale, yScale, 80, 80, 3)).toBeNull();
+  });
+});
+
+describe('makeGeometry', () => {
+  const pad = { left: 50, right: 10, top: 5, bottom: 20 };
+
+  it('lays out the plot area inside the padding', () => {
+    const g = makeGeometry(400, 200, pad, { min: 0, max: 10 }, { min: 0, max: 100 });
+    expect([g.x0, g.x1, g.y0, g.y1]).toEqual([50, 390, 5, 180]);
+    expect(g.plotWidth).toBe(340);
+    expect(g.plotHeight).toBe(175);
+  });
+
+  it('inverts the y scale so larger values are higher', () => {
+    const g = makeGeometry(400, 200, pad, { min: 0, max: 10 }, { min: 0, max: 100 });
+    expect(g.yScale.toPixel(0)).toBe(180);
+    expect(g.yScale.toPixel(100)).toBe(5);
+  });
+
+  it('never produces a negative-size plot area', () => {
+    const g = makeGeometry(10, 10, pad, { min: 0, max: 10 }, { min: 0, max: 100 });
+    expect(g.plotWidth).toBeGreaterThan(0);
+    expect(g.plotHeight).toBeGreaterThan(0);
   });
 });
 
