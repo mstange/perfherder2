@@ -73,8 +73,11 @@ export type SeriesMeta = {
   application: string;
   measurementUnit: string;
   lowerIsBetter: boolean;
-  // Server-composed "<suite> <test> <options>" string.
+  // Server-composed "<suite> <test> <option_name> <extra_options>" string.
   name: string;
+  // The options half of `name`, split back out — two series can be identical
+  // in suite, test and platform and differ only here, so the legend needs it.
+  options: string;
 };
 
 export function seriesKey(ref: SeriesRef): string {
@@ -82,17 +85,29 @@ export function seriesKey(ref: SeriesRef): string {
 }
 
 export function metaFromSummary(summary: RawSummary): SeriesMeta {
+  const suite = summary.suite ?? '';
+  // The API repeats the suite in `test` for non-subtest signatures; that
+  // would render as "ts_paint · ts_paint" everywhere.
+  const test = summary.test && summary.test !== summary.suite ? summary.test : '';
   return {
-    suite: summary.suite ?? '',
-    // The API repeats the suite in `test` for non-subtest signatures; that
-    // would render as "ts_paint · ts_paint" everywhere.
-    test: summary.test && summary.test !== summary.suite ? summary.test : '',
+    suite,
+    test,
     platform: summary.platform ?? '',
     application: summary.application ?? '',
     measurementUnit: summary.measurement_unit ?? '',
     lowerIsBetter: summary.lower_is_better !== false,
     name: summary.name ?? '',
+    options: optionsFromName(summary.name ?? '', suite, test),
   };
+}
+
+// The serializer builds `name` as "<test_suite> <option_name> <extra_options>"
+// where test_suite is the suite, or "<suite> <test>" when the test differs
+// (see PerformanceSummarySerializer.get_name). There is no separate options
+// field on the response, so we recover them by stripping the known prefix.
+export function optionsFromName(name: string, suite: string, test: string): string {
+  const prefix = test ? `${suite} ${test}` : suite;
+  return name.startsWith(prefix) ? name.slice(prefix.length).trim() : '';
 }
 
 // Short label for the legend and the details pane.

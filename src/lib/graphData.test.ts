@@ -164,6 +164,20 @@ describe('metaFromSummary', () => {
     expect(seriesLabel(meta)).toBe('speedometer3 · Charts');
   });
 
+  it('recovers the options from the composed name', () => {
+    expect(metaFromSummary(summary([], { name: 'ts_paint opt e10s fission' })).options).toBe(
+      'opt e10s fission',
+    );
+    const sub = metaFromSummary(
+      summary([], { suite: 'speedometer3', test: 'Charts', name: 'speedometer3 Charts opt' }),
+    );
+    expect(sub.options).toBe('opt');
+  });
+
+  it('leaves options empty when the name does not start with the suite', () => {
+    expect(metaFromSummary(summary([], { name: 'something else entirely' })).options).toBe('');
+  });
+
   it('defaults lowerIsBetter to true and unit to empty', () => {
     const meta = metaFromSummary(
       summary([], { lower_is_better: null as unknown as boolean, measurement_unit: null }),
