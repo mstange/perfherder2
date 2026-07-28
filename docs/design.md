@@ -28,6 +28,10 @@ architecture breaks.**
   (`${repo}|${signatureHash}`) and `Series.parentKey` in at construction,
   so callers never recompose the compound identity — using
   `signatureHash` alone would collide across repos.
+- [src/lib/seriesSummary.ts](../src/lib/seriesSummary.ts) — **pure logic**.
+  Splits a list of series into the attributes they all share and the ones
+  that distinguish each; see "The series list shows differences, not
+  descriptions" below. Unit-tested.
 - [src/lib/filter.ts](../src/lib/filter.ts) — **pure logic**. Filter
   model (chips + free text), `matchesRow`, sort comparator, cache-key +
   fallback picker, child grouping. Unit-tested.
@@ -230,6 +234,56 @@ click removes it. Visual affordance: hover shows a `+` cue; active shows a
 `×` cue and a blue outline. Badge is a `<button>`, not a `<span>` — full
 keyboard support falls out of that. `title` attributes describe the action
 for screen readers and hover-hint.
+
+### The series list shows differences, not descriptions
+
+A plotted set is usually one test sliced along one axis: the same
+speedometer3 on the same platform under chrome / safari / safari-tp /
+custom-car, or the same bing-search subtest cold / warm / bytecode-cached
+across autoland and mozilla-central. Spelling each card out in full made
+four cards that were textually 95% identical, and finding the one word
+that differed meant diffing long strings by eye.
+
+So [SeriesList.svelte](../src/lib/SeriesList.svelte) hoists everything the
+series have in common into one header ("All series share …") and leaves
+each card with only its own attributes. The split is
+[seriesSummary.ts::splitCommonAttrs](../src/lib/seriesSummary.ts).
+
+Points worth knowing before changing it:
+
+- **Options are compared token by token, not as a string.** The server
+  hands back `options` as one space-joined string
+  ("opt bytecode-cached cold fission webrender"); comparing those whole
+  would find nothing in common between the cold and warm variants. The
+  intersection is over tokens, so "opt fission webrender" goes to the
+  header and "bytecode-cached cold" stays on the card.
+- **Series whose metadata hasn't arrived are excluded from the
+  intersection**, not treated as a series with empty attributes. Otherwise
+  one in-flight fetch would make every field "differ", dumping the whole
+  header into the cards and then pulling it back out as the fetch lands.
+- **With fewer than two loaded series there is no header at all** — a
+  single series has nothing to be compared against, and hoisting its
+  attributes would leave the card blank.
+- **Both ends render through the same `chipRow` snippet**, so the header
+  and the cards read identically; only weight and color differ. The suite
+  and test always carry the title weight, wherever they land.
+- **A card can legitimately have nothing left** (two signatures identical
+  in every attribute we display). It falls back to `signature <id>`.
+- The header sits *outside* the list's scroller. Once a card is down to
+  the word "chrome", it is unreadable without the header, so the header
+  must not be able to scroll away from it.
+- **Known exception to the layout-stability rule below:** the header
+  appears when the first two series' metadata lands, pushing the cards
+  down once. There's no honest placeholder for "what these series share"
+  before we know it, and reserving space would leave a labelled empty
+  block in the cases where nothing is shared. The cards' own text is
+  changing at that same moment anyway.
+
+The details pane is the counterweight: it shows the selected series'
+*full* attribute set, labelled, because the list deliberately doesn't.
+That includes `application`, which is not part of the server-composed
+`name` string and so has to be read off `SeriesMeta` explicitly — it was
+missing from that pane for exactly that reason.
 
 ### Layout stability
 

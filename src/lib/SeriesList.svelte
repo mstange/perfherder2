@@ -1,11 +1,40 @@
 <script lang="ts">
   // Left pane: the plotted series, in the order that decides their colors.
+  //
+  // A card doesn't spell its series out in full. Whatever every series has in
+  // common is hoisted into one header above the list, and each card carries
+  // only its own distinguishing attributes — see seriesSummary.ts for why.
 
   import type { AppState } from './appState.svelte';
-  import { seriesLabel } from './graphData';
+  import {
+    attrChips,
+    attrsFromMeta,
+    isEmptyAttrs,
+    splitCommonAttrs,
+    type AttrChip,
+    type SeriesAttrs,
+  } from './seriesSummary';
 
   type Props = { app: AppState };
   let { app }: Props = $props();
+
+  // Null for a series whose metadata hasn't landed; `splitCommonAttrs` leaves
+  // those out of the intersection rather than letting them collapse it.
+  const attrs = $derived(
+    app.series.map((e): SeriesAttrs | null => (e.meta ? attrsFromMeta(e.ref, e.meta) : null)),
+  );
+  const split = $derived(splitCommonAttrs(attrs));
+  const commonChips = $derived(attrChips(split.common));
+
+  // A card shows only the differences, so its hover text spells the series out
+  // in full.
+  function fullText(a: SeriesAttrs | null): string {
+    return a
+      ? attrChips(a)
+          .map((c) => c.value)
+          .join(' · ')
+      : '';
+  }
 
   // Drag-to-reorder. Only the handle is `draggable`, so the card's text stays
   // selectable — browsers disable selection inside a draggable element. The
@@ -31,6 +60,14 @@
   }
 </script>
 
+<!-- Shared by the header and the cards, so both read the same way: attributes
+     separated by "·", repository in monospace. The explicit `{' '}` is
+     load-bearing — Svelte strips whitespace between adjacent elements, and
+     without it a copy-paste comes out as "chrome·opt". -->
+{#snippet chipRow(chips: AttrChip[])}{#each chips as chip, i}{#if i > 0}<span class="sep"
+      >·</span
+    >{' '}{/if}<span class="attr {chip.field}">{chip.value}</span>{' '}{/each}{/snippet}
+
 <aside class="series-list">
   <header>
     <h2>Series</h2>
@@ -39,6 +76,15 @@
     </button>
   </header>
 
+  {#if split.hasCommon}
+    <!-- Outside the scroller: with the differences reduced to a word or two,
+         the cards are unreadable without this, so it must not scroll away. -->
+    <div class="common">
+      <h3>All series share</h3>
+      <div class="attrs">{@render chipRow(commonChips)}</div>
+    </div>
+  {/if}
+
   <div class="list" role="list">
     {#if app.series.length === 0}
       <p class="empty">
@@ -46,6 +92,7 @@
       </p>
     {/if}
     {#each app.series as entry, i (entry.key)}
+      {@const own = split.distinct[i]}
       <div
         class="card"
         class:hidden-series={!entry.visible}
@@ -79,18 +126,17 @@
           onclick={() => app.toggleSeriesVisibility(entry.ref)}
         ></button>
         <div class="text">
-          <div class="title" title={entry.meta?.name ?? ''}>
-            {entry.meta ? seriesLabel(entry.meta) : `signature ${entry.ref.signatureId}`}
+          <div class="attrs" title={fullText(attrs[i])}>
+            {#if own && !isEmptyAttrs(own)}
+              {@render chipRow(attrChips(own))}
+            {:else}
+              <!-- Either the metadata hasn't landed, or two series are
+                   identical in every attribute we display (rare, but the card
+                   still has to say which one it is). -->
+              <span class="pending">signature {entry.ref.signatureId}</span>
+            {/if}
           </div>
-          <div class="sub-line">
-            {entry.meta?.platform ?? ''}{#if entry.meta?.application}{' · '}{entry.meta
-                .application}{/if}
-          </div>
-          {#if entry.meta?.options}
-            <div class="sub-line options">{entry.meta.options}</div>
-          {/if}
           <div class="sub">
-            <span class="repo">{entry.ref.repository}</span>
             <span class="count">
               {#if entry.loading}
                 loading…
@@ -117,7 +163,7 @@
           >
           <button
             type="button"
-            class="icon"
+            class="icon up"
             title="Move up"
             aria-label="Move series up"
             disabled={i === 0}
@@ -125,7 +171,7 @@
           >
           <button
             type="button"
-            class="icon"
+            class="icon down"
             title="Move down"
             aria-label="Move series down"
             disabled={i === app.series.length - 1}
@@ -172,6 +218,23 @@
     font-size: 13px;
     text-transform: uppercase;
     letter-spacing: 0.04em;
+    color: #57606a;
+  }
+  .common {
+    padding: 8px 12px;
+    border-bottom: 1px solid #d0d7de;
+    background: #eef1f4;
+  }
+  .common h3 {
+    margin: 0 0 2px;
+    font-size: 11px;
+    font-weight: 400;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #8c959f;
+  }
+  /* Background information: the cards are what the eye should land on. */
+  .common .attrs {
     color: #57606a;
   }
   .list {
@@ -238,43 +301,63 @@
   .text {
     min-width: 0;
   }
-  .title {
+  .attrs {
+    overflow-wrap: anywhere;
+  }
+  /* The suite and the test are the closest thing a series has to a name, so
+     they carry the title weight wherever they end up — which, once the shared
+     attributes are hoisted out, is usually the header rather than a card. */
+  .attr.suite,
+  .attr.test {
     font-weight: 600;
-    overflow-wrap: anywhere;
   }
-  .sub {
-    display: flex;
-    justify-content: space-between;
-    gap: 6px;
-    color: #57606a;
+  .attr.repo {
+    font-family: ui-monospace, monospace;
     font-size: 12px;
-    overflow-wrap: anywhere;
   }
-  .sub-line {
-    color: #57606a;
-    font-size: 12px;
-    overflow-wrap: anywhere;
-  }
-  .options {
+  .sep {
     color: #8c959f;
   }
-  .repo {
-    font-family: ui-monospace, monospace;
+  .pending {
+    color: #57606a;
+  }
+  .sub {
+    color: #57606a;
+    font-size: 12px;
   }
   .count {
     /* Reserved width: "loading…" becoming "12,345 points" must not reflow
        the card. */
+    display: inline-block;
     min-width: 8.5ch;
-    text-align: right;
     white-space: nowrap;
   }
   .error {
     color: #cf222e;
   }
+  /* Two by two rather than a single column: with the shared attributes hoisted
+     out, a card's text is often one line, and a four-high stack of controls
+     would set the card height all by itself. Placement is explicit so the DOM
+     order stays reorder-then-remove for the keyboard. */
   .actions {
-    display: flex;
-    flex-direction: column;
+    display: grid;
+    grid-template-areas:
+      'handle remove'
+      'up down';
     gap: 2px;
+    align-content: start;
+  }
+  .actions .handle {
+    grid-area: handle;
+  }
+  .actions .up {
+    grid-area: up;
+  }
+  .actions .down {
+    grid-area: down;
+  }
+  .actions .remove {
+    grid-area: remove;
   }
   footer {
     padding: 8px 12px;

@@ -65,17 +65,34 @@
           <button type="button" onclick={() => app.resetZoom()}>Show it</button>
         </p>
       {/if}
+      <!-- The full attribute set, spelled out and labelled. The series list
+           deliberately shows only what distinguishes one card from the next
+           (see seriesSummary.ts), so this pane is the one place that answers
+           "which series is this, exactly?" — every field it has goes here,
+           including `application`, which isn't part of the server-composed
+           `name` and so was missing before. -->
       <section class="series">
         <span class="swatch" style:background={sel.entry.color} aria-hidden="true"></span>
         <div>
           <div class="title">
             {sel.entry.meta ? seriesLabel(sel.entry.meta) : `signature ${sel.entry.ref.signatureId}`}
           </div>
-          <div class="muted">{sel.entry.meta?.platform ?? ''}</div>
-          {#if sel.entry.meta?.options}
-            <div class="muted">{sel.entry.meta.options}</div>
-          {/if}
-          <div class="muted mono">{repo}</div>
+          <dl>
+            {#if sel.entry.meta?.platform}
+              <dt>Platform</dt>
+              <dd>{sel.entry.meta.platform}</dd>
+            {/if}
+            {#if sel.entry.meta?.application}
+              <dt>Application</dt>
+              <dd>{sel.entry.meta.application}</dd>
+            {/if}
+            {#if sel.entry.meta?.options}
+              <dt>Options</dt>
+              <dd>{sel.entry.meta.options}</dd>
+            {/if}
+            <dt>Repository</dt>
+            <dd class="mono">{repo}</dd>
+          </dl>
         </div>
       </section>
 
@@ -316,6 +333,10 @@
     gap: 8px;
     padding-bottom: 10px;
     border-bottom: 1px solid #d0d7de;
+  }
+  section.series dl {
+    margin-top: 3px;
+    font-size: 12px;
   }
   .swatch {
     width: 10px;
