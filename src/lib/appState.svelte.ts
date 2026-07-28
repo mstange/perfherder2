@@ -213,6 +213,16 @@ export class AppState {
       : 'loading';
   });
 
+  // Which signatures are already on the graph, and in what color, so the
+  // picker can mark those rows instead of offering them again. Keyed by
+  // `${repository}|${signature id}` — the same recipe as the picker's
+  // `Series.key`, which is what makes the lookup work; api.test.ts pins that
+  // the two agree. See docs/design.md "Row identity" for why the repository
+  // has to be part of it.
+  plottedColors = $derived.by(
+    (): Map<string, string> => new Map(this.series.map((e) => [e.key, e.color])),
+  );
+
   // The repositories the plotted series live in — the set the picker should
   // start from, so opening it can actually show their siblings rather than
   // whatever its own default happens to be. Empty means "use that default".

@@ -5,6 +5,7 @@ import {
   type OptionCollection,
   type RawSignature,
 } from './api';
+import { seriesKey } from './graphData';
 
 const frameworks = new Map<number, string>([
   [1, 'talos'],
@@ -49,6 +50,17 @@ describe('toSeries', () => {
     // 'opt' from the hash and 'opt' from extra_options should be deduped.
     expect(s.options).toEqual(['opt', 'fission', 'webrender']);
     expect(s.extraOptions).toEqual(['opt', 'fission', 'webrender']);
+  });
+
+  // The graphs view marks picker rows that are already plotted by looking them
+  // up with `seriesKey(ref)`; the picker builds `Series.key` independently in
+  // this module. If the two recipes ever drift apart, no row would ever match
+  // and the marks would silently vanish.
+  it('builds a key the graphs view can look up with seriesKey', () => {
+    const [s] = toSeries({ '5259007': raw({ id: 5259007 }) }, 'autoland', frameworks, optionMap);
+    expect(s.key).toBe(
+      seriesKey({ repository: 'autoland', signatureId: 5259007, frameworkId: 13 }),
+    );
   });
 
   it('resolves framework name from the id', () => {

@@ -14,20 +14,37 @@ import { EMPTY_FILTER } from './filter';
 import { PickerState } from './pickerState.svelte';
 
 let fetchMock: ReturnType<typeof vi.fn>;
+// The signatures payload each repo fetch answers with; tests that care about
+// rows replace it before building the picker.
+let signatures: Record<string, unknown> = {};
 
 function json(body: unknown) {
   return { ok: true, status: 200, json: () => Promise.resolve(body) } as Response;
 }
 
+function signature(id: number, o: Record<string, unknown> = {}) {
+  return {
+    id,
+    signature_hash: `hash${id}`,
+    framework_id: 13,
+    option_collection_hash: 'H_OPT',
+    machine_platform: 'linux2404-64',
+    suite: 'speedometer3',
+    should_alert: null,
+    ...o,
+  };
+}
+
 beforeEach(() => {
+  signatures = {};
   fetchMock = vi.fn(async (url: string) => {
     const s = String(url);
     if (s.includes('/performance/framework/')) return json([{ id: 13, name: 'browsertime' }]);
     if (s.includes('/optioncollectionhash/')) {
       return json([{ option_collection_hash: 'H_OPT', options: [{ name: 'opt' }] }]);
     }
-    // The signatures payload: an empty map is a valid response.
-    return json({});
+    // The signatures payload; an empty map is a valid response.
+    return json(signatures);
   });
   vi.stubGlobal('fetch', fetchMock);
 });
@@ -114,4 +131,26 @@ describe('PickerState.seed', () => {
         expect(signatureRepos().sort()).toEqual([...DEFAULT_REPOS].sort());
       },
     ));
+});
+
+describe('PickerState.plotted', () => {
+  it('leaves rows already on the graph out of the pickable set', () => {
+    signatures = { '1': signature(1), '2': signature(2) };
+    return withPicker(
+      (p) => {
+        p.seed(EMPTY_FILTER, ['autoland']);
+        p.plotted = new Map([['autoland|1', '#0969da']]);
+      },
+      async (p) => {
+        await settle();
+        expect(p.filteredParents.map((r) => r.id)).toEqual([1, 2]);
+        // Row 1 is on the graph and renders a swatch instead of a checkbox, so
+        // select-all must not count it as something it can pick.
+        expect(p.pickableRows.map((r) => r.id)).toEqual([2]);
+        p.toggleSelectAll();
+        expect([...p.picked.keys()]).toEqual([2]);
+        expect(p.allPickablePicked).toBe(true);
+      },
+    );
+  });
 });

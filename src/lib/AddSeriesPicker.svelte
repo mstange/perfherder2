@@ -18,9 +18,13 @@
     // Repositories to start with, so the seeded filter has the rows it refers
     // to. Empty means "use the picker's own default".
     initialRepos?: string[];
+    // Rows already on the graph: `${repository}|${signature id}` → the color
+    // it's drawn in. Not a one-time seed like the two above — see the effect
+    // below.
+    plotted?: ReadonlyMap<string, string>;
     onfilterchange?: (filter: Filter) => void;
   };
-  let { onadd, onclose, initialFilter, initialRepos, onfilterchange }: Props = $props();
+  let { onadd, onclose, initialFilter, initialRepos, plotted, onfilterchange }: Props = $props();
 
   // All shared UI state lives on PickerState. This component is a thin
   // renderer over it. See pickerState.svelte.ts. Named `picker` (not
@@ -37,6 +41,13 @@
   // Report filter edits upward so the URL can carry them.
   $effect(() => {
     onfilterchange?.(picker.filter);
+  });
+
+  // Synced rather than seeded once. Today the panel closes as soon as anything
+  // is added, so the set can't change under us — but if it ever stays open,
+  // stale marks would be a silent lie about what's on the graph.
+  $effect(() => {
+    picker.plotted = plotted ?? new Map();
   });
 
   function addPicked() {
@@ -332,6 +343,36 @@
           </button>
         {/snippet}
 
+        <!-- The pick control for one row. A row that's already on the graph
+             shows its series swatch instead of a checkbox: adding it again
+             would be a no-op, and the swatch is the same mark the series list
+             uses, so the two read as the same thing. -->
+        {#snippet pickCell(row: Series, disabled: boolean)}
+          {@const color = picker.plotted.get(row.key)}
+          <td class="col-check">
+            {#if color}
+              <span
+                class="plotted-swatch"
+                style:--series-color={color}
+                role="img"
+                title="Already on the graph"
+                aria-label="Already on the graph"
+              ></span>
+            {:else}
+              <input
+                type="checkbox"
+                checked={picker.picked.has(row.id)}
+                {disabled}
+                title={disabled
+                  ? 'This row is shown because a subtest matched. Widen the filter to pick it.'
+                  : undefined}
+                onchange={(e) =>
+                  picker.togglePick(row, (e.currentTarget as HTMLInputElement).checked)}
+              />
+            {/if}
+          </td>
+        {/snippet}
+
         {#if topPadding > 0}
           <tr class="spacer" aria-hidden="true" style="height: {topPadding}px">
             <td colspan="8"></td>
@@ -346,23 +387,10 @@
             <tr
               class:selected={!disabled && picker.picked.has(row.id)}
               class:row-disabled={disabled}
+              class:plotted={picker.plotted.has(parentKey)}
               aria-disabled={disabled}
             >
-              <td class="col-check">
-                <input
-                  type="checkbox"
-                  checked={picker.picked.has(row.id)}
-                  disabled={disabled}
-                  title={disabled
-                    ? 'This row is shown because a subtest matched. Widen the filter to pick it.'
-                    : undefined}
-                  onchange={(e) =>
-                    picker.togglePick(
-                      row,
-                      (e.currentTarget as HTMLInputElement).checked,
-                    )}
-                />
-              </td>
+              {@render pickCell(row, disabled)}
               <td class="col-disclose">
                 {#if row.hasSubtests}
                   <button
@@ -396,18 +424,12 @@
             </tr>
           {:else if item.kind === 'child'}
             {@const child = item.row}
-            <tr class="subtest-row" class:selected={picker.picked.has(child.id)}>
-              <td class="col-check">
-                <input
-                  type="checkbox"
-                  checked={picker.picked.has(child.id)}
-                  onchange={(e) =>
-                    picker.togglePick(
-                      child,
-                      (e.currentTarget as HTMLInputElement).checked,
-                    )}
-                />
-              </td>
+            <tr
+              class="subtest-row"
+              class:selected={picker.picked.has(child.id)}
+              class:plotted={picker.plotted.has(child.key)}
+            >
+              {@render pickCell(child, false)}
               <td class="col-disclose"></td>
               <td class="subtest-cell">
                 {@render badge('test', child.test || child.suite, 'badge-test', true)}
@@ -758,6 +780,27 @@
   }
   tbody tr.row-disabled .col-check input {
     cursor: not-allowed;
+  }
+  /* Already on the graph. Styled on the cells, not the row, so it also beats
+     `.subtest-row td`'s own background. A plotted row can't be selected — it
+     has no checkbox — so this never competes with `.selected`. */
+  tbody tr.plotted td {
+    background: #f0f7ff;
+  }
+  tbody tr.plotted:hover td {
+    background: #e3effd;
+  }
+  .plotted-swatch {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    /* Sits where the checkbox it replaces sits, so the column doesn't look
+       ragged in a list that mixes the two. A checkbox is 13px wide with a 4px
+       left margin from the UA stylesheet; this centers on the same point. */
+    margin: 0 5.5px;
+    border: 1px solid var(--series-color);
+    border-radius: 3px;
+    background: var(--series-color);
   }
   .col-check {
     width: 32px;

@@ -330,6 +330,34 @@ The prefill goes through the normal `pickerFilter` state, so it lands in
 the URL (`pc=` params) like any other filter and a shared link reopens
 on the same rows.
 
+### Rows already on the graph show their swatch, not a checkbox
+
+A direct consequence of the prefill: the list you land on contains the
+series you already have. `AppState.plottedColors` (`Series.key` → the
+color it's drawn in) reaches `PickerState.plotted`, and those rows render
+the same colored swatch the series list uses in place of their checkbox,
+over a faint blue row tint.
+
+- **A swatch, not a disabled checked checkbox.** It says "this is the
+  purple line on your graph" rather than just "no". The shared vocabulary
+  with the series list is the point.
+- **The dialog stays one-directional: it adds.** Unchecking-to-remove
+  would give one checkbox two opposite meanings, and turning the whole
+  thing into an apply-a-set editor would make "Clear" mean "wipe the
+  graph" and select-all mean "plot 25,000 series". Removal stays in the
+  series list, where the × already is.
+- `pickableRows` excludes plotted rows, so select-all doesn't count rows
+  that have no checkbox (it would report "7 selected" and add four
+  no-ops).
+- The lookup only works because `Series.key` (built in
+  [api.ts::toSeries](../src/lib/api.ts)) and
+  [graphData.ts::seriesKey](../src/lib/graphData.ts) compose the same
+  `${repo}|${signature id}` string from two different modules. Drift
+  there would silently un-mark every row, so api.test.ts pins it.
+- The prop is **synced, not seeded**: nothing can change the plotted set
+  while the panel is open today (adding closes it), but stale marks would
+  be a lie about the graph rather than a cosmetic issue.
+
 ### Layout stability
 
 Several places take care to not shift the list under the user's cursor:
@@ -533,9 +561,6 @@ these strings for display — you'll get bitten by edge cases.**
 
 ### Features
 
-- Mark rows in the picker that are already plotted. With the filter
-  prefilled from the plotted series, the list you land on now contains
-  them, and nothing says so.
 - Persist the picker's sort in the URL query too (`sort=platform:desc`);
   the filter is already there as `pc=` / `pf=`.
 - Column reordering + hide/show. Not worth it until someone asks.

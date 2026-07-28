@@ -65,6 +65,12 @@ export class PickerState {
 
   // ---- Selection --------------------------------------------------------
   picked = $state(new Map<number, Series>());
+  // Rows that are already on the graph, `Series.key` → the color they're drawn
+  // in. Kept in sync by AddSeriesPicker from AppState.plottedColors. These
+  // rows are marked with their swatch instead of a checkbox: adding them again
+  // is a no-op, and removal belongs to the series list, not to a dialog whose
+  // primary button says "Add".
+  plotted = $state<ReadonlyMap<string, string>>(new Map());
 
   // ---- Metadata (framework + option-collection maps) --------------------
   // Framework names aren't shown, but they participate in `searchText` so
@@ -137,12 +143,16 @@ export class PickerState {
   // has surfaced. Parents that only survived because a child matched
   // (`autoExpanded`) are excluded: their checkboxes are disabled in the
   // template, so select-all mustn't try to include them either.
+  // Rows already on the graph are excluded too: they have no checkbox, so
+  // select-all must not silently count them as picked.
   pickableRows = $derived.by(() => {
     const rows: Series[] = [];
     for (const p of this.filteredParents) {
-      if (!this.autoExpanded.has(p.key)) rows.push(p);
+      if (!this.autoExpanded.has(p.key) && !this.plotted.has(p.key)) rows.push(p);
       if (this.isRowExpanded(p.key)) {
-        for (const c of this.childrenForParent(p)) rows.push(c);
+        for (const c of this.childrenForParent(p)) {
+          if (!this.plotted.has(c.key)) rows.push(c);
+        }
       }
     }
     return rows;
