@@ -164,6 +164,10 @@
     font-family: ui-monospace, monospace;
   }
   .count {
+    /* Reserved width: "loading…" becoming "12,345 points" must not reflow
+       the card. */
+    min-width: 8.5ch;
+    text-align: right;
     white-space: nowrap;
   }
   .error {

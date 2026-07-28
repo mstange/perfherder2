@@ -115,7 +115,9 @@ export class AppState {
   );
 
   anyLoading = $derived(this.series.some((s) => s.loading));
+  loadingCount = $derived(this.series.filter((s) => s.loading).length);
   hasData = $derived(this.series.some((s) => s.data.points.length > 0));
+  failedSeries = $derived(this.series.filter((s) => s.error !== null));
 
   // The detail graph's x domain.
   detailSpan = $derived<Span>(this.zoom ?? this.range);
@@ -187,7 +189,17 @@ export class AppState {
       const span = this.range;
       for (const ref of this.seriesRefs) {
         const key = dataKey(ref, span);
-        if (this.seriesCache.has(key) || this.loadingKeys.has(key)) continue;
+        // The error check is load-bearing: a failed fetch leaves no cache
+        // entry, so without it this effect would re-fire on the very state
+        // change the failure caused and hammer the API forever. Recovery is
+        // the explicit Retry action below.
+        if (
+          this.seriesCache.has(key) ||
+          this.loadingKeys.has(key) ||
+          this.errorsByKey.has(key)
+        ) {
+          continue;
+        }
         void this.loadSeries(ref, span, key);
       }
     });
@@ -447,6 +459,20 @@ export class AppState {
       });
       return;
     }
+  }
+
+  // Clearing the error lets the loading effect pick the series up again.
+  retrySeries(ref: SeriesRef): void {
+    const key = dataKey(ref, this.range);
+    if (!this.errorsByKey.has(key)) return;
+    const next = new Map(this.errorsByKey);
+    next.delete(key);
+    this.errorsByKey = next;
+  }
+
+  retryAllFailed(): void {
+    if (this.errorsByKey.size === 0) return;
+    this.errorsByKey = new Map();
   }
 
   setPickerOpen(open: boolean): void {

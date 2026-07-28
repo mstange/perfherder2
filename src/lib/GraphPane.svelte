@@ -73,6 +73,11 @@
       </span>
     </div>
     <div class="zoom-state">
+      <!-- The loading slot is always present so the header doesn't reflow
+           when a fetch starts or finishes. -->
+      <span class="loading-slot" class:visible={app.anyLoading}>
+        Loading {app.loadingCount}…
+      </span>
       {#if app.zoom}
         <span>Zoomed: {describeSpan(app.zoom)}</span>
         <button type="button" onclick={() => app.resetZoom()}>Reset zoom</button>
@@ -81,6 +86,19 @@
       {/if}
     </div>
   </header>
+
+  {#if app.failedSeries.length > 0}
+    <div class="errors" role="alert">
+      <div class="error-list">
+        {#each app.failedSeries as entry (entry.key)}
+          <div>
+            <strong>{entry.ref.repository} / {entry.ref.signatureId}</strong>: {entry.error}
+          </div>
+        {/each}
+      </div>
+      <button type="button" onclick={() => app.retryAllFailed()}>Retry</button>
+    </div>
+  {/if}
 
   <div class="overview">
     <ScatterChart
@@ -118,8 +136,10 @@
     />
     {#if app.series.length === 0}
       <p class="overlay-note">Add a series to see data.</p>
-    {:else if !app.hasData && !app.anyLoading}
-      <p class="overlay-note">No data in this time range.</p>
+    {:else if !app.hasData}
+      <p class="overlay-note">
+        {app.anyLoading ? 'Loading…' : 'No data in this time range.'}
+      </p>
     {/if}
   </div>
 </section>
@@ -158,6 +178,31 @@
   }
   .hint {
     color: #8c959f;
+  }
+  .loading-slot {
+    /* Reserved even when idle: "Loading 8…" must not shove the zoom controls
+       sideways the moment a fetch begins. */
+    min-width: 8ch;
+    color: #57606a;
+    visibility: hidden;
+  }
+  .loading-slot.visible {
+    visibility: visible;
+  }
+  .errors {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 6px 12px;
+    border-bottom: 1px solid #ffcecb;
+    background: #fff5f5;
+    color: #cf222e;
+    font: 12px/1.5 system-ui, sans-serif;
+  }
+  .error-list {
+    min-width: 0;
+    overflow-wrap: anywhere;
   }
   button {
     font: inherit;
