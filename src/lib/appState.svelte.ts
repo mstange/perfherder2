@@ -78,11 +78,10 @@ export class AppState {
   pickerFilter = $state<Filter>({ chips: [], text: '' });
 
   // ---- Caches -----------------------------------------------------------
-  // Keyed by `${repo}|${signatureId}|${rangeStart}|${rangeEnd}`, so changing
-  // the range doesn't evict data we might come back to (the presets are
-  // re-resolved against `now` each click, so in practice a return trip is a
-  // fresh key — the cache mostly protects against re-fetching on unrelated
-  // state changes).
+  // Keyed by `${repo}|${signatureId}|${rangeStart}|${rangeEnd}`: the tuple
+  // that identifies one API response. Entries outside the current (series ×
+  // range) set are pruned — see `pruneSeriesCache` for why holding them is
+  // not an option.
   private seriesCache = $state(new Map<string, LoadedSeries>());
   private loadingKeys = $state(new Set<string>());
   private errorsByKey = $state(new Map<string, string>());
@@ -387,10 +386,11 @@ export class AppState {
   }
 
   setRange(span: Span): void {
-    this.range = roundSpan(span);
+    const next = roundSpan(span);
+    this.range = next;
     // A zoom expressed in absolute time may fall partly or wholly outside the
     // new range; clamp it, and drop it if it no longer narrows anything.
-    this.zoom = this.zoom ? clampSpan(this.zoom, span) : null;
+    this.zoom = this.zoom ? clampSpan(this.zoom, next) : null;
     this.pruneSeriesCache();
     this.syncUrl('push');
   }
@@ -405,9 +405,12 @@ export class AppState {
     this.setZoom(null);
   }
 
-  selectPoint(sel: SelectedPoint | null): void {
+  // `mode` is 'replace' for keyboard stepping: holding an arrow key fires at
+  // the key-repeat rate, and a history entry per repeat would bury whatever
+  // the user actually wants to go back to.
+  selectPoint(sel: SelectedPoint | null, mode: 'push' | 'replace' = 'push'): void {
     this.selectedPoint = sel;
-    this.syncUrl('push');
+    this.syncUrl(mode);
   }
 
   // Keyboard navigation. Left/right walk the selected series run by run;
@@ -423,14 +426,17 @@ export class AppState {
     const i = runs.indexOf(sel.run);
     if (i === -1) return;
     const next = runs[clampIndex(i + delta, runs.length)];
-    this.selectPoint({
-      repository: sel.entry.ref.repository,
-      signatureId: sel.entry.ref.signatureId,
-      datumId: next.datumId,
-      // Keep the replicate slot where possible, so walking a series compares
-      // like with like instead of jumping around inside each run.
-      replicateIndex: Math.min(sel.replicateIndex, next.values.length - 1),
-    });
+    this.selectPoint(
+      {
+        repository: sel.entry.ref.repository,
+        signatureId: sel.entry.ref.signatureId,
+        datumId: next.datumId,
+        // Keep the replicate slot where possible, so walking a series compares
+        // like with like instead of jumping around inside each run.
+        replicateIndex: Math.min(sel.replicateIndex, next.values.length - 1),
+      },
+      'replace',
+    );
   }
 
   stepReplicate(delta: number): void {
@@ -439,12 +445,15 @@ export class AppState {
       this.selectFirstPoint();
       return;
     }
-    this.selectPoint({
-      repository: sel.entry.ref.repository,
-      signatureId: sel.entry.ref.signatureId,
-      datumId: sel.run.datumId,
-      replicateIndex: clampIndex(sel.replicateIndex + delta, sel.run.values.length),
-    });
+    this.selectPoint(
+      {
+        repository: sel.entry.ref.repository,
+        signatureId: sel.entry.ref.signatureId,
+        datumId: sel.run.datumId,
+        replicateIndex: clampIndex(sel.replicateIndex + delta, sel.run.values.length),
+      },
+      'replace',
+    );
   }
 
   private selectFirstPoint(): void {
