@@ -272,6 +272,18 @@ describe('AppState selection', () => {
       expect(app.selectedPoint).toMatchObject({ datumId: 10, replicateIndex: 0 });
     }));
 
+  it('reports when the selected point is outside the zoomed window', () =>
+    withApp('?series=autoland,1,1&sel=autoland,1,10,0', async (app) => {
+      await settle();
+      expect(app.selectionInView).toBe(true);
+      // Datum 10 is on Jul 21; zoom to Jul 22 only.
+      const jul22 = Date.UTC(2026, 6, 22, 0, 0, 0);
+      app.setZoom({ start: jul22, end: jul22 + DAY });
+      expect(app.selectionInView).toBe(false);
+      app.resetZoom();
+      expect(app.selectionInView).toBe(true);
+    }));
+
   it('offers the previous push for the pushlog link', () =>
     withApp('?series=autoland,1,1&sel=autoland,1,11,0', async (app) => {
       await settle();

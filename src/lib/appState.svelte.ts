@@ -157,6 +157,15 @@ export class AppState {
     };
   });
 
+  // False when a point is selected but sits outside the zoomed window, so it
+  // isn't drawn. Without saying so, the details pane looks like it's showing
+  // a point that isn't there.
+  selectionInView = $derived.by((): boolean => {
+    const sel = this.selection;
+    if (!sel) return true;
+    return sel.run.x >= this.detailSpan.start && sel.run.x <= this.detailSpan.end;
+  });
+
   // Push / job details for the selection, once fetched.
   selectedPush = $derived.by((): Push | null => {
     const sel = this.selection;

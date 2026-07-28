@@ -52,6 +52,12 @@
     <p class="empty">Click a point in the graph to see its build, run and value.</p>
   {:else}
     <div class="scroll">
+      {#if !app.selectionInView}
+        <p class="offscreen">
+          This point is outside the zoomed range.
+          <button type="button" onclick={() => app.resetZoom()}>Show it</button>
+        </p>
+      {/if}
       <section class="series">
         <span class="swatch" style:background={sel.entry.color} aria-hidden="true"></span>
         <div>
@@ -244,6 +250,30 @@
     padding: 12px;
     margin: 0;
     color: #57606a;
+  }
+  .offscreen {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin: 0 0 10px;
+    padding: 6px 8px;
+    border: 1px solid #d4a72c;
+    border-radius: 6px;
+    background: #fff8c5;
+    font-size: 12px;
+  }
+  .offscreen button {
+    font: inherit;
+    flex: none;
+    padding: 2px 8px;
+    border: 1px solid #d0d7de;
+    border-radius: 6px;
+    background: #fff;
+    cursor: pointer;
+  }
+  .offscreen button:hover {
+    background: #f3f4f6;
   }
   .scroll {
     flex: 1;
