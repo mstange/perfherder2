@@ -28,6 +28,9 @@ architecture breaks.**
   (`${repo}|${signatureHash}`) and `Series.parentKey` in at construction,
   so callers never recompose the compound identity — using
   `signatureHash` alone would collide across repos.
+- [src/lib/reorder.ts](../src/lib/reorder.ts) — **pure logic**. Drag
+  geometry for the series list: drop index, per-card offsets, auto-scroll
+  ramp. Unit-tested.
 - [src/lib/seriesSummary.ts](../src/lib/seriesSummary.ts) — **pure logic**.
   Splits a list of series into the attributes they all share and the ones
   that distinguish each; see "The series list shows differences, not
@@ -284,6 +287,65 @@ The details pane is the counterweight: it shows the selected series'
 That includes `application`, which is not part of the server-composed
 `name` string and so has to be read off `SeriesMeta` explicitly — it was
 missing from that pane for exactly that reason.
+
+### Drag-to-reorder uses pointer events, and moves nothing until the drop
+
+Order decides both legend order and color, so reordering is a real action
+and worth making feel direct. The series list's handles run on **pointer
+events, not HTML5 drag-and-drop**: `dragover` fires on the element under
+the cursor rather than continuously, so the best it can express is
+"highlight the card you're over". Pointer capture gives every position,
+which is what lets the other cards step aside as the pointer travels.
+Two things fall out for free — no `draggable` attribute anywhere, so card
+text stays selectable, and touch/pen work, which HTML5 drag never did on
+mobile.
+
+The mechanism, split between
+[reorder.ts](../src/lib/reorder.ts) (all the arithmetic, unit-tested) and
+[SeriesList.svelte](../src/lib/SeriesList.svelte) (measure, listen, apply):
+
+- **No app state changes until the pointer is released.** During the drag
+  the lifted card gets a `translateY` under the pointer and the cards
+  between origin and target get one of exactly `±displacement`. On
+  release, `reorderSeries` runs once. Reordering live would push a history
+  entry per crossing.
+- **`animate:flip` covers the commit.** Dropping the transforms and
+  committing the order in the same update means flip measures the cards
+  where the drag left them and animates to the new layout, so nothing
+  jumps. The corollary: the neighbours' `transition: transform` is scoped
+  to `.sliding` (present only during a drag), because a transition still
+  running when flip starts would fight it over the same property.
+- **Cards are not a uniform height** — a card's text wraps to one, two or
+  three lines depending on how much distinguishes it — so nothing may
+  assume a row pitch. `displacement` reads the gap back out of the
+  measured boxes, and `dropIndex` counts frozen midpoints.
+- **Midpoints come from the frozen layout, not from where cards have slid
+  to.** A card sliding out from under the pointer would otherwise
+  immediately satisfy the reverse test and oscillate.
+- **`clampDy` keeps the lifted card in the list**, so it can't be dragged
+  out over the graph or off the panel. The clamp is on the card's *centre*
+  — between the first and last cards' centres — because that is exactly
+  the range in which `dropIndex` still reaches the end slots. Clamping the
+  card's box inside the content instead would make the end slots
+  unreachable whenever the dragged card is taller than the card at that
+  end. It follows that `dropIndex` has to be inclusive on the far side
+  (`c <= centre` below the origin, `c < centre` above it): at the clamp the
+  two centres coincide exactly, and both directions have to resolve
+  outwards. The two comparisons still swap at the same place, so the
+  interaction is symmetric.
+- **Boxes are measured in the scroller's content coordinates**, so
+  auto-scrolling mid-drag doesn't invalidate them.
+- **Auto-scroll is clamped to the pre-drag scroll range.** A translated
+  element counts towards its scroller's overflow, so the lifted card grows
+  `scrollHeight` as it travels; auto-scrolling against a live measurement
+  chases its own tail and runs off the end of the list into empty space.
+  (Auto-scroll exists at all because HTML5 drag gave it to us for free and
+  a list taller than its scroller can't otherwise be fully reordered.)
+- `touch-action: none` on the handle, or the browser claims the gesture
+  for scrolling before we see a `pointermove`.
+
+The ↑/↓ buttons stay as the keyboard path: the handle is `aria-hidden`
+and not focusable, so the drag is a pointer affordance only.
 
 ### Opening the picker prefills its filter from the plotted series
 

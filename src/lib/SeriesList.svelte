@@ -5,7 +5,15 @@
   // common is hoisted into one header above the list, and each card carries
   // only its own distinguishing attributes — see seriesSummary.ts for why.
 
+  import { flip } from 'svelte/animate';
   import type { AppState } from './appState.svelte';
+  import {
+    autoScrollDelta,
+    clampDy,
+    dragOffsets,
+    dropIndex,
+    type CardBox,
+  } from './reorder';
   import {
     attrChips,
     attrsForEntry,
@@ -34,27 +42,108 @@
       : '';
   }
 
-  // Drag-to-reorder. Only the handle is `draggable`, so the card's text stays
-  // selectable — browsers disable selection inside a draggable element. The
-  // ↑/↓ buttons remain the keyboard-reachable equivalent.
-  let dragFrom = $state<number | null>(null);
-  let dragOver = $state<number | null>(null);
+  // Drag-to-reorder, on pointer events rather than HTML5 drag-and-drop.
+  //
+  // The reason for pointer events is the interaction itself: `dragover` fires
+  // on the element under the cursor, not continuously, so the best it
+  // supports is "highlight the card you're over". With pointer capture we get every
+  // position, which is what lets the other cards step aside as the pointer
+  // travels. Two things fall out of it for free: no `draggable` attribute
+  // anywhere, so text stays selectable everywhere in the card; and touch and
+  // pen work, which HTML5 drag never did on mobile.
+  //
+  // Nothing in the app's state moves until the pointer is released — the drag
+  // is purely visual. On release, `reorderSeries` runs and `animate:flip`
+  // interpolates each card from wherever it visually was to its new layout
+  // slot, so committing the order doesn't jump. The ↑/↓ buttons remain the
+  // keyboard-reachable equivalent.
+  const FLIP_MS = 160;
+  // Auto-scroll geometry, in px. Deliberately gentle: this fires every frame.
+  const SCROLL_EDGE = 32;
+  const SCROLL_MAX = 12;
 
-  function onDragStart(e: DragEvent, index: number): void {
-    dragFrom = index;
-    if (!e.dataTransfer) return;
-    e.dataTransfer.effectAllowed = 'move';
-    // Firefox won't start a drag without data on the transfer.
-    e.dataTransfer.setData('text/plain', String(index));
-    // Drag the whole card, not the four-pixel handle the pointer is on.
-    const card = (e.currentTarget as HTMLElement).closest('.card');
-    if (card) e.dataTransfer.setDragImage(card, 20, 20);
+  type Drag = { from: number; to: number; offsets: number[] };
+  let drag = $state<Drag | null>(null);
+
+  // Measured once per drag. Not `$state`: only `drag` drives rendering.
+  let listEl!: HTMLElement;
+  let boxes: CardBox[] = [];
+  let startY = 0;
+  let pointerY = 0;
+  let scrollRaf = 0;
+  // The scroll range as it was before anything was lifted. A translated card
+  // counts towards its scroller's overflow, so the lifted card *grows*
+  // `scrollHeight` as it travels — auto-scrolling against a live measurement
+  // chases its own tail and runs off the end of the list into empty space.
+  let maxScroll = 0;
+
+  // Pointer position in the scroller's content coordinates, so auto-scrolling
+  // mid-drag moves the pointer through the content rather than invalidating
+  // every measurement.
+  function contentY(clientY: number): number {
+    return clientY - listEl.getBoundingClientRect().top + listEl.scrollTop;
   }
 
-  function onDrop(index: number): void {
-    if (dragFrom !== null) app.reorderSeries(dragFrom, index);
-    dragFrom = null;
-    dragOver = null;
+  function onPointerDown(e: PointerEvent, index: number): void {
+    // Left button / touch / pen only, and never while a previous drag is still
+    // committing — that would measure a layout that is about to change.
+    if (e.button !== 0 || drag) return;
+    const listTop = listEl.getBoundingClientRect().top;
+    boxes = [...listEl.querySelectorAll('.card')].map((card) => {
+      const r = card.getBoundingClientRect();
+      return { top: r.top - listTop + listEl.scrollTop, height: r.height };
+    });
+    startY = contentY(e.clientY);
+    pointerY = e.clientY;
+    maxScroll = Math.max(0, listEl.scrollHeight - listEl.clientHeight);
+    drag = { from: index, to: index, offsets: boxes.map(() => 0) };
+    // Capture on the handle: every subsequent move/up for this pointer is
+    // delivered here, even outside the element, so no window listeners and no
+    // cleanup to forget.
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    // Suppresses the text selection a press-and-drag would otherwise start.
+    e.preventDefault();
+    scrollRaf = requestAnimationFrame(autoScroll);
+  }
+
+  function onPointerMove(e: PointerEvent): void {
+    if (!drag) return;
+    pointerY = e.clientY;
+    updateDrag();
+  }
+
+  function updateDrag(): void {
+    if (!drag) return;
+    // Clamped, so the card can't be dragged out of the list and off the panel.
+    const dy = clampDy(boxes, drag.from, contentY(pointerY) - startY);
+    const to = dropIndex(boxes, drag.from, dy);
+    drag = { from: drag.from, to, offsets: dragOffsets(boxes, drag.from, to, dy) };
+  }
+
+  function autoScroll(): void {
+    if (!drag) return;
+    const rect = listEl.getBoundingClientRect();
+    const delta = autoScrollDelta(pointerY, rect.top, rect.bottom, SCROLL_EDGE, SCROLL_MAX);
+    if (delta !== 0) {
+      const next = Math.min(maxScroll, Math.max(0, listEl.scrollTop + delta));
+      if (next !== listEl.scrollTop) {
+        listEl.scrollTop = next;
+        // The pointer hasn't moved but its content-space position has, so the
+        // drag has to be recomputed for the scroll to carry it anywhere.
+        updateDrag();
+      }
+    }
+    scrollRaf = requestAnimationFrame(autoScroll);
+  }
+
+  function onPointerUp(): void {
+    cancelAnimationFrame(scrollRaf);
+    const d = drag;
+    // Dropping the transforms and committing the order in the same update is
+    // what makes `animate:flip` land: it measures the cards where the drag left
+    // them and animates to the new layout.
+    drag = null;
+    if (d && d.to !== d.from) app.reorderSeries(d.from, d.to);
   }
 </script>
 
@@ -83,7 +172,7 @@
     </div>
   {/if}
 
-  <div class="list" role="list">
+  <div class="list" role="list" bind:this={listEl}>
     {#if app.series.length === 0}
       <p class="empty">
         No series yet. Use <strong>Add series…</strong> to pick tests to plot.
@@ -94,21 +183,11 @@
       <div
         class="card"
         class:hidden-series={!entry.visible}
-        class:dragging={dragFrom === i}
-        class:drag-over={dragOver === i && dragFrom !== null && dragFrom !== i}
+        class:lifted={drag?.from === i}
+        class:sliding={drag !== null && drag.from !== i}
+        style:transform={drag && drag.offsets[i] ? `translateY(${drag.offsets[i]}px)` : null}
         role="listitem"
-        ondragover={(e) => {
-          if (dragFrom === null) return;
-          e.preventDefault();
-          dragOver = i;
-        }}
-        ondragleave={() => {
-          if (dragOver === i) dragOver = null;
-        }}
-        ondrop={(e) => {
-          e.preventDefault();
-          onDrop(i);
-        }}
+        animate:flip={{ duration: FLIP_MS }}
       >
         <!-- The swatch doubles as the show/hide control: it's the thing that
              ties the card to the graph, so it's where you look to ask "is
@@ -150,14 +229,12 @@
           <!-- svelte-ignore a11y_no_static_element_interactions -->
           <span
             class="handle"
-            draggable="true"
             title="Drag to reorder"
             aria-hidden="true"
-            ondragstart={(e) => onDragStart(e, i)}
-            ondragend={() => {
-              dragFrom = null;
-              dragOver = null;
-            }}>⠿</span
+            onpointerdown={(e) => onPointerDown(e, i)}
+            onpointermove={onPointerMove}
+            onpointerup={onPointerUp}
+            onpointercancel={onPointerUp}>⠿</span
           >
           <button
             type="button"
@@ -275,14 +352,22 @@
   .card.hidden-series .text {
     opacity: 0.55;
   }
-  .card.dragging {
-    opacity: 0.4;
+  /* The card under the pointer. No transition — it tracks the pointer 1:1, and
+     easing it would feel like dragging through treacle. Lifted out of the flow
+     visually only: its layout slot stays where it was until the drop. */
+  .card.lifted {
+    position: relative;
+    z-index: 2;
+    box-shadow: 0 6px 16px rgba(31, 35, 40, 0.22);
+    border-color: #0969da;
+    cursor: grabbing;
   }
-  .card.drag-over {
-    /* An inset outline rather than a border: a border would change the card's
-       height and shuffle every card below it mid-drag. */
-    outline: 2px solid #0969da;
-    outline-offset: -2px;
+  /* The cards stepping aside. The transition is scoped to a live drag so it
+     can't still be running when the drop commits — `animate:flip` owns the
+     transform from that point on, and two mechanisms animating one property
+     would fight. */
+  .card.sliding {
+    transition: transform 140ms ease;
   }
   .handle {
     display: block;
@@ -292,6 +377,9 @@
     cursor: grab;
     user-select: none;
     line-height: 1.2;
+    /* Pointer events only reach us if the browser doesn't claim the gesture
+       for scrolling first. */
+    touch-action: none;
   }
   .handle:active {
     cursor: grabbing;
