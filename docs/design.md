@@ -285,6 +285,51 @@ That includes `application`, which is not part of the server-composed
 `name` string and so has to be read off `SeriesMeta` explicitly — it was
 missing from that pane for exactly that reason.
 
+### Opening the picker prefills its filter from the plotted series
+
+The same observation that shapes the series list — a graph is one test
+sliced along one axis — says what you're most likely to add next: a
+sibling of what's already plotted. So `AppState.setPickerOpen(true)`
+seeds `pickerFilter` with `commonFilterChips(commonAttrs(...))`, and four
+plotted speedometer3 series open the picker on the seven rows that share
+their suite, platform and options instead of on all 25,000.
+
+The rules that make this safe:
+
+- **Never over the user's own filter.** We re-derive only when the
+  filter is empty *or* still literally equal to the prefill we last
+  handed over (`sameFilter`, plus the remembered `pickerFilterSeed`).
+  So the prefill keeps following the series list — add a series, reopen,
+  and it reflects the new set — but one edited chip pins it for good.
+- **The repository is a repo selection, not a chip.** The picker's
+  checkbox row already *is* a repo filter, and it's what decides what
+  gets fetched; a `repo:` chip would be a second mechanism that can't
+  fetch anything and silently matches nothing when its repo is
+  unchecked. `AppState.pickerRepos` (the union of the plotted series'
+  repositories, not just a shared one — beta+central series need *both*
+  fetched) seeds `PickerState.selectedRepos` instead. A useful
+  side-effect: a central-only graph no longer pulls autoland's 4 MB.
+- **`PickerState.seed` must run during setup**, before the constructor's
+  fetch effect first fires, or the picker fetches the default repos and
+  then the seeded ones.
+- **A `test:` chip in a seed turns on `matchSubtests`** — same dead end
+  as the `fromSubtest` nudge above (parent rows have no `test` of their
+  own, so the chip would match nothing), reached differently: any prefill
+  derived from subtest series carries a `test:` chip, and so does any
+  shared link whose picker filter had one. That's a pre-existing bug in
+  the URL case, fixed by putting the nudge in `seed`.
+- **Placeholder metadata is excluded** (`attrsForEntry` /
+  `SeriesMeta.placeholder`). A signature with no data in the range gets a
+  synthesized `suite: "signature 1234"`; prefilling on that would open
+  the picker on an empty list.
+- The intersection here is `commonAttrs`, not `splitCommonAttrs` — with
+  one series plotted there's no header to render but that one series is
+  exactly the context to search from.
+
+The prefill goes through the normal `pickerFilter` state, so it lands in
+the URL (`pc=` params) like any other filter and a shared link reopens
+on the same rows.
+
 ### Layout stability
 
 Several places take care to not shift the list under the user's cursor:
@@ -429,8 +474,8 @@ Rules that keep this honest:
 - **API shapes**: `schema.test.ts` (see above). Prefer adding a recorded
   payload over hand-writing a fixture whenever the question is "what does
   treeherder actually send?".
-- **Reactive state** (`appState.svelte.ts`, and `pickerState.svelte.ts` when
-  someone gets to it): also vitest, driving the real class inside an
+- **Reactive state** (`appState.svelte.ts`, `pickerState.svelte.ts` — so far
+  only its seeding seam): also vitest, driving the real class inside an
   `$effect.root` with `fetch` stubbed. Two pieces of setup make that
   possible, both in [vite.config.ts](../vite.config.ts):
   - Runes only compile in files the Svelte plugin processes — that means a
@@ -488,8 +533,11 @@ these strings for display — you'll get bitten by edge cases.**
 
 ### Features
 
-- Persist the filter and sort in the URL query so the picker is
-  shareable. `filter=...&sort=platform:desc` etc.
+- Mark rows in the picker that are already plotted. With the filter
+  prefilled from the plotted series, the list you land on now contains
+  them, and nothing says so.
+- Persist the picker's sort in the URL query too (`sort=platform:desc`);
+  the filter is already there as `pc=` / `pf=`.
 - Column reordering + hide/show. Not worth it until someone asks.
 - Auto-complete inside the FilterInput (suggest values for `repo:` etc).
 - Actually plot the selected series on a graph — this is currently just

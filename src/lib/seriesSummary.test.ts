@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import type { SeriesMeta, SeriesRef } from './graphData';
+import { placeholderMeta, type SeriesMeta, type SeriesRef } from './graphData';
 import {
   attrChips,
+  attrsForEntry,
   attrsFromMeta,
+  commonAttrs,
+  commonFilterChips,
   isEmptyAttrs,
   NO_ATTRS,
   splitCommonAttrs,
@@ -33,8 +36,9 @@ describe('splitOptions', () => {
 });
 
 describe('attrsFromMeta', () => {
+  const ref: SeriesRef = { repository: 'autoland', signatureId: 5259007, frameworkId: 13 };
+
   it('takes the repository from the ref and splits the options', () => {
-    const ref: SeriesRef = { repository: 'autoland', signatureId: 5259007, frameworkId: 13 };
     const meta: SeriesMeta = {
       suite: 'bing-search',
       test: 'ContentfulSpeedIndex',
@@ -44,6 +48,7 @@ describe('attrsFromMeta', () => {
       lowerIsBetter: true,
       name: 'bing-search ContentfulSpeedIndex opt cold fission webrender',
       options: 'opt cold fission webrender',
+      placeholder: false,
     };
     expect(attrsFromMeta(ref, meta)).toEqual({
       repo: 'autoland',
@@ -53,6 +58,13 @@ describe('attrsFromMeta', () => {
       application: 'firefox',
       options: ['opt', 'cold', 'fission', 'webrender'],
     });
+  });
+
+  it('has no attributes for an unloaded series or a placeholder', () => {
+    expect(attrsForEntry(ref, null)).toBeNull();
+    // Everything in a placeholder is either empty or synthesized — filtering
+    // on "signature 5259007" as a suite name would match nothing.
+    expect(attrsForEntry(ref, placeholderMeta(ref))).toBeNull();
   });
 });
 
@@ -168,6 +180,56 @@ describe('splitCommonAttrs', () => {
     const split = splitCommonAttrs([attrs({}), null]);
     expect(split.hasCommon).toBe(false);
     expect(split.distinct[0]).toEqual(attrs({}));
+  });
+});
+
+describe('commonAttrs', () => {
+  // The difference from splitCommonAttrs: no "fewer than two has no common
+  // set" rule. The picker prefill wants one series' attributes as-is.
+  it('is a single series’ own attributes', () => {
+    expect(commonAttrs([attrs({})])).toEqual(attrs({}));
+    expect(splitCommonAttrs([attrs({})]).common).toEqual(NO_ATTRS);
+  });
+
+  it('is empty for no series', () => {
+    expect(commonAttrs([])).toEqual(NO_ATTRS);
+    expect(commonAttrs([null])).toEqual(NO_ATTRS);
+  });
+});
+
+describe('commonFilterChips', () => {
+  it('turns shared attributes into lowercase chips', () => {
+    expect(
+      commonFilterChips(
+        attrs({ suite: 'Speedometer3', test: 'FCP', application: 'Custom-CAR', options: ['opt'] }),
+      ),
+    ).toEqual([
+      { field: 'suite', value: 'speedometer3' },
+      { field: 'test', value: 'fcp' },
+      { field: 'platform', value: 'macosx1500-aarch64-shippable' },
+      { field: 'application', value: 'custom-car' },
+      { field: 'option', value: 'opt' },
+    ]);
+  });
+
+  it('never emits a repo chip', () => {
+    // The picker filters by repository through its checkbox row, which is also
+    // what decides whether the rows are fetched at all.
+    expect(commonFilterChips(attrs({})).some((c) => c.field === 'repo')).toBe(false);
+  });
+
+  it('emits one chip per shared option and skips absent attributes', () => {
+    expect(
+      commonFilterChips({ ...NO_ATTRS, suite: 'raptor', options: ['opt', 'cold'] }),
+    ).toEqual([
+      { field: 'suite', value: 'raptor' },
+      { field: 'option', value: 'opt' },
+      { field: 'option', value: 'cold' },
+    ]);
+  });
+
+  it('is empty when the series share nothing', () => {
+    expect(commonFilterChips(NO_ATTRS)).toEqual([]);
   });
 });
 

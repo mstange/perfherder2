@@ -1,7 +1,7 @@
 <script lang="ts">
   import { untrack } from 'svelte';
   import { PINNED_REPOS, TIME_RANGES, type Series } from './api';
-  import type { Filter, FilterField, SortColumn } from './filter';
+  import { EMPTY_FILTER, type Filter, type FilterField, type SortColumn } from './filter';
   import { PickerState } from './pickerState.svelte';
   import FilterInput from './FilterInput.svelte';
 
@@ -10,13 +10,17 @@
     // Set when the picker is shown as an overlay: adds a close button and
     // makes Escape dismiss it.
     onclose?: () => void;
-    // Seeded from the URL when the panel opens, and reported back as the user
-    // types so the app can keep the URL in sync. The picker is mounted only
-    // while the panel is open, so this is how its filter survives a reload.
+    // Seeded when the panel opens — from the URL, or from what the plotted
+    // series have in common — and reported back as the user types so the app
+    // can keep the URL in sync. The picker is mounted only while the panel is
+    // open, so this is how its filter survives a reload.
     initialFilter?: Filter;
+    // Repositories to start with, so the seeded filter has the rows it refers
+    // to. Empty means "use the picker's own default".
+    initialRepos?: string[];
     onfilterchange?: (filter: Filter) => void;
   };
-  let { onadd, onclose, initialFilter, onfilterchange }: Props = $props();
+  let { onadd, onclose, initialFilter, initialRepos, onfilterchange }: Props = $props();
 
   // All shared UI state lives on PickerState. This component is a thin
   // renderer over it. See pickerState.svelte.ts. Named `picker` (not
@@ -24,11 +28,11 @@
   // will otherwise interpret `$state(...)` as a store subscription on a
   // variable literally named `state` and blow up at runtime.
   const picker = new PickerState();
-  // A one-time seed, not a binding: after mount the picker owns its filter.
-  // `untrack` because reading a prop during setup is what Svelte's
-  // state_referenced_locally warning is about, and here it is intentional.
-  const seedFilter = untrack(() => initialFilter);
-  if (seedFilter) picker.filter = seedFilter;
+  // A one-time seed, not a binding: after mount the picker owns its filter and
+  // its repo selection. `untrack` because reading a prop during setup is what
+  // Svelte's state_referenced_locally warning is about, and here it is
+  // intentional. This runs before the fetch effect, which `seed` relies on.
+  untrack(() => picker.seed(initialFilter ?? EMPTY_FILTER, initialRepos));
 
   // Report filter edits upward so the URL can carry them.
   $effect(() => {

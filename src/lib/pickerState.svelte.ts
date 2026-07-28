@@ -246,6 +246,27 @@ export class PickerState {
   }
 
   // ---- Mutations --------------------------------------------------------
+  // One-time seeding from the app. The panel is mounted fresh every time it
+  // opens, so this is where a starting point arrives — either carried in the
+  // URL or derived from the series already plotted
+  // (AppState.derivePickerFilter). Not a binding: the picker owns both pieces
+  // of state afterwards.
+  //
+  // Must be called during setup, before the constructor's fetch effect first
+  // runs, so the seeded repos are fetched instead of the defaults.
+  seed(filter: Filter, repos?: readonly string[]): void {
+    this.filter = filter;
+    // Parent rows carry no `test` of their own, so a `test:` chip matches
+    // nothing unless the filter descends into subtests — the same dead end the
+    // `fromSubtest` nudge in `toggleFilterChip` exists to avoid. It's easy to
+    // reach here: a filter derived from subtest series always has a `test:`
+    // chip, and so does any shared link whose picker filter had one.
+    if (filter.chips.some((c) => c.field === 'test')) this.matchSubtests = true;
+    // Repos are what gets fetched, so an empty seed means "keep the default"
+    // rather than "fetch nothing".
+    if (repos && repos.length > 0) this.selectedRepos = new Set(repos);
+  }
+
   onSortHeader(column: SortColumn): void {
     this.sort = cycleSort(this.sort, column);
   }

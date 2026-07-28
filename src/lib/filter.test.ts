@@ -16,6 +16,7 @@ import {
   parseChip,
   pickCachedForRepo,
   removeChip,
+  sameFilter,
   sortKey,
   toggleChip,
   tokenizeFilter,
@@ -197,6 +198,14 @@ describe('chip mutations (add/remove/toggle/hasChip)', () => {
   it('hasChip', () => {
     expect(hasChip({ chips: [c1], text: '' }, c1)).toBe(true);
     expect(hasChip({ chips: [c1], text: '' }, c2)).toBe(false);
+  });
+  it('sameFilter compares text and chips literally', () => {
+    expect(sameFilter({ chips: [c1, c2], text: 'x' }, { chips: [c1, c2], text: 'x' })).toBe(true);
+    expect(sameFilter({ chips: [c1], text: '' }, { chips: [c1], text: 'x' })).toBe(false);
+    expect(sameFilter({ chips: [c1], text: '' }, { chips: [c1, c2], text: '' })).toBe(false);
+    // Order counts: this answers "is this still the filter we handed over?",
+    // not "do these two select the same rows?".
+    expect(sameFilter({ chips: [c1, c2], text: '' }, { chips: [c2, c1], text: '' })).toBe(false);
   });
 });
 

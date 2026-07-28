@@ -505,6 +505,179 @@ describe('AppState URL sync', () => {
     }));
 });
 
+describe('AppState picker prefill', () => {
+  // The shared mock answers every signature with the same summary; these tests
+  // need each series to differ, so they install their own.
+  function stubSummaries(bySignature: Map<number, RawSummary>) {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        const s = String(url);
+        if (s.includes('/performance/summary/')) {
+          const id = Number(/signature=(\d+)/.exec(s)?.[1]);
+          const found = bySignature.get(id);
+          return json(found ? [found] : []);
+        }
+        if (s.includes('/repository/')) return json([]);
+        return json({});
+      }),
+    );
+  }
+
+  function meta(signatureId: number, o: Partial<RawSummary>): RawSummary {
+    return {
+      ...summary(signatureId, []),
+      platform: 'macosx1500-aarch64-shippable',
+      suite: 'speedometer3',
+      test: '',
+      name: 'speedometer3 opt',
+      ...o,
+    };
+  }
+
+  // Four speedometer3 series that differ only by browser: everything else is
+  // shared, so everything else becomes a chip.
+  const FOUR_BROWSERS = new Map([
+    [1, meta(1, { application: 'chrome' })],
+    [2, meta(2, { application: 'safari' })],
+  ]);
+
+  it('prefills from what the plotted series share', () => {
+    stubSummaries(FOUR_BROWSERS);
+    return withApp('?series=mozilla-central,1,1&series=mozilla-central,2,1', async (app) => {
+      await settle();
+      app.setPickerOpen(true);
+      expect(app.pickerFilter).toEqual({
+        chips: [
+          { field: 'suite', value: 'speedometer3' },
+          { field: 'platform', value: 'macosx1500-aarch64-shippable' },
+          { field: 'option', value: 'opt' },
+        ],
+        text: '',
+      });
+    });
+  });
+
+  it('expresses the repository as a repo selection, not a chip', () => {
+    stubSummaries(FOUR_BROWSERS);
+    return withApp('?series=mozilla-central,1,1&series=autoland,2,1', async (app) => {
+      await settle();
+      app.setPickerOpen(true);
+      expect(app.pickerFilter.chips.some((c) => c.field === 'repo')).toBe(false);
+      expect(app.pickerRepos).toEqual(['mozilla-central', 'autoland']);
+    });
+  });
+
+  it('prefills from a single series too', () => {
+    stubSummaries(FOUR_BROWSERS);
+    return withApp('?series=mozilla-central,1,1', async (app) => {
+      await settle();
+      app.setPickerOpen(true);
+      // Unlike the series list's header, one series is enough here: it is the
+      // context to search from.
+      expect(app.pickerFilter.chips).toContainEqual({ field: 'application', value: 'chrome' });
+    });
+  });
+
+  it('includes the subtest name when the series are subtests', () => {
+    stubSummaries(
+      new Map([
+        [1, meta(1, { suite: 'bing-search', test: 'fcp', name: 'bing-search fcp opt cold' })],
+      ]),
+    );
+    return withApp('?series=autoland,1,1', async (app) => {
+      await settle();
+      app.setPickerOpen(true);
+      expect(app.pickerFilter.chips).toContainEqual({ field: 'test', value: 'fcp' });
+      expect(app.pickerFilter.chips).toContainEqual({ field: 'option', value: 'cold' });
+    });
+  });
+
+  it('leaves a filter the user has edited alone', () => {
+    stubSummaries(FOUR_BROWSERS);
+    return withApp('?series=mozilla-central,1,1&series=mozilla-central,2,1', async (app) => {
+      await settle();
+      app.setPickerOpen(true);
+      app.setPickerOpen(false);
+      app.setPickerFilter({ chips: [{ field: 'suite', value: 'jetstream3' }], text: 'chrome' });
+      app.setPickerOpen(true);
+      expect(app.pickerFilter).toEqual({
+        chips: [{ field: 'suite', value: 'jetstream3' }],
+        text: 'chrome',
+      });
+    });
+  });
+
+  it('re-derives an untouched prefill when the series change', () => {
+    stubSummaries(FOUR_BROWSERS);
+    return withApp('?series=mozilla-central,1,1', async (app) => {
+      await settle();
+      app.setPickerOpen(true);
+      expect(app.pickerFilter.chips).toContainEqual({ field: 'application', value: 'chrome' });
+      // Adding a second series makes `application` differ, so it should drop
+      // out of the prefill on the next open rather than pinning the picker to
+      // a browser the set no longer shares.
+      app.setPickerOpen(false);
+      app.addSeries([{ repository: 'mozilla-central', signatureId: 2, frameworkId: 1 }]);
+      await settle();
+      app.setPickerOpen(true);
+      expect(app.pickerFilter.chips.some((c) => c.field === 'application')).toBe(false);
+      expect(app.pickerFilter.chips).toContainEqual({ field: 'suite', value: 'speedometer3' });
+    });
+  });
+
+  it('ignores series the summary endpoint knows nothing about', () => {
+    // Signature 2 has no data in range, so its metadata is the placeholder
+    // whose suite reads "signature 2". Filtering on that would match nothing.
+    stubSummaries(new Map([[1, meta(1, { application: 'chrome' })]]));
+    return withApp('?series=mozilla-central,1,1&series=mozilla-central,2,1', async (app) => {
+      await settle();
+      app.setPickerOpen(true);
+      expect(app.pickerFilter.chips).toEqual([
+        { field: 'suite', value: 'speedometer3' },
+        { field: 'platform', value: 'macosx1500-aarch64-shippable' },
+        { field: 'application', value: 'chrome' },
+        { field: 'option', value: 'opt' },
+      ]);
+    });
+  });
+
+  it('prefills nothing when every series is a placeholder', () => {
+    stubSummaries(new Map());
+    return withApp('?series=mozilla-central,1,1', async (app) => {
+      await settle();
+      app.setPickerOpen(true);
+      expect(app.pickerFilter.chips).toEqual([]);
+    });
+  });
+
+  it('prefills nothing when no series are plotted', () =>
+    withApp('', (app) => {
+      app.setPickerOpen(true);
+      expect(app.pickerFilter).toEqual({ chips: [], text: '' });
+    }));
+
+  it('does not prefill while the metadata is still in flight', () => {
+    stubSummaries(FOUR_BROWSERS);
+    return withApp('?series=mozilla-central,1,1', (app) => {
+      // No `settle()`: the summary fetch hasn't resolved, so there is nothing
+      // to derive from. The next open picks it up.
+      app.setPickerOpen(true);
+      expect(app.pickerFilter.chips).toEqual([]);
+    });
+  });
+
+  it('carries the prefill into the URL', () => {
+    stubSummaries(FOUR_BROWSERS);
+    return withApp('?series=mozilla-central,1,1&series=mozilla-central,2,1', async (app) => {
+      await settle();
+      app.setPickerOpen(true);
+      expect(location.search).toContain('pc=suite:speedometer3');
+      expect(location.search).toContain('pc=option:opt');
+    });
+  });
+});
+
 describe('AppState y domains', () => {
   it('spans everything for the overview and only the window for the detail', () =>
     withApp('?series=autoland,1,1', async (app) => {

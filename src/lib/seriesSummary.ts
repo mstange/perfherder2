@@ -7,6 +7,7 @@
 // every series shares into a single header and leaves each card with nothing
 // but its own distinguishing attributes.
 
+import type { FilterChip, FilterField } from './filter';
 import type { SeriesMeta, SeriesRef } from './graphData';
 
 // The displayable attributes of one series, flattened.
@@ -53,6 +54,17 @@ export function attrsFromMeta(ref: SeriesRef, meta: SeriesMeta): SeriesAttrs {
   };
 }
 
+// What both consumers actually want: attributes, or null when there is no real
+// metadata to read. That covers a series still loading *and* one the summary
+// endpoint had nothing to say about — `SeriesMeta.placeholder`, whose suite is
+// a synthesized "signature 1234". Feeding those fabricated fields into an
+// intersection would either wipe out the shared header or, worse, prefill the
+// picker with a filter that matches nothing.
+export function attrsForEntry(ref: SeriesRef, meta: SeriesMeta | null): SeriesAttrs | null {
+  if (!meta || meta.placeholder) return null;
+  return attrsFromMeta(ref, meta);
+}
+
 export function splitOptions(options: string): string[] {
   return options.split(/\s+/).filter(Boolean);
 }
@@ -68,11 +80,27 @@ export type AttrSplit = {
   hasCommon: boolean;
 };
 
-// `null` entries are series whose metadata hasn't arrived yet. They're left
-// out of the intersection rather than treated as a series with empty
-// attributes — otherwise one unloaded series would make every field "differ"
-// and the whole header would collapse into the cards and back again as it
-// lands.
+// The attributes every series holds. `null` entries are series whose metadata
+// hasn't arrived yet; they're left out of the intersection rather than treated
+// as a series with empty attributes — otherwise one in-flight fetch would make
+// every field "differ".
+//
+// Over a single series this is just that series' own attributes, which is what
+// the picker prefill wants. The "one series has no header" rule belongs to the
+// display, so it lives in `splitCommonAttrs` instead.
+export function commonAttrs(sets: readonly (SeriesAttrs | null)[]): SeriesAttrs {
+  const loaded = sets.filter((s): s is SeriesAttrs => s !== null);
+  if (loaded.length === 0) return NO_ATTRS;
+
+  const first = loaded[0];
+  const common: SeriesAttrs = { ...NO_ATTRS };
+  for (const field of SCALAR_FIELDS) {
+    if (loaded.every((s) => s[field] === first[field])) common[field] = first[field];
+  }
+  common.options = first.options.filter((o) => loaded.every((s) => s.options.includes(o)));
+  return common;
+}
+
 export function splitCommonAttrs(sets: (SeriesAttrs | null)[]): AttrSplit {
   const loaded = sets.filter((s): s is SeriesAttrs => s !== null);
   // With a single series there is nothing to compare against, and hoisting its
@@ -81,13 +109,7 @@ export function splitCommonAttrs(sets: (SeriesAttrs | null)[]): AttrSplit {
     return { common: NO_ATTRS, distinct: sets, hasCommon: false };
   }
 
-  const first = loaded[0];
-  const common: SeriesAttrs = { ...NO_ATTRS };
-  for (const field of SCALAR_FIELDS) {
-    if (loaded.every((s) => s[field] === first[field])) common[field] = first[field];
-  }
-  common.options = first.options.filter((o) => loaded.every((s) => s.options.includes(o)));
-
+  const common = commonAttrs(sets);
   const distinct = sets.map((s) => {
     if (!s) return null;
     const rest: SeriesAttrs = {
@@ -115,6 +137,29 @@ export type AttrChip = { field: ScalarField | 'option'; value: string };
 // because it's the coarsest split and the eye can group cards by it; platform
 // trails because it's by far the longest string.
 const CHIP_ORDER: ScalarField[] = ['repo', 'suite', 'test', 'application'];
+
+// The picker filter a set of already-plotted series implies: one chip per
+// attribute they all share, so opening "Add series" starts you among their
+// siblings instead of at all 25,000 rows.
+//
+// `repo` is deliberately absent. The picker expresses the repository through
+// its checkbox row, which also decides what gets *fetched* — a `repo:` chip
+// would be a redundant second mechanism that can't fetch anything, and one
+// that silently matches nothing if its repo isn't checked. `AppState` seeds
+// the checkboxes from the series' repositories instead.
+export function commonFilterChips(common: SeriesAttrs): FilterChip[] {
+  const chips: FilterChip[] = [];
+  // Chip values are lowercase by convention; see docs/design.md.
+  const add = (field: FilterField, value: string) => {
+    if (value !== '') chips.push({ field, value: value.toLowerCase() });
+  };
+  add('suite', common.suite);
+  add('test', common.test);
+  add('platform', common.platform);
+  add('application', common.application);
+  for (const option of common.options) add('option', option);
+  return chips;
+}
 
 export function attrChips(attrs: SeriesAttrs): AttrChip[] {
   const chips: AttrChip[] = [];

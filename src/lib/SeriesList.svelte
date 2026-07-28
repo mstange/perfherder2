@@ -8,7 +8,7 @@
   import type { AppState } from './appState.svelte';
   import {
     attrChips,
-    attrsFromMeta,
+    attrsForEntry,
     isEmptyAttrs,
     splitCommonAttrs,
     type AttrChip,
@@ -18,11 +18,9 @@
   type Props = { app: AppState };
   let { app }: Props = $props();
 
-  // Null for a series whose metadata hasn't landed; `splitCommonAttrs` leaves
+  // Null for a series we have no real metadata for; `splitCommonAttrs` leaves
   // those out of the intersection rather than letting them collapse it.
-  const attrs = $derived(
-    app.series.map((e): SeriesAttrs | null => (e.meta ? attrsFromMeta(e.ref, e.meta) : null)),
-  );
+  const attrs = $derived(app.series.map((e) => attrsForEntry(e.ref, e.meta)));
   const split = $derived(splitCommonAttrs(attrs));
   const commonChips = $derived(attrChips(split.common));
 

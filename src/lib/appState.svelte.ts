@@ -23,6 +23,7 @@ import {
   buildSeriesData,
   EMPTY_SERIES_DATA,
   metaFromSummary,
+  placeholderMeta,
   resolvePoint,
   seriesKey,
   type PushGroup,
@@ -32,7 +33,8 @@ import {
   type SeriesRef,
 } from './graphData';
 import { colorForIndex, lowerBound, padDomain, unionRange, type Range } from './chart';
-import type { Filter } from './filter';
+import { EMPTY_FILTER, isFilterActive, sameFilter, type Filter } from './filter';
+import { attrsForEntry, commonAttrs, commonFilterChips } from './seriesSummary';
 import { clampSpan, defaultSpan, presetSpan, roundSpan, type Span } from './timeRange';
 import {
   parseViewState,
@@ -80,7 +82,7 @@ export class AppState {
   zoom = $state<Span | null>(null);
   selectedPoint = $state<SelectedPoint | null>(null);
   pickerOpen = $state(false);
-  pickerFilter = $state<Filter>({ chips: [], text: '' });
+  pickerFilter = $state<Filter>(EMPTY_FILTER);
 
   // ---- Caches -----------------------------------------------------------
   // Keyed by `${repo}|${signatureId}|${rangeStart}|${rangeEnd}`: the tuple
@@ -211,6 +213,13 @@ export class AppState {
       : 'loading';
   });
 
+  // The repositories the plotted series live in — the set the picker should
+  // start from, so opening it can actually show their siblings rather than
+  // whatever its own default happens to be. Empty means "use that default".
+  pickerRepos = $derived.by((): string[] => [
+    ...new Set(this.seriesRefs.map((s) => s.repository)),
+  ]);
+
   // The push immediately before the selected one in the same series — the
   // "what landed in between" link needs it.
   previousPush = $derived.by((): PushGroup | null => {
@@ -276,18 +285,7 @@ export class AppState {
       // the legend, but the endpoint gives us nothing at all — fall back to a
       // placeholder so the row isn't stuck on "loading".
       next.set(key, {
-        meta: summary
-          ? metaFromSummary(summary)
-          : {
-              suite: `signature ${ref.signatureId}`,
-              test: '',
-              platform: '',
-              application: '',
-              measurementUnit: '',
-              lowerIsBetter: true,
-              name: '',
-              options: '',
-            },
+        meta: summary ? metaFromSummary(summary) : placeholderMeta(ref),
         data: buildSeriesData(summary),
       });
       this.seriesCache = next;
@@ -561,7 +559,39 @@ export class AppState {
     this.errorsByKey = new Map();
   }
 
+  // What the plotted series have in common, as a picker filter. Almost always
+  // the right place to start: a graph is nearly always one test sliced along
+  // one axis, and the series you want to add next is a sibling of the ones
+  // already on it.
+  //
+  // Note this is the intersection over *one or more* series, not the
+  // `splitCommonAttrs` version the series list renders — with a single series
+  // plotted, that one series is exactly the context to search from.
+  private derivePickerFilter(): Filter {
+    const sets = this.series.map((e) => attrsForEntry(e.ref, e.meta));
+    const chips = commonFilterChips(commonAttrs(sets));
+    return chips.length > 0 ? { chips, text: '' } : EMPTY_FILTER;
+  }
+
+  // The last filter we derived, so we can tell an untouched prefill from one
+  // the user has edited. Not `$state`: nothing renders it.
+  private pickerFilterSeed: Filter | null = null;
+
   setPickerOpen(open: boolean): void {
+    // Prefill on open, but never over the user's own work: we re-derive only
+    // when the filter is empty or is still exactly the prefill we last handed
+    // over. The second case is what keeps the prefill following the series
+    // list — add a series, reopen, and the filter reflects the new set — while
+    // a single edited chip pins it for good.
+    if (
+      open &&
+      (!isFilterActive(this.pickerFilter) ||
+        (this.pickerFilterSeed !== null && sameFilter(this.pickerFilter, this.pickerFilterSeed)))
+    ) {
+      const seed = this.derivePickerFilter();
+      this.pickerFilterSeed = seed;
+      this.pickerFilter = seed;
+    }
     this.pickerOpen = open;
     this.syncUrl('push');
   }

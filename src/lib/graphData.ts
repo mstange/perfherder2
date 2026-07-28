@@ -80,6 +80,13 @@ export type SeriesMeta = {
   // The options half of `name`, split back out — two series can be identical
   // in suite, test and platform and differ only here, so the legend needs it.
   options: string;
+  // True for the stand-in we synthesize when a signature has no data in the
+  // range: the endpoint returns nothing at all in that case, so there is no
+  // metadata and every field above is either empty or made up. Code that
+  // *displays* the fields can ignore this; code that would act on them (the
+  // series list's shared-attribute header, the picker prefill) has to skip
+  // these entries or it will filter on a fabricated suite name.
+  placeholder: boolean;
 };
 
 export function seriesKey(ref: SeriesRef): string {
@@ -100,6 +107,23 @@ export function metaFromSummary(summary: RawSummary): SeriesMeta {
     lowerIsBetter: summary.lower_is_better !== false,
     name: summary.name ?? '',
     options: optionsFromName(summary.name ?? '', suite, test),
+    placeholder: false,
+  };
+}
+
+// What we know about a signature the summary endpoint said nothing about: its
+// id, and that we don't know anything else.
+export function placeholderMeta(ref: SeriesRef): SeriesMeta {
+  return {
+    suite: `signature ${ref.signatureId}`,
+    test: '',
+    platform: '',
+    application: '',
+    measurementUnit: '',
+    lowerIsBetter: true,
+    name: '',
+    options: '',
+    placeholder: true,
   };
 }
 

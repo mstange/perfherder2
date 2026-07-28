@@ -72,6 +72,7 @@
         onadd={handleAdd}
         onclose={() => app.setPickerOpen(false)}
         initialFilter={app.pickerFilter}
+        initialRepos={app.pickerRepos}
         onfilterchange={(f) => app.setPickerFilter(f)}
       />
     </div>

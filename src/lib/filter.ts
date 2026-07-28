@@ -170,6 +170,18 @@ export function sameChip(a: FilterChip, b: FilterChip): boolean {
   return a.field === b.field && a.value === b.value;
 }
 
+// Literal equality: same text, same chips in the same order. Used to tell a
+// filter the app seeded from one the user has since edited (see
+// AppState.setPickerOpen), which is an identity question, not a semantic one —
+// reordering the same chips counts as an edit, and that's fine for the purpose.
+export function sameFilter(a: Filter, b: Filter): boolean {
+  return (
+    a.text === b.text &&
+    a.chips.length === b.chips.length &&
+    a.chips.every((chip, i) => sameChip(chip, b.chips[i]))
+  );
+}
+
 export function hasChip(filter: Filter, chip: FilterChip): boolean {
   return filter.chips.some((c) => sameChip(c, chip));
 }
