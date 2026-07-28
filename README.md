@@ -1,47 +1,59 @@
-# Svelte + TS + Vite
+# perfherder2
 
-This template should help get you started developing with Svelte and TypeScript in Vite.
+A client-side reimplementation of Mozilla's [Perfherder](https://treeherder.mozilla.org/perfherder/graphs)
+performance-graphs UI, built with Svelte 5 and Vite.
 
-## Recommended IDE Setup
+It talks to `treeherder.mozilla.org` directly — that API sends
+`access-control-allow-origin: *`, so there is no backend of our own.
 
-[VS Code](https://code.visualstudio.com/) + [Svelte](https://marketplace.visualstudio.com/items?itemName=svelte.svelte-vscode).
+## What it does
 
-## Need an official Svelte framework?
+**Add series.** One flat, searchable list across repos instead of Perfherder's
+framework → repo → platform → suite drill-down. Type free text, or
+`field:value` tokens (`repo:autoland`, `option:fission`), or click any badge in
+the table to toggle the corresponding filter. Expand a row to reach its
+subtests.
 
-Check out [SvelteKit](https://github.com/sveltejs/kit#readme), which is also powered by Vite. Deploy anywhere with its serverless-first approach and adapt to various platforms, with out of the box support for TypeScript, SCSS, and Less, and easily-added support for mdsvex, GraphQL, PostCSS, Tailwind CSS, and more.
+**Graphs.** Three panes:
 
-## Technical considerations
+- **Left** — the plotted series. Their order decides both the legend order and
+  the colors, and can be changed.
+- **Middle** — a thin overview graph over the full time range, and below it the
+  detail graph. Drag on the overview to zoom; drag the window's edges to
+  resize it or its middle to slide it. The detail graph zooms on a drag too,
+  and resets on a double-click.
+- **Right** — everything about the point you clicked, grouped the way the data
+  is: the replicate's value (and its siblings from the same run), the run/job
+  that produced it, and the build/push it came from, with links out to
+  treeherder, the pushlog and Bugzilla.
 
-**Why use this over SvelteKit?**
+Replicates are always plotted — one dot per replicate value, not one per run.
 
-- It brings its own routing solution which might not be preferable for some users.
-- It is first and foremost a framework that just happens to use Vite under the hood, not a Vite app.
+**The URL is the view.** Series and their order, the absolute time range, the
+zoom, the selected point and the picker's state all live in the query string,
+so any view can be linked. The range is stored as absolute timestamps rather
+than "last 14 days" precisely so that a linked data point can't drift out of
+view as time passes.
 
-This template contains as little as possible to get started with Vite + TypeScript + Svelte, while taking into account the developer experience with regards to HMR and intellisense. It demonstrates capabilities on par with the other `create-vite` templates and is a good starting point for beginners dipping their toes into a Vite + Svelte project.
+## Development
 
-Should you later need the extended capabilities and extensibility provided by SvelteKit, the template has been structured similarly to SvelteKit so that it is easy to migrate.
-
-**Why `global.d.ts` instead of `compilerOptions.types` inside `jsconfig.json` or `tsconfig.json`?**
-
-Setting `compilerOptions.types` shuts out all other types not explicitly listed in the configuration. Using triple-slash references keeps the default TypeScript setting of accepting type information from the entire workspace, while also adding `svelte` and `vite/client` type information.
-
-**Why include `.vscode/extensions.json`?**
-
-Other templates indirectly recommend extensions via the README, but this file allows VS Code to prompt the user to install the recommended extension upon opening the project.
-
-**Why enable `allowJs` in the TS template?**
-
-While `allowJs: false` would indeed prevent the use of `.js` files in the project, it does not prevent the use of JavaScript syntax in `.svelte` files. In addition, it would force `checkJs: false`, bringing the worst of both worlds: not being able to guarantee the entire codebase is TypeScript, and also having worse typechecking for the existing JavaScript. In addition, there are valid use cases in which a mixed codebase may be relevant.
-
-**Why is HMR not preserving my local component state?**
-
-HMR state preservation comes with a number of gotchas! It has been disabled by default in both `svelte-hmr` and `@sveltejs/vite-plugin-svelte` due to its often surprising behavior. You can read the details [here](https://github.com/rixo/svelte-hmr#svelte-hmr).
-
-If you have state that's important to retain within a component, consider creating an external store which would not be replaced by HMR.
-
-```ts
-// store.ts
-// An extremely simple external store
-import { writable } from 'svelte/store'
-export default writable(0)
+```sh
+npm install
+npm run dev      # vite dev server
+npm test         # vitest, pure-logic unit tests
+npx svelte-check # types + a11y; must be clean
+npm run build
 ```
+
+## Where to read next
+
+- [docs/design.md](docs/design.md) — the picker: filter model, caching,
+  virtual scrolling, and the Perfherder data-model quirks that bit us.
+- [docs/graphs.md](docs/graphs.md) — the graphs: API quirks, the
+  push/run/replicate model, rendering, URL state, and every deliberate
+  deviation from treeherder.
+- [docs/graphs-todo.md](docs/graphs-todo.md) — what's next and what's
+  deferred.
+
+Both design docs are meant to be read before making non-trivial changes;
+they record the *why* behind things that look arbitrary.
