@@ -29,16 +29,21 @@ export type Run = {
   //
   // The summary endpoint returns a datum's replicate rows in a different order
   // on every request — measured: four fetches of one datum gave four different
-  // orders of the same ten values. (It has no ORDER BY over
-  // `performancedatumreplicate`, and gives us no replicate id or iteration
-  // number to recover the real order from.) A `replicateIndex` into response
-  // order therefore names a different value every time the page loads, which is
-  // exactly what a URL must not do.
+  // orders of the same ten values. It has no ORDER BY over
+  // `performancedatumreplicate`, and **trial ordering isn't implemented**: the
+  // replicates/trials table does now carry run numbers and machine identifiers,
+  // but nothing surfaces them through this endpoint, so there is no trial index
+  // to sort by or to store. Bug 1981623 is the meta bug tracking putting them to
+  // use (https://bugzilla.mozilla.org/show_bug.cgi?id=1981623).
   //
-  // Sorting is what makes the index a stable function of the values, so
+  // Until then, a `replicateIndex` into response order names a different value
+  // every time the page loads, which is exactly what a URL must not do. Sorting
+  // makes the index a stable function of the values, so
   // `sel=…,<datumId>,<replicateIndex>` means one thing. The cost is that the
-  // index is a *rank*, not an iteration number — the UI says so — and iteration
-  // order is not recoverable anyway.
+  // index is a *rank* rather than a trial number — the UI says so — and once the
+  // API exposes real trial numbers, indexing by those would be strictly better:
+  // stable *and* meaningful, and it would let the pane show a run's values in
+  // the order they were measured.
   values: number[];
   mean: number;
 };
@@ -246,8 +251,9 @@ export function buildSeriesData(summary: RawSummary | null): SeriesData {
   const runs = [...runByDatumId.values()];
   for (const run of runs) {
     // Ascending, and this is load-bearing rather than cosmetic. See
-    // `Run.values`: the endpoint returns a datum's replicate rows in a
-    // *different order on every request*, so a positional index into response
+    // `Run.values`: trial ordering isn't implemented on the API side (bug
+    // 1981623), so the endpoint returns a datum's replicate rows in a
+    // *different order on every request*, and a positional index into response
     // order names a different value each time the page is loaded. Sorting makes
     // the index a stable function of the values themselves, which is what a
     // `sel=` link in the URL needs it to be.

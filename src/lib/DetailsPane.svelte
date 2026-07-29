@@ -397,13 +397,14 @@
             <dt>Replicates</dt>
             <dd>{replicateValues.length} averaged</dd>
           {:else}
-            <!-- A rank, not an iteration number. The API returns a datum's
-                 replicate rows in a different order on every request and gives
-                 us no iteration number, so we sort by value and say so rather
-                 than implying an execution order we don't have. See
-                 graphData.ts, `Run.values`. -->
+            <!-- A rank, not a trial number. Trial ordering isn't implemented
+                 on the API side (bug 1981623): the endpoint returns a datum's
+                 replicate rows in a different order on every request and exposes
+                 no trial number, so we sort by value and say so rather than
+                 implying an execution order we don't have. See graphData.ts,
+                 `Run.values`. -->
             <dt
-              title="Replicates are ordered by value: treeherder returns them in an arbitrary order and doesn't say which iteration each came from"
+              title="Replicates are ordered by value: treeherder returns them in an arbitrary order and does not yet expose which trial each came from (bug 1981623)"
               >Replicate</dt
             >
             <dd>

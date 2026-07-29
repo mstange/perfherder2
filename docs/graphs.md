@@ -103,18 +103,30 @@ push   (push_id, revision, push_timestamp)   ← "build" in the task description
 Replicate index is positional within a datum, **over values we sorted
 ourselves** — so it's a rank, not an iteration number.
 
-That's forced. The endpoint has no `ORDER BY` over
-`performancedatumreplicate` and hands a datum's rows back in a different order
-on every request: four fetches of one datum in production gave four different
-orders of the same ten values. Since it also gives us no replicate id and no
-iteration number, response position is both unstable *and* the only thing on
-offer — so `sel=…,<datumId>,<replicateIndex>` used to name a different value
-every time the page loaded, which is the one thing a permalink must not do.
+That's forced, and it's forced by something with a bug number.
+
+**Trial ordering isn't implemented.** The replicates/trials table does now carry
+run numbers and machine identifiers, but nothing surfaces them through the
+summary endpoint —
+[bug 1981623](https://bugzilla.mozilla.org/show_bug.cgi?id=1981623) is the meta
+bug tracking putting them to use. The endpoint also has no `ORDER BY` over
+`performancedatumreplicate`, so it hands a datum's rows back in a different
+order on every request: four fetches of one datum in production gave four
+different orders of the same ten values. Response position is therefore both
+unstable *and* the only thing on offer, so
+`sel=…,<datumId>,<replicateIndex>` used to name a different value every time the
+page loaded — the one thing a permalink must not do.
+
 `buildSeriesData` sorts each run's values ascending, which makes the index a
-stable function of the values themselves; `graphData.test.ts` pins that a
-shuffled response resolves to the same value. The details pane says "by value"
-rather than implying an execution order we can't see, and the replicate list
-reads as the run's spread.
+stable function of the values themselves; `graphData.test.ts` feeds one run's
+rows in four different orders and pins that an index resolves to one value. The
+details pane says "by value" rather than implying an execution order we can't
+see, and the replicate list reads as the run's spread.
+
+**When bug 1981623 lands, index by the trial number instead.** It would be
+stable *and* meaningful, where the rank is only stable, and it would let the pane
+show a run's values in the order they were measured — which is the interesting
+order, since the first trial of a browsertime run is routinely the slow one.
 
 A **plotted point** is one replicate. Its identity is
 `(repository, signatureId, datumId, replicateIndex)`; that's what the URL

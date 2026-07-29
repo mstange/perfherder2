@@ -43,6 +43,17 @@ Living checklist. Update in the same commit as the work it describes.
 
 ## Open questions / deferred
 
+- **Index replicates by trial number once the API exposes one.**
+  [Bug 1981623](https://bugzilla.mozilla.org/show_bug.cgi?id=1981623) tracks
+  using the run numbers and machine identifiers the replicates/trials table
+  already carries. Until they reach the summary endpoint there is no trial order
+  to show or to store, so `Run.values` is sorted and `replicateIndex` is a rank
+  (see graphs.md, "The three-level hierarchy"). Indexing by trial number would
+  be stable *and* meaningful, and would let the pane list a run's values in
+  measurement order — the interesting order, since the first trial of a
+  browsertime run is routinely the slow one. The machine identifiers would also
+  make "is this retrigger on a different machine" answerable, which is currently
+  a guess from the job's `machine_name` alone.
 - **Mixed units on one y-axis.** Following treeherder for now; the axis says
   "mixed units" when it happens. A per-series normalized mode ("% of the
   first value") would be the real fix.
