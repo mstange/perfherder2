@@ -135,7 +135,10 @@
   <header><h2>Selection</h2></header>
 
   {#if !sel}
-    <p class="empty">Click a point in the graph to see its build, run and value.</p>
+    <p class="empty">
+      Click a point in the graph to see its build, run and value. Shift-click a second
+      point to compare the two.
+    </p>
   {:else}
     <div class="scroll">
       {#if app.selectionHiddenBySeries}
@@ -347,6 +350,11 @@
             </div>
           {/if}
         </section>
+      {:else}
+        <!-- The affordance sits exactly where its result will appear, which is
+             the only place a user looking at one selected point would find it.
+             Nothing else on screen says the gesture exists. -->
+        <p class="cmp-hint muted">Shift-click another point to compare it with this one.</p>
       {/if}
 
       <section>
@@ -757,6 +765,13 @@
   }
   .cmp-kind {
     margin: 0 0 6px;
+    font-size: 11px;
+  }
+  .cmp-hint {
+    margin: 0 0 14px;
+    padding: 6px 8px;
+    border: 1px dashed #d0d7de;
+    border-radius: 6px;
     font-size: 11px;
   }
   /* Not the pane-wide `max-content` label column. A label here can be a platform
