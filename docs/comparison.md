@@ -208,4 +208,5 @@ Checked off as it lands; this list is the plan until then.
 - [x] Comparison section in the details pane
 - [x] Hover preview
 
-Open items live in [graphs-todo.md](graphs-todo.md).
+Open items — a bootstrap CI, per-run shading inside a push pool, comparing more
+than two points — live in [graphs-todo.md](graphs-todo.md).

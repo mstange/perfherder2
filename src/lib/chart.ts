@@ -123,8 +123,12 @@ export function formatValue(v: number): string {
 export function formatSignedValue(v: number): string {
   if (!Number.isFinite(v)) return 'N/A';
   const s = formatValue(Math.abs(v));
+  // ASCII hyphen, not a typographic minus: `formatValue` and `toFixed` use one
+  // everywhere else, and a card that mixes the two ("−26.08" beside "δ -0.20")
+  // looks like two different kinds of number.
+  //
   // `-0` prints as "0" through formatValue, so take the sign from the input.
-  return `${v < 0 ? '−' : '+'}${s}`;
+  return `${v < 0 ? '-' : '+'}${s}`;
 }
 
 // A fraction as a signed percentage. Two decimals below 1%, one below 10%, none
@@ -134,7 +138,7 @@ export function formatSignedPercent(fraction: number): string {
   if (!Number.isFinite(fraction)) return 'N/A';
   const pct = Math.abs(fraction) * 100;
   const digits = pct < 1 ? 2 : pct < 10 ? 1 : 0;
-  return `${fraction < 0 ? '−' : '+'}${pct.toFixed(digits)}%`;
+  return `${fraction < 0 ? '-' : '+'}${pct.toFixed(digits)}%`;
 }
 
 // p-values span orders of magnitude, and past three decimals the exact figure

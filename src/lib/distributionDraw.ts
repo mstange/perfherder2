@@ -3,7 +3,12 @@
 // here computes its own geometry.
 
 import { formatTickValue, valueTicks } from './chart';
-import type { DistributionLayout, DistributionPlot, DistributionSeries } from './distribution';
+import type {
+  DistributionLayout,
+  DistributionPlot,
+  DistributionSeries,
+  StripRow,
+} from './distribution';
 
 const AXIS_COLOR = '#d0d7de';
 const GRID_COLOR = '#eef1f4';
@@ -11,6 +16,8 @@ const TEXT_COLOR = '#57606a';
 const RING_COLOR = '#1f2328';
 const ROW_TINT = '#f6f8fa';
 const FONT = '10px system-ui, sans-serif';
+// One line of FONT, for stacking and clamping mode labels.
+const LABEL_HEIGHT_PX = 10;
 
 const CURVE_WIDTH = 1.5;
 const FILL_ALPHA = 0.16;
@@ -170,9 +177,15 @@ function drawModes(
     ctx.moveTo(x, layout.bandY1);
     ctx.lineTo(x, top);
     ctx.stroke();
-    // Side 1's letters sit a line lower, so two peaks at the same value don't
-    // print their labels on top of each other.
-    ctx.fillText(side.modes.letters[i], x, top - 1 - sideIndex * 10);
+    // Above the peak, side 1 a line lower so two peaks at the same value don't
+    // print their labels on top of each other — but clamped into the band. The
+    // tallest peak reaches the band ceiling by construction (it's what sets the
+    // density scale), so an unclamped label for it lands off the canvas.
+    const labelY = Math.max(
+      layout.bandY0 + LABEL_HEIGHT_PX + sideIndex * LABEL_HEIGHT_PX,
+      top - 2 - sideIndex * LABEL_HEIGHT_PX,
+    );
+    ctx.fillText(side.modes.letters[i], x, labelY);
   });
   ctx.setLineDash([]);
 }
@@ -192,7 +205,7 @@ function drawStrip(
   ctx: CanvasRenderingContext2D,
   layout: DistributionLayout,
   side: DistributionSeries,
-  row: { y0: number; y1: number; centerY: number },
+  row: StripRow,
   isBase: boolean,
 ): void {
   const amplitude = Math.max(1, (row.y1 - row.y0) / 2 - MARKED_RADIUS - 1);

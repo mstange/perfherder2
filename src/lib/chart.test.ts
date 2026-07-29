@@ -310,14 +310,14 @@ describe('styleForIndex', () => {
 describe('formatSignedValue', () => {
   it('always shows a sign', () => {
     expect(formatSignedValue(95)).toBe('+95');
-    expect(formatSignedValue(-95.256)).toBe('−95.26');
+    expect(formatSignedValue(-95.256)).toBe('-95.26');
     expect(formatSignedValue(0)).toBe('+0');
   });
 
   it('takes the sign from the input, not from the rounded string', () => {
     // -0.001 rounds to "0"; without reading the sign off the input it would
     // print "+0" for a decrease.
-    expect(formatSignedValue(-0.001)).toBe('−0');
+    expect(formatSignedValue(-0.001)).toBe('-0');
   });
 
   it('reports a non-finite delta rather than printing NaN', () => {
@@ -328,7 +328,7 @@ describe('formatSignedValue', () => {
 describe('formatSignedPercent', () => {
   it('keeps precision where a perf regression lives', () => {
     expect(formatSignedPercent(0.004)).toBe('+0.40%');
-    expect(formatSignedPercent(-0.052)).toBe('−5.2%');
+    expect(formatSignedPercent(-0.052)).toBe('-5.2%');
     expect(formatSignedPercent(0.931)).toBe('+93%');
   });
 

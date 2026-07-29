@@ -185,7 +185,10 @@
   }
   /* The same vocabulary the canvas uses: a solid rule for the emphatic side, a
      dashed one for the baseline. Colors can be identical (one series across two
-     pushes), so the dash is what carries the distinction. */
+     pushes), so the dash is what carries the distinction.
+
+     DetailsPane's `.key` is the same rule, duplicated because Svelte scopes
+     styles per component. Change one, change the other. */
   .key {
     height: 0;
     margin-top: 6px;

@@ -174,6 +174,13 @@ Recovery is the explicit Retry button.
 - [appState.svelte.ts](../src/lib/appState.svelte.ts) — the reactive core.
 - [ScatterChart.svelte](../src/lib/ScatterChart.svelte) — one canvas component
   serving both graphs, parameterized by `interaction: 'select' | 'brush'`.
+- [stats.ts](../src/lib/stats.ts), [kde.ts](../src/lib/kde.ts),
+  [distribution.ts](../src/lib/distribution.ts),
+  [distributionDraw.ts](../src/lib/distributionDraw.ts),
+  [compare.ts](../src/lib/compare.ts),
+  [DistributionChart.svelte](../src/lib/DistributionChart.svelte) — the
+  details pane's distributions and comparison mode. All pure except the last
+  two. See [comparison.md](comparison.md).
 - [SeriesList.svelte](../src/lib/SeriesList.svelte),
   [GraphPane.svelte](../src/lib/GraphPane.svelte),
   [DetailsPane.svelte](../src/lib/DetailsPane.svelte) — the three panes.
@@ -213,7 +220,10 @@ Decisions carried over from treeherder:
 Deliberate deviations:
 
 - **No tooltip and no hover/click arrow panel.** Clicking a dot fills the
-  right-hand pane instead.
+  right-hand pane instead. *Hovering* one fills the pane's comparison card as a
+  preview against the selection — which is the same information a tooltip would
+  carry, in a place where it has room to be a distribution and a rank-sum test.
+  See [comparison.md](comparison.md).
 - **Smaller dots.** Treeherder uses `DOT_SIZE = 5`; at high point counts the
   plot turns into a solid blob. We use radius 3 in the detail graph and 1.25
   in the overview — big enough to read the symbol shapes below, small enough
@@ -329,6 +339,7 @@ The whole view is in the query string:
 | `range` | Absolute full time range, `<startMs>,<endMs>` |
 | `zoom` | Absolute zoomed range, `<startMs>,<endMs>`; absent when not zoomed |
 | `sel` | Selected point, `<repo>,<signatureId>,<datumId>,<replicateIndex>`. A `replicateIndex` of `-1` (`MEAN_REPLICATE`) means the run's *mean* rather than one of its replicates — what a click selects while `reps=0` |
+| `cmp` | Pinned comparison point, same shape as `sel`; set by shift-clicking a dot. Only written alongside a `sel`, since a comparison needs two ends. See [comparison.md](comparison.md) |
 | `reps` | `0` to draw one dot per run at its mean instead of every replicate. Omitted when on, which is the default |
 | `picker` | `1` when the Add-series panel is open |
 | `pf` | Picker filter free text |

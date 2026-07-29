@@ -110,13 +110,14 @@
     !!cmp && cmp.base.ref.signatureId !== cmp.next.ref.signatureId,
   );
 
-  function sideRows(): { side: ComparisonSide; role: string; isBase: boolean }[] {
-    if (!cmp) return [];
-    return [
-      { side: cmp.base, role: baseIsSelection ? 'selected' : otherRole, isBase: true },
-      { side: cmp.next, role: baseIsSelection ? otherRole : 'selected', isBase: false },
-    ];
-  }
+  const sideRows = $derived.by((): { side: ComparisonSide; role: string; isBase: boolean }[] =>
+    cmp
+      ? [
+          { side: cmp.base, role: baseIsSelection ? 'selected' : otherRole, isBase: true },
+          { side: cmp.next, role: baseIsSelection ? otherRole : 'selected', isBase: false },
+        ]
+      : [],
+  );
 
   function shortRev(rev: string): string {
     return rev.slice(0, 12);
@@ -274,7 +275,7 @@
           {/if}
 
           <ul class="sides">
-            {#each sideRows() as row (row.side.label)}
+            {#each sideRows as row (row.side.label)}
               <li>
                 <!-- The chart's own key: a solid rule for the emphatic side, a
                      dashed one for the baseline. The two sides can share a color
@@ -829,6 +830,9 @@
     gap: 5px;
     align-items: start;
   }
+  /* Duplicated from DistributionChart's legend on purpose — Svelte scopes styles
+     per component, and the two keys have to look identical to read as the same
+     vocabulary. Change one, change the other. */
   .key {
     height: 0;
     margin-top: 6px;

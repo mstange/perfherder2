@@ -29,6 +29,10 @@ Living checklist. Update in the same commit as the work it describes.
 - Per-series visibility (click the swatch), carried in the URL
 - Drag-to-reorder in the series list, with the ↑/↓ buttons as the
   keyboard-reachable equivalent
+- Push value distributions and comparison mode — `kde.ts`, `stats.ts`,
+  `distribution.ts`, `distributionDraw.ts`, `compare.ts`,
+  `DistributionChart.svelte` (+ tests for all the pure halves). See
+  [comparison.md](comparison.md)
 
 ## Next
 
@@ -47,7 +51,10 @@ Living checklist. Update in the same commit as the work it describes.
   auth, the display path needs `/performance/alertsummary/`.
 - **Retrigger / delta-vs-previous readouts.** Treeherder's tooltip shows the
   delta from the previous data point and a retrigger count. We show the
-  retrigger count; the delta is not implemented.
+  retrigger count, and hovering any dot gives the delta against the *selected*
+  point rather than against the previous one — strictly more useful, but it
+  doesn't answer "what changed here" with nothing selected. A one-click
+  "compare with the previous push" would.
 - **History granularity.** Every discrete action pushes a history entry; a
   zoom drag and everything inside the Add-series panel replace. Whether that's
   the right granularity (should a repo toggle in the picker be undoable?) is
@@ -56,6 +63,19 @@ Living checklist. Update in the same commit as the work it describes.
   across 10 series with replicates may be tens of MB and hundreds of
   thousands of dots. Drawing is batched but not decimated. Measure before
   optimizing.
+- **A bootstrap confidence interval for the median difference.** PerfCompare
+  computes a BCa interval (`src/utils/bootstrap-ci.ts`, seeded, so
+  deterministic) and it's the number that best answers "how sure are we". Left
+  out for now: 9999 resamples × two medians is tens of milliseconds, which is
+  fine for a pinned comparison and not for the hover preview, so it needs a
+  split between cheap and full statistics that nothing else currently wants.
+- **Highlighting the clicked run's contribution to a push pool.** With
+  retriggers, the push distribution pools every run, and which dots came from
+  the run you clicked is a question the strip could answer by shading them.
+  `DistributionInput.markedIndex` would become a set.
+- **Comparing more than two points.** The `cmp` parameter holds one. Three or
+  more would want a table rather than a card, and it isn't clear anyone wants
+  it.
 - **Picker state a link still can't carry.** Its filter, repos, interval,
   subtest mode and sort now round-trip (see "URL state" in graphs.md), but the
   scroll position, which rows are expanded, and which rows are checked-but-not-
