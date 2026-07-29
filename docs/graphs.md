@@ -2,7 +2,9 @@
 
 Companion to [design.md](design.md), which covers the "Add series" picker.
 This file covers the graphs half of the app: layout, data model, rendering,
-selection, and URL state.
+selection, and URL state. [comparison.md](comparison.md) covers what the
+details pane does with a selection once it has one — push distributions and
+comparison mode.
 
 Treeherder's implementation lives in `~/code/treeherder/ui/perfherder/graphs/`
 (`GraphsView.jsx`, `GraphsContainer.jsx`, `GraphTooltip.jsx`). Where we follow
