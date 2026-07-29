@@ -270,8 +270,10 @@ describe('buildComparison', () => {
     expect(c.next.values).toEqual([13]);
     expect(c.base.markedIndex).toBe(0);
     expect(c.medianDelta).toBe(3);
-    // One value against one value can never be significant.
-    expect(c.test?.significant).toBe(false);
+    // No test at all: one value against one value yields p = 1 and a "large"
+    // Cliff's delta every time, which reads as a finding and isn't one.
+    expect(c.test).toBeNull();
+    expect(c.direction).toBe('none');
   });
 
   it('marks the clicked value inside a pooled push', () => {
@@ -301,6 +303,27 @@ describe('buildComparison', () => {
     expect(c.kind).toBe('series');
     expect([c.base.label, c.next.label]).toEqual(['firefox', 'chrome']);
     expect(c.swapped).toBe(false);
+  });
+
+  it('calls nothing an improvement or regression unless it is a change over time', () => {
+    // Chrome being slower than Firefox on one build is not a regression, and two
+    // retriggers of one build differing is noise. Both are significant deltas;
+    // neither is a verdict.
+    const acrossSeries = buildComparison(
+      side({ push: older, signatureId: 1 }),
+      side({ push: older, signatureId: 2, metaOver: { application: 'chrome' } }),
+    )!;
+    expect(acrossSeries.direction).toBe('none');
+    const acrossRuns = buildComparison(
+      side({ push: retriggered, runIndex: 0 }),
+      side({ push: retriggered, runIndex: 1 }),
+    )!;
+    expect(acrossRuns.test?.significant).toBe(true);
+    expect(acrossRuns.direction).toBe('none');
+    // Across pushes it is a change, and gets one.
+    expect(buildComparison(side({ push: older }), side({ push: newer }))!.direction).not.toBe(
+      'none',
+    );
   });
 
   it('warns when the two series are not measured in the same unit', () => {

@@ -282,7 +282,17 @@ export function buildComparison(
     summary: summarize(nextPool.values),
   };
 
-  const test = mannWhitneyU(base.values, next.values);
+  // No test for two replicates of one job: one value against one value produces
+  // p = 1, δ = ±1 and "large effect" every time, which is statistical theatre
+  // rather than information. The two numbers and their difference are the whole
+  // answer there.
+  const test = kind === 'replicate' ? null : mannWhitneyU(base.values, next.values);
+
+  // "Improvement" and "regression" describe a *change*, which only two of the
+  // five kinds are. Windows being slower than macOS on one build is not a
+  // regression, and two retriggers of one build differing is noise — labelling
+  // either would be a category error dressed up as a finding.
+  const isChangeOverTime = kind === 'push' || kind === 'unrelated';
   const baseMedian = base.summary?.median ?? NaN;
   const nextMedian = next.summary?.median ?? NaN;
   const lowerIsBetter = base.meta?.lowerIsBetter ?? true;
@@ -303,12 +313,9 @@ export function buildComparison(
     medianDelta: nextMedian - baseMedian,
     medianDeltaFraction: relativeChange(baseMedian, nextMedian),
     meanDelta: (next.summary?.mean ?? NaN) - (base.summary?.mean ?? NaN),
-    direction: changeDirection(
-      baseMedian,
-      nextMedian,
-      lowerIsBetter,
-      test?.significant ?? false,
-    ),
+    direction: isChangeOverTime
+      ? changeDirection(baseMedian, nextMedian, lowerIsBetter, test?.significant ?? false)
+      : 'none',
     lowerIsBetter,
     unit: unitsDiffer ? '' : baseUnit || nextUnit,
     warning: unitsDiffer

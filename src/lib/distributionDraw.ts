@@ -9,6 +9,7 @@ const AXIS_COLOR = '#d0d7de';
 const GRID_COLOR = '#eef1f4';
 const TEXT_COLOR = '#57606a';
 const RING_COLOR = '#1f2328';
+const ROW_TINT = '#f6f8fa';
 const FONT = '10px system-ui, sans-serif';
 
 const CURVE_WIDTH = 1.5;
@@ -52,7 +53,15 @@ export function drawDistribution(
   });
   plot.series.forEach((side, i) => {
     const row = layout.rows[i];
-    if (row) drawStrip(ctx, layout, side, row, isBaseSide(plot, i));
+    if (!row) return;
+    // A tint on the second row, so two adjacent strips read as two rows rather
+    // than as one taller cloud. Only with two of them — a lone shaded row would
+    // look like it meant something.
+    if (i === 1) {
+      ctx.fillStyle = ROW_TINT;
+      ctx.fillRect(layout.x0, row.y0, layout.x1 - layout.x0, row.y1 - row.y0);
+    }
+    drawStrip(ctx, layout, side, row, isBaseSide(plot, i));
   });
 }
 

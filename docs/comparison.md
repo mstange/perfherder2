@@ -99,7 +99,13 @@ comparisons here (two runs, two series) aren't expressible in its terms.
 - **Median and mean deltas**, absolute and percent. Median leads, since a
   multi-modal cloud's mean sits between its modes where no measurement is.
 - **Improvement or regression** comes from the base series' `lowerIsBetter`,
-  never from the sign of the delta alone.
+  never from the sign of the delta alone — and only for the two kinds that are a
+  change over *time*. Windows being slower than macOS on one build is not a
+  regression, and two retriggers of one build differing is noise; labelling
+  either would be a category error dressed up as a finding.
+- **Nothing at all for two replicates of one job.** One value against one value
+  yields p = 1 and a "large" Cliff's delta every time. The two numbers and their
+  difference are the whole answer there.
 
 Everything above is O(n log n) on pool sizes in the hundreds, which is what
 makes the hover preview affordable.
@@ -199,7 +205,7 @@ Checked off as it lands; this list is the plan until then.
 - [x] Push distribution in the details pane
 - [x] `compare.ts` — kinds, pools, labels, links (+ tests)
 - [x] `cmp` URL state, shift-click, comparison highlights
-- [ ] Comparison section in the details pane
-- [ ] Hover preview
+- [x] Comparison section in the details pane
+- [x] Hover preview
 
 Open items live in [graphs-todo.md](graphs-todo.md).

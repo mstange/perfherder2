@@ -117,6 +117,34 @@ export function formatValue(v: number): string {
   return Number(v.toFixed(2)).toString();
 }
 
+// A difference, always signed, so it reads as a change rather than as a value.
+// The explicit `+` is the whole point: "95" and "+95" answer different
+// questions.
+export function formatSignedValue(v: number): string {
+  if (!Number.isFinite(v)) return 'N/A';
+  const s = formatValue(Math.abs(v));
+  // `-0` prints as "0" through formatValue, so take the sign from the input.
+  return `${v < 0 ? '−' : '+'}${s}`;
+}
+
+// A fraction as a signed percentage. Two decimals below 1%, one below 10%, none
+// above: half a percent is a real regression at perf-test scale, and "0%" for
+// one would be the wrong kind of tidy.
+export function formatSignedPercent(fraction: number): string {
+  if (!Number.isFinite(fraction)) return 'N/A';
+  const pct = Math.abs(fraction) * 100;
+  const digits = pct < 1 ? 2 : pct < 10 ? 1 : 0;
+  return `${fraction < 0 ? '−' : '+'}${pct.toFixed(digits)}%`;
+}
+
+// p-values span orders of magnitude, and past three decimals the exact figure
+// stops carrying information anyone acts on.
+export function formatPValue(p: number): string {
+  if (!Number.isFinite(p)) return 'N/A';
+  if (p < 0.001) return '<0.001';
+  return p.toFixed(3);
+}
+
 // ---------------------------------------------------------------------------
 // Time ticks
 // ---------------------------------------------------------------------------
