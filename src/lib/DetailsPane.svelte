@@ -4,7 +4,9 @@
 
   import type { AppState } from './appState.svelte';
   import { formatTimestamp, formatValue } from './chart';
-  import { MEAN_REPLICATE, seriesLabel } from './graphData';
+  import DistributionChart from './DistributionChart.svelte';
+  import { buildDistribution } from './distribution';
+  import { indexInPushValues, MEAN_REPLICATE, pushValues, seriesLabel } from './graphData';
   import {
     bugsInComment,
     bugUrl,
@@ -34,6 +36,24 @@
   // Clicking a dot with replicate drawing off selects the run itself, so the
   // headline value is the mean and there is no "replicate i of n" to report.
   const meanSelected = $derived(sel?.replicateIndex === MEAN_REPLICATE);
+
+  // Every value the series recorded on the clicked push, as a distribution. The
+  // pool is the push's whole replicate cloud — retriggers included — because the
+  // question this answers is "how noisy is this measurement on this build";
+  // see docs/comparison.md.
+  const pushDistribution = $derived.by(() => {
+    if (!sel) return null;
+    const values = pushValues(sel.push);
+    if (values.length === 0) return null;
+    return buildDistribution([
+      {
+        label: `${sel.push.runs.length} run${sel.push.runs.length === 1 ? '' : 's'}`,
+        color: sel.entry.color,
+        values,
+        markedIndex: indexInPushValues(sel.push, sel.run.datumId, sel.replicateIndex),
+      },
+    ]);
+  });
 
   function shortRev(rev: string): string {
     return rev.slice(0, 12);
@@ -253,6 +273,18 @@
             </dd>
           {/if}
         </dl>
+
+        <!-- The spread of everything this series measured on this build. The
+             time-series graph shows one dot per replicate at one x, which stacks
+             them into a vertical smear; spreading them along the value axis is
+             what makes a second mode visible. -->
+        {#if pushDistribution}
+          <h4>Values on this push</h4>
+          <DistributionChart
+            plot={pushDistribution}
+            unit={sel.entry.meta?.measurementUnit ?? ''}
+          />
+        {/if}
 
         {#if app.selectedPush}
           {@const push = app.selectedPush}

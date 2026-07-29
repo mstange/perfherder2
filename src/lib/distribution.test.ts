@@ -1,9 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildDistribution,
+  DENSITY_HEIGHT,
+  distributionHeight,
+  distributionLayout,
   GRID_POINTS,
   jitterAt,
   MIN_CURVE_VALUES,
+  STRIP_ROW_HEIGHT,
   type DistributionInput,
 } from './distribution';
 
@@ -128,5 +132,65 @@ describe('buildDistribution', () => {
     expect(plot.domain.max).toBeGreaterThan(plot.domain.min);
     expect(plot.series[0].modes.peakLocs).toHaveLength(1);
     expect(plot.series[0].modes.peakLocs[0]).toBeCloseTo(7, 1);
+  });
+});
+
+describe('distributionHeight', () => {
+  it('grows by one row per side', () => {
+    expect(distributionHeight(2, true) - distributionHeight(1, true)).toBe(STRIP_ROW_HEIGHT);
+  });
+
+  it('drops the density band when nothing has a curve', () => {
+    expect(distributionHeight(1, true) - distributionHeight(1, false)).toBeGreaterThanOrEqual(
+      DENSITY_HEIGHT,
+    );
+  });
+
+  it('reserves a row even for no sides at all', () => {
+    expect(distributionHeight(0, false)).toBe(distributionHeight(1, false));
+  });
+});
+
+describe('distributionLayout', () => {
+  const twoSides = buildDistribution([
+    input(Array.from({ length: 20 }, (_, i) => 100 + (i % 4))),
+    input(Array.from({ length: 20 }, (_, i) => 130 + (i % 4)), { color: '#f00' }),
+  ]);
+
+  it('stacks the bands without overlap and ends at the axis', () => {
+    const l = distributionLayout(300, twoSides);
+    expect(l.height).toBe(distributionHeight(2, true));
+    expect(l.bandY1).toBeGreaterThan(l.bandY0);
+    expect(l.rows).toHaveLength(2);
+    expect(l.rows[0].y0).toBeGreaterThanOrEqual(l.bandY1);
+    expect(l.rows[1].y0).toBe(l.rows[0].y1);
+    expect(l.axisY).toBe(l.rows[1].y1);
+    expect(l.axisY).toBeLessThan(l.height);
+  });
+
+  it('maps the domain across the padded plot width', () => {
+    const l = distributionLayout(300, twoSides);
+    expect(l.xScale.toPixel(twoSides.domain.min)).toBeCloseTo(l.x0, 9);
+    expect(l.xScale.toPixel(twoSides.domain.max)).toBeCloseTo(l.x1, 9);
+    expect(l.x0).toBeGreaterThan(0);
+    expect(l.x1).toBeLessThan(300);
+  });
+
+  it('puts zero density on the band floor and the peak on its ceiling', () => {
+    const l = distributionLayout(300, twoSides);
+    expect(l.densityScale.toPixel(0)).toBeCloseTo(l.bandY1, 9);
+    expect(l.densityScale.toPixel(twoSides.maxDensity)).toBeCloseTo(l.bandY0, 9);
+  });
+
+  it('collapses the band and keeps a usable scale when there are no curves', () => {
+    const l = distributionLayout(300, buildDistribution([input([1, 2])]));
+    expect(l.bandY1).toBe(l.bandY0);
+    // maxDensity is 0 here; the scale must still return a finite pixel.
+    expect(Number.isFinite(l.densityScale.toPixel(0))).toBe(true);
+  });
+
+  it('survives a zero width without inverting the plot area', () => {
+    const l = distributionLayout(0, twoSides);
+    expect(l.x1).toBeGreaterThan(l.x0);
   });
 });

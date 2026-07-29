@@ -7,7 +7,7 @@
 // job (see docs/comparison.md). This module only knows it has one or two lists
 // of numbers to describe on a shared axis.
 
-import type { Range } from './chart';
+import { makeScale, type Range, type Scale } from './chart';
 import {
   computeModeInfo,
   EMPTY_MODE_INFO,
@@ -162,5 +162,88 @@ export function buildDistribution(inputs: readonly DistributionInput[]): Distrib
     series,
     maxDensity,
     hasCurves: series.some((s) => s.density.length > 0),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Layout
+// ---------------------------------------------------------------------------
+//
+// Pure geometry, so the component only has to own a canvas and its width. Two
+// stacked bands over one shared value axis: densities on top, one strip row per
+// side below, tick labels at the bottom.
+
+// Room for the outermost tick label to sit under its tick without being clipped,
+// and for the axis labels below the last strip row.
+export const DISTRIBUTION_PAD = { left: 18, right: 18, top: 6, bottom: 15 };
+export const DENSITY_HEIGHT = 68;
+export const BAND_GAP = 5;
+export const STRIP_ROW_HEIGHT = 20;
+
+// The chart is as tall as its content needs and no taller. This *is* a height
+// that changes with the data — a pool too small for a density loses the band —
+// but only when the selection changes, which redraws the whole pane anyway. The
+// alternative is a labelled empty box in every narrow-pool case.
+export function distributionHeight(sideCount: number, hasCurves: boolean): number {
+  const bands = hasCurves ? DENSITY_HEIGHT + BAND_GAP : 0;
+  return (
+    DISTRIBUTION_PAD.top +
+    bands +
+    Math.max(1, sideCount) * STRIP_ROW_HEIGHT +
+    DISTRIBUTION_PAD.bottom
+  );
+}
+
+export type StripRow = { y0: number; y1: number; centerY: number };
+
+export type DistributionLayout = {
+  width: number;
+  height: number;
+  // Plot area horizontally; every band shares it, so a value is at the same x
+  // in the curve and in the strip below it.
+  x0: number;
+  x1: number;
+  // Density band. Zero-height (y0 === y1) when no side has a curve.
+  bandY0: number;
+  bandY1: number;
+  rows: StripRow[];
+  // Where the value axis line and its labels go.
+  axisY: number;
+  xScale: Scale;
+  // Density → pixels inside the band. Inverted, like the graphs' y scale.
+  densityScale: Scale;
+};
+
+export function distributionLayout(
+  width: number,
+  plot: DistributionPlot,
+): DistributionLayout {
+  const pad = DISTRIBUTION_PAD;
+  const sideCount = Math.max(1, plot.series.length);
+  const height = distributionHeight(plot.series.length, plot.hasCurves);
+  const x0 = pad.left;
+  const x1 = Math.max(pad.left + 1, width - pad.right);
+  const bandY0 = pad.top;
+  const bandY1 = plot.hasCurves ? bandY0 + DENSITY_HEIGHT : bandY0;
+  const rowsTop = plot.hasCurves ? bandY1 + BAND_GAP : bandY0;
+  const rows: StripRow[] = [];
+  for (let i = 0; i < sideCount; i++) {
+    const y0 = rowsTop + i * STRIP_ROW_HEIGHT;
+    const y1 = y0 + STRIP_ROW_HEIGHT;
+    rows.push({ y0, y1, centerY: (y0 + y1) / 2 });
+  }
+  return {
+    width,
+    height,
+    x0,
+    x1,
+    bandY0,
+    bandY1,
+    rows,
+    axisY: rowsTop + sideCount * STRIP_ROW_HEIGHT,
+    xScale: makeScale(plot.domain.min, plot.domain.max, x0, x1),
+    // `maxDensity` of 0 (no curves) would divide by zero in makeScale; it
+    // special-cases a zero-width domain, so the scale is still safe to build.
+    densityScale: makeScale(0, plot.maxDensity, bandY1, bandY0),
   };
 }

@@ -3,8 +3,10 @@ import type { RawDatum, RawSummary } from './graphApi';
 import { parseApiDate } from './graphApi';
 import {
   buildSeriesData,
+  indexInPushValues,
   MEAN_REPLICATE,
   metaFromSummary,
+  pushValues,
   resolvePoint,
   seriesKey,
   seriesLabel,
@@ -197,6 +199,40 @@ describe('resolvePoint', () => {
     const r = resolvePoint(data, 1, MEAN_REPLICATE);
     expect(r?.value).toBe(11);
     expect(r?.replicateIndex).toBe(MEAN_REPLICATE);
+  });
+});
+
+describe('pushValues and indexInPushValues', () => {
+  // One push, two runs (a retrigger): three replicates then two.
+  const data = buildSeriesData(
+    summary([
+      datum({ id: 1, value: 10, push_id: 7, job_id: 1 }),
+      datum({ id: 1, value: 11, push_id: 7, job_id: 1 }),
+      datum({ id: 1, value: 12, push_id: 7, job_id: 1 }),
+      datum({ id: 2, value: 20, push_id: 7, job_id: 2 }),
+      datum({ id: 2, value: 21, push_id: 7, job_id: 2 }),
+    ]),
+  );
+  const push = data.pushById.get(7)!;
+
+  it('pools every run of the push, in run order', () => {
+    expect(pushValues(push)).toEqual([10, 11, 12, 20, 21]);
+  });
+
+  it('locates a replicate across the run boundary', () => {
+    expect(indexInPushValues(push, 1, 0)).toBe(0);
+    expect(indexInPushValues(push, 1, 2)).toBe(2);
+    expect(indexInPushValues(push, 2, 0)).toBe(3);
+    expect(indexInPushValues(push, 2, 1)).toBe(4);
+  });
+
+  it('has no index for a run mean, which is not one of the values', () => {
+    expect(indexInPushValues(push, 1, MEAN_REPLICATE)).toBe(-1);
+  });
+
+  it('has no index for an unknown run or an out-of-range replicate', () => {
+    expect(indexInPushValues(push, 99, 0)).toBe(-1);
+    expect(indexInPushValues(push, 1, 5)).toBe(-1);
   });
 });
 

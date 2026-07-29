@@ -273,6 +273,51 @@ export function buildSeriesData(summary: RawSummary | null): SeriesData {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Value pools
+// ---------------------------------------------------------------------------
+//
+// What the details pane's distribution chart describes. Kept here rather than in
+// distribution.ts because the pooling rule is a fact about the push/run/
+// replicate structure, and this module owns that structure; compare.ts decides
+// *which* pool each side of a comparison gets.
+
+// Every replicate value this series recorded on one push, in run order —
+// retriggers pooled, since each is an independent sample of the same build.
+//
+// Deliberately not filtered by `showReplicates`: that flag decides which dots
+// get drawn (see docs/graphs.md), and collapsing to one mean per run would leave
+// a four-value distribution where sixty measurements exist.
+export function pushValues(push: PushGroup): number[] {
+  const out: number[] = [];
+  for (const run of push.runs) out.push(...run.values);
+  return out;
+}
+
+// Where one (run, replicate) pair lands in `pushValues(push)`, so the strip can
+// ring the dot the user actually clicked.
+//
+// Returns -1 for a MEAN_REPLICATE selection: a run's mean is not one of the
+// pool's values, so there is no dot of it to ring. (The pane says which value it
+// is describing regardless.)
+export function indexInPushValues(
+  push: PushGroup,
+  datumId: number,
+  replicateIndex: number,
+): number {
+  if (replicateIndex === MEAN_REPLICATE) return -1;
+  let offset = 0;
+  for (const run of push.runs) {
+    if (run.datumId === datumId) {
+      return replicateIndex >= 0 && replicateIndex < run.values.length
+        ? offset + replicateIndex
+        : -1;
+    }
+    offset += run.values.length;
+  }
+  return -1;
+}
+
 // Resolve a URL-level selection triple against loaded data. Returns null when
 // the point isn't present — the range may have been narrowed since the link
 // was made, and a phantom selection is worse than none.

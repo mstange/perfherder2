@@ -1,0 +1,224 @@
+<script lang="ts">
+  // The distribution chart in the details pane: a density band with detected
+  // modes over a jittered strip of the raw values, plus the numbers that don't
+  // fit on a 300px-wide canvas.
+  //
+  // Everything numeric comes in already computed (distribution.ts); this
+  // component owns the canvas, its size, and the HTML half of the legend. The
+  // split between the two is deliberate — see docs/comparison.md, "Mode detail
+  // goes below the chart, not on it".
+
+  import { formatValue } from './chart';
+  import { distributionHeight, distributionLayout, type DistributionPlot } from './distribution';
+  import { drawDistribution } from './distributionDraw';
+
+  type Props = {
+    plot: DistributionPlot;
+    unit?: string;
+  };
+  let { plot, unit = '' }: Props = $props();
+
+  let wrapper: HTMLDivElement | undefined = $state();
+  let canvas: HTMLCanvasElement | undefined = $state();
+  let width = $state(0);
+
+  const height = $derived(distributionHeight(plot.series.length, plot.hasCurves));
+  const layout = $derived(distributionLayout(width, plot));
+
+  // A single side is the plain "this push" case; two sides are a comparison, and
+  // the first is drawn dashed and hollow. Mirrors `isBaseSide` in
+  // distributionDraw.ts.
+  const comparing = $derived(plot.series.length > 1);
+
+  $effect(() => {
+    if (!wrapper) return;
+    const ro = new ResizeObserver((entries) => {
+      width = entries[0].contentRect.width;
+    });
+    ro.observe(wrapper);
+    return () => ro.disconnect();
+  });
+
+  $effect(() => {
+    if (!canvas || width <= 0) return;
+    const dpr = window.devicePixelRatio || 1;
+    const bw = Math.round(width * dpr);
+    const bh = Math.round(height * dpr);
+    // Assigning either clears the backing store, so only do it on a real change.
+    if (canvas.width !== bw || canvas.height !== bh) {
+      canvas.width = bw;
+      canvas.height = bh;
+    }
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    drawDistribution(ctx, layout, plot);
+  });
+
+  function withUnit(v: number): string {
+    return unit ? `${formatValue(v)} ${unit}` : formatValue(v);
+  }
+
+  // Mode shares are coarse by nature — "62%" of the density is as precise as the
+  // idea gets.
+  function percent(fraction: number): string {
+    return `${Math.round(fraction * 100)}%`;
+  }
+
+  // The coefficient of variation is routinely under 1%, where rounding to whole
+  // percent prints "0%" for every well-behaved measurement and throws away the
+  // only interesting thing about it. One decimal below 10%.
+  function cvPercent(fraction: number): string {
+    const pct = fraction * 100;
+    return `${pct < 10 ? pct.toFixed(1) : Math.round(pct)}%`;
+  }
+
+  // What a screen reader gets instead of the picture. The medians and the mode
+  // count are the two things the chart is read for.
+  const summaryText = $derived(
+    plot.series
+      .map((s) =>
+        s.summary
+          ? `${s.label}: ${s.summary.count} values, median ${withUnit(s.summary.median)}` +
+            (s.modes.peakLocs.length > 1 ? `, ${s.modes.peakLocs.length} modes` : '')
+          : `${s.label}: no values`,
+      )
+      .join('. '),
+  );
+</script>
+
+<div class="distribution">
+  <!-- Fixed height from the layout, so the pane doesn't reflow as the canvas
+       measures itself.
+
+       `role="img"` goes on the wrapper rather than on the <canvas>, which can't
+       carry it (a canvas is an interactive element as far as ARIA is concerned).
+       The canvas itself is hidden from assistive tech; `summaryText` is what
+       replaces the picture. -->
+  <div
+    class="canvas-wrap"
+    bind:this={wrapper}
+    style:height="{height}px"
+    role="img"
+    aria-label={summaryText}
+  >
+    <canvas bind:this={canvas} aria-hidden="true"></canvas>
+  </div>
+
+  <ul class="legend">
+    {#each plot.series as side, i (side.label + i)}
+      <li>
+        <span
+          class="key"
+          class:dashed={comparing && i === 0}
+          style:--key-color={side.color}
+          aria-hidden="true"
+        ></span>
+        <div class="key-body">
+          <div class="key-head">
+            <span class="key-label">{side.label}</span>
+            {#if side.summary}
+              <span class="key-stats">
+                n={side.summary.count} · med {withUnit(side.summary.median)}
+              </span>
+            {/if}
+          </div>
+          {#if side.summary}
+            <div class="key-detail">
+              {#if side.modes.peakLocs.length > 1}
+                <!-- Modes are worth naming only when there is more than one;
+                     drawModes applies the same rule to the canvas. -->
+                modes
+                {#each side.modes.peakLocs as loc, m (m)}<span class="mode"
+                    ><b>{side.modes.letters[m]}</b> {formatValue(loc)} ({percent(
+                      side.modes.fracs[m],
+                    )})</span
+                  >{' '}{/each}
+              {:else if side.density.length === 0}
+                {side.summary.count} value{side.summary.count === 1 ? '' : 's'} — too few to
+                estimate a distribution
+              {:else}
+                <!-- One unit for the pair, not one each: "50.35 score – 50.96
+                     score" says the same thing twice in a 300px column. -->
+                spread {formatValue(side.summary.min)} – {withUnit(side.summary.max)}, cv
+                {cvPercent(side.summary.cv)}
+              {/if}
+            </div>
+          {:else}
+            <div class="key-detail">no values</div>
+          {/if}
+        </div>
+      </li>
+    {/each}
+  </ul>
+</div>
+
+<style>
+  .distribution {
+    margin: 6px 0 0;
+  }
+  .canvas-wrap {
+    position: relative;
+    width: 100%;
+  }
+  canvas {
+    position: absolute;
+    inset: 0;
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+  .legend {
+    list-style: none;
+    margin: 2px 0 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    font-size: 11px;
+  }
+  .legend li {
+    display: grid;
+    grid-template-columns: 16px 1fr;
+    gap: 5px;
+    align-items: start;
+  }
+  /* The same vocabulary the canvas uses: a solid rule for the emphatic side, a
+     dashed one for the baseline. Colors can be identical (one series across two
+     pushes), so the dash is what carries the distinction. */
+  .key {
+    height: 0;
+    margin-top: 6px;
+    border-top: 2px solid var(--key-color);
+  }
+  .key.dashed {
+    border-top-style: dashed;
+  }
+  .key-body {
+    min-width: 0;
+  }
+  .key-head {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px 6px;
+    justify-content: space-between;
+  }
+  .key-label {
+    font-weight: 600;
+    overflow-wrap: anywhere;
+  }
+  .key-stats {
+    color: #57606a;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .key-detail {
+    color: #57606a;
+    font-variant-numeric: tabular-nums;
+    overflow-wrap: anywhere;
+  }
+  .mode b {
+    font-weight: 600;
+    color: #1f2328;
+  }
+</style>

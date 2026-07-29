@@ -187,8 +187,8 @@ Checked off as it lands; this list is the plan until then.
 - [x] `kde.ts` — Gaussian KDE, bandwidth, mode fitting (+ tests)
 - [x] `stats.ts` — Mann-Whitney U, Cliff's delta, CLES, summaries (+ tests)
 - [x] `distribution.ts` — shared grid, curves, modes, jitter (+ tests)
-- [ ] `DistributionChart.svelte` / `distributionDraw.ts`
-- [ ] Push distribution in the details pane
+- [x] `DistributionChart.svelte` / `distributionDraw.ts`
+- [x] Push distribution in the details pane
 - [ ] `compare.ts` — kinds, pools, labels, links (+ tests)
 - [ ] `cmp` URL state, shift-click, comparison highlights
 - [ ] Comparison section in the details pane
