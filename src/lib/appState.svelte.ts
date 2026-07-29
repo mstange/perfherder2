@@ -332,7 +332,8 @@ export class AppState {
   );
 
   // The push immediately before the selected one in the same series — the
-  // "what landed in between" link needs it.
+  // details pane's "Since previous" pushlog link needs it, to name the range
+  // that landed in between.
   previousPush = $derived.by((): PushGroup | null => {
     const sel = this.selection;
     if (!sel) return null;

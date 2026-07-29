@@ -347,7 +347,7 @@
           {#if cmpLinks && (cmpLinks.pushlog || cmpLinks.perfCompare)}
             <div class="cmp-links">
               {#if cmpLinks.pushlog}
-                <a href={cmpLinks.pushlog} target="_blank" rel="noopener">what landed</a>
+                <a href={cmpLinks.pushlog} target="_blank" rel="noopener">pushlog</a>
               {/if}
               {#if cmpLinks.perfCompare}
                 <a href={cmpLinks.perfCompare} target="_blank" rel="noopener">perf.compare</a>
