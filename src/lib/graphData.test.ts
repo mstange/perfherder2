@@ -202,6 +202,51 @@ describe('resolvePoint', () => {
   });
 });
 
+// The summary endpoint returns a datum's replicate rows in a different order on
+// every request (measured against production: four fetches of one datum, four
+// different orders of the same ten values). Before `Run.values` was sorted, a
+// `sel=` link therefore resolved to a different replicate on every page load —
+// the reported bug.
+describe('replicate ordering is independent of the response order', () => {
+  const VALUES = [1625.7, 1569.567, 1606.922, 1483.444, 1716.022];
+  const rowsIn = (order: number[]) =>
+    summary(order.map((i) => datum({ id: 1, value: VALUES[i], push_id: 7 })));
+
+  it('sorts a run so the index names a value, not a row position', () => {
+    const data = buildSeriesData(rowsIn([0, 1, 2, 3, 4]));
+    expect(data.runs[0].values).toEqual([...VALUES].sort((a, b) => a - b));
+  });
+
+  it('resolves one index to the same value however the rows arrived', () => {
+    const shuffles = [
+      [0, 1, 2, 3, 4],
+      [4, 3, 2, 1, 0],
+      [2, 0, 4, 1, 3],
+      [1, 4, 0, 3, 2],
+    ];
+    for (const index of [0, 2, 4]) {
+      const resolved = shuffles.map(
+        (order) => resolvePoint(buildSeriesData(rowsIn(order)), 1, index)?.value,
+      );
+      expect(new Set(resolved).size).toBe(1);
+    }
+  });
+
+  it('keeps the run mean, which does not depend on the order either', () => {
+    const expected = VALUES.reduce((a, b) => a + b, 0) / VALUES.length;
+    expect(buildSeriesData(rowsIn([3, 1, 4, 0, 2])).runs[0].mean).toBeCloseTo(expected, 9);
+  });
+
+  it('puts a run\'s dots in ascending y, all at the same x', () => {
+    // The point array has to stay x-sorted for the binary searches in chart.ts;
+    // every replicate of a run shares its push timestamp, so sorting by value
+    // within a run can't disturb that.
+    const points = buildSeriesData(rowsIn([2, 0, 4, 1, 3])).replicates.points;
+    expect(points.map((p) => p.y)).toEqual([...VALUES].sort((a, b) => a - b));
+    expect(new Set(points.map((p) => p.x)).size).toBe(1);
+  });
+});
+
 describe('pushValues and indexInPushValues', () => {
   // One push, two runs (a retrigger): three replicates then two.
   const data = buildSeriesData(

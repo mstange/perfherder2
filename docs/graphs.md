@@ -100,8 +100,21 @@ push   (push_id, revision, push_timestamp)   ← "build" in the task description
 ```
 
 `push_id` groups retriggers of the same build; `job_id` distinguishes them.
-Replicate index is positional within a datum — the API gives no replicate id,
-and the order is the DB row order of `performancedatumreplicate`.
+Replicate index is positional within a datum, **over values we sorted
+ourselves** — so it's a rank, not an iteration number.
+
+That's forced. The endpoint has no `ORDER BY` over
+`performancedatumreplicate` and hands a datum's rows back in a different order
+on every request: four fetches of one datum in production gave four different
+orders of the same ten values. Since it also gives us no replicate id and no
+iteration number, response position is both unstable *and* the only thing on
+offer — so `sel=…,<datumId>,<replicateIndex>` used to name a different value
+every time the page loaded, which is the one thing a permalink must not do.
+`buildSeriesData` sorts each run's values ascending, which makes the index a
+stable function of the values themselves; `graphData.test.ts` pins that a
+shuffled response resolves to the same value. The details pane says "by value"
+rather than implying an execution order we can't see, and the replicate list
+reads as the run's spread.
 
 A **plotted point** is one replicate. Its identity is
 `(repository, signatureId, datumId, replicateIndex)`; that's what the URL

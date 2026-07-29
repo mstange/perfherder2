@@ -397,15 +397,28 @@
             <dt>Replicates</dt>
             <dd>{replicateValues.length} averaged</dd>
           {:else}
-            <dt>Replicate</dt>
-            <dd>{sel.replicateIndex + 1} of {replicateValues.length}</dd>
+            <!-- A rank, not an iteration number. The API returns a datum's
+                 replicate rows in a different order on every request and gives
+                 us no iteration number, so we sort by value and say so rather
+                 than implying an execution order we don't have. See
+                 graphData.ts, `Run.values`. -->
+            <dt
+              title="Replicates are ordered by value: treeherder returns them in an arbitrary order and doesn't say which iteration each came from"
+              >Replicate</dt
+            >
+            <dd>
+              {sel.replicateIndex + 1} of {replicateValues.length}
+              <span class="muted">by value</span>
+            </dd>
             <dt>Run mean</dt>
             <dd>{formatValue(runMean)}</dd>
           {/if}
         </dl>
         <!-- Listed whether or not the dots are drawn: with replicates hidden
              this is the only way to see a run's spread, and picking one from
-             here moves the selection ring onto that value. -->
+             here moves the selection ring onto that value. Ascending, so the
+             spread reads off the list directly — see `Run.values` for why
+             there's no execution order to show instead. -->
         {#if replicateValues.length > 1}
           <ol class="replicates">
             {#each replicateValues as v, i}

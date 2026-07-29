@@ -24,6 +24,21 @@ export type Run = {
   // run. We plot against push time, not job submit time, like treeherder.
   x: number;
   revision: string;
+  // This run's replicate values, **sorted ascending**, which is not the order
+  // the API sent them in.
+  //
+  // The summary endpoint returns a datum's replicate rows in a different order
+  // on every request — measured: four fetches of one datum gave four different
+  // orders of the same ten values. (It has no ORDER BY over
+  // `performancedatumreplicate`, and gives us no replicate id or iteration
+  // number to recover the real order from.) A `replicateIndex` into response
+  // order therefore names a different value every time the page loads, which is
+  // exactly what a URL must not do.
+  //
+  // Sorting is what makes the index a stable function of the values, so
+  // `sel=…,<datumId>,<replicateIndex>` means one thing. The cost is that the
+  // index is a *rank*, not an iteration number — the UI says so — and iteration
+  // order is not recoverable anyway.
   values: number[];
   mean: number;
 };
@@ -229,7 +244,18 @@ export function buildSeriesData(summary: RawSummary | null): SeriesData {
   }
 
   const runs = [...runByDatumId.values()];
-  for (const run of runs) run.mean = mean(run.values);
+  for (const run of runs) {
+    // Ascending, and this is load-bearing rather than cosmetic. See
+    // `Run.values`: the endpoint returns a datum's replicate rows in a
+    // *different order on every request*, so a positional index into response
+    // order names a different value each time the page is loaded. Sorting makes
+    // the index a stable function of the values themselves, which is what a
+    // `sel=` link in the URL needs it to be.
+    run.values.sort((a, b) => a - b);
+    // Order-independent either way, but it has to come after the sort to keep
+    // this loop's reading order honest.
+    run.mean = mean(run.values);
+  }
   // `jobId` is only a tiebreaker for retriggers of one push; expired jobs sort
   // as 0, which keeps the comparator total instead of returning NaN.
   runs.sort((a, b) => a.x - b.x || a.pushId - b.pushId || (a.jobId ?? 0) - (b.jobId ?? 0));
