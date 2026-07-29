@@ -17,7 +17,7 @@ const RING_COLOR = '#1f2328';
 const ROW_TINT = '#f6f8fa';
 const FONT = '10px system-ui, sans-serif';
 // One line of FONT, for stacking and clamping mode labels.
-const LABEL_HEIGHT_PX = 10;
+export const LABEL_HEIGHT_PX = 10;
 
 const CURVE_WIDTH = 1.5;
 const FILL_ALPHA = 0.16;
@@ -177,17 +177,33 @@ function drawModes(
     ctx.moveTo(x, layout.bandY1);
     ctx.lineTo(x, top);
     ctx.stroke();
-    // Above the peak, side 1 a line lower so two peaks at the same value don't
-    // print their labels on top of each other — but clamped into the band. The
-    // tallest peak reaches the band ceiling by construction (it's what sets the
-    // density scale), so an unclamped label for it lands off the canvas.
-    const labelY = Math.max(
-      layout.bandY0 + LABEL_HEIGHT_PX + sideIndex * LABEL_HEIGHT_PX,
-      top - 2 - sideIndex * LABEL_HEIGHT_PX,
-    );
-    ctx.fillText(side.modes.letters[i], x, labelY);
+    ctx.fillText(side.modes.letters[i], x, modeLabelY(layout, top, sideIndex));
   });
   ctx.setLineDash([]);
+}
+
+// Baseline for a mode letter drawn just above its peak. Side 1's labels sit one
+// line *higher* than side 0's, so two peaks at the same value don't print their
+// letters on top of each other.
+//
+// The clamp matters more than it looks. The tallest peak in the plot reaches the
+// band ceiling *by construction* — it is what sets the density scale — so an
+// unclamped label for it lands above the canvas and simply isn't drawn. And the
+// clamp has to preserve the stagger, or two peaks that both hit the ceiling
+// collide again at the top: each side gets its own reserved row there, in the
+// same order as the offset (side 1 above side 0). Exported for the test that
+// pins both, since nothing else can see a missing glyph.
+export function modeLabelY(
+  layout: Pick<DistributionLayout, 'bandY0'>,
+  peakY: number,
+  sideIndex: number,
+): number {
+  // textBaseline is 'bottom', so a baseline at bandY0 + LABEL_HEIGHT_PX is the
+  // highest one whose glyphs are still inside the band. Side 0 leaves one row
+  // above itself free for side 1.
+  const rowsAbove = Math.max(0, 1 - sideIndex);
+  const ceiling = layout.bandY0 + LABEL_HEIGHT_PX * (1 + rowsAbove);
+  return Math.max(ceiling, peakY - 2 - sideIndex * LABEL_HEIGHT_PX);
 }
 
 // The grid is uniform, so a value's index is arithmetic rather than a search.
