@@ -44,7 +44,8 @@
   const highlights = $derived.by((): Highlight[] => {
     const out: Highlight[] = [];
     const ring = (sel: Selection | null, kind: Highlight['kind']) => {
-      if (sel && sel.entry.visible) out.push({ x: sel.run.x, y: sel.value, color: sel.entry.color, kind });
+      if (!sel || !sel.entry.visible) return;
+      out.push({ x: sel.run.x, y: sel.value, color: sel.entry.color, kind });
     };
     ring(app.selection, 'selected');
     if (app.comparisonSource === 'pinned') ring(app.comparedSelection, 'compared');

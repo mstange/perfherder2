@@ -235,9 +235,11 @@ export class AppState {
   // pointer is over. Hover only previews *once a selection exists* — with
   // nothing selected there is nothing to compare against, and every mousemove
   // would otherwise light up the pane.
-  comparisonSource = $derived<ComparisonSource | null>(
-    !this.selectedPoint ? null : this.comparedPoint ? 'pinned' : this.hoveredPoint ? 'hover' : null,
-  );
+  comparisonSource = $derived.by((): ComparisonSource | null => {
+    if (!this.selectedPoint) return null;
+    if (this.comparedPoint) return 'pinned';
+    return this.hoveredPoint ? 'hover' : null;
+  });
 
   // Both gated on `comparisonSource`, so the ring the graph draws and the
   // comparison the pane describes can never disagree about which end is live.

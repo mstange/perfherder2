@@ -146,7 +146,9 @@ export function buildDistribution(inputs: readonly DistributionInput[]): Distrib
       values: input.values,
       bandwidth: bandwidths[side],
       density,
-      modes: enoughForCurve ? computeModeInfo(grid, density, VALLEY_THRESHOLD) : EMPTY_MODE_INFO,
+      modes: enoughForCurve
+        ? computeModeInfo(grid, density, VALLEY_THRESHOLD)
+        : EMPTY_MODE_INFO,
       summary: summarize(input.values),
       strip: input.values.map((value, i) => ({
         value,

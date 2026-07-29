@@ -17,6 +17,7 @@
 import {
   indexInPushValues,
   MEAN_REPLICATE,
+  pushValues,
   seriesLabel,
   type PushGroup,
   type Run,
@@ -174,10 +175,8 @@ function poolFor(kind: ComparisonKind, side: CompareSide): {
       markedIndex: side.replicateIndex === MEAN_REPLICATE ? -1 : side.replicateIndex,
     };
   }
-  const values: number[] = [];
-  for (const run of side.push.runs) values.push(...run.values);
   return {
-    values,
+    values: pushValues(side.push),
     markedIndex: indexInPushValues(side.push, side.run.datumId, side.replicateIndex),
   };
 }
@@ -341,7 +340,11 @@ export type ComparisonLinks = {
   perfCompareSubtests: string | null;
 };
 
-const NO_LINKS: ComparisonLinks = { pushlog: null, perfCompare: null, perfCompareSubtests: null };
+const NO_LINKS: ComparisonLinks = {
+  pushlog: null,
+  perfCompare: null,
+  perfCompareSubtests: null,
+};
 
 // `repoLink` is the base side's repository record, for the hg-vs-git pushlog
 // shape; null while `/repository/` hasn't landed, which only costs the pushlog.
