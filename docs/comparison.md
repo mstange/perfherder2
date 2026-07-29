@@ -40,6 +40,9 @@ values differently.
   the two sides would otherwise be identical, since both runs are in the same
   push pool. This is the case that doesn't fit the per-push framing, and the
   pane relabels itself accordingly.
+- **A comparison of two replicates of one run** is just the two numbers, one
+  value per side. Both the push and the run pool would hand the two sides the
+  same values.
 - **A comparison of two series on the same push** pools each series' push.
 
 Which pool a side gets is decided in one place, `compare.ts`, so the chart, the
@@ -47,26 +50,31 @@ statistics and the labels can't disagree about what they are describing.
 
 ## Comparison kinds
 
-Two selected points are related in one of four ways, and what the pane can
+Two selected points are related in one of five ways, and what the pane can
 usefully say depends on which:
 
-| Kind | Same series? | Same push? | What it answers |
-|---|---|---|---|
-| `push` | yes | no | Did this change between builds? (before/after) |
-| `series` | no | yes | How do two configurations compare on one build? (firefox vs chrome) |
-| `run` | yes | yes | Do two retriggers of one build agree? |
-| `unrelated` | no | no | Neither; the pane still reports the delta and the test |
+| Kind | Same series? | Same push? | Pools | What it answers |
+|---|---|---|---|---|
+| `push` | yes | no | each push | Did this change between builds? (before/after) |
+| `series` | no | yes | each push | How do two configurations compare on one build? (firefox vs chrome) |
+| `run` | yes | yes | each run | Do two retriggers of one build agree? |
+| `replicate` | yes | same run | one value each | Just the two numbers |
+| `unrelated` | no | no | each push | Neither; the pane still reports the delta and the test |
 
-`series` requires the same repository *and* the same revision — push ids are
-per-repository, so two repos' "push 12345" are unrelated builds.
+`series` requires the same repository *and* the same push id — ids are
+per-repository, so two repos' "push 12345" are unrelated builds. Same trap as
+`Series.key`; see design.md, "Row identity".
 
-**Base and new are assigned, not clicked.** For `push` and `run`, base is the
-chronologically earlier point: "did it get better or worse" only reads
-correctly in time order, and the pushlog and perf.compare links need
-`fromchange` to be the ancestor. For `series` and `unrelated` there is no time
-order to use, so base is the click (the selection) and new is the shift-click.
-Both sides are labelled in the UI, so the assignment is never something the
-user has to infer.
+**Base and new are assigned, not clicked.** Base is the chronologically
+earlier point — "did it get better or worse" only reads correctly in time
+order, and the pushlog and perf.compare links need `fromchange` to be the
+ancestor. One rule covers every kind (`compare.ts::sideOrder`: push time, then
+job, then datum, then replicate index), and it degenerates to "leave them
+alone" exactly where there is no time order to use: two series on one push
+share a push timestamp and their runs are unordered with respect to each other,
+so there `sideOrder` returns 0 and click order stands. The pane reports
+`swapped` when it reordered, because otherwise "before" would silently mean
+"the one you clicked second".
 
 ## Statistics
 
@@ -189,7 +197,7 @@ Checked off as it lands; this list is the plan until then.
 - [x] `distribution.ts` — shared grid, curves, modes, jitter (+ tests)
 - [x] `DistributionChart.svelte` / `distributionDraw.ts`
 - [x] Push distribution in the details pane
-- [ ] `compare.ts` — kinds, pools, labels, links (+ tests)
+- [x] `compare.ts` — kinds, pools, labels, links (+ tests)
 - [ ] `cmp` URL state, shift-click, comparison highlights
 - [ ] Comparison section in the details pane
 - [ ] Hover preview
