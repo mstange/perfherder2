@@ -134,10 +134,12 @@ comparisons here (two runs, two series) aren't expressible in its terms.
 - **Median and mean deltas**, absolute and percent. Median leads, since a
   multi-modal cloud's mean sits between its modes where no measurement is.
 - **Improvement or regression** comes from the base series' `lowerIsBetter`,
-  never from the sign of the delta alone — and only for the two kinds that are a
-  change over *time*. Windows being slower than macOS on one build is not a
-  regression, and two retriggers of one build differing is noise; labelling
-  either would be a category error dressed up as a finding.
+  never from the sign of the delta alone — and only for the `push` kind, the one
+  case that is a single thing measured twice. Windows being slower than macOS on
+  one build is not a regression; two retriggers of one build differing is noise;
+  and two *different* series on two different pushes aren't a before and an
+  after, however well-defined their delta is. Labelling any of those would be a
+  category error dressed up as a finding.
 - **Nothing at all for two replicates of one job.** One value against one value
   yields p = 1 and a "large" Cliff's delta every time. The two numbers and their
   difference are the whole answer there.

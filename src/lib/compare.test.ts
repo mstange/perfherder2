@@ -305,10 +305,11 @@ describe('buildComparison', () => {
     expect(c.swapped).toBe(false);
   });
 
-  it('calls nothing an improvement or regression unless it is a change over time', () => {
-    // Chrome being slower than Firefox on one build is not a regression, and two
-    // retriggers of one build differing is noise. Both are significant deltas;
-    // neither is a verdict.
+  it('calls nothing an improvement or regression unless it is one series over time', () => {
+    // Chrome being slower than Firefox on one build is not a regression; two
+    // retriggers of one build differing is noise; two different series on two
+    // different pushes aren't a before and an after. All three produce
+    // significant deltas; none of them is a verdict.
     const acrossSeries = buildComparison(
       side({ push: older, signatureId: 1 }),
       side({ push: older, signatureId: 2, metaOver: { application: 'chrome' } }),
@@ -320,7 +321,13 @@ describe('buildComparison', () => {
     )!;
     expect(acrossRuns.test?.significant).toBe(true);
     expect(acrossRuns.direction).toBe('none');
-    // Across pushes it is a change, and gets one.
+    const unrelated = buildComparison(
+      side({ push: older, signatureId: 1 }),
+      side({ push: newer, signatureId: 2, metaOver: { application: 'chrome' } }),
+    )!;
+    expect(unrelated.kind).toBe('unrelated');
+    expect(unrelated.direction).toBe('none');
+    // One series across two pushes is the one case that is a change.
     expect(buildComparison(side({ push: older }), side({ push: newer }))!.direction).not.toBe(
       'none',
     );

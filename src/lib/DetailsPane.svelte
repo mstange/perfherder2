@@ -109,6 +109,12 @@
   const sidesDifferBySeries = $derived(
     !!cmp && cmp.base.ref.signatureId !== cmp.next.ref.signatureId,
   );
+  // Two counterparts of one test in different repositories have identical suite,
+  // test and platform, so the series line has to name the repository or it prints
+  // the same string twice and explains nothing.
+  const sidesDifferByRepo = $derived(
+    !!cmp && cmp.base.ref.repository !== cmp.next.ref.repository,
+  );
 
   const sideRows = $derived.by((): { side: ComparisonSide; role: string; isBase: boolean }[] =>
     cmp
@@ -326,8 +332,11 @@
                     <!-- Two different series: which one each side is matters more
                          than the revision they share. -->
                     <div class="side-detail muted">
-                      {row.side.meta ? seriesLabel(row.side.meta) : `signature ${row.side.ref.signatureId}`}
+                      {row.side.meta
+                        ? seriesLabel(row.side.meta)
+                        : `signature ${row.side.ref.signatureId}`}
                       {#if row.side.meta?.platform}· {row.side.meta.platform}{/if}
+                      {#if sidesDifferByRepo}· {row.side.ref.repository}{/if}
                     </div>
                   {/if}
                 </div>

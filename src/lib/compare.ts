@@ -287,11 +287,13 @@ export function buildComparison(
   // answer there.
   const test = kind === 'replicate' ? null : mannWhitneyU(base.values, next.values);
 
-  // "Improvement" and "regression" describe a *change*, which only two of the
-  // five kinds are. Windows being slower than macOS on one build is not a
-  // regression, and two retriggers of one build differing is noise — labelling
-  // either would be a category error dressed up as a finding.
-  const isChangeOverTime = kind === 'push' || kind === 'unrelated';
+  // "Improvement" and "regression" describe one thing measured twice, which only
+  // the `push` kind is. Windows being slower than macOS on one build is not a
+  // regression; two retriggers of one build differing is noise; and two
+  // *different* series on two different pushes aren't a before and an after at
+  // all, however well-defined their delta is. Labelling any of those would be a
+  // category error dressed up as a finding.
+  const isChangeOverTime = kind === 'push';
   const baseMedian = base.summary?.median ?? NaN;
   const nextMedian = next.summary?.median ?? NaN;
   const lowerIsBetter = base.meta?.lowerIsBetter ?? true;
