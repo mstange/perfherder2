@@ -145,15 +145,24 @@ Layout, top to bottom, in one canvas:
   Sheather-Jones) bandwidth, whose iteration lives on the DCT. PerfCompare
   itself uses its Silverman-ish `approximateSJBandwidth` for exactly our case
   (sparse, non-subtest pools) on the grounds that ISJ over-fits there, so this
-  costs less than it sounds. A bandwidth multiplier is exposed so a
-  suspicious-looking curve can be checked against a smoother one.
+  costs less than it sounds.
 - **Mode fitting is a faithful port** (`fitModesFromKde`, `areaFracs`,
-  `argrelmax`, `assignLetters`), valley-depth threshold and all. Same
-  threshold default, so the same data yields the same modes in both tools.
-- **The valley-depth threshold is not a slider.** PerfCompare puts one in the
-  expanded row. Ours is a constant until someone wants otherwise; a control
-  that changes how many modes are "detected" invites tuning until the answer
-  is the desired one.
+  `argrelmax`, `assignLetters`), valley-depth threshold and all — including the
+  0.5 default, so the same pool yields the same modes in both tools.
+- **No knobs.** PerfCompare's expanded row carries a valley-depth slider and a
+  smoothing multiplier. Both are constants here. A control that changes how
+  many modes are "detected" invites turning it until the answer is the desired
+  one, and the honest version of the problem it solves is the next point.
+- **A pool under `MIN_CURVE_VALUES` (4) gets no curve, only the strip.** A
+  density estimated from two or three values is a picture of the bandwidth rule
+  rather than of the data, and drawing one implies a confidence the sample
+  can't support. This is the case a smoothing slider would otherwise be reached
+  for.
+- **A non-negative pool's axis stops at zero.** The grid is padded by the
+  kernel's practical support so curves taper to ~0 inside the plot instead of
+  being cut off mid-slope, but for values small relative to that padding the
+  padding alone would run the axis into negative milliseconds. Clipping at zero
+  cuts the curve where the true density stops anyway.
 
 ## URL state
 
@@ -175,9 +184,9 @@ names a point that isn't there.
 Checked off as it lands; this list is the plan until then.
 
 - [x] Design (this document)
-- [ ] `kde.ts` — Gaussian KDE, bandwidth, mode fitting (+ tests)
-- [ ] `stats.ts` — Mann-Whitney U, Cliff's delta, CLES, summaries (+ tests)
-- [ ] `distribution.ts` — shared grid, curves, modes, jitter (+ tests)
+- [x] `kde.ts` — Gaussian KDE, bandwidth, mode fitting (+ tests)
+- [x] `stats.ts` — Mann-Whitney U, Cliff's delta, CLES, summaries (+ tests)
+- [x] `distribution.ts` — shared grid, curves, modes, jitter (+ tests)
 - [ ] `DistributionChart.svelte` / `distributionDraw.ts`
 - [ ] Push distribution in the details pane
 - [ ] `compare.ts` — kinds, pools, labels, links (+ tests)
