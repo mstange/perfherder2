@@ -13,7 +13,7 @@ machinery:
    pushlog range, a perf.compare link.
 
 Hovering a dot with a selection active shows the same comparison as an
-unpinned preview.
+unpinned preview. See "Interaction" below for the keyboard equivalent.
 
 The prior art is [PerfCompare](https://github.com/mozilla/perfcompare)'s
 expandable row (`src/components/CompareResults/CommonGraph.tsx` and
@@ -75,6 +75,41 @@ share a push timestamp and their runs are unordered with respect to each other,
 so there `sideOrder` returns 0 and click order stands. The pane reports
 `swapped` when it reordered, because otherwise "before" would silently mean
 "the one you clicked second".
+
+## Interaction
+
+| Gesture | Effect |
+|---|---|
+| click a dot | select it |
+| shift-click a dot | pin it as the comparison's other end; shift-clicking it again unpins |
+| hover a dot (with a selection) | preview the comparison a shift-click would pin |
+| <kbd>C</kbd> on the focused graph | pin the *selected* point, then walk away from it with the arrow keys |
+| Escape, or click empty space | unpin the comparison; a second press clears the selection |
+
+**Pinning the selected point is a state, not an error.** It's the middle step of
+the keyboard path — there is no keyboard gesture for "shift-click *that* dot",
+so the marking has to come first — and it's also where arrowing back onto a
+pinned point lands. `AppState.comparisonMarkedHere` is that state, and the pane
+says what to do next rather than showing a comparison that failed. The
+alternative, silently dropping a pin the selection happens to land on, throws
+away a mark the user set deliberately whenever they walk left and then right.
+
+**Escape unwinds one level at a time**, comparison before selection. Doing both
+at once makes the commoner action — drop the comparison, keep looking at the
+point — unreachable.
+
+Three ring styles on the graph, since three highlights can be on screen at
+once: filled with a solid ring for the selection, filled and dashed for the
+pin, hollow and dashed for the hover. The hover is provisional, and a filled
+disc following the pointer reads as a selection that keeps moving.
+
+**The hover path is cheap enough to run on pointer moves.** Measured with four
+series over 90 days, sweeping the pointer across dots: the whole
+hover → recompute → repaint chain is a median of 0.3 ms and a worst case of
+6 ms (39 moves, 25 of them landing on a new dot; ScatterChart dedupes the rest).
+The work is two `summarize`s, a rank-sum test, two 256-point KDEs and one small
+canvas. If a pool ever gets large enough for that to matter, the split to make
+is cheap-statistics-on-hover versus full-statistics-on-pin.
 
 ## Statistics
 

@@ -457,20 +457,28 @@ describe('AppState comparison', () => {
       expect(location.search).not.toContain('cmp=');
     }));
 
-  it('refuses to pin the selection against itself', () =>
+  // Pinning the selected point is the keyboard path's first step: mark this
+  // point, then walk away from it with the arrow keys.
+  it('marks the selected point, which is not yet a comparison', () =>
     withApp('?series=autoland,1,1&sel=autoland,1,10,1', async (app) => {
       await settle();
-      app.comparePoint({ repository: 'autoland', signatureId: 1, datumId: 10, replicateIndex: 1 });
-      expect(app.comparedPoint).toBeNull();
+      app.comparePoint(app.selectedPoint);
+      expect(app.comparisonMarkedHere).toBe(true);
       expect(app.comparison).toBeNull();
+      // Stepping away from it turns the mark into a comparison.
+      app.stepRun(1);
+      expect(app.comparisonMarkedHere).toBe(false);
+      expect(app.comparison?.kind).toBe('push');
     }));
 
-  it('drops the pin when the selection moves onto it', () =>
+  it('keeps the pin when the selection lands back on it, and says so', () =>
     withApp(withBoth, async (app) => {
       await settle();
       app.selectPoint({ repository: 'autoland', signatureId: 1, datumId: 11, replicateIndex: 0 });
-      // Otherwise the pane would be comparing a point with itself.
-      expect(app.comparedPoint).toBeNull();
+      // Silently dropping the pin here would make walking left and then right
+      // throw away a mark the user set deliberately.
+      expect(app.comparedPoint).not.toBeNull();
+      expect(app.comparisonMarkedHere).toBe(true);
       expect(app.comparison).toBeNull();
     }));
 

@@ -257,6 +257,18 @@ export class AppState {
     return buildComparison(compareSideOf(a), compareSideOf(b));
   });
 
+  // The pin is on the selected point itself, so there is nothing to compare yet.
+  //
+  // Not a degenerate state to be avoided — it's the whole keyboard path: mark
+  // this point, then walk the selection away from it with the arrow keys. It also
+  // means arrowing back onto a pinned point doesn't silently throw the pin away.
+  // The pane has to explain it, which is what this is for.
+  comparisonMarkedHere = $derived(
+    !!this.selectedPoint &&
+      !!this.comparedPoint &&
+      samePoint(this.selectedPoint, this.comparedPoint),
+  );
+
   // False when a point is selected but sits outside the zoomed window, so it
   // isn't drawn. Without saying so, the details pane looks like it's showing
   // a point that isn't there.
@@ -593,29 +605,22 @@ export class AppState {
   // the user actually wants to go back to.
   selectPoint(sel: SelectedPoint | null, mode: 'push' | 'replace' = 'push'): void {
     this.selectedPoint = sel;
-    // Selecting the point already pinned as the comparison would leave the pane
-    // comparing a point with itself. Dropping the pin is the reading that keeps
-    // both ends meaningful.
-    if (sel && this.comparedPoint && samePoint(sel, this.comparedPoint)) {
-      this.comparedPoint = null;
-    }
-    // Nothing to compare against any more.
+    // Nothing left to compare against. A pin that coincides with the selection
+    // is deliberately *not* dropped — see `comparisonMarkedHere`.
     if (!sel) this.comparedPoint = null;
     this.syncUrl(mode);
   }
 
-  // Shift-click. Pins the second end of a comparison, or unpins it when the
-  // same dot is shift-clicked again — the gesture is its own undo.
+  // Shift-click, or `c` on the focused graph. Pins the other end of a
+  // comparison, or unpins it when the same point is pinned again — the gesture
+  // is its own undo.
+  //
+  // Pinning the *selected* point is allowed, and is how the keyboard path works:
+  // mark this point, then arrow away from it. See `comparisonMarkedHere` for the
+  // state that produces.
   comparePoint(point: SelectedPoint | null): void {
-    if (point && this.comparedPoint && samePoint(point, this.comparedPoint)) {
-      this.comparedPoint = null;
-    } else if (point && this.selectedPoint && samePoint(point, this.selectedPoint)) {
-      // Comparing the selection with itself says nothing; leave the pin alone
-      // rather than entering a state the pane has to explain.
-      return;
-    } else {
-      this.comparedPoint = point;
-    }
+    this.comparedPoint =
+      point && this.comparedPoint && samePoint(point, this.comparedPoint) ? null : point;
     this.syncUrl('push');
   }
 

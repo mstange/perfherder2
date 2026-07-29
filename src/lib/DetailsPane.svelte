@@ -351,11 +351,25 @@
             </div>
           {/if}
         </section>
+      {:else if app.comparisonMarkedHere}
+        <!-- The pin is on this very point, so there is nothing to compare yet.
+             That's the keyboard path's middle step, and it's also where arrowing
+             back onto a pinned point lands, so it has to say what to do next
+             rather than look like a comparison that failed. -->
+        <p class="cmp-hint marked">
+          <span>Marked for comparison — now move to another point.</span>
+          <button type="button" class="unpin" onclick={() => app.clearComparison()}>
+            Unmark
+          </button>
+        </p>
       {:else}
         <!-- The affordance sits exactly where its result will appear, which is
              the only place a user looking at one selected point would find it.
              Nothing else on screen says the gesture exists. -->
-        <p class="cmp-hint muted">Shift-click another point to compare it with this one.</p>
+        <p class="cmp-hint muted">
+          Shift-click another point to compare it with this one, or press
+          <kbd>C</kbd> to mark this one and walk away with the arrow keys.
+        </p>
       {/if}
 
       <section>
@@ -774,6 +788,25 @@
     border: 1px dashed #d0d7de;
     border-radius: 6px;
     font-size: 11px;
+  }
+  /* The marked state is a step the user took, not a suggestion, so it reads like
+     the comparison card it is about to become. */
+  .cmp-hint.marked {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    border-style: solid;
+    border-color: #54aeff;
+    background: #ddf4ff;
+  }
+  kbd {
+    font: inherit;
+    font-family: ui-monospace, monospace;
+    padding: 0 3px;
+    border: 1px solid #d0d7de;
+    border-radius: 3px;
+    background: #fff;
   }
   /* Not the pane-wide `max-content` label column. A label here can be a platform
      string, and `max-content` on one of those makes the grid wider than the pane

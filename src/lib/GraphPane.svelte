@@ -191,7 +191,8 @@
       onbrush={(span) => app.setZoom(span)}
       onkeymove={(axis, delta) =>
         axis === 'run' ? app.stepRun(delta) : app.stepReplicate(delta)}
-      ariaLabel="Detail graph; click a point to inspect it, shift-click a second to compare, or use the arrow keys"
+      onkeycompare={() => app.comparePoint(app.selectedPoint)}
+      ariaLabel="Detail graph; click a point to inspect it, shift-click a second to compare, or use the arrow keys and C to mark a point for comparison"
     />
     {#if app.series.length === 0}
       <p class="overlay-note">Add a series to see data.</p>

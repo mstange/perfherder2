@@ -45,6 +45,10 @@
     onhover?: (hit: ChartHit | null) => void;
     onbrush?: (span: Span | null, live: boolean) => void;
     onkeymove?: (axis: 'run' | 'replicate', delta: number) => void;
+    // The keyboard equivalent of shift-clicking: mark the current selection, then
+    // walk away from it with the arrow keys. There is no keyboard gesture for
+    // "shift-click *that* dot", so the marking has to come first.
+    onkeycompare?: () => void;
     ariaLabel: string;
   };
 
@@ -63,6 +67,7 @@
     onhover,
     onbrush,
     onkeymove,
+    onkeycompare,
     ariaLabel,
   }: Props = $props();
 
@@ -337,6 +342,10 @@
         break;
       case 'ArrowDown':
         onkeymove?.('replicate', 1);
+        break;
+      case 'c':
+      case 'C':
+        onkeycompare?.();
         break;
       case 'Escape':
         onselect?.(null, { shift: false });
