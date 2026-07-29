@@ -49,6 +49,66 @@ export function taskUrl(taskId: string): string {
   return `https://firefox-ci-tc.services.mozilla.com/tasks/${taskId}`;
 }
 
+// ---------------------------------------------------------------------------
+// PerfCompare
+// ---------------------------------------------------------------------------
+
+// Where a comparison of two pushes goes to be looked at properly: PerfCompare
+// runs the same test over every signature in the framework and shows the
+// confidence intervals, retrigger buttons and subtest drill-down this pane
+// doesn't. Parameter names verified against perfcompare's own route loaders
+// (`src/components/CompareResults/loader.ts`, `subtestsLoader.ts`).
+export const PERFCOMPARE_ORIGIN = 'https://perf.compare';
+
+// `test_version` selects which statistic PerfCompare shows; its default is
+// Student's t. We always ask for Mann-Whitney U, because that's what this pane
+// computed — following the link should not silently change the test.
+const MANN_WHITNEY_U = 'mann-whitney-u';
+
+export type CompareRevisions = {
+  baseRepo: string;
+  baseRev: string;
+  newRepo: string;
+  newRev: string;
+  frameworkId: number;
+};
+
+// The whole-framework comparison. Deliberately broader than the selected
+// series — PerfCompare has no notion of "just this signature" at this level —
+// which is worth the click anyway: the neighbouring tests are how you tell a
+// real regression from a noisy one.
+export function perfCompareUrl(c: CompareRevisions): string {
+  const params = new URLSearchParams({
+    baseRev: c.baseRev,
+    baseRepo: c.baseRepo,
+    newRev: c.newRev,
+    newRepo: c.newRepo,
+    framework: String(c.frameworkId),
+    test_version: MANN_WHITNEY_U,
+  });
+  return `${PERFCOMPARE_ORIGIN}/compare-results?${params}`;
+}
+
+// The subtest table for one parent signature per side — the closest PerfCompare
+// gets to "compare exactly these two series". Only available when we know a
+// parent signature for both sides; see `SeriesMeta.parentSignatureId` for when
+// that's null.
+export function perfCompareSubtestsUrl(
+  c: CompareRevisions & { baseParentSignature: number; newParentSignature: number },
+): string {
+  const params = new URLSearchParams({
+    baseRev: c.baseRev,
+    baseRepo: c.baseRepo,
+    newRev: c.newRev,
+    newRepo: c.newRepo,
+    framework: String(c.frameworkId),
+    baseParentSignature: String(c.baseParentSignature),
+    newParentSignature: String(c.newParentSignature),
+    test_version: MANN_WHITNEY_U,
+  });
+  return `${PERFCOMPARE_ORIGIN}/subtests-compare-results?${params}`;
+}
+
 // Bug numbers referenced from a commit message, e.g. "Bug 2056155 - …".
 const BUG_RE = /\bbug\s+(\d{4,})/gi;
 

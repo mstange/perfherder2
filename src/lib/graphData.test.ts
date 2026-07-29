@@ -261,6 +261,24 @@ describe('metaFromSummary', () => {
     expect(metaFromSummary(summary([], { name: 'something else entirely' })).options).toBe('');
   });
 
+  it('resolves the parent signature for the subtests-compare link', () => {
+    // A subtest points at its parent; a parent with subtests points at itself
+    // (perf.compare keys its subtest table by the parent, so a parent is its own
+    // answer); a standalone signature has neither.
+    expect(
+      metaFromSummary(summary([], { parent_signature: 5152393, has_subtests: false }))
+        .parentSignatureId,
+    ).toBe(5152393);
+    expect(
+      metaFromSummary(summary([], { signature_id: 777, has_subtests: true, parent_signature: null }))
+        .parentSignatureId,
+    ).toBe(777);
+    expect(
+      metaFromSummary(summary([], { has_subtests: false, parent_signature: null }))
+        .parentSignatureId,
+    ).toBeNull();
+  });
+
   it('defaults lowerIsBetter to true and unit to empty', () => {
     const meta = metaFromSummary(
       summary([], { lower_is_better: null as unknown as boolean, measurement_unit: null }),

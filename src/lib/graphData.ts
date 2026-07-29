@@ -109,6 +109,13 @@ export type SeriesMeta = {
   // The options half of `name`, split back out — two series can be identical
   // in suite, test and platform and differ only here, so the legend needs it.
   options: string;
+  // The signature whose subtest table this series appears in, which is what
+  // perf.compare's subtests view is keyed by: its parent's id when it's a
+  // subtest, its *own* id when it is itself a parent with subtests, and null
+  // when it's a standalone signature with neither. Note this is an id, not a
+  // hash — the summary endpoint's `parent_signature` differs from the signatures
+  // endpoint's field of the same name in exactly that way.
+  parentSignatureId: number | null;
   // True for the stand-in we synthesize when a signature has no data in the
   // range: the endpoint returns nothing at all in that case, so there is no
   // metadata and every field above is either empty or made up. Code that
@@ -136,6 +143,8 @@ export function metaFromSummary(summary: RawSummary): SeriesMeta {
     lowerIsBetter: summary.lower_is_better !== false,
     name: summary.name ?? '',
     options: optionsFromName(summary.name ?? '', suite, test),
+    parentSignatureId:
+      summary.parent_signature ?? (summary.has_subtests ? summary.signature_id : null),
     placeholder: false,
   };
 }
@@ -152,6 +161,7 @@ export function placeholderMeta(ref: SeriesRef): SeriesMeta {
     lowerIsBetter: true,
     name: '',
     options: '',
+    parentSignatureId: null,
     placeholder: true,
   };
 }

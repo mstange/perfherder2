@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   bugsInComment,
   jobsUrl,
+  perfCompareSubtestsUrl,
+  perfCompareUrl,
   pushLogRangeUrl,
   revisionUrl,
   splitCommitMessage,
@@ -88,5 +90,43 @@ describe('splitCommitMessage', () => {
       summary: 'Just a summary',
       body: '',
     });
+  });
+});
+
+describe('perfCompareUrl', () => {
+  const revs = {
+    baseRepo: 'mozilla-central',
+    baseRev: '020c1f7a2159eb83f4fcb7dc1ddfcd9f1d0f46b7',
+    newRepo: 'autoland',
+    newRev: 'cd8b93a107ef4aee5c88e83cc5ed3311340b8438',
+    frameworkId: 13,
+  };
+
+  it('carries both sides and the framework', () => {
+    const u = new URL(perfCompareUrl(revs));
+    expect(u.origin + u.pathname).toBe('https://perf.compare/compare-results');
+    expect(u.searchParams.get('baseRev')).toBe(revs.baseRev);
+    expect(u.searchParams.get('baseRepo')).toBe('mozilla-central');
+    expect(u.searchParams.get('newRev')).toBe(revs.newRev);
+    expect(u.searchParams.get('newRepo')).toBe('autoland');
+    expect(u.searchParams.get('framework')).toBe('13');
+  });
+
+  it('asks for the same test this app computes', () => {
+    // PerfCompare defaults to Student's t; following the link must not
+    // silently change the statistic the pane just reported.
+    expect(new URL(perfCompareUrl(revs)).searchParams.get('test_version')).toBe(
+      'mann-whitney-u',
+    );
+  });
+
+  it('adds both parent signatures for the subtests view', () => {
+    const u = new URL(
+      perfCompareSubtestsUrl({ ...revs, baseParentSignature: 5152393, newParentSignature: 91 }),
+    );
+    expect(u.origin + u.pathname).toBe('https://perf.compare/subtests-compare-results');
+    expect(u.searchParams.get('baseParentSignature')).toBe('5152393');
+    expect(u.searchParams.get('newParentSignature')).toBe('91');
+    expect(u.searchParams.get('test_version')).toBe('mann-whitney-u');
   });
 });

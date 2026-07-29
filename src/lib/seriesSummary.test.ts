@@ -49,6 +49,7 @@ describe('attrsFromMeta', () => {
       lowerIsBetter: true,
       name: 'bing-search ContentfulSpeedIndex opt cold fission webrender',
       options: 'opt cold fission webrender',
+      parentSignatureId: 5152393,
       placeholder: false,
     };
     expect(attrsFromMeta(ref, meta)).toEqual({
