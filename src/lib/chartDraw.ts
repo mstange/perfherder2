@@ -40,8 +40,18 @@ export type DrawOptions = {
   showAxes: boolean;
 };
 
+// Why a point is highlighted. Three states that have to be told apart at a
+// glance on a plot with thousands of dots on it:
+//
+//   selected — the point the details pane is describing. Filled, solid ring.
+//   compared — the pinned other end of a comparison. Filled, dashed ring: same
+//              standing as the selection, but it's the second thing.
+//   hovered  — the comparison a shift-click *would* pin. Hollow and dashed —
+//              provisional, and not committed to anything.
+export type HighlightKind = 'selected' | 'compared' | 'hovered';
+
 // A highlighted point, in data coordinates.
-export type Highlight = { x: number; y: number; color: string };
+export type Highlight = { x: number; y: number; color: string; kind: HighlightKind };
 
 const AXIS_COLOR = '#d0d7de';
 const GRID_COLOR = '#eef1f4';
@@ -232,9 +242,28 @@ function drawDots(ctx: CanvasRenderingContext2D, o: DrawOptions, s: DrawSeries):
   ctx.globalAlpha = 1;
 }
 
-// Drawn on the overlay layer, not with the data: the selection moves far more
-// often than 100k dots want to be repainted.
-export function drawHighlight(
+// Drawn on the overlay layer, not with the data: highlights move far more often
+// than 100k dots want to be repainted — and the hovered one moves on every
+// mousemove.
+//
+// Painted in increasing order of standing, so the selection ends up on top when
+// two of them land on the same dot.
+const HIGHLIGHT_ORDER: HighlightKind[] = ['hovered', 'compared', 'selected'];
+
+export function drawHighlights(
+  ctx: CanvasRenderingContext2D,
+  geom: PlotGeometry,
+  highlights: Highlight[],
+  dotRadius: number,
+): void {
+  for (const kind of HIGHLIGHT_ORDER) {
+    for (const h of highlights) {
+      if (h.kind === kind) drawHighlight(ctx, geom, h, dotRadius);
+    }
+  }
+}
+
+function drawHighlight(
   ctx: CanvasRenderingContext2D,
   geom: PlotGeometry,
   h: Highlight,
@@ -242,16 +271,24 @@ export function drawHighlight(
 ): void {
   const x = geom.xScale.toPixel(h.x);
   const y = geom.yScale.toPixel(h.y);
-  // Off-plot selections (a point outside the zoomed window) must not paint
+  // Off-plot highlights (a point outside the zoomed window) must not paint
   // over the axes.
   if (x < geom.x0 || x > geom.x1 || y < geom.y0 || y > geom.y1) return;
+  const r = dotRadius + (h.kind === 'hovered' ? 4 : 3);
   ctx.beginPath();
-  ctx.arc(x, y, dotRadius + 3, 0, Math.PI * 2);
-  ctx.fillStyle = h.color;
-  ctx.fill();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  // Hollow for a hover: it marks a point the user hasn't committed to, and a
+  // filled disc following the pointer around reads as a selection that keeps
+  // moving.
+  if (h.kind !== 'hovered') {
+    ctx.fillStyle = h.color;
+    ctx.fill();
+  }
   ctx.lineWidth = 2;
   ctx.strokeStyle = '#1f2328';
+  ctx.setLineDash(h.kind === 'selected' ? [] : [3, 2]);
   ctx.stroke();
+  ctx.setLineDash([]);
 }
 
 // The overview graph dims everything outside the zoomed window and draws a

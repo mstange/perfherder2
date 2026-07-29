@@ -8,10 +8,14 @@
   // chartDraw.ts.
 
   import { hitTestAll, makeGeometry, type Padding, type Range } from './chart';
-  import { drawBrush, drawChart, drawHighlight } from './chartDraw';
+  import { drawBrush, drawChart, drawHighlights, type Highlight } from './chartDraw';
   import type { SeriesEntry } from './appState.svelte';
 
   type Span = { start: number; end: number };
+
+  // Which point a pointer or key event landed on, as indices into the `series`
+  // prop and its point set.
+  export type ChartHit = { seriesIndex: number; pointIndex: number };
 
   type Props = {
     series: SeriesEntry[];
@@ -22,13 +26,23 @@
     showAxes?: boolean;
     // Shared across both graphs so their plot areas line up.
     pad?: Padding;
-    highlight?: { x: number; y: number; color: string } | null;
+    // Selection, pinned comparison and hover, in data coordinates. An array
+    // rather than one, because up to three of them can be on screen at once and
+    // the chart doesn't care which is which — chartDraw's `kind` decides how
+    // each is painted.
+    highlights?: Highlight[];
     // 'select': click picks a point, drag zooms into a time span.
     // 'brush':  drag defines the zoom window shown by the other graph.
     interaction: 'select' | 'brush';
     // Brush window in data coordinates; null means "the whole domain".
     brush?: Span | null;
-    onselect?: (hit: { seriesIndex: number; pointIndex: number } | null) => void;
+    // `shift` is the modifier the caller turns into "compare with this" rather
+    // than "select this". Reported rather than interpreted: which gesture means
+    // what is the app's decision, not the chart's.
+    onselect?: (hit: ChartHit | null, modifiers: { shift: boolean }) => void;
+    // The point under the pointer, or null when there isn't one. Fires only on
+    // change, so a mousemove inside one dot doesn't re-report it.
+    onhover?: (hit: ChartHit | null) => void;
     onbrush?: (span: Span | null, live: boolean) => void;
     onkeymove?: (axis: 'run' | 'replicate', delta: number) => void;
     ariaLabel: string;
@@ -42,10 +56,11 @@
     showLines = false,
     showAxes = true,
     pad = { left: 56, right: 12, top: 8, bottom: 20 },
-    highlight = null,
+    highlights = [],
     interaction,
     brush = null,
     onselect,
+    onhover,
     onbrush,
     onkeymove,
     ariaLabel,
@@ -153,7 +168,7 @@
         geom.xScale.toPixel(brushSpan.end),
       );
     }
-    if (highlight) drawHighlight(ctx, geom, highlight, dotRadius);
+    if (highlights.length > 0) drawHighlights(ctx, geom, highlights, dotRadius);
   });
 
   function localX(e: PointerEvent): number {
@@ -222,14 +237,32 @@
     );
   }
 
+  // The last hit handed to `onhover`, so a mousemove that stays inside one dot
+  // doesn't re-report it. Without this the parent's derived comparison — a KDE
+  // and a rank-sum test — would recompute on every pointer event.
+  let lastHoverKey: string | null = null;
+
+  function reportHover(hit: ChartHit | null): void {
+    const key = hit ? `${hit.seriesIndex}:${hit.pointIndex}` : null;
+    if (key === lastHoverKey) return;
+    lastHoverKey = key;
+    onhover?.(hit);
+  }
+
   function onPointerMove(e: PointerEvent): void {
     if (!wrapper) return;
     if (!drag) {
       // Hover feedback only matters where a click does something with a
       // point; the overview's clicks are about the window, not the dots.
-      if (interaction === 'select') hovering = hitAt(localX(e), localY(e)) !== null;
+      if (interaction === 'select') {
+        const hit = hitAt(localX(e), localY(e));
+        hovering = hit !== null;
+        reportHover(hit);
+      }
       return;
     }
+    // A drag is about the window, not about whatever dot it passes over.
+    reportHover(null);
     dragMoved = true;
     const value = geom.xScale.toValue(localX(e));
     if (drag.kind === 'move') {
@@ -259,7 +292,9 @@
     // A click, not a drag.
     if (interaction === 'select') {
       const hit = hitAt(localX(e), localY(e));
-      onselect?.(hit ? { seriesIndex: hit.seriesIndex, pointIndex: hit.pointIndex } : null);
+      onselect?.(hit ? { seriesIndex: hit.seriesIndex, pointIndex: hit.pointIndex } : null, {
+        shift: e.shiftKey,
+      });
     } else if (kind === 'new') {
       // Clicking the overview *outside* the window clears the zoom. A click
       // inside it (which would have started a move) must not — throwing away
@@ -276,6 +311,10 @@
 
   function onPointerLeave(): void {
     hovering = false;
+    // The preview belongs to the pointer being over a dot; leaving the graph
+    // ends it, or the pane keeps showing a comparison with nothing on screen to
+    // explain where it came from.
+    reportHover(null);
   }
 
   function onDoubleClick(): void {
@@ -300,7 +339,7 @@
         onkeymove?.('replicate', 1);
         break;
       case 'Escape':
-        onselect?.(null);
+        onselect?.(null, { shift: false });
         break;
       default:
         return;

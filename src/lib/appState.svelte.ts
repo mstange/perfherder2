@@ -42,6 +42,7 @@ import {
   type Range,
   type SeriesSymbol,
 } from './chart';
+import { buildComparison, type CompareSide, type Comparison } from './compare';
 import { EMPTY_FILTER, isFilterActive, sameFilter, type Filter } from './filter';
 import {
   attrsForEntry,
@@ -93,6 +94,12 @@ export type Selection = {
   value: number;
 };
 
+// Where the comparison's second end came from. The two behave identically
+// downstream, and the details pane renders them differently: a pinned
+// comparison is the user's, a hovered one is a preview that disappears when the
+// pointer leaves.
+export type ComparisonSource = 'pinned' | 'hover';
+
 type LoadedSeries = { meta: SeriesMeta; data: SeriesData };
 
 function dataKey(ref: SeriesRef, span: Span): string {
@@ -106,6 +113,12 @@ export class AppState {
   // null means "the detail graph shows the whole range".
   zoom = $state<Span | null>(null);
   selectedPoint = $state<SelectedPoint | null>(null);
+  // The pinned second end of a comparison, set by shift-clicking a dot.
+  comparedPoint = $state<SelectedPoint | null>(null);
+  // The dot under the pointer. Not in the URL and not history — it exists to
+  // let the pane preview the comparison a shift-click would pin. Cleared when
+  // the pointer leaves the graph.
+  hoveredPoint = $state<SelectedPoint | null>(null);
   // With replicates on, every replicate of every run is a dot — the default,
   // and the reason we fetch with `replicates=true` at all. Off, each run
   // collapses to one dot at its mean: a 90-day range drops from ~20k dots per
@@ -196,16 +209,16 @@ export class AppState {
     return padDomain(e.min, e.max);
   });
 
-  // Resolves the URL-level selection triple against loaded data. Null when
-  // nothing is selected or the point isn't in the current range.
-  selection = $derived.by((): Selection | null => {
-    const sel = this.selectedPoint;
-    if (!sel) return null;
+  // Resolves a URL-level point triple against loaded data. Null when the point
+  // isn't in the current range — the link may predate a narrowing, and a
+  // phantom selection is worse than none.
+  private resolveSelection(point: SelectedPoint | null): Selection | null {
+    if (!point) return null;
     const entry = this.series.find(
-      (s) => s.ref.repository === sel.repository && s.ref.signatureId === sel.signatureId,
+      (s) => s.ref.repository === point.repository && s.ref.signatureId === point.signatureId,
     );
     if (!entry) return null;
-    const resolved = resolvePoint(entry.data, sel.datumId, sel.replicateIndex);
+    const resolved = resolvePoint(entry.data, point.datumId, point.replicateIndex);
     if (!resolved) return null;
     return {
       entry,
@@ -214,6 +227,34 @@ export class AppState {
       replicateIndex: resolved.replicateIndex,
       value: resolved.value,
     };
+  }
+
+  selection = $derived(this.resolveSelection(this.selectedPoint));
+
+  // The comparison's second end: pinned if there is one, else whatever the
+  // pointer is over. Hover only previews *once a selection exists* — with
+  // nothing selected there is nothing to compare against, and every mousemove
+  // would otherwise light up the pane.
+  comparisonSource = $derived<ComparisonSource | null>(
+    !this.selectedPoint ? null : this.comparedPoint ? 'pinned' : this.hoveredPoint ? 'hover' : null,
+  );
+
+  // Both gated on `comparisonSource`, so the ring the graph draws and the
+  // comparison the pane describes can never disagree about which end is live.
+  comparedSelection = $derived(
+    this.resolveSelection(this.comparisonSource === 'pinned' ? this.comparedPoint : null),
+  );
+  hoveredSelection = $derived(
+    this.resolveSelection(this.comparisonSource === 'hover' ? this.hoveredPoint : null),
+  );
+
+  // The described comparison, or null when there is no second end — or when the
+  // second end *is* the selection, which has nothing to say.
+  comparison = $derived.by((): Comparison | null => {
+    const a = this.selection;
+    const b = this.comparedSelection ?? this.hoveredSelection;
+    if (!a || !b) return null;
+    return buildComparison(compareSideOf(a), compareSideOf(b));
   });
 
   // False when a point is selected but sits outside the zoomed window, so it
@@ -474,14 +515,14 @@ export class AppState {
     this.seriesRefs = this.seriesRefs.filter(
       (s) => !(s.repository === ref.repository && s.signatureId === ref.signatureId),
     );
-    // A selection belonging to the removed series is now meaningless.
-    if (
-      this.selectedPoint &&
-      this.selectedPoint.repository === ref.repository &&
-      this.selectedPoint.signatureId === ref.signatureId
-    ) {
-      this.selectedPoint = null;
-    }
+    // A selection — or a comparison end — belonging to the removed series is now
+    // meaningless. `selection` would resolve to null anyway once its data is
+    // pruned, but leaving the point in the URL means a Back to the range that
+    // still has it would silently resurrect a selection on a series that's gone.
+    const belongsToRemoved = (p: SelectedPoint | null) =>
+      !!p && p.repository === ref.repository && p.signatureId === ref.signatureId;
+    if (belongsToRemoved(this.selectedPoint)) this.selectedPoint = null;
+    if (belongsToRemoved(this.comparedPoint)) this.comparedPoint = null;
     this.pruneSeriesCache();
     this.syncUrl('push');
   }
@@ -489,6 +530,7 @@ export class AppState {
   clearSeries(): void {
     this.seriesRefs = [];
     this.selectedPoint = null;
+    this.comparedPoint = null;
     this.pruneSeriesCache();
     this.syncUrl('push');
   }
@@ -551,7 +593,41 @@ export class AppState {
   // the user actually wants to go back to.
   selectPoint(sel: SelectedPoint | null, mode: 'push' | 'replace' = 'push'): void {
     this.selectedPoint = sel;
+    // Selecting the point already pinned as the comparison would leave the pane
+    // comparing a point with itself. Dropping the pin is the reading that keeps
+    // both ends meaningful.
+    if (sel && this.comparedPoint && samePoint(sel, this.comparedPoint)) {
+      this.comparedPoint = null;
+    }
+    // Nothing to compare against any more.
+    if (!sel) this.comparedPoint = null;
     this.syncUrl(mode);
+  }
+
+  // Shift-click. Pins the second end of a comparison, or unpins it when the
+  // same dot is shift-clicked again — the gesture is its own undo.
+  comparePoint(point: SelectedPoint | null): void {
+    if (point && this.comparedPoint && samePoint(point, this.comparedPoint)) {
+      this.comparedPoint = null;
+    } else if (point && this.selectedPoint && samePoint(point, this.selectedPoint)) {
+      // Comparing the selection with itself says nothing; leave the pin alone
+      // rather than entering a state the pane has to explain.
+      return;
+    } else {
+      this.comparedPoint = point;
+    }
+    this.syncUrl('push');
+  }
+
+  clearComparison(): void {
+    if (!this.comparedPoint) return;
+    this.comparedPoint = null;
+    this.syncUrl('push');
+  }
+
+  // Transient, so no history and no URL — see `hoveredPoint`.
+  setHoveredPoint(point: SelectedPoint | null): void {
+    this.hoveredPoint = point;
   }
 
   // Keyboard navigation. Left/right walk the selected series run by run;
@@ -710,6 +786,7 @@ export class AppState {
     range: { start: this.range.start, end: this.range.end },
     zoom: this.zoom ? { start: this.zoom.start, end: this.zoom.end } : null,
     selected: this.selectedPoint,
+    compared: this.comparedPoint,
     showReplicates: this.showReplicates,
     pickerOpen: this.pickerOpen,
     picker: this.pickerView,
@@ -737,6 +814,7 @@ export class AppState {
         : defaultSpan(now);
       this.zoom = state.zoom ? clampSpan(state.zoom, this.range) : null;
       this.selectedPoint = state.selected;
+      this.comparedPoint = state.compared;
       this.showReplicates = state.showReplicates;
       this.pickerOpen = state.pickerOpen;
       this.pickerView = state.picker;
@@ -754,6 +832,30 @@ export class AppState {
 
 function clampIndex(i: number, length: number): number {
   return Math.max(0, Math.min(length - 1, i));
+}
+
+// A resolved selection, flattened into what compare.ts asks for. That module is
+// deliberately structural about its input so it stays free of the reactive
+// layer; this is the one place the two shapes meet.
+function samePoint(a: SelectedPoint, b: SelectedPoint): boolean {
+  return (
+    a.repository === b.repository &&
+    a.signatureId === b.signatureId &&
+    a.datumId === b.datumId &&
+    a.replicateIndex === b.replicateIndex
+  );
+}
+
+function compareSideOf(sel: Selection): CompareSide {
+  return {
+    ref: sel.entry.ref,
+    meta: sel.entry.meta,
+    color: sel.entry.color,
+    push: sel.push,
+    run: sel.run,
+    replicateIndex: sel.replicateIndex,
+    value: sel.value,
+  };
 }
 
 // Extent of every plotted value, optionally restricted to a time window.

@@ -198,7 +198,7 @@ Checked off as it lands; this list is the plan until then.
 - [x] `DistributionChart.svelte` / `distributionDraw.ts`
 - [x] Push distribution in the details pane
 - [x] `compare.ts` — kinds, pools, labels, links (+ tests)
-- [ ] `cmp` URL state, shift-click, comparison highlights
+- [x] `cmp` URL state, shift-click, comparison highlights
 - [ ] Comparison section in the details pane
 - [ ] Hover preview
 

@@ -429,6 +429,118 @@ describe('AppState selection', () => {
 // Treeherder expires job rows long before the performance data that points at
 // them, so `job_id: null` is normal for anything more than a few months old.
 // These cases used to leave the details pane on "loading…" indefinitely.
+describe('AppState comparison', () => {
+  const withBoth = '?series=autoland,1,1&sel=autoland,1,10,1&cmp=autoland,1,11,0';
+
+  it('restores a pinned comparison from the URL and describes it', () =>
+    withApp(withBoth, async (app) => {
+      await settle();
+      expect(app.comparisonSource).toBe('pinned');
+      expect(app.comparison?.kind).toBe('push');
+      // Datum 10 is the Jul 21 push (100/110/120), datum 11 the Jul 22 one
+      // (200/210), so the earlier one is the baseline whichever was clicked.
+      expect(app.comparison?.base.values).toEqual([100, 110, 120]);
+      expect(app.comparison?.next.values).toEqual([200, 210]);
+      expect(app.comparison?.medianDelta).toBe(95);
+    }));
+
+  it('writes the pin to the URL and takes it back out', () =>
+    withApp('?series=autoland,1,1&sel=autoland,1,10,1', async (app) => {
+      await settle();
+      expect(app.comparison).toBeNull();
+      app.comparePoint({ repository: 'autoland', signatureId: 1, datumId: 11, replicateIndex: 0 });
+      expect(location.search).toContain('cmp=autoland,1,11,0');
+      expect(app.comparison?.kind).toBe('push');
+      // The same shift-click again is the gesture's own undo.
+      app.comparePoint({ repository: 'autoland', signatureId: 1, datumId: 11, replicateIndex: 0 });
+      expect(app.comparedPoint).toBeNull();
+      expect(location.search).not.toContain('cmp=');
+    }));
+
+  it('refuses to pin the selection against itself', () =>
+    withApp('?series=autoland,1,1&sel=autoland,1,10,1', async (app) => {
+      await settle();
+      app.comparePoint({ repository: 'autoland', signatureId: 1, datumId: 10, replicateIndex: 1 });
+      expect(app.comparedPoint).toBeNull();
+      expect(app.comparison).toBeNull();
+    }));
+
+  it('drops the pin when the selection moves onto it', () =>
+    withApp(withBoth, async (app) => {
+      await settle();
+      app.selectPoint({ repository: 'autoland', signatureId: 1, datumId: 11, replicateIndex: 0 });
+      // Otherwise the pane would be comparing a point with itself.
+      expect(app.comparedPoint).toBeNull();
+      expect(app.comparison).toBeNull();
+    }));
+
+  it('drops the pin when the selection is cleared', () =>
+    withApp(withBoth, async (app) => {
+      await settle();
+      app.selectPoint(null);
+      expect(app.comparedPoint).toBeNull();
+    }));
+
+  it('drops a pin belonging to a removed series', () =>
+    withApp(
+      '?series=autoland,1,1&series=autoland,2,1&sel=autoland,2,10,0&cmp=autoland,1,10,0',
+      async (app) => {
+        await settle();
+        app.removeSeries({ repository: 'autoland', signatureId: 1, frameworkId: 1 });
+        // Left in the URL, a Back to a state that still has series 1 would
+        // silently resurrect a comparison against a series that's gone.
+        expect(app.comparedPoint).toBeNull();
+        expect(app.selectedPoint?.signatureId).toBe(2);
+      },
+    ));
+
+  it('previews a hovered point, but only alongside a selection', () =>
+    withApp('?series=autoland,1,1', async (app) => {
+      await settle();
+      const hovered = { repository: 'autoland', signatureId: 1, datumId: 11, replicateIndex: 0 };
+      // Nothing selected: a hover has nothing to compare against, and every
+      // mousemove would otherwise light up the pane.
+      app.setHoveredPoint(hovered);
+      expect(app.comparisonSource).toBeNull();
+      expect(app.comparison).toBeNull();
+
+      app.selectPoint({ repository: 'autoland', signatureId: 1, datumId: 10, replicateIndex: 1 });
+      expect(app.comparisonSource).toBe('hover');
+      expect(app.comparison?.kind).toBe('push');
+      // Transient: no history entry, no URL.
+      expect(location.search).not.toContain('cmp=');
+
+      app.setHoveredPoint(null);
+      expect(app.comparison).toBeNull();
+    }));
+
+  it('lets a pin win over a hover', () =>
+    withApp(withBoth, async (app) => {
+      await settle();
+      // Hovering a third point must not silently replace the comparison the
+      // user pinned.
+      app.setHoveredPoint({ repository: 'autoland', signatureId: 1, datumId: 10, replicateIndex: 0 });
+      expect(app.comparisonSource).toBe('pinned');
+      expect(app.comparedSelection?.run.datumId).toBe(11);
+      expect(app.hoveredSelection).toBeNull();
+    }));
+
+  it('has no comparison while the hovered point is the selection', () =>
+    withApp('?series=autoland,1,1&sel=autoland,1,10,1', async (app) => {
+      await settle();
+      app.setHoveredPoint({ repository: 'autoland', signatureId: 1, datumId: 10, replicateIndex: 1 });
+      expect(app.comparison).toBeNull();
+    }));
+
+  it('clears the pin explicitly', () =>
+    withApp(withBoth, async (app) => {
+      await settle();
+      app.clearComparison();
+      expect(app.comparedPoint).toBeNull();
+      expect(app.comparison).toBeNull();
+    }));
+});
+
 describe('AppState job details', () => {
   const jobCalls = () =>
     fetchMock.mock.calls.filter((c) => String(c[0]).includes('/jobs/')).length;

@@ -71,6 +71,11 @@ export type ViewState = {
   // Sub-range shown by the detail graph. Null means "same as range".
   zoom: { start: number; end: number } | null;
   selected: SelectedPoint | null;
+  // The pinned comparison point, if any — the same shape as `selected`, since
+  // it names a point the same way. The *hovered* comparison is deliberately not
+  // here: it's transient by definition, and writing it would rewrite the URL on
+  // every mouse movement.
+  compared: SelectedPoint | null;
   // Whether the graphs draw every replicate or one dot per run at its mean.
   // Two-valued, not three: unlike the picker's fields there is no caller with
   // no opinion, so an absent param simply means the default (on).
@@ -84,6 +89,7 @@ export const EMPTY_VIEW_STATE: ViewState = {
   range: null,
   zoom: null,
   selected: null,
+  compared: null,
   showReplicates: true,
   pickerOpen: false,
   picker: EMPTY_PICKER_VIEW,
@@ -222,6 +228,7 @@ export function parseViewState(search: string): ViewState {
     range,
     zoom,
     selected: parseSelected(p.get('sel')),
+    compared: parseSelected(p.get('cmp')),
     showReplicates: p.get('reps') !== '0',
     pickerOpen: p.get('picker') === '1',
     picker: {
@@ -241,6 +248,11 @@ export function parseViewState(search: string): ViewState {
 // Serializing
 // ---------------------------------------------------------------------------
 
+function serializePoint(point: SelectedPoint): string {
+  const { repository, signatureId, datumId, replicateIndex } = point;
+  return `${repository},${signatureId},${datumId},${replicateIndex}`;
+}
+
 export function serializeViewState(state: ViewState): string {
   const p = new URLSearchParams();
 
@@ -251,10 +263,10 @@ export function serializeViewState(state: ViewState): string {
   }
   if (state.range) p.set('range', `${state.range.start},${state.range.end}`);
   if (state.zoom) p.set('zoom', `${state.zoom.start},${state.zoom.end}`);
-  if (state.selected) {
-    const { repository, signatureId, datumId, replicateIndex } = state.selected;
-    p.set('sel', `${repository},${signatureId},${datumId},${replicateIndex}`);
-  }
+  if (state.selected) p.set('sel', serializePoint(state.selected));
+  // Only meaningful alongside a selection — a comparison needs two ends, and a
+  // link carrying just `cmp` would arrive with nothing to compare it to.
+  if (state.selected && state.compared) p.set('cmp', serializePoint(state.compared));
   // Only written when off, so the common case keeps links short.
   if (!state.showReplicates) p.set('reps', '0');
   // The panel's state only means anything while it's open — carrying it in the

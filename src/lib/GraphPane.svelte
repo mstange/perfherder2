@@ -2,8 +2,10 @@
   // Middle pane: a thin overview graph over the full time range, and below it
   // the (possibly zoomed) detail graph.
 
-  import type { AppState } from './appState.svelte';
-  import ScatterChart from './ScatterChart.svelte';
+  import type { AppState, Selection } from './appState.svelte';
+  import type { Highlight } from './chartDraw';
+  import ScatterChart, { type ChartHit } from './ScatterChart.svelte';
+  import type { SelectedPoint } from './urlState';
   import { describeSpan, matchingPreset, RANGE_PRESETS } from './timeRange';
 
   type Props = { app: AppState };
@@ -31,12 +33,23 @@
   // a timer that exists only to un-highlight a button.
   const activePreset = $derived(matchingPreset(app.range, Date.now()));
 
-  // Only draw the selection ring when the point is actually plotted; a
-  // hidden series' selection stays in the URL but not on the canvas.
-  const highlight = $derived.by(() => {
-    const sel = app.selection;
-    if (!sel || !sel.entry.visible) return null;
-    return { x: sel.run.x, y: sel.value, color: sel.entry.color };
+  // Rings for the selection, the pinned comparison, and whatever the pointer is
+  // over. Only for points that are actually plotted: a hidden series' selection
+  // stays in the URL but not on the canvas.
+  //
+  // The hovered ring is drawn from `app.hoveredPoint` rather than kept inside
+  // ScatterChart, so it agrees with the comparison the pane is previewing —
+  // including disappearing when the pane declines the preview (no selection, or
+  // the hovered dot *is* the selection).
+  const highlights = $derived.by((): Highlight[] => {
+    const out: Highlight[] = [];
+    const ring = (sel: Selection | null, kind: Highlight['kind']) => {
+      if (sel && sel.entry.visible) out.push({ x: sel.run.x, y: sel.value, color: sel.entry.color, kind });
+    };
+    ring(app.selection, 'selected');
+    if (app.comparisonSource === 'pinned') ring(app.comparedSelection, 'compared');
+    else if (app.comparisonSource === 'hover') ring(app.hoveredSelection, 'hovered');
+    return out;
   });
 
   const unitLabel = $derived.by(() => {
@@ -49,25 +62,40 @@
     return units.size === 1 ? [...units][0] : 'mixed units';
   });
 
-  function onDetailSelect(hit: { seriesIndex: number; pointIndex: number } | null): void {
-    if (!hit) {
-      app.selectPoint(null);
-      return;
-    }
-    // The index is into the array the chart was given — the visible subset,
-    // not the full list.
+  // A chart hit is a pair of indices into what the chart was *given*: the
+  // visible subset of series, and the point set `showReplicates` chose. So with
+  // replicates off this resolves to the run's MEAN_REPLICATE point rather than a
+  // replicate the user can't see.
+  function pointFor(hit: ChartHit | null): SelectedPoint | null {
+    if (!hit) return null;
     const entry = app.visibleSeries[hit.seriesIndex];
-    // Indices are into the point set the chart was handed, which is the one
-    // `showReplicates` chose — so with replicates off this yields the run's
-    // MEAN_REPLICATE point, not a replicate the user can't see.
     const point = entry?.plot.points[hit.pointIndex];
-    if (!entry || !point) return;
-    app.selectPoint({
+    if (!entry || !point) return null;
+    return {
       repository: entry.ref.repository,
       signatureId: entry.ref.signatureId,
       datumId: point.datumId,
       replicateIndex: point.replicateIndex,
-    });
+    };
+  }
+
+  function onDetailSelect(hit: ChartHit | null, modifiers: { shift: boolean }): void {
+    const point = pointFor(hit);
+    if (modifiers.shift) {
+      // Shift-clicking empty space is not "clear everything"; it's a missed dot.
+      if (point) app.comparePoint(point);
+      return;
+    }
+    if (!point) {
+      // Escape and clicking empty space unwind one level at a time: the pinned
+      // comparison first, the selection second. Throwing both away on one press
+      // makes the more common action (drop the comparison, keep looking at the
+      // point) unreachable.
+      if (app.comparisonSource === 'pinned') app.clearComparison();
+      else app.selectPoint(null);
+      return;
+    }
+    app.selectPoint(point);
   }
 </script>
 
@@ -157,12 +185,13 @@
       showLines={true}
       showAxes={true}
       interaction="select"
-      {highlight}
+      {highlights}
       onselect={onDetailSelect}
+      onhover={(hit) => app.setHoveredPoint(pointFor(hit))}
       onbrush={(span) => app.setZoom(span)}
       onkeymove={(axis, delta) =>
         axis === 'run' ? app.stepRun(delta) : app.stepReplicate(delta)}
-      ariaLabel="Detail graph; click a point to inspect it, or use the arrow keys"
+      ariaLabel="Detail graph; click a point to inspect it, shift-click a second to compare, or use the arrow keys"
     />
     {#if app.series.length === 0}
       <p class="overlay-note">Add a series to see data.</p>

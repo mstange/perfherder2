@@ -92,6 +92,17 @@ describe('parseViewState', () => {
     expect(parseViewState('?sel=autoland,42,999,-2').selected).toBeNull();
   });
 
+  it('parses the pinned comparison point the same way as the selection', () => {
+    const s = parseViewState('?sel=autoland,42,999,3&cmp=mozilla-central,7,111,-1');
+    expect(s.compared).toEqual({
+      repository: 'mozilla-central',
+      signatureId: 7,
+      datumId: 111,
+      replicateIndex: MEAN_REPLICATE,
+    });
+    expect(parseViewState('?sel=autoland,42,999,3').compared).toBeNull();
+  });
+
   it('parses picker state and filter', () => {
     const s = parseViewState('?picker=1&pf=speedometer&pc=repo:autoland&pc=option:fission');
     expect(s.pickerOpen).toBe(true);
@@ -173,6 +184,27 @@ describe('serializeViewState', () => {
     expect(s).toContain('pc=repo:autoland');
     expect(s).toContain('pr=autoland,try');
     expect(s).toContain('psort=unit:asc');
+  });
+
+  it('writes the comparison point only alongside a selection', () => {
+    const sel = { repository: 'autoland', signatureId: 42, datumId: 999, replicateIndex: 3 };
+    const cmp = { repository: 'autoland', signatureId: 42, datumId: 555, replicateIndex: 0 };
+    expect(serializeViewState(state({ selected: sel, compared: cmp }))).toContain(
+      'cmp=autoland,42,555,0',
+    );
+    // A comparison needs two ends; a link carrying only `cmp` would arrive with
+    // nothing to compare against.
+    expect(serializeViewState(state({ selected: null, compared: cmp }))).toBe('');
+  });
+
+  it('round-trips a comparison', () => {
+    const before = state({
+      selected: { repository: 'autoland', signatureId: 42, datumId: 999, replicateIndex: 3 },
+      compared: { repository: 'try', signatureId: 7, datumId: 5, replicateIndex: -1 },
+    });
+    const after = parseViewState(`?${serializeViewState(before)}`);
+    expect(after.selected).toEqual(before.selected);
+    expect(after.compared).toEqual(before.compared);
   });
 
   it('omits the whole picker state when the panel is closed', () => {
