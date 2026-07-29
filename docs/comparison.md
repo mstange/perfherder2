@@ -180,9 +180,15 @@ Layout, top to bottom, in one canvas:
   that each and it staggers them vertically to cope. Here the chart carries
   only the letter and the text list below carries the rest, which stays
   readable at pane width and can't collide.
-- **The bands have fixed heights.** The chart occupies the same space before
-  and after the values arrive, and whether there are one or two sides. See
-  design.md, "Layout stability".
+- **The height is a pure function of the data**, not of anything the user does
+  to it: one strip row per side, and the density band only when at least one side
+  has a curve. So it can change when the selection or the comparison changes —
+  which is a moment the whole pane is being rewritten anyway — but never while
+  the user is reading it. `distributionHeight` is that function, and the
+  component sets it on the wrapper so the pane doesn't reflow as the canvas
+  measures itself. (Reserving the band unconditionally would be steadier still,
+  at the cost of a labelled empty box in every narrow-pool case. See design.md,
+  "Layout stability", for the rule this bends.)
 
 ## Deviations from PerfCompare
 
@@ -221,7 +227,7 @@ One new parameter, alongside `sel` (see graphs.md):
 
 | Param | Meaning |
 |---|---|
-| `cmp` | Pinned comparison point, same `<repo>,<signatureId>,<datumId>,<replicateIndex>` shape as `sel` |
+| `cmp` | Pinned comparison point, same `<repo>,<signatureId>,<datumId>,<replicateIndex>` shape as `sel`. Only written alongside a `sel`, since a comparison needs two ends |
 
 The hover preview is deliberately *not* in the URL: it's transient by
 definition, and writing it would put a history entry (or a URL rewrite) on
@@ -230,20 +236,31 @@ every mouse movement.
 `cmp` is resolved against loaded data exactly like `sel`, and dropped when it
 names a point that isn't there.
 
-## Status
+## Code map
 
-Checked off as it lands; this list is the plan until then.
+Pure, and unit tested:
 
-- [x] Design (this document)
-- [x] `kde.ts` — Gaussian KDE, bandwidth, mode fitting (+ tests)
-- [x] `stats.ts` — Mann-Whitney U, Cliff's delta, CLES, summaries (+ tests)
-- [x] `distribution.ts` — shared grid, curves, modes, jitter (+ tests)
-- [x] `DistributionChart.svelte` / `distributionDraw.ts`
-- [x] Push distribution in the details pane
-- [x] `compare.ts` — kinds, pools, labels, links (+ tests)
-- [x] `cmp` URL state, shift-click, comparison highlights
-- [x] Comparison section in the details pane
-- [x] Hover preview
+- `kde.ts` — Gaussian KDE, the bandwidth rule, mode fitting.
+- `stats.ts` — Mann-Whitney U, Cliff's delta, CLES, pool summaries, the
+  improvement/regression reading.
+- `distribution.ts` — one or two pools → curves, modes, jitter, and the chart's
+  geometry.
+- `compare.ts` — kinds, side ordering, pools, labels, outgoing links.
+- `graphData.ts::pushValues` / `indexInPushValues` — the pooling rule itself,
+  which belongs with the push/run/replicate structure.
+- `links.ts::perfCompareUrl` / `perfCompareSubtestsUrl`, and
+  `chart.ts`'s signed/percent/p-value formatting.
+
+Not pure:
+
+- `distributionDraw.ts` — canvas painting. Takes every coordinate from a
+  `DistributionLayout`. One exception is tested: `modeLabelY`, whose failure mode
+  is a glyph that silently isn't drawn.
+- `DistributionChart.svelte` — the canvas, its size, and the HTML half of the
+  legend.
+- `appState.svelte.ts` — `comparedPoint`, `hoveredPoint`, `comparisonSource`,
+  `comparison`, `comparisonMarkedHere`.
+- `DetailsPane.svelte` — the comparison card and the push distribution.
 
 Open items — a bootstrap CI, per-run shading inside a push pool, comparing more
 than two points — live in [graphs-todo.md](graphs-todo.md).
