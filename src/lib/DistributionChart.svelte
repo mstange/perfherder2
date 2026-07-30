@@ -11,6 +11,7 @@
   import { formatValue } from './chart';
   import { distributionHeight, distributionLayout, type DistributionPlot } from './distribution';
   import { drawDistribution } from './distributionDraw';
+  import { theme } from './theme.svelte';
 
   type Props = {
     plot: DistributionPlot;
@@ -52,7 +53,9 @@
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    drawDistribution(ctx, layout, plot);
+    // `theme.chartPalette` is read inside the effect so a theme change
+    // repaints — a canvas can't be restyled by CSS.
+    drawDistribution(ctx, layout, plot, theme.chartPalette);
   });
 
   function withUnit(v: number): string {
@@ -211,17 +214,17 @@
     overflow-wrap: anywhere;
   }
   .key-stats {
-    color: #57606a;
+    color: var(--fg-muted);
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
   }
   .key-detail {
-    color: #57606a;
+    color: var(--fg-muted);
     font-variant-numeric: tabular-nums;
     overflow-wrap: anywhere;
   }
   .mode b {
     font-weight: 600;
-    color: #1f2328;
+    color: var(--fg-default);
   }
 </style>

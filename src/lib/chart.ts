@@ -5,6 +5,7 @@
 // arithmetic that decides where those pixels go.
 
 import type { SeriesPoint } from './graphData';
+import type { Theme } from './theme';
 
 // ---------------------------------------------------------------------------
 // Domains and scales
@@ -391,6 +392,24 @@ export const SERIES_COLORS = [
   '#4C3146', // dark-puce
 ];
 
+// Half of treeherder's palette is unusable on a dark plot: blue-bell, purple and
+// dark-puce all sit around 1.5–2:1 against the dark canvas, which is a series
+// you cannot find. So dark mode gets its own six — the *same hues in the same
+// order*, lightened to clear 6:1, rather than a different palette. A series
+// keeps its identity when you flip the theme, and the first six still read as
+// treeherder's blue / cyan / red / purple / orange / mauve.
+//
+// Cerulean and orange are already light enough and are carried over untouched,
+// which also keeps the two most recognisable slots identical across themes.
+export const SERIES_COLORS_DARK = [
+  '#8f92c8', // blue-bell, lightened
+  '#16BCDE', // cerulean
+  '#f2686a', // fire-red, lightened
+  '#e05fcd', // purple, lightened
+  '#FFB851', // orange
+  '#c08fb2', // dark-puce, lightened
+];
+
 export type SeriesShape = 'circle' | 'square' | 'diamond';
 // `filled: false` is treeherder's "outline": drawn as the shape's edge only.
 export type SeriesSymbol = { shape: SeriesShape; filled: boolean };
@@ -415,11 +434,15 @@ export type SeriesStyle = { color: string; symbol: SeriesSymbol };
 // seventh series would be indistinguishable from the first. Advancing the
 // symbol one extra step per wrap keeps every (color, symbol) pair unique for
 // 36 series while leaving the first six exactly as treeherder pairs them.
-export function styleForIndex(index: number): SeriesStyle {
+//
+// The theme picks the palette but not the *position*, so switching to dark mode
+// recolors every series in place rather than reshuffling the graph.
+export function styleForIndex(index: number, theme: Theme = 'light'): SeriesStyle {
   const i = Math.max(0, Math.floor(index));
-  const wraps = Math.floor(i / SERIES_COLORS.length);
+  const colors = theme === 'dark' ? SERIES_COLORS_DARK : SERIES_COLORS;
+  const wraps = Math.floor(i / colors.length);
   return {
-    color: SERIES_COLORS[i % SERIES_COLORS.length],
+    color: colors[i % colors.length],
     symbol: SERIES_SYMBOLS[(i + wraps) % SERIES_SYMBOLS.length],
   };
 }

@@ -7,6 +7,25 @@
     <!-- Replaced by App.svelte with something that names the plotted series;
          this is only what shows before the app mounts. -->
     <title>Perfherder Graphs</title>
+    <!-- Resolve the theme before the first paint, or a dark-mode user gets a
+         white flash for as long as it takes the module graph to load. This
+         deliberately duplicates the storage key and the resolution rule from
+         src/lib/theme.ts — a module import can't run early enough, and the two
+         copies are three lines. Keep them in step. -->
+    <script>
+      (function () {
+        var stored = null;
+        try {
+          stored = localStorage.getItem('perfherder2:theme');
+        } catch (e) {
+          /* storage blocked; follow the OS */
+        }
+        var dark =
+          stored === 'dark' ||
+          (stored !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches);
+        document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+      })();
+    </script>
   </head>
   <body>
     <div id="app"></div>

@@ -518,7 +518,7 @@
     padding: 16px;
     max-width: 1400px;
     margin: 0 auto;
-    color: #1f2328;
+    color: var(--fg-default);
     font: 14px/1.4 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
   }
   header {
@@ -538,21 +538,21 @@
     padding: 0;
     font-size: 18px;
     line-height: 1;
-    border: 1px solid #d0d7de;
+    border: 1px solid var(--border-default);
     border-radius: 6px;
-    background: #fff;
+    background: var(--bg-canvas);
     cursor: pointer;
   }
   .close:hover {
-    background: #f3f4f6;
+    background: var(--bg-hover);
   }
   .hint {
     margin: 0;
-    color: #57606a;
+    color: var(--fg-muted);
     font-size: 13px;
   }
   .hint code {
-    background: #f6f8fa;
+    background: var(--bg-subtle);
     padding: 0 3px;
     border-radius: 3px;
     font-size: 12px;
@@ -562,8 +562,8 @@
     flex-direction: column;
     gap: 8px;
     padding: 12px;
-    background: #f6f8fa;
-    border: 1px solid #d0d7de;
+    background: var(--bg-subtle);
+    border: 1px solid var(--border-default);
     border-radius: 6px;
   }
   .control-row {
@@ -585,14 +585,14 @@
     padding-top: 4px;
   }
   .inline-label {
-    color: #57606a;
+    color: var(--fg-muted);
     font-size: 12px;
     text-transform: uppercase;
     letter-spacing: 0.04em;
   }
   .control-label {
     min-width: 80px;
-    color: #57606a;
+    color: var(--fg-muted);
     font-size: 12px;
     text-transform: uppercase;
     letter-spacing: 0.04em;
@@ -607,8 +607,8 @@
     align-items: center;
     gap: 6px;
     padding: 4px 10px;
-    background: #fff;
-    border: 1px solid #d0d7de;
+    background: var(--bg-canvas);
+    border: 1px solid var(--border-default);
     border-radius: 999px;
     cursor: pointer;
     user-select: none;
@@ -617,8 +617,8 @@
     margin: 0;
   }
   .chip-on {
-    background: #ddf4ff;
-    border-color: #54aeff;
+    background: var(--accent-subtle);
+    border-color: var(--accent-muted);
   }
   .chip-count {
     display: inline-block;
@@ -626,7 +626,7 @@
     text-align: right;
     font-variant-numeric: tabular-nums;
     font-size: 12px;
-    color: #57606a;
+    color: var(--fg-muted);
   }
   .chip-count-dim {
     opacity: 0.55;
@@ -639,9 +639,9 @@
   }
   select {
     padding: 4px 6px;
-    border: 1px solid #d0d7de;
+    border: 1px solid var(--border-default);
     border-radius: 6px;
-    background: #fff;
+    background: var(--bg-canvas);
   }
   .status {
     display: flex;
@@ -655,39 +655,39 @@
     display: inline-block;
   }
   .muted {
-    color: #57606a;
+    color: var(--fg-muted);
     font-weight: 400;
   }
   .loading-note {
-    color: #57606a;
+    color: var(--fg-muted);
     font-style: italic;
   }
   button {
     padding: 4px 12px;
     font: inherit;
-    background: #fff;
-    border: 1px solid #d0d7de;
+    background: var(--bg-canvas);
+    border: 1px solid var(--border-default);
     border-radius: 6px;
     cursor: pointer;
   }
   button:disabled {
-    color: #8c959f;
-    background: #f6f8fa;
-    border-color: #d0d7de;
+    color: var(--fg-subtle);
+    background: var(--bg-subtle);
+    border-color: var(--border-default);
     cursor: not-allowed;
   }
   button.primary {
-    background: #1f883d;
-    color: #fff;
-    border-color: #1f883d;
+    background: var(--success-emphasis);
+    color: var(--fg-on-emphasis);
+    border-color: var(--success-emphasis);
   }
   button.primary:hover:not(:disabled) {
-    background: #1a7f37;
+    background: var(--success-emphasis-hover);
   }
   button.primary:disabled {
-    background: #94d3a2;
-    color: #ffffffcc;
-    border-color: #94d3a2;
+    background: var(--success-emphasis-disabled);
+    color: var(--success-fg-on-emphasis-disabled);
+    border-color: var(--success-emphasis-disabled);
   }
   /* The one scroller in the dialog: it absorbs all the leftover height
      (`flex: 1`) rather than sizing to its (possibly 25k-row) content. The
@@ -697,7 +697,7 @@
   .table-wrap {
     flex: 1;
     min-height: 0;
-    border: 1px solid #d0d7de;
+    border: 1px solid var(--border-default);
     border-radius: 6px;
     overflow: auto;
   }
@@ -725,8 +725,8 @@
   thead th {
     position: sticky;
     top: 0;
-    background: #f6f8fa;
-    border-bottom: 1px solid #d0d7de;
+    background: var(--bg-subtle);
+    border-bottom: 1px solid var(--border-default);
     text-align: left;
     /* Same fixed-height rule as body cells so the sticky header lines up
        cleanly against the first data row. */
@@ -740,10 +740,10 @@
   }
   .sortable {
     /* Ensure the header cell fills so the button occupies it entirely. */
-    background: #f6f8fa;
+    background: var(--bg-subtle);
   }
   .sortable-active {
-    background: #ddf4ff;
+    background: var(--accent-subtle);
   }
   .sort-btn {
     display: inline-flex;
@@ -762,17 +762,17 @@
     color: inherit;
   }
   .sort-btn:hover {
-    background: rgba(0, 0, 0, 0.04);
+    background: var(--bg-overlay-hover);
   }
   .sort-indicator {
     font-size: 9px;
-    color: #57606a;
+    color: var(--fg-muted);
     opacity: 0.55;
     letter-spacing: -1px;
     font-variant: normal;
   }
   .sortable-active .sort-indicator {
-    color: #0969da;
+    color: var(--accent-fg);
     opacity: 1;
   }
   tbody td {
@@ -786,7 +786,7 @@
     box-sizing: border-box;
     padding: 0 8px;
     vertical-align: middle;
-    border-bottom: 1px solid #eaeef2;
+    border-bottom: 1px solid var(--border-muted);
     /* With table-layout: fixed, cells have a definite width, so we must
        clip. Without this, an over-wide badge (e.g. a long platform name)
        would visually overflow into the next column. */
@@ -794,19 +794,19 @@
     white-space: nowrap;
   }
   tbody tr:hover {
-    background: #f6f8fa;
+    background: var(--bg-subtle);
   }
   tbody tr.selected {
-    background: #fff8c5;
+    background: var(--attention-subtle);
   }
   tbody tr.selected:hover {
-    background: #f7ecac;
+    background: var(--attention-subtle-hover);
   }
   /* Parent rows shown only because a subtest matched. The disclosure caret
      stays live (users need it to collapse the tree), everything else looks
      and behaves inert. */
   tbody tr.row-disabled td {
-    color: #8c959f;
+    color: var(--fg-subtle);
   }
   tbody tr.row-disabled .badge {
     pointer-events: none;
@@ -819,10 +819,10 @@
      `.subtest-row td`'s own background. A plotted row can't be selected — it
      has no checkbox — so this never competes with `.selected`. */
   tbody tr.plotted td {
-    background: #f0f7ff;
+    background: var(--accent-tint);
   }
   tbody tr.plotted:hover td {
-    background: #e3effd;
+    background: var(--accent-tint-hover);
   }
   .plotted-swatch {
     display: inline-block;
@@ -850,7 +850,7 @@
     height: 20px;
     line-height: 1;
     font-size: 10px;
-    color: #57606a;
+    color: var(--fg-muted);
     background: transparent;
     border: none;
     cursor: pointer;
@@ -858,28 +858,28 @@
     user-select: none;
   }
   .disclose:hover {
-    color: #1f2328;
+    color: var(--fg-default);
   }
   .disclose-open {
     transform: rotate(90deg);
   }
   .subtest-row td {
-    background: #fafbfc;
+    background: var(--bg-nested);
   }
   .subtest-row:hover td {
-    background: #f0f3f6;
+    background: var(--bg-nested-hover);
   }
   .subtest-row.selected td {
-    background: #fff8c5;
+    background: var(--attention-subtle);
   }
   .subtest-cell {
     padding-left: 24px !important;
   }
   .subtest-note td {
     padding: 4px 8px 4px 40px;
-    color: #57606a;
+    color: var(--fg-muted);
     font-style: italic;
-    background: #fafbfc;
+    background: var(--bg-nested);
   }
   /* Badges are now buttons — same visual as before, but the "+" / "×"
      affordance appears on hover, and always when the chip is active. */
@@ -892,21 +892,21 @@
     font: inherit;
     font-size: 11px;
     line-height: 1.4;
-    background: #eaeef2;
-    color: #24292f;
+    background: var(--field-option-bg);
+    color: var(--field-option-fg);
     border: 1px solid transparent;
     border-radius: 4px;
     white-space: nowrap;
     cursor: pointer;
   }
   .badge:hover {
-    filter: brightness(0.94);
+    filter: brightness(var(--badge-hover-brightness));
   }
   .badge-cue {
     display: inline-block;
     width: 10px;
     text-align: center;
-    color: #57606a;
+    color: var(--fg-muted);
     font-size: 12px;
     font-weight: 600;
     opacity: 0;
@@ -917,48 +917,48 @@
     opacity: 1;
   }
   .badge-active {
-    outline: 2px solid #0969da;
+    outline: 2px solid var(--accent-emphasis);
     outline-offset: -2px;
-    background: #ddf4ff;
-    color: #0a4b70;
+    background: var(--accent-subtle);
+    color: var(--accent-on-subtle);
   }
   .badge-active .badge-cue {
-    color: #cf222e;
+    color: var(--danger-fg);
   }
   .badge-repo {
-    background: #ffeff7;
-    color: #a4133c;
+    background: var(--field-repo-bg);
+    color: var(--field-repo-fg);
   }
   .badge-platform {
-    background: #eef1ff;
-    color: #383f9c;
+    background: var(--field-platform-bg);
+    color: var(--field-platform-fg);
   }
   .badge-app {
-    background: #d1f4ff;
-    color: #0a4b70;
+    background: var(--field-app-bg);
+    color: var(--field-app-fg);
   }
   .badge-option {
-    background: #eaeef2;
+    background: var(--field-option-bg);
   }
   .badge-suite {
-    background: #dafbe1;
-    color: #116329;
+    background: var(--field-suite-bg);
+    color: var(--field-suite-fg);
     font-weight: 600;
   }
   .badge-test {
-    background: #fff;
-    border-color: #d0d7de;
-    color: #57606a;
+    background: var(--bg-canvas);
+    border-color: var(--border-default);
+    color: var(--fg-muted);
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   }
   .unit {
-    color: #57606a;
+    color: var(--fg-muted);
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
     font-size: 12px;
   }
   .empty {
     text-align: center;
-    color: #57606a;
+    color: var(--fg-muted);
     padding: 24px;
   }
   /* Loading placeholders: one grey bar per content column, pulsing together.
@@ -972,7 +972,7 @@
     width: 70%;
     height: 14px;
     border-radius: 7px;
-    background: #eaeef2;
+    background: var(--bg-neutral-muted);
     animation: skeleton-pulse 1.2s ease-in-out infinite;
   }
   @keyframes skeleton-pulse {
@@ -997,9 +997,9 @@
   }
   .errors,
   .error {
-    color: #cf222e;
-    background: #ffebe9;
-    border: 1px solid #ffcecb;
+    color: var(--danger-fg);
+    background: var(--danger-subtle);
+    border: 1px solid var(--danger-border);
     padding: 8px 12px;
     border-radius: 6px;
     margin: 0;

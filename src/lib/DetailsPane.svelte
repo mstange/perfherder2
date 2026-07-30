@@ -600,25 +600,25 @@
     display: flex;
     flex-direction: column;
     min-height: 0;
-    border-left: 1px solid #d0d7de;
-    background: #f6f8fa;
+    border-left: 1px solid var(--border-default);
+    background: var(--bg-subtle);
     font: 13px/1.45 system-ui, sans-serif;
   }
   header {
     padding: 10px 12px;
-    border-bottom: 1px solid #d0d7de;
+    border-bottom: 1px solid var(--border-default);
   }
   h2 {
     margin: 0;
     font-size: 13px;
     text-transform: uppercase;
     letter-spacing: 0.04em;
-    color: #57606a;
+    color: var(--fg-muted);
   }
   .empty {
     padding: 12px;
     margin: 0;
-    color: #57606a;
+    color: var(--fg-muted);
   }
   .offscreen {
     display: flex;
@@ -627,22 +627,22 @@
     gap: 8px;
     margin: 0 0 10px;
     padding: 6px 8px;
-    border: 1px solid #d4a72c;
+    border: 1px solid var(--attention-border);
     border-radius: 6px;
-    background: #fff8c5;
+    background: var(--attention-subtle);
     font-size: 12px;
   }
   .offscreen button {
     font: inherit;
     flex: none;
     padding: 2px 8px;
-    border: 1px solid #d0d7de;
+    border: 1px solid var(--border-default);
     border-radius: 6px;
-    background: #fff;
+    background: var(--bg-canvas);
     cursor: pointer;
   }
   .offscreen button:hover {
-    background: #f3f4f6;
+    background: var(--bg-hover);
   }
   .scroll {
     flex: 1;
@@ -657,7 +657,7 @@
     grid-template-columns: 10px 1fr;
     gap: 8px;
     padding-bottom: 10px;
-    border-bottom: 1px solid #d0d7de;
+    border-bottom: 1px solid var(--border-default);
   }
   section.series dl {
     margin-top: 3px;
@@ -688,12 +688,12 @@
     font-size: 11px;
     text-transform: uppercase;
     letter-spacing: 0.04em;
-    color: #57606a;
+    color: var(--fg-muted);
   }
   h4 {
     margin: 10px 0 4px;
     font-size: 12px;
-    color: #57606a;
+    color: var(--fg-muted);
   }
   .value {
     margin: 0 0 6px;
@@ -704,7 +704,7 @@
   .value .unit {
     font-size: 13px;
     font-weight: 400;
-    color: #57606a;
+    color: var(--fg-muted);
   }
   .value .muted {
     font-size: 12px;
@@ -717,17 +717,17 @@
     margin: 0;
   }
   dt {
-    color: #57606a;
+    color: var(--fg-muted);
   }
   dd {
     margin: 0;
     overflow-wrap: anywhere;
   }
   dd.bad {
-    color: #cf222e;
+    color: var(--danger-fg);
   }
   .muted {
-    color: #57606a;
+    color: var(--fg-muted);
   }
   .mono {
     font-family: ui-monospace, monospace;
@@ -749,36 +749,36 @@
     display: flex;
     gap: 4px;
     padding: 1px 5px;
-    border: 1px solid #d0d7de;
+    border: 1px solid var(--border-default);
     border-radius: 4px;
-    background: #fff;
+    background: var(--bg-canvas);
     cursor: pointer;
     font-variant-numeric: tabular-nums;
   }
   .replicates button:hover {
-    background: #f3f4f6;
+    background: var(--bg-hover);
   }
   .replicates li.selected button {
-    border-color: #0969da;
-    background: #ddf4ff;
+    border-color: var(--accent-emphasis);
+    background: var(--accent-subtle);
   }
   .replicates .idx {
-    color: #8c959f;
+    color: var(--fg-subtle);
     font-size: 11px;
   }
   /* The comparison sits in a tinted card so the two-point reading is visibly a
      different thing from the single-point sections under it. */
   section.comparison {
     padding: 8px 10px 10px;
-    border: 1px solid #d0d7de;
+    border: 1px solid var(--border-default);
     border-radius: 6px;
-    background: #fff;
+    background: var(--bg-canvas);
   }
   /* A hovered comparison is a preview, not a commitment: dashed, to match the
      dashed ring the graph puts around the point it came from. */
   section.comparison.preview {
     border-style: dashed;
-    background: #fbfcfd;
+    background: var(--bg-nested-quiet);
   }
   .cmp-head {
     display: flex;
@@ -793,13 +793,13 @@
     font: inherit;
     font-size: 11px;
     padding: 1px 6px;
-    border: 1px solid #d0d7de;
+    border: 1px solid var(--border-default);
     border-radius: 6px;
-    background: #fff;
+    background: var(--bg-canvas);
     cursor: pointer;
   }
   .unpin:hover {
-    background: #f3f4f6;
+    background: var(--bg-hover);
   }
   .cmp-kind {
     margin: 0 0 6px;
@@ -808,7 +808,7 @@
   .cmp-hint {
     margin: 0 0 14px;
     padding: 6px 8px;
-    border: 1px dashed #d0d7de;
+    border: 1px dashed var(--border-default);
     border-radius: 6px;
     font-size: 11px;
   }
@@ -820,16 +820,16 @@
     justify-content: space-between;
     gap: 8px;
     border-style: solid;
-    border-color: #54aeff;
-    background: #ddf4ff;
+    border-color: var(--accent-muted);
+    background: var(--accent-subtle);
   }
   kbd {
     font: inherit;
     font-family: ui-monospace, monospace;
     padding: 0 3px;
-    border: 1px solid #d0d7de;
+    border: 1px solid var(--border-default);
     border-radius: 3px;
-    background: #fff;
+    background: var(--bg-canvas);
   }
   /* Not the pane-wide `max-content` label column. A label here can be a platform
      string, and `max-content` on one of those makes the grid wider than the pane
@@ -856,19 +856,19 @@
     vertical-align: 2px;
   }
   .verdict.improvement {
-    background: #dafbe1;
-    color: #0a5c2b;
+    background: var(--success-subtle);
+    color: var(--success-strong-fg);
   }
   .verdict.regression {
-    background: #ffebe9;
-    color: #a40e26;
+    background: var(--danger-subtle);
+    color: var(--danger-strong-fg);
   }
   .warn {
     margin: 0 0 8px;
     padding: 5px 7px;
-    border: 1px solid #d4a72c;
+    border: 1px solid var(--attention-border);
     border-radius: 6px;
-    background: #fff8c5;
+    background: var(--attention-subtle);
     font-size: 11px;
   }
   .sides {
@@ -909,7 +909,7 @@
     font-weight: 600;
   }
   .side-role {
-    color: #8c959f;
+    color: var(--fg-subtle);
   }
   .side-detail {
     display: flex;
@@ -924,7 +924,7 @@
     gap: 10px;
     margin-top: 8px;
     padding-top: 8px;
-    border-top: 1px solid #eaeef2;
+    border-top: 1px solid var(--border-muted);
     font-size: 11px;
   }
   .commits {

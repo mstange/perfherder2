@@ -95,8 +95,8 @@
     height: 100vh;
     height: 100dvh;
     overflow: hidden;
-    background: #fff;
-    color: #1f2328;
+    background: var(--bg-canvas);
+    color: var(--fg-default);
   }
   /* The panel is stretched to exactly the space between the backdrop's
      padding edges — never taller. Everything inside it (see the flex chain
@@ -107,7 +107,7 @@
   .overlay {
     position: fixed;
     inset: 0;
-    background: rgba(31, 35, 40, 0.35);
+    background: var(--backdrop);
     display: flex;
     align-items: stretch;
     justify-content: center;
@@ -118,9 +118,9 @@
     display: flex;
     flex-direction: column;
     min-height: 0;
-    background: #fff;
+    background: var(--bg-canvas);
     border-radius: 8px;
-    box-shadow: 0 12px 40px rgba(31, 35, 40, 0.3);
+    box-shadow: var(--shadow-overlay);
     width: min(1400px, 100%);
   }
 </style>

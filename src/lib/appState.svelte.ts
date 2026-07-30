@@ -50,6 +50,7 @@ import {
   commonFilterChips,
   documentTitle,
 } from './seriesSummary';
+import { theme } from './theme.svelte';
 import { clampSpan, defaultSpan, presetSpan, roundSpan, type Span } from './timeRange';
 import {
   EMPTY_PICKER_VIEW,
@@ -165,7 +166,7 @@ export class AppState {
     this.seriesRefs.map((ref, i) => {
       const key = dataKey(ref, this.range);
       const loaded = this.seriesCache.get(key);
-      const style = styleForIndex(i);
+      const style = styleForIndex(i, theme.resolved);
       const data = loaded?.data ?? EMPTY_SERIES_DATA;
       return {
         ref,

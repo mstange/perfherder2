@@ -1,8 +1,198 @@
+/* Theme tokens.
+   ------------
+   Every color in the app resolves to one of the custom properties below. No
+   component may hardcode a hex value — a literal is a color that only exists in
+   one theme, and it will be the one unreadable thing on the screen in the other.
+
+   The switch is a `data-theme` attribute on `<html>`, holding a *resolved*
+   theme: "light" or "dark", never "system". src/lib/theme.svelte.ts answers the
+   OS query in JS and writes the attribute; the inline script in index.html does
+   the same before first paint. So there is one dark block here rather than a
+   media query plus an attribute override, and nothing in CSS has to know that
+   "follow the OS" is even an option. See src/lib/theme.ts for why the graphs'
+   canvas palette is the one exception to all of this.
+
+   The values are GitHub Primer's light and dark scales, which is where the
+   original hardcoded palette came from. */
+
 :root {
+  /* `color-scheme` is what makes the form controls, scrollbars and default
+     link colors match; without it a dark page keeps light checkboxes. It's set
+     per theme rather than as `light dark`, because the attribute has already
+     decided and letting the UA decide separately would make a forced theme
+     half-apply. */
   color-scheme: light;
+
+  /* Surfaces */
+  --bg-canvas: #fff;
+  --bg-subtle: #f6f8fa;
+  --bg-inset: #eef1f4;
+  --bg-hover: #f3f4f6;
+  /* Nested rows: the picker's subtests, one step back from their parent. */
+  --bg-nested: #fafbfc;
+  --bg-nested-hover: #f0f3f6;
+  --bg-nested-quiet: #fbfcfd;
+  --bg-neutral-muted: #eaeef2;
+  /* Tints over whatever is underneath, for hovers on already-colored rows. */
+  --bg-overlay-hover: rgba(0, 0, 0, 0.04);
+  --bg-overlay-active: rgba(0, 0, 0, 0.08);
+
+  /* Text */
+  --fg-default: #1f2328;
+  --fg-muted: #57606a;
+  --fg-subtle: #8c959f;
+  --fg-on-emphasis: #fff;
+
+  /* Borders */
+  --border-default: #d0d7de;
+  --border-muted: #eaeef2;
+
+  /* Accent — selection, focus, active controls */
+  --accent-fg: #0969da;
+  --accent-emphasis: #0969da;
+  --accent-emphasis-hover: #0860c4;
+  --accent-muted: #54aeff;
+  --accent-subtle: #ddf4ff;
+  --accent-on-subtle: #0a4b70;
+  /* Fainter still: the picker's "already on the graph" row tint, which has to
+     sit under text without competing with `--accent-subtle` next to it. */
+  --accent-tint: #f0f7ff;
+  --accent-tint-hover: #e3effd;
+  --accent-focus-ring: rgba(9, 105, 218, 0.15);
+
+  /* Success — the Add button, and "improvement" */
+  --success-fg: #116329;
+  --success-strong-fg: #0a5c2b;
+  --success-emphasis: #1f883d;
+  --success-emphasis-hover: #1a7f37;
+  --success-emphasis-disabled: #94d3a2;
+  --success-fg-on-emphasis-disabled: #ffffffcc;
+  --success-subtle: #dafbe1;
+
+  /* Danger — errors, and "regression" */
+  --danger-fg: #cf222e;
+  --danger-strong-fg: #a40e26;
+  --danger-subtle: #ffebe9;
+  --danger-border: #ffcecb;
+
+  /* Attention — selected rows, caveats */
+  --attention-subtle: #fff8c5;
+  --attention-subtle-hover: #f7ecac;
+  --attention-border: #d4a72c;
+
+  /* Field colors. Every badge, chip and pill that names a signature attribute
+     is colored by which field it is, and the same field has to look the same in
+     the picker's table and in the filter box. The `-chip-` variants are the
+     denser fill the filter box uses, where the label sits on top of a pill that
+     already has its own background. */
+  --field-suite-bg: #dafbe1;
+  --field-suite-fg: #116329;
+  --field-repo-bg: #ffeff7;
+  --field-repo-chip-bg: #ffddec;
+  --field-repo-fg: #a4133c;
+  --field-platform-bg: #eef1ff;
+  --field-platform-chip-bg: #dbe4ff;
+  --field-platform-fg: #383f9c;
+  --field-app-bg: #d1f4ff;
+  --field-app-fg: #0a4b70;
+  --field-option-bg: #eaeef2;
+  --field-option-fg: #24292f;
+  --field-option-chip-bg: #e5e7eb;
+  --field-option-chip-fg: #374151;
+  --chip-pill-bg: #eef1ff;
+  --chip-pill-border: #b1c2ff;
+  --chip-pill-fg: #24292f;
+  /* Badge hover. A badge is already a filled pill, so the hover cue is a
+     brightness step on whatever fill it has — which has to go the other way in
+     dark mode, where darker reads as further away rather than as touched. */
+  --badge-hover-brightness: 0.94;
+
+  /* Elevation */
+  --backdrop: rgba(31, 35, 40, 0.35);
+  --shadow-overlay: 0 12px 40px rgba(31, 35, 40, 0.3);
+  --shadow-lifted: 0 6px 16px rgba(31, 35, 40, 0.22);
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+
+  --bg-canvas: #0d1117;
+  --bg-subtle: #161b22;
+  --bg-inset: #1c222b;
+  --bg-hover: #262c36;
+  --bg-nested: #11161e;
+  --bg-nested-hover: #1a212b;
+  --bg-nested-quiet: #10151c;
+  --bg-neutral-muted: #262c36;
+  --bg-overlay-hover: rgba(255, 255, 255, 0.06);
+  --bg-overlay-active: rgba(255, 255, 255, 0.1);
+
+  --fg-default: #e6edf3;
+  --fg-muted: #9198a1;
+  --fg-subtle: #6e7681;
+  --fg-on-emphasis: #fff;
+
+  --border-default: #3d444d;
+  --border-muted: #262c36;
+
+  --accent-fg: #4493f8;
+  --accent-emphasis: #1f6feb;
+  --accent-emphasis-hover: #388bfd;
+  --accent-muted: #4493f8;
+  --accent-subtle: #0d2847;
+  --accent-on-subtle: #a5d6ff;
+  --accent-tint: #0c1d2e;
+  --accent-tint-hover: #12293f;
+  --accent-focus-ring: rgba(56, 139, 253, 0.3);
+
+  --success-fg: #3fb950;
+  --success-strong-fg: #4ac26b;
+  --success-emphasis: #238636;
+  --success-emphasis-hover: #2ea043;
+  /* Light mode washes the disabled Add button out towards white; the dark
+     equivalent is towards the page, not a slightly duller green — at #1c4b28 it
+     still read as "enabled, just a bit off". */
+  --success-emphasis-disabled: #1b3a24;
+  --success-fg-on-emphasis-disabled: rgba(255, 255, 255, 0.55);
+  --success-subtle: #12261c;
+
+  --danger-fg: #f85149;
+  --danger-strong-fg: #ff7b72;
+  --danger-subtle: #2b1618;
+  --danger-border: #5c2426;
+
+  --attention-subtle: #272115;
+  --attention-subtle-hover: #332a17;
+  --attention-border: #9e6a03;
+
+  --field-suite-bg: #12261c;
+  --field-suite-fg: #4ac26b;
+  --field-repo-bg: #2b1622;
+  --field-repo-chip-bg: #3a1a2b;
+  --field-repo-fg: #f778ba;
+  --field-platform-bg: #1c1f3d;
+  --field-platform-chip-bg: #262a52;
+  --field-platform-fg: #a6acff;
+  --field-app-bg: #0a2b3a;
+  --field-app-fg: #7fd1ee;
+  --field-option-bg: #262c36;
+  --field-option-fg: #d1d7e0;
+  --field-option-chip-bg: #2d333b;
+  --field-option-chip-fg: #cdd9e5;
+  --chip-pill-bg: #1c1f3d;
+  --chip-pill-border: #3a3f7a;
+  --chip-pill-fg: #e6edf3;
+  --badge-hover-brightness: 1.25;
+
+  --backdrop: rgba(1, 4, 9, 0.65);
+  --shadow-overlay: 0 12px 40px rgba(1, 4, 9, 0.85);
+  --shadow-lifted: 0 6px 16px rgba(1, 4, 9, 0.7);
+}
+
+:root {
   font: 14px/1.4 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-  color: #1f2328;
-  background: #fff;
+  color: var(--fg-default);
+  background: var(--bg-canvas);
 }
 
 html,
@@ -20,4 +210,10 @@ body {
 
 button {
   font: inherit;
+}
+
+/* The UA's link colors do follow `color-scheme`, but to a purple-blue that
+   matches nothing else here. Ours is the accent the rest of the app uses. */
+a {
+  color: var(--accent-fg);
 }

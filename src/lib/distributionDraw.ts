@@ -9,12 +9,8 @@ import type {
   DistributionSeries,
   StripRow,
 } from './distribution';
+import type { ChartPalette } from './theme';
 
-const AXIS_COLOR = '#d0d7de';
-const GRID_COLOR = '#eef1f4';
-const TEXT_COLOR = '#57606a';
-const RING_COLOR = '#1f2328';
-const ROW_TINT = '#f6f8fa';
 const FONT = '10px system-ui, sans-serif';
 // One line of FONT, for stacking and clamping mode labels.
 export const LABEL_HEIGHT_PX = 10;
@@ -44,13 +40,16 @@ export function drawDistribution(
   ctx: CanvasRenderingContext2D,
   layout: DistributionLayout,
   plot: DistributionPlot,
+  // The theme's chart colors. Passed in rather than read off the DOM so the
+  // drawing stays a function of its arguments — see theme.ts.
+  palette: ChartPalette,
 ): void {
   ctx.clearRect(0, 0, layout.width, layout.height);
   const ticks = valueTicks(
     plot.domain,
     Math.max(2, Math.round((layout.x1 - layout.x0) / TICK_SPACING_PX)),
   );
-  drawAxis(ctx, layout, ticks);
+  drawAxis(ctx, layout, ticks, palette);
 
   plot.series.forEach((side, i) => {
     if (side.density.length > 0) drawCurve(ctx, layout, plot, side, isBaseSide(plot, i));
@@ -65,10 +64,10 @@ export function drawDistribution(
     // than as one taller cloud. Only with two of them — a lone shaded row would
     // look like it meant something.
     if (i === 1) {
-      ctx.fillStyle = ROW_TINT;
+      ctx.fillStyle = palette.rowTint;
       ctx.fillRect(layout.x0, row.y0, layout.x1 - layout.x0, row.y1 - row.y0);
     }
-    drawStrip(ctx, layout, side, row, isBaseSide(plot, i));
+    drawStrip(ctx, layout, side, row, isBaseSide(plot, i), palette);
   });
 }
 
@@ -76,9 +75,10 @@ function drawAxis(
   ctx: CanvasRenderingContext2D,
   layout: DistributionLayout,
   ticks: number[],
+  palette: ChartPalette,
 ): void {
   const top = layout.bandY0;
-  ctx.strokeStyle = GRID_COLOR;
+  ctx.strokeStyle = palette.grid;
   ctx.lineWidth = 1;
   ctx.beginPath();
   for (const t of ticks) {
@@ -89,14 +89,14 @@ function drawAxis(
   }
   ctx.stroke();
 
-  ctx.strokeStyle = AXIS_COLOR;
+  ctx.strokeStyle = palette.axis;
   ctx.beginPath();
   const y = Math.round(layout.axisY) + 0.5;
   ctx.moveTo(layout.x0, y);
   ctx.lineTo(layout.x1, y);
   ctx.stroke();
 
-  ctx.fillStyle = TEXT_COLOR;
+  ctx.fillStyle = palette.text;
   ctx.font = FONT;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'top';
@@ -223,10 +223,11 @@ function drawStrip(
   side: DistributionSeries,
   row: StripRow,
   isBase: boolean,
+  palette: ChartPalette,
 ): void {
   const amplitude = Math.max(1, (row.y1 - row.y0) / 2 - MARKED_RADIUS - 1);
 
-  ctx.strokeStyle = GRID_COLOR;
+  ctx.strokeStyle = palette.grid;
   ctx.lineWidth = 1;
   ctx.beginPath();
   const baseY = Math.round(row.centerY) + 0.5;
@@ -281,7 +282,7 @@ function drawStrip(
     ctx.fillStyle = side.color;
     ctx.fill();
     ctx.lineWidth = 1.5;
-    ctx.strokeStyle = RING_COLOR;
+    ctx.strokeStyle = palette.ring;
     ctx.stroke();
   }
 }

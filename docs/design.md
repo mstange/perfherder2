@@ -35,6 +35,11 @@ architecture breaks.**
   Splits a list of series into the attributes they all share and the ones
   that distinguish each, and names the page from the shared half; see "The
   series list shows differences, not descriptions" below. Unit-tested.
+- [src/lib/theme.ts](../src/lib/theme.ts) — **pure logic**. The theme
+  vocabulary, the preference→theme resolution rule, and the canvas palette
+  that can't live in CSS; see "Theming" below.
+  [theme.svelte.ts](../src/lib/theme.svelte.ts) is the reactive singleton
+  around it.
 - [src/lib/filter.ts](../src/lib/filter.ts) — **pure logic**. Filter
   model (chips + free text), `matchesRow`, sort comparator, cache-key +
   fallback picker, child grouping. Unit-tested.
@@ -536,6 +541,77 @@ over a faint blue row tint.
 - The prop is **synced, not seeded**: nothing can change the plotted set
   while the panel is open today (adding closes it), but stale marks would
   be a lie about the graph rather than a cosmetic issue.
+
+### Theming: one resolved attribute, one exception
+
+Light and dark, defaulting to the OS. The three moving parts:
+
+- **[src/app.css](../src/app.css) holds every color in the app**, as custom
+  properties, with one `:root` block per theme. No component may hardcode a
+  hex value — a literal is a color that exists in one theme, and it will be
+  the one unreadable thing on screen in the other. The values are GitHub
+  Primer's two scales, which is where the original hardcoded palette came
+  from.
+- **`<html data-theme>` carries a *resolved* theme** — `light` or `dark`,
+  never `system`. The OS query is answered in JS
+  ([theme.svelte.ts](../src/lib/theme.svelte.ts)), not by a
+  `prefers-color-scheme` media query in the stylesheet. That's the load-bearing
+  decision: a media query would be a second, independent answer to "which theme
+  is it", and forcing a theme would then have to out-specify it in every block.
+  With one resolver there is one dark block in the CSS, and the canvas palette
+  below can't disagree with it.
+- **The preference is `system` | `light` | `dark`, and `system` is stored as
+  `system`.** Rewriting it to whichever theme it currently resolves to would
+  silently stop it following the OS.
+
+`color-scheme` is set alongside the tokens rather than left as `light dark`,
+which is what gets form controls, scrollbars and default link colors to match.
+It has to be pinned per theme for the same reason as above: on `light dark` the
+UA would decide for itself and a forced theme would only half-apply.
+
+**Two things can't be a custom property, and both are on the graphs.**
+
+- *Canvas colors.* There's no element for a canvas's pixels to inherit from.
+  [theme.ts](../src/lib/theme.ts) exports `CHART_PALETTES` and the draw calls
+  take a `palette` argument, which also keeps
+  [chartDraw.ts](../src/lib/chartDraw.ts) and
+  [distributionDraw.ts](../src/lib/distributionDraw.ts) functions of their
+  arguments. The alternative — `getComputedStyle` inside the draw code — would
+  make them depend on the DOM *and* on the attribute having already been
+  applied. Those seven values are the only colors in the app that exist twice;
+  each names the token it mirrors.
+- *Series colors.* Half of treeherder's palette is unusable on a dark plot:
+  blue-bell, purple and dark-puce all land under 2:1 against the canvas, which
+  is a series you cannot find. `SERIES_COLORS_DARK` in
+  [chart.ts](../src/lib/chart.ts) is the same six hues in the same order,
+  lightened past 4.5:1 (pinned in `theme.test.ts`), so **the theme picks the
+  palette but never the position** — flipping it recolors each series in place
+  instead of reshuffling the graph. Cerulean and orange were already light
+  enough and carry over untouched. This is the one place we knowingly diverge
+  from treeherder's colors, and only in dark mode.
+
+`styleForIndex(i, theme)` defaults to `'light'`, so the parity assertions in
+`chart.test.ts` and anything else that doesn't know about themes keeps getting
+treeherder's six.
+
+**The theme is a singleton, not a prop.** [theme.svelte.ts](../src/lib/theme.svelte.ts)
+exports one `ThemeController` instance, read by `AppState` (for series colors)
+and by the two chart components (for the canvas palette). Those have no props
+relationship, and threading it down would mean five components forwarding a
+value they don't use and every `AppState` test constructing one. It applies the
+attribute imperatively from the three places that can change the outcome, rather
+than from an `$effect` — a module is neither a component nor an `$effect.root`,
+and it means the attribute is already correct when a repaint in the same task
+reads it.
+
+**[index.html](../index.html) resolves the theme again, inline, before the first
+paint.** A module import can't run early enough, so a dark-mode user would get a
+white flash for the length of the module graph load. It duplicates the storage
+key and the resolution rule in three lines; keep them in step.
+
+`localStorage` throws rather than no-ops where storage is blocked by policy or
+private mode. Both ends swallow it — the session just doesn't remember the
+choice, which is not worth taking the app down for.
 
 ### Layout stability
 

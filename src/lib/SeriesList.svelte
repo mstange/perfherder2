@@ -311,8 +311,8 @@
     display: flex;
     flex-direction: column;
     min-height: 0;
-    border-right: 1px solid #d0d7de;
-    background: #f6f8fa;
+    border-right: 1px solid var(--border-default);
+    background: var(--bg-subtle);
     font: 13px/1.4 system-ui, sans-serif;
   }
   header {
@@ -321,19 +321,19 @@
     justify-content: space-between;
     gap: 8px;
     padding: 10px 12px;
-    border-bottom: 1px solid #d0d7de;
+    border-bottom: 1px solid var(--border-default);
   }
   h2 {
     margin: 0;
     font-size: 13px;
     text-transform: uppercase;
     letter-spacing: 0.04em;
-    color: #57606a;
+    color: var(--fg-muted);
   }
   .common {
     padding: 8px 12px;
-    border-bottom: 1px solid #d0d7de;
-    background: #eef1f4;
+    border-bottom: 1px solid var(--border-default);
+    background: var(--bg-inset);
   }
   .common h3 {
     margin: 0 0 2px;
@@ -341,11 +341,11 @@
     font-weight: 400;
     text-transform: uppercase;
     letter-spacing: 0.04em;
-    color: #8c959f;
+    color: var(--fg-subtle);
   }
   /* Background information: the cards are what the eye should land on. */
   .common .attrs {
-    color: #57606a;
+    color: var(--fg-muted);
   }
   .list {
     flex: 1;
@@ -357,7 +357,7 @@
   }
   .empty {
     margin: 4px;
-    color: #57606a;
+    color: var(--fg-muted);
   }
   .card {
     display: grid;
@@ -365,8 +365,8 @@
     gap: 8px;
     align-items: start;
     padding: 8px;
-    background: #fff;
-    border: 1px solid #d0d7de;
+    background: var(--bg-canvas);
+    border: 1px solid var(--border-default);
     border-radius: 6px;
   }
   .swatch {
@@ -408,8 +408,8 @@
   .card.lifted {
     position: relative;
     z-index: 2;
-    box-shadow: 0 6px 16px rgba(31, 35, 40, 0.22);
-    border-color: #0969da;
+    box-shadow: var(--shadow-lifted);
+    border-color: var(--accent-emphasis);
     cursor: grabbing;
   }
   /* The cards stepping aside. The transition is scoped to a live drag so it
@@ -423,7 +423,7 @@
     display: block;
     width: 20px;
     text-align: center;
-    color: #8c959f;
+    color: var(--fg-subtle);
     cursor: grab;
     user-select: none;
     line-height: 1.2;
@@ -452,13 +452,13 @@
     font-size: 12px;
   }
   .sep {
-    color: #8c959f;
+    color: var(--fg-subtle);
   }
   .pending {
-    color: #57606a;
+    color: var(--fg-muted);
   }
   .sub {
-    color: #57606a;
+    color: var(--fg-muted);
     font-size: 12px;
   }
   .count {
@@ -469,7 +469,7 @@
     white-space: nowrap;
   }
   .error {
-    color: #cf222e;
+    color: var(--danger-fg);
   }
   /* Two by two rather than a single column: with the shared attributes hoisted
      out, a card's text is often one line, and a four-high stack of controls
@@ -497,30 +497,30 @@
   }
   footer {
     padding: 8px 12px;
-    border-top: 1px solid #d0d7de;
+    border-top: 1px solid var(--border-default);
   }
   button {
     font: inherit;
     padding: 4px 10px;
-    border: 1px solid #d0d7de;
+    border: 1px solid var(--border-default);
     border-radius: 6px;
-    background: #fff;
+    background: var(--bg-canvas);
     cursor: pointer;
   }
   button:hover:not(:disabled) {
-    background: #f3f4f6;
+    background: var(--bg-hover);
   }
   button:disabled {
     opacity: 0.4;
     cursor: default;
   }
   button.primary {
-    background: #0969da;
-    border-color: #0969da;
-    color: #fff;
+    background: var(--accent-emphasis);
+    border-color: var(--accent-emphasis);
+    color: var(--fg-on-emphasis);
   }
   button.primary:hover {
-    background: #0860c4;
+    background: var(--accent-emphasis-hover);
   }
   button.icon {
     padding: 0;
@@ -530,8 +530,8 @@
     font-size: 12px;
   }
   button.remove:hover:not(:disabled) {
-    background: #ffebe9;
-    border-color: #cf222e;
-    color: #cf222e;
+    background: var(--danger-subtle);
+    border-color: var(--danger-fg);
+    color: var(--danger-fg);
   }
 </style>

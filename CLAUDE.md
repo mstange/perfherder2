@@ -24,6 +24,10 @@ non-trivial change should be checked against that document.
 - **Layout stability matters.** New UI must not shift when data loads or
   when the user first interacts with it. Budget space for loading and
   empty states from the start.
+- **No hardcoded colors.** Every color comes from a custom property in
+  `src/app.css`, which defines both themes. A literal hex in a component
+  is a color that only exists in one of them. The graphs' canvas palette
+  is the documented exception — see "Theming" in docs/design.md.
 
 ## What this project is
 

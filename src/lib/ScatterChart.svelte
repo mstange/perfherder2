@@ -10,6 +10,7 @@
   import { hitTestAll, makeGeometry, type Padding, type Range } from './chart';
   import { drawBrush, drawChart, drawHighlights, type Highlight } from './chartDraw';
   import type { SeriesEntry } from './appState.svelte';
+  import { theme } from './theme.svelte';
 
   type Span = { start: number; end: number };
 
@@ -153,6 +154,9 @@
       dotRadius,
       showLines,
       showAxes,
+      // Read inside the effect, so a theme change repaints the canvas — the
+      // one thing on the page that CSS can't restyle on its own.
+      palette: theme.chartPalette,
     });
   });
 
@@ -171,9 +175,12 @@
         geom,
         geom.xScale.toPixel(brushSpan.start),
         geom.xScale.toPixel(brushSpan.end),
+        theme.chartPalette,
       );
     }
-    if (highlights.length > 0) drawHighlights(ctx, geom, highlights, dotRadius);
+    if (highlights.length > 0) {
+      drawHighlights(ctx, geom, highlights, dotRadius, theme.chartPalette);
+    }
   });
 
   function localX(e: PointerEvent): number {
@@ -407,7 +414,7 @@
     cursor: pointer;
   }
   .chart:focus-visible {
-    outline: 2px solid #0969da;
+    outline: 2px solid var(--accent-emphasis);
     outline-offset: -2px;
   }
   canvas {

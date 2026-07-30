@@ -241,8 +241,8 @@
     align-items: center;
     gap: 4px;
     padding: 4px 6px;
-    background: #fff;
-    border: 1px solid #d0d7de;
+    background: var(--bg-canvas);
+    border: 1px solid var(--border-default);
     border-radius: 6px;
     /* Grow to fill the filter row (previously on the .filter-column
        wrapper we dropped when removing the Fields hint). */
@@ -250,8 +250,8 @@
     min-width: 300px;
   }
   .filter-input:focus-within {
-    border-color: #0969da;
-    box-shadow: 0 0 0 3px rgba(9, 105, 218, 0.15);
+    border-color: var(--accent-emphasis);
+    box-shadow: 0 0 0 3px var(--accent-focus-ring);
   }
   .filter-text {
     flex: 1;
@@ -267,12 +267,12 @@
     align-items: center;
     gap: 4px;
     padding: 2px 2px 2px 6px;
-    background: #eef1ff;
-    border: 1px solid #b1c2ff;
+    background: var(--chip-pill-bg);
+    border: 1px solid var(--chip-pill-border);
     border-radius: 999px;
     font-size: 12px;
     line-height: 1.2;
-    color: #24292f;
+    color: var(--chip-pill-fg);
   }
   .chip-field {
     font-size: 10px;
@@ -280,29 +280,29 @@
     letter-spacing: 0.04em;
     padding: 1px 4px;
     border-radius: 3px;
-    background: #dbe4ff;
-    color: #383f9c;
+    background: var(--field-platform-chip-bg);
+    color: var(--field-platform-fg);
   }
   .chip-field-repo {
-    background: #ffddec;
-    color: #a4133c;
+    background: var(--field-repo-chip-bg);
+    color: var(--field-repo-fg);
   }
   .chip-field-platform {
-    background: #dbe4ff;
-    color: #383f9c;
+    background: var(--field-platform-chip-bg);
+    color: var(--field-platform-fg);
   }
   .chip-field-application {
-    background: #cff0ff;
-    color: #0a4b70;
+    background: var(--field-app-bg);
+    color: var(--field-app-fg);
   }
   .chip-field-option {
-    background: #e5e7eb;
-    color: #374151;
+    background: var(--field-option-chip-bg);
+    color: var(--field-option-chip-fg);
   }
   .chip-field-suite,
   .chip-field-test {
-    background: #dafbe1;
-    color: #116329;
+    background: var(--field-suite-bg);
+    color: var(--field-suite-fg);
   }
   .chip-value {
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -315,13 +315,13 @@
     line-height: 1;
     background: transparent;
     border: 0;
-    color: #57606a;
+    color: var(--fg-muted);
     cursor: pointer;
     font-size: 14px;
     border-radius: 999px;
   }
   .chip-remove:hover {
-    background: rgba(0, 0, 0, 0.08);
-    color: #1f2328;
+    background: var(--bg-overlay-active);
+    color: var(--fg-default);
   }
 </style>

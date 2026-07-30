@@ -5,6 +5,7 @@
   import type { AppState, Selection } from './appState.svelte';
   import type { Highlight } from './chartDraw';
   import ScatterChart, { type ChartHit } from './ScatterChart.svelte';
+  import ThemeToggle from './ThemeToggle.svelte';
   import type { SelectedPoint } from './urlState';
   import { describeSpan, matchingPreset, RANGE_PRESETS } from './timeRange';
 
@@ -143,6 +144,10 @@
       <button type="button" disabled={!app.zoom} onclick={() => app.resetZoom()}>
         Reset zoom
       </button>
+      <!-- The app has no toolbar of its own; this header is the only chrome
+           that's always on screen, so the theme control lives at the end of
+           it. Fixed width (see ThemeToggle), so it can't reflow the row. -->
+      <ThemeToggle />
     </div>
   </header>
 
@@ -213,7 +218,7 @@
     flex-direction: column;
     min-width: 0;
     min-height: 0;
-    background: #fff;
+    background: var(--bg-canvas);
   }
   header {
     display: flex;
@@ -222,7 +227,7 @@
     justify-content: space-between;
     gap: 8px 16px;
     padding: 8px 12px;
-    border-bottom: 1px solid #d0d7de;
+    border-bottom: 1px solid var(--border-default);
     font: 13px/1.4 system-ui, sans-serif;
   }
   .ranges,
@@ -232,7 +237,7 @@
     gap: 6px;
   }
   .label {
-    color: #57606a;
+    color: var(--fg-muted);
   }
   .replicates {
     display: flex;
@@ -247,17 +252,17 @@
   }
   .span-text {
     margin-left: 6px;
-    color: #57606a;
+    color: var(--fg-muted);
     font-variant-numeric: tabular-nums;
   }
   .hint {
-    color: #8c959f;
+    color: var(--fg-subtle);
   }
   .loading-slot {
     /* Reserved even when idle: "Loading 8…" must not shove the zoom controls
        sideways the moment a fetch begins. */
     min-width: 8ch;
-    color: #57606a;
+    color: var(--fg-muted);
     visibility: hidden;
   }
   .loading-slot.visible {
@@ -275,7 +280,7 @@
     cursor: default;
   }
   button:disabled:hover {
-    background: #fff;
+    background: var(--bg-canvas);
   }
   .errors {
     display: flex;
@@ -283,9 +288,9 @@
     justify-content: space-between;
     gap: 12px;
     padding: 6px 12px;
-    border-bottom: 1px solid #ffcecb;
-    background: #fff5f5;
-    color: #cf222e;
+    border-bottom: 1px solid var(--danger-border);
+    background: var(--danger-subtle);
+    color: var(--danger-fg);
     font: 12px/1.5 system-ui, sans-serif;
   }
   .error-list {
@@ -295,23 +300,23 @@
   button {
     font: inherit;
     padding: 3px 8px;
-    border: 1px solid #d0d7de;
+    border: 1px solid var(--border-default);
     border-radius: 6px;
-    background: #fff;
+    background: var(--bg-canvas);
     cursor: pointer;
   }
   button:hover {
-    background: #f3f4f6;
+    background: var(--bg-hover);
   }
   button.active {
-    background: #0969da;
-    border-color: #0969da;
-    color: #fff;
+    background: var(--accent-emphasis);
+    border-color: var(--accent-emphasis);
+    color: var(--fg-on-emphasis);
   }
   .overview {
     height: 84px;
     flex: none;
-    border-bottom: 1px solid #eaeef2;
+    border-bottom: 1px solid var(--border-muted);
   }
   .detail {
     position: relative;
@@ -323,7 +328,7 @@
     top: 4px;
     left: 8px;
     font: 11px system-ui, sans-serif;
-    color: #57606a;
+    color: var(--fg-muted);
     pointer-events: none;
   }
   .overlay-note {
@@ -333,7 +338,7 @@
     align-items: center;
     justify-content: center;
     margin: 0;
-    color: #8c959f;
+    color: var(--fg-subtle);
     font: 14px system-ui, sans-serif;
     pointer-events: none;
   }

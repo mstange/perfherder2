@@ -16,6 +16,7 @@ import {
   type SeriesSymbol,
 } from './chart';
 import type { PushGroup, SeriesPoint } from './graphData';
+import type { ChartPalette } from './theme';
 
 export type DrawSeries = {
   color: string;
@@ -38,6 +39,9 @@ export type DrawOptions = {
   // (task requirement) — at overview density the lines are just noise.
   showLines: boolean;
   showAxes: boolean;
+  // The theme's chart colors. Passed in rather than read off the DOM so the
+  // drawing stays a function of its arguments — see theme.ts.
+  palette: ChartPalette;
 };
 
 // Why a point is highlighted. Three states that have to be told apart at a
@@ -53,9 +57,6 @@ export type HighlightKind = 'selected' | 'compared' | 'hovered';
 // A highlighted point, in data coordinates.
 export type Highlight = { x: number; y: number; color: string; kind: HighlightKind };
 
-const AXIS_COLOR = '#d0d7de';
-const GRID_COLOR = '#eef1f4';
-const TEXT_COLOR = '#57606a';
 const FONT = '11px system-ui, sans-serif';
 
 export function drawChart(ctx: CanvasRenderingContext2D, o: DrawOptions): void {
@@ -88,7 +89,7 @@ function drawGrid(
   tTicks: { value: number }[],
 ): void {
   const { geom } = o;
-  ctx.strokeStyle = GRID_COLOR;
+  ctx.strokeStyle = o.palette.grid;
   ctx.lineWidth = 1;
   ctx.beginPath();
   for (const v of vTicks) {
@@ -106,7 +107,7 @@ function drawGrid(
   }
   ctx.stroke();
 
-  ctx.strokeStyle = AXIS_COLOR;
+  ctx.strokeStyle = o.palette.axis;
   ctx.beginPath();
   ctx.rect(geom.x0 + 0.5, geom.y0 + 0.5, geom.plotWidth - 1, geom.plotHeight - 1);
   ctx.stroke();
@@ -119,7 +120,7 @@ function drawAxisLabels(
   tTicks: { value: number; label: string }[],
 ): void {
   const { geom } = o;
-  ctx.fillStyle = TEXT_COLOR;
+  ctx.fillStyle = o.palette.text;
   ctx.font = FONT;
 
   ctx.textAlign = 'right';
@@ -255,10 +256,11 @@ export function drawHighlights(
   geom: PlotGeometry,
   highlights: Highlight[],
   dotRadius: number,
+  palette: ChartPalette,
 ): void {
   for (const kind of HIGHLIGHT_ORDER) {
     for (const h of highlights) {
-      if (h.kind === kind) drawHighlight(ctx, geom, h, dotRadius);
+      if (h.kind === kind) drawHighlight(ctx, geom, h, dotRadius, palette);
     }
   }
 }
@@ -268,6 +270,7 @@ function drawHighlight(
   geom: PlotGeometry,
   h: Highlight,
   dotRadius: number,
+  palette: ChartPalette,
 ): void {
   const x = geom.xScale.toPixel(h.x);
   const y = geom.yScale.toPixel(h.y);
@@ -285,7 +288,7 @@ function drawHighlight(
     ctx.fill();
   }
   ctx.lineWidth = 2;
-  ctx.strokeStyle = '#1f2328';
+  ctx.strokeStyle = palette.ring;
   ctx.setLineDash(h.kind === 'selected' ? [] : [3, 2]);
   ctx.stroke();
   ctx.setLineDash([]);
@@ -298,15 +301,16 @@ export function drawBrush(
   geom: PlotGeometry,
   fromPx: number,
   toPx: number,
+  palette: ChartPalette,
 ): void {
   const lo = Math.max(geom.x0, Math.min(fromPx, toPx));
   const hi = Math.min(geom.x1, Math.max(fromPx, toPx));
   ctx.save();
-  ctx.fillStyle = 'rgba(31, 35, 40, 0.10)';
+  ctx.fillStyle = palette.brushDim;
   if (lo > geom.x0) ctx.fillRect(geom.x0, geom.y0, lo - geom.x0, geom.plotHeight);
   if (hi < geom.x1) ctx.fillRect(hi, geom.y0, geom.x1 - hi, geom.plotHeight);
 
-  ctx.strokeStyle = '#0969da';
+  ctx.strokeStyle = palette.brushLine;
   ctx.lineWidth = 1;
   ctx.beginPath();
   ctx.moveTo(Math.round(lo) + 0.5, geom.y0);
@@ -315,7 +319,7 @@ export function drawBrush(
   ctx.lineTo(Math.round(hi) + 0.5, geom.y1);
   ctx.stroke();
 
-  ctx.fillStyle = '#0969da';
+  ctx.fillStyle = palette.brushLine;
   const handleH = Math.min(18, geom.plotHeight);
   const handleY = geom.y0 + (geom.plotHeight - handleH) / 2;
   ctx.fillRect(Math.round(lo) - 1.5, handleY, 3, handleH);
