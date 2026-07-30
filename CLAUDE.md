@@ -26,8 +26,9 @@ non-trivial change should be checked against that document.
   empty states from the start.
 - **No hardcoded colors.** Every color comes from a custom property in
   `src/app.css`, which defines both themes. A literal hex in a component
-  is a color that only exists in one of them. The graphs' canvas palette
-  is the documented exception — see "Theming" in docs/design.md.
+  is a color that only exists in one of them. Two documented exceptions,
+  both of which can't reach a custom property: the graphs' canvas palette
+  (see "Theming" in docs/design.md) and `public/favicon.svg`.
 
 ## What this project is
 
