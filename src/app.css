@@ -102,6 +102,10 @@
   --chip-pill-bg: #eef1ff;
   --chip-pill-border: #b1c2ff;
   --chip-pill-fg: #24292f;
+  /* Run-activity bars in the picker. Deliberately quiet: the strip is
+     peripheral information the eye should be able to skim past, and 29 rows
+     of it at full contrast would compete with the badges that name the row. */
+  --activity-bar: #8c959f;
   /* Badge hover. A badge is already a filled pill, so the hover cue is a
      brightness step on whatever fill it has — which has to go the other way in
      dark mode, where darker reads as further away rather than as touched. */
@@ -182,6 +186,7 @@
   --chip-pill-bg: #1c1f3d;
   --chip-pill-border: #3a3f7a;
   --chip-pill-fg: #e6edf3;
+  --activity-bar: #6e7681;
   --badge-hover-brightness: 1.25;
 
   --backdrop: rgba(1, 4, 9, 0.65);

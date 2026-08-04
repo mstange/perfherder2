@@ -542,6 +542,62 @@ over a faint blue row tint.
   while the panel is open today (adding closes it), but stale marks would
   be a lie about the graph rather than a cosmetic issue.
 
+### Run activity is fetched for the visible window only
+
+Two rows in the picker can differ only in ways the columns don't make
+meaningful — three platform variants of one suite, a `-fis` and a `-nofis`
+option set — and nothing on screen said which one is actually being
+measured. The `runs (14 days)` column answers that: a count over the
+selected time range, plus a density strip of when those runs happened, so
+"ran heavily for three days then stopped" doesn't read as healthy the way a
+bare count does.
+
+Data comes from `/project/<repo>/performance/data/`, which takes many
+`signature_id`s per request — about 3.5 KB gzipped each, so one screenful is
+one request per repo rather than one per row. That's what makes the column
+affordable enough to be always-on rather than reveal-on-hover, which would
+defeat the point: the hard part is *scanning* a list, which you can't do one
+row at a time.
+
+Three quirks of that endpoint, all recorded in
+[activityApi.ts](../src/lib/activityApi.ts) and
+[activity.ts](../src/lib/activity.ts):
+
+- **The response is keyed by `signature_hash`, not by id**, and the hash
+  aliases within a repo (see "Row identity" above), so one bucket can hold
+  datums for two requested series. `buildActivities` regroups on each
+  datum's own `signature_id` and ignores the keys.
+- **Signatures with no data are omitted**, not returned empty. Iterating the
+  *requested* ids is what turns that silence into `total: 0` — otherwise an
+  idle row stays pending forever, and "this never runs" is exactly the answer
+  the column exists to give.
+- **Requests cap out at ~195 ids**: treeherder's frontend rejects a longer
+  request line (`Request Line is too large (6069 > 4094)`) before Django sees
+  it. We batch at 150.
+
+Bins are aligned to the **end** of the window. At 90 days the range isn't a
+whole multiple of the 4-day bin, so one bin is partial; aligned to the start
+it would be the rightmost bar — the one that answers "is this running *now*"
+— covering half the time of its neighbours and reading as a decline that
+isn't there.
+
+**The column is deliberately not sortable.** Sorting would need counts for
+every one of the ~25k filtered rows; we fetch only the ~29 on screen. If
+sorting turns out to be what's wanted, the shape of the fix is to fetch
+counts for the whole filtered set once it's under a couple of hundred rows
+and enable the header then.
+
+A failed activity fetch is recorded on the row as a muted `—`, not in the
+error banner: the column is decoration on a list that works without it, and
+it must not be the reason the picker looks broken.
+
+One layout note, since it was measured rather than guessed: the existing
+column percentages summed to exactly 100%, which over-specifies the table
+once a px-width column joins them under `table-layout: fixed`, so they came
+down. Raising the table's `min-width` to compensate was tried and reverted —
+at 1100px and above the columns come out identical either way, and below that
+its only effect is to push the panel further past the edge of a narrow window.
+
 ### Theming: one resolved attribute, one exception
 
 Light and dark, defaulting to the OS. The three moving parts:

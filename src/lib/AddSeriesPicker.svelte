@@ -1,5 +1,6 @@
 <script lang="ts">
   import { untrack } from 'svelte';
+  import { activityPath, activityTitle } from './activity';
   import { TIME_RANGES, type Series } from './api';
   import { type FilterField, type SortColumn } from './filter';
   import { PickerState } from './pickerState.svelte';
@@ -69,6 +70,11 @@
   // they don't horizontally re-flow as new rows scroll in either.
   const ROW_HEIGHT = 36;
   const OVERSCAN = 6;
+
+  // Run-activity strip geometry, in px. Fixed, so a row's activity cell
+  // occupies exactly the same space before and after its data arrives.
+  const STRIP_W = 72;
+  const STRIP_H = 14;
 
   type FlatRow =
     | { kind: 'parent'; row: Series }
@@ -148,6 +154,24 @@
   // same vertical scrollbar the loaded list does, so no column shifts when the
   // rows arrive.
   const skeletonCount = $derived(Math.max(1, Math.floor(viewportHeight / ROW_HEIGHT)));
+
+  // The label the Time range select is showing, for the column header and the
+  // hover text. Taken from TIME_RANGES rather than a second abbreviation
+  // table, so there is one place where "14 days" is spelled.
+  const rangeLabel = $derived(
+    TIME_RANGES.find((t) => t.value === picker.timeRangeSeconds)?.label ?? '',
+  );
+
+  // Ask for run activity for whatever is on screen. `visibleWindow` already
+  // includes the overscan, so this covers the rows about to scroll in too.
+  // `requestActivity` drops everything cached or in flight, so this firing on
+  // every scroll tick is cheap — and it debounces internally, so a flung
+  // scrollbar doesn't queue a request per frame.
+  $effect(() => {
+    picker.requestActivity(
+      visibleWindow.flatMap((item) => (item.kind === 'note' ? [] : [item.row])),
+    );
+  });
 
   function rowKey(item: FlatRow, index: number): string {
     if (item.kind === 'parent') return `p:${item.row.id}`;
@@ -280,6 +304,7 @@
         <col class="col-app-w" />
         <col class="col-options-w" />
         <col class="col-unit-w" />
+        <col class="col-activity-w" />
       </colgroup>
       <thead>
         {#snippet sortHeader(label: string, column: SortColumn)}
@@ -329,6 +354,12 @@
           {@render sortHeader('Application', 'application')}
           {@render sortHeader('Options', 'options')}
           {@render sortHeader('Unit', 'unit')}
+          <!-- Not a sortHeader, deliberately: sorting by run count would need
+               counts for every one of the ~25k filtered rows, and we fetch
+               only the ~29 on screen. See docs/design.md. -->
+          <th class="col-activity" title="Runs recorded in the selected time range">
+            runs ({rangeLabel})
+          </th>
         </tr>
       </thead>
       <tbody>
@@ -383,9 +414,45 @@
           </td>
         {/snippet}
 
+        <!-- Three states in one fixed-size cell, so nothing moves as batches
+             land: not fetched yet, failed, and answered. The <svg> is always
+             present at the same width and height even when it draws nothing —
+             an empty box is what keeps the column from twitching row by row.
+             `{@const}` takes no type annotation, so `activity` is inferred as
+             `Activity | null` from `activityFor`. -->
+        {#snippet activityCell(row: Series)}
+          {@const activity = picker.activityFor(row)}
+          <td class="col-activity">
+            <span class="activity">
+              {#if activity === null}
+                <span class="runs runs-pending">·</span>
+              {:else if 'error' in activity}
+                <span class="runs runs-pending" title="Run activity failed: {activity.error}"
+                  >—</span
+                >
+              {:else}
+                <span class="runs" title={activityTitle(activity, rangeLabel, Date.now())}
+                  >{activity.total.toLocaleString()}</span
+                >
+              {/if}
+              <svg
+                class="strip"
+                width={STRIP_W}
+                height={STRIP_H}
+                viewBox="0 0 {STRIP_W} {STRIP_H}"
+                aria-hidden="true"
+              >
+                {#if activity !== null && !('error' in activity)}
+                  <path d={activityPath(activity.counts, STRIP_W, STRIP_H)} />
+                {/if}
+              </svg>
+            </span>
+          </td>
+        {/snippet}
+
         {#if topPadding > 0}
           <tr class="spacer" aria-hidden="true" style="height: {topPadding}px">
-            <td colspan="8"></td>
+            <td colspan="9"></td>
           </tr>
         {/if}
         {#each visibleWindow as item, i (rowKey(item, startIndex + i))}
@@ -431,6 +498,7 @@
                 {/each}
               </td>
               <td class="unit">{row.measurementUnit}</td>
+              {@render activityCell(row)}
             </tr>
           {:else if item.kind === 'child'}
             {@const child = item.row}
@@ -459,16 +527,17 @@
                 {/each}
               </td>
               <td class="unit">{child.measurementUnit}</td>
+              {@render activityCell(child)}
             </tr>
           {:else}
             <tr class="subtest-note">
-              <td colspan="8">{item.message}</td>
+              <td colspan="9">{item.message}</td>
             </tr>
           {/if}
         {/each}
         {#if bottomPadding > 0}
           <tr class="spacer" aria-hidden="true" style="height: {bottomPadding}px">
-            <td colspan="8"></td>
+            <td colspan="9"></td>
           </tr>
         {/if}
         {#if picker.listStatus === 'loading'}
@@ -478,7 +547,7 @@
                lands, and they make a slow fetch look like progress rather than
                like an empty table. Hidden from assistive technology, which
                gets `aria-busy` on the scroller and the status row's
-               "Loading…" instead of eight bars per row. -->
+               "Loading…" instead of seven bars per row. -->
           {#each Array(skeletonCount) as _, i (i)}
             <tr class="skeleton" aria-hidden="true">
               <td class="col-check"></td>
@@ -489,10 +558,11 @@
               <td><span class="skeleton-bar"></span></td>
               <td><span class="skeleton-bar"></span></td>
               <td><span class="skeleton-bar"></span></td>
+              <td><span class="skeleton-bar"></span></td>
             </tr>
           {/each}
         {:else if picker.listStatus !== 'rows'}
-          <tr><td colspan="8" class="empty">
+          <tr><td colspan="9" class="empty">
             {#if picker.listStatus === 'no-repos'}
               No repositories selected — check one above.
             {:else}
@@ -716,12 +786,24 @@
      table's actual width; the two narrow columns are pinned in px. */
   col.col-check-w    { width: 32px; }
   col.col-disclose-w { width: 24px; }
-  col.col-suite-w    { width: 26%; }
-  col.col-app-w      { width: 10%; }
-  col.col-repo-w     { width: 10%; }
-  col.col-platform-w { width: 20%; }
-  col.col-options-w  { width: 26%; }
-  col.col-unit-w     { width: 8%; }
+  col.col-suite-w    { width: 22%; }
+  col.col-app-w      { width: 8%; }
+  col.col-repo-w     { width: 8%; }
+  col.col-platform-w { width: 16%; }
+  col.col-options-w  { width: 22%; }
+  col.col-unit-w     { width: 6%; }
+  /* Fixed rather than a percentage: the count and the strip are both a known
+     number of pixels wide, so this column has an actual right answer and no
+     reason to breathe with the viewport. The percentages above came down from
+     a set summing to 100% to make room — 100% plus a fixed column
+     over-specifies the table, and the browser then shrinks the percentage
+     columns by whatever it feels like.
+
+     Raising the table's `min-width` to match was tried and reverted: at 1100px
+     and above the columns come out identical either way, and below that the
+     only effect is to push the panel further past the right edge of a narrow
+     window. */
+  col.col-activity-w { width: 128px; }
   thead th {
     position: sticky;
     top: 0;
@@ -955,6 +1037,30 @@
     color: var(--fg-muted);
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
     font-size: 12px;
+  }
+  .activity {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 6px;
+  }
+  .runs {
+    /* Reserved width, in digits that are all the same width: 6 becoming
+       1,204 must not shove the strip sideways. */
+    font-variant-numeric: tabular-nums;
+    min-width: 5ch;
+    text-align: right;
+  }
+  .runs-pending {
+    color: var(--fg-subtle);
+  }
+  .strip {
+    /* Always laid out, even when it draws nothing — the empty box is what
+       stops the column twitching as batches land. `block` because an inline
+       svg picks up the line box's descender and would sit low in the row. */
+    display: block;
+    flex: none;
+    fill: var(--activity-bar);
   }
   .empty {
     text-align: center;

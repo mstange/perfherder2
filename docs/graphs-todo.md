@@ -29,6 +29,10 @@ Living checklist. Update in the same commit as the work it describes.
 - Per-series visibility (click the swatch), carried in the URL
 - Drag-to-reorder in the series list, with the ↑/↓ buttons as the
   keyboard-reachable equivalent
+- Run activity in the picker — a per-row run count and density strip over the
+  selected time range, fetched in batches for the visible window only
+  (`activity.ts`, `activityApi.ts`, + tests). See design.md, "Run activity is
+  fetched for the visible window only"
 - Push value distributions and comparison mode — `kde.ts`, `stats.ts`,
   `distribution.ts`, `distributionDraw.ts`, `compare.ts`,
   `DistributionChart.svelte` (+ tests for all the pure halves). See
