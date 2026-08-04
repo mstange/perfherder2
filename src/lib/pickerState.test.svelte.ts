@@ -11,15 +11,22 @@
 
 import { flushSync } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { DEFAULT_REPOS, PINNED_REPOS } from './api';
+import { MAX_IDS_PER_REQUEST } from './activity';
+import { DEFAULT_REPOS, PINNED_REPOS, type Series } from './api';
 import type { FilterChip } from './filter';
-import { PickerState } from './pickerState.svelte';
+import { ACTIVITY_DEBOUNCE_MS, PickerState } from './pickerState.svelte';
 import { EMPTY_PICKER_VIEW, type PickerViewState } from './urlState';
 
 let fetchMock: ReturnType<typeof vi.fn>;
 // The signatures payload each repo fetch answers with; tests that care about
 // rows replace it before building the picker.
 let signatures: Record<string, unknown> = {};
+// The /performance/data/ payload, keyed by signature_hash as the endpoint
+// keys it. Tests that care replace it before building the picker.
+let activityData: Record<string, unknown> = {};
+// Every /performance/data/ URL the picker asked for, in order — the batching
+// assertions are all about how many of these there are and what's in them.
+let activityUrls: string[] = [];
 
 function json(body: unknown) {
   return { ok: true, status: 200, json: () => Promise.resolve(body) } as Response;
@@ -40,11 +47,17 @@ function signature(id: number, o: Record<string, unknown> = {}) {
 
 beforeEach(() => {
   signatures = {};
+  activityData = {};
+  activityUrls = [];
   fetchMock = vi.fn(async (url: string) => {
     const s = String(url);
     if (s.includes('/performance/framework/')) return json([{ id: 13, name: 'browsertime' }]);
     if (s.includes('/optioncollectionhash/')) {
       return json([{ option_collection_hash: 'H_OPT', options: [{ name: 'opt' }] }]);
+    }
+    if (s.includes('/performance/data/')) {
+      activityUrls.push(s);
+      return json(activityData);
     }
     // The signatures payload; an empty map is a valid response.
     return json(signatures);
@@ -87,6 +100,26 @@ async function settle() {
     await Promise.resolve();
     flushSync();
   }
+}
+
+// One datum shaped like /performance/data/ sends them, for tests that only
+// care how many came back.
+const datum = {
+  id: 1,
+  signature_id: 1,
+  job_id: 1,
+  push_id: 1,
+  revision: 'abc',
+  push_timestamp: 1785155040,
+  value: 1,
+};
+
+// Wait out the activity debounce, then let the fetch promises settle. Real
+// timers, because the debounce is a plain setTimeout and faking timers here
+// would also freeze the promise scheduling the fetches depend on.
+async function settleActivity(): Promise<void> {
+  await new Promise((r) => setTimeout(r, ACTIVITY_DEBOUNCE_MS + 20));
+  await settle();
 }
 
 function signatureRepos(): string[] {
@@ -325,6 +358,168 @@ describe('PickerState.plotted', () => {
         p.toggleSelectAll();
         expect([...p.picked.keys()]).toEqual([2]);
         expect(p.allPickablePicked).toBe(true);
+      },
+    );
+  });
+});
+
+describe('PickerState run activity', () => {
+  // The picker asks for activity only for the rows a caller says are on
+  // screen, so every test here drives `requestActivity` by hand — that seam is
+  // exactly what AddSeriesPicker's virtual-scroll effect does.
+
+  function rowFor(picker: PickerState, id: number): Series {
+    return picker.combined.find((s) => s.id === id)!;
+  }
+
+  it('fetches nothing until asked', () => {
+    signatures = { '1': signature(1) };
+    return withPicker(
+      (p) => p.seed(view({ repos: ['autoland'] })),
+      async (p) => {
+        await settle();
+        expect(activityUrls).toEqual([]);
+        expect(p.activityFor(rowFor(p, 1))).toBeNull();
+      },
+    );
+  });
+
+  it('batches one request per repo and fills the cache', () => {
+    signatures = { '1': signature(1), '2': signature(2) };
+    activityData = { hash1: [{ ...datum, signature_id: 1 }] };
+    return withPicker(
+      (p) => p.seed(view({ repos: ['autoland', 'mozilla-central'] })),
+      async (p) => {
+        await settle();
+        p.requestActivity(p.combined);
+        await settleActivity();
+        expect(activityUrls).toHaveLength(2);
+        expect(activityUrls.some((u) => u.includes('/autoland/'))).toBe(true);
+        expect(activityUrls.some((u) => u.includes('/mozilla-central/'))).toBe(true);
+        const autoland = activityUrls.find((u) => u.includes('/autoland/'))!;
+        expect(autoland).toContain('signature_id=1');
+        expect(autoland).toContain('signature_id=2');
+        const a = p.activityFor(rowFor(p, 1))!;
+        expect('error' in a).toBe(false);
+      },
+    );
+  });
+
+  it('records 0 for a row the response omits, rather than leaving it pending', () => {
+    signatures = { '1': signature(1) };
+    activityData = {};
+    return withPicker(
+      (p) => p.seed(view({ repos: ['autoland'] })),
+      async (p) => {
+        await settle();
+        p.requestActivity(p.combined);
+        await settleActivity();
+        // "This never runs" is exactly the answer the column exists to give,
+        // so it must be a real entry rather than a permanent pending state.
+        expect(p.activityFor(rowFor(p, 1))).toMatchObject({ total: 0, lastRunMs: null });
+      },
+    );
+  });
+
+  it('does not refetch a row that is already cached', () => {
+    signatures = { '1': signature(1) };
+    return withPicker(
+      (p) => p.seed(view({ repos: ['autoland'] })),
+      async (p) => {
+        await settle();
+        p.requestActivity(p.combined);
+        await settleActivity();
+        const before = activityUrls.length;
+        p.requestActivity(p.combined);
+        await settleActivity();
+        expect(activityUrls).toHaveLength(before);
+      },
+    );
+  });
+
+  it('coalesces rows requested during the debounce window into one request', () => {
+    signatures = { '1': signature(1), '2': signature(2), '3': signature(3) };
+    return withPicker(
+      (p) => p.seed(view({ repos: ['autoland'] })),
+      async (p) => {
+        await settle();
+        // Three separate calls, as a scroll would make them.
+        p.requestActivity([rowFor(p, 1)]);
+        p.requestActivity([rowFor(p, 2)]);
+        p.requestActivity([rowFor(p, 3)]);
+        await settleActivity();
+        expect(activityUrls).toHaveLength(1);
+        for (const id of [1, 2, 3]) expect(activityUrls[0]).toContain(`signature_id=${id}`);
+      },
+    );
+  });
+
+  it('splits a batch larger than the request-line limit', () => {
+    signatures = {};
+    for (let id = 1; id <= MAX_IDS_PER_REQUEST + 5; id++) {
+      signatures[String(id)] = signature(id);
+    }
+    return withPicker(
+      (p) => p.seed(view({ repos: ['autoland'] })),
+      async (p) => {
+        await settle();
+        p.requestActivity(p.combined);
+        await settleActivity();
+        // 155 ids at 150 per request.
+        expect(activityUrls).toHaveLength(2);
+      },
+    );
+  });
+
+  it('records the failure on the row rather than in the error banner', () => {
+    // Activity is decoration on a list that works without it. A failed fetch
+    // must not be why the picker looks broken.
+    signatures = { '1': signature(1) };
+    fetchMock.mockImplementation(async (url: string) => {
+      const s = String(url);
+      if (s.includes('/performance/framework/')) {
+        return json([{ id: 13, name: 'browsertime' }]);
+      }
+      if (s.includes('/optioncollectionhash/')) {
+        return json([{ option_collection_hash: 'H_OPT', options: [{ name: 'opt' }] }]);
+      }
+      if (s.includes('/performance/data/')) {
+        activityUrls.push(s);
+        return { ok: false, status: 503, statusText: '' } as Response;
+      }
+      return json(signatures);
+    });
+    return withPicker(
+      (p) => p.seed(view({ repos: ['autoland'] })),
+      async (p) => {
+        await settle();
+        p.requestActivity(p.combined);
+        await settleActivity();
+        const a = p.activityFor(rowFor(p, 1))!;
+        expect('error' in a).toBe(true);
+        expect(p.errors).toEqual([]);
+      },
+    );
+  });
+
+  it('misses the cache after the time range changes', () => {
+    signatures = { '1': signature(1) };
+    return withPicker(
+      (p) => p.seed(view({ repos: ['autoland'], intervalSeconds: 1209600 })),
+      async (p) => {
+        await settle();
+        p.requestActivity(p.combined);
+        await settleActivity();
+        const before = activityUrls.length;
+        p.timeRangeSeconds = 604800;
+        flushSync();
+        // A range change refetches the signature list too; wait for the new
+        // rows before asking about them.
+        await settle();
+        p.requestActivity(p.combined);
+        await settleActivity();
+        expect(activityUrls.length).toBeGreaterThan(before);
+        expect(activityUrls[activityUrls.length - 1]).toContain('interval=604800');
       },
     );
   });

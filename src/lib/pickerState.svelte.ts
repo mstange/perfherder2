@@ -9,6 +9,14 @@
 // component.
 
 import {
+  MAX_IDS_PER_REQUEST,
+  activityCacheKey,
+  buildActivities,
+  chunkIds,
+  type Activity,
+} from './activity';
+import { fetchActivityData } from './activityApi';
+import {
   DEFAULT_REPOS,
   PINNED_REPOS,
   buildOptionMap,
@@ -39,6 +47,18 @@ import {
 import type { PickerViewState } from './urlState';
 
 export type ExpansionOverride = 'user-open' | 'user-closed';
+
+// Long enough that a flung scrollbar doesn't queue a request per frame for
+// windows nobody looked at, short enough that a deliberate scroll-and-read
+// fills in while the eye is still travelling.
+export const ACTIVITY_DEBOUNCE_MS = 150;
+
+// Bounded like the graph caches: scrolling a 25k-row list would otherwise
+// accumulate entries for the lifetime of the tab. Eviction is insertion
+// order — least recently *fetched*, not least recently read. True read-LRU
+// would mean writing to the cache during render, which isn't worth it for a
+// decoration; the cost is that scrolling far away and back refetches.
+const MAX_ACTIVITY_ENTRIES = 5000;
 
 export class PickerState {
   // ---- User-visible controls --------------------------------------------
@@ -72,6 +92,23 @@ export class PickerState {
   seriesCache = $state(new Map<string, Series[]>());
   loadingRepos = $state(new Set<string>());
   errors = $state<string[]>([]);
+
+  // ---- Run activity -----------------------------------------------------
+  // How often each row has actually run in the selected range, for the rows a
+  // caller says are on screen. Fetched lazily and in batches because the
+  // alternative — counts for all ~25k filtered rows — is what makes the
+  // column unaffordable, and reveal-on-hover is what makes it useless.
+  //
+  // `activityCacheKey(row.key, interval)` → the row's answer, or the reason
+  // it hasn't got one. An absent entry means "not fetched yet", which is why
+  // an idle series has to be stored as `total: 0` rather than left out.
+  activityCache = $state(new Map<string, Activity>());
+  // Cache keys queued or in flight, so a row isn't requested twice.
+  private activityPending = new Set<string>();
+  // Rows waiting for the next batch, keyed by `Series.key` to dedupe.
+  private activityQueue = new Map<string, Series>();
+  private activityTimer: ReturnType<typeof setTimeout> | null = null;
+  private activityControllers = new Set<AbortController>();
 
   // ---- Selection --------------------------------------------------------
   picked = $state(new Map<number, Series>());
@@ -216,6 +253,14 @@ export class PickerState {
         void this.loadRepo(repo, this.needSubtestsFetch, this.timeRangeSeconds);
       }
     });
+
+    // Stop paying for activity in a window the user has left. Reading
+    // `timeRangeSeconds` is the whole subscription; the first run is a no-op
+    // because nothing is in flight yet.
+    $effect(() => {
+      void this.timeRangeSeconds;
+      this.resetActivityRequests();
+    });
   }
 
   private async loadMetadata(): Promise<void> {
@@ -254,6 +299,117 @@ export class PickerState {
       done.delete(key);
       this.loadingRepos = done;
     }
+  }
+
+  // ---- Run activity fetching --------------------------------------------
+  // Null means "not fetched yet" — the caller renders a placeholder rather
+  // than a zero, which would be a claim we haven't earned.
+  activityFor(row: Series): Activity | null {
+    return (
+      this.activityCache.get(activityCacheKey(row.key, this.timeRangeSeconds)) ?? null
+    );
+  }
+
+  // Called from the picker's virtual-scroll effect with the rows currently on
+  // screen. Cheap and idempotent: everything already cached or in flight is
+  // dropped here, so a scroll that reveals two new rows queues two ids.
+  requestActivity(rows: readonly Series[]): void {
+    for (const row of rows) {
+      const key = activityCacheKey(row.key, this.timeRangeSeconds);
+      if (this.activityCache.has(key) || this.activityPending.has(key)) continue;
+      this.activityPending.add(key);
+      this.activityQueue.set(row.key, row);
+    }
+    if (this.activityQueue.size === 0 || this.activityTimer !== null) return;
+    this.activityTimer = setTimeout(() => {
+      this.activityTimer = null;
+      this.flushActivityQueue();
+    }, ACTIVITY_DEBOUNCE_MS);
+  }
+
+  // Abort whatever is in flight and forget what was queued. Called when the
+  // interval changes, purely to stop paying for answers about a window the
+  // user has left: every cache and pending key carries its interval, so a
+  // late response could only ever write an entry nobody reads. This is a
+  // bandwidth optimisation, not a correctness mechanism — if it ran late, or
+  // not at all, the column would still be right. Nothing here needs to be
+  // ordered against the fetch effect.
+  private resetActivityRequests(): void {
+    for (const c of this.activityControllers) c.abort();
+    this.activityControllers.clear();
+    this.activityPending.clear();
+    this.activityQueue.clear();
+    if (this.activityTimer !== null) {
+      clearTimeout(this.activityTimer);
+      this.activityTimer = null;
+    }
+  }
+
+  private flushActivityQueue(): void {
+    // Captured once: the interval must not change under a batch mid-flight.
+    const interval = this.timeRangeSeconds;
+    const byRepo = new Map<string, number[]>();
+    for (const row of this.activityQueue.values()) {
+      const ids = byRepo.get(row.repository);
+      if (ids) ids.push(row.id);
+      else byRepo.set(row.repository, [row.id]);
+    }
+    this.activityQueue.clear();
+    for (const [repo, ids] of byRepo) {
+      for (const chunk of chunkIds(ids, MAX_IDS_PER_REQUEST)) {
+        void this.loadActivity(repo, chunk, interval);
+      }
+    }
+  }
+
+  private async loadActivity(
+    repo: string,
+    ids: number[],
+    interval: number,
+  ): Promise<void> {
+    const controller = new AbortController();
+    this.activityControllers.add(controller);
+    // The keys these ids will be filed under. Built up front so the failure
+    // path marks exactly the same set the success path would have.
+    const keys = ids.map((id) => activityCacheKey(`${repo}|${id}`, interval));
+    try {
+      const response = await fetchActivityData(repo, ids, interval, controller.signal);
+      const built = buildActivities(ids, response, Date.now(), interval);
+      const entries: [string, Activity][] = [];
+      for (const [id, activity] of built) {
+        entries.push([activityCacheKey(`${repo}|${id}`, interval), activity]);
+      }
+      this.mergeActivity(entries);
+    } catch (e) {
+      // An aborted request isn't a failure to report — the interval moved on.
+      if (controller.signal.aborted) return;
+      // Per-row and quiet: no entry in `errors`, which is the banner the list
+      // uses for "your repos didn't load". This column is decoration on a
+      // list that works without it, and must not be why the picker looks
+      // broken.
+      const message = (e as Error).message;
+      this.mergeActivity(keys.map((k): [string, Activity] => [k, { error: message }]));
+    } finally {
+      this.activityControllers.delete(controller);
+      for (const k of keys) this.activityPending.delete(k);
+    }
+  }
+
+  private mergeActivity(entries: readonly [string, Activity][]): void {
+    if (entries.length === 0) return;
+    const next = new Map(this.activityCache);
+    for (const [k, v] of entries) {
+      // Delete before set so a refetched key moves to the end of the
+      // insertion order rather than keeping its old position.
+      next.delete(k);
+      next.set(k, v);
+    }
+    while (next.size > MAX_ACTIVITY_ENTRIES) {
+      const oldest = next.keys().next().value;
+      if (oldest === undefined) break;
+      next.delete(oldest);
+    }
+    this.activityCache = next;
   }
 
   // ---- Read helpers -----------------------------------------------------
