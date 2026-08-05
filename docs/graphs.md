@@ -58,8 +58,12 @@ which would put the twenty-commit pushlog above the value you asked about.
    datums with one value each, where a talos `ts_paint` has 20 apiece — so it is
    a case worth suppressing rather than a theoretical one. A heavily
    retriggered push goes the other way and makes this the longest section in the
-   pane — twelve runs is twelve groups — which is the cost of the ask, and the
-   cost falls on Build, which is meant to be at the bottom anyway.
+   pane — twelve runs is twelve groups — which is the cost of the ask, and the cost
+   falls on Build, which is meant to be at the bottom anyway. The chips are the
+   value alone, with no replicate index: the index was a rank over values we sorted
+   ourselves (see "The three-level hierarchy"), so it named no trial and no
+   execution order, and dropping it bought about a quarter of each chip's width —
+   enough to fit a five-replicate run on one line instead of two.
 5. **Run** — the job: type, machine, start, duration, task. `result` comes
    **last**; it reads "success" for all but a handful of points, since a job that
    failed outright recorded no performance data to click on. It's kept rather

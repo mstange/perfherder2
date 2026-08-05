@@ -488,6 +488,13 @@
                     <span class="muted">mean {formatValue(group.run.mean)}</span>
                   {/if}
                 </div>
+                <!-- Values only. The chips used to lead with the replicate's
+                     index, which cost about a quarter of each chip's width — two
+                     fewer per line — to print a number that means nothing: it's a
+                     rank over values we sorted ourselves (see `Run.values`), so it
+                     names no trial and no order the harness ran in. An `<ol>`
+                     still, because ascending *is* the order, and assistive tech
+                     can number the items itself if it wants to. -->
                 <ol class="replicates" title={REPLICATE_ORDER_HINT}>
                   {#each group.run.values as v, i}
                     <li class:selected={i === group.selectedIndex}>
@@ -501,8 +508,7 @@
                             replicateIndex: i,
                           })}
                       >
-                        <span class="idx">{i + 1}</span>
-                        <span class="num">{formatValue(v)}</span>
+                        {formatValue(v)}
                       </button>
                     </li>
                   {/each}
@@ -835,6 +841,13 @@
   .push-mean {
     margin-top: 8px;
   }
+  /* One chip per measurement, so how many fit on a line decides how much of a
+     retriggered push is readable without scrolling. 12px and 4px of side padding,
+     against the pane's 13px and 5px — small enough to matter, still a comfortable
+     click target. Measured on a 12-retrigger push of 5 replicates each: 59.2px per
+     chip before this and the index came off, 43.8px after, which takes each run
+     from two lines to one, the section from 1088px to 787px, and the pane's whole
+     scroll height from 1916px to 1615px. */
   .replicates {
     list-style: none;
     display: flex;
@@ -845,13 +858,14 @@
   }
   .replicates button {
     font: inherit;
-    display: flex;
-    gap: 4px;
-    padding: 1px 5px;
+    font-size: 12px;
+    padding: 1px 4px;
     border: 1px solid var(--border-default);
     border-radius: 4px;
     background: var(--bg-canvas);
     cursor: pointer;
+    /* Aligned digits, so a run's spread reads down the column the wrapping
+       happens to make of it. */
     font-variant-numeric: tabular-nums;
   }
   .replicates button:hover {
@@ -860,10 +874,6 @@
   .replicates li.selected button {
     border-color: var(--accent-emphasis);
     background: var(--accent-subtle);
-  }
-  .replicates .idx {
-    color: var(--fg-subtle);
-    font-size: 11px;
   }
   /* The comparison sits in a tinted card so the two-point reading is visibly a
      different thing from the single-point sections under it. */
