@@ -99,9 +99,11 @@ Living checklist. Update in the same commit as the work it describes.
 - **Retrigger / delta-vs-previous readouts.** Treeherder's tooltip shows the
   delta from the previous data point and a retrigger count. We show the
   retrigger count, and hovering any dot gives the delta against the *selected*
-  point rather than against the previous one — strictly more useful, but it
-  doesn't answer "what changed here" with nothing selected. A one-click
-  "compare with the previous push" would.
+  point rather than against the previous one. "What changed here" is now one
+  click — the pane's "Compare with the previous push", or <kbd>P</kbd> on the
+  graph (see comparison.md) — which answers it with the whole comparison card
+  rather than a single number in a tooltip. What's still missing is the delta
+  *without* selecting anything, which would mean a tooltip we don't have.
 - **History granularity.** Every discrete action pushes a history entry; a
   zoom drag and everything inside the Add-series panel replace. Whether that's
   the right granularity (should a repo toggle in the picker be undoable?) is

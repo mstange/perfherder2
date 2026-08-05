@@ -87,7 +87,18 @@ so there `sideOrder` returns 0 and click order stands. The pane reports
 | shift-click a dot | pin it as the comparison's other end; shift-clicking it again unpins |
 | hover a dot (with a selection) | preview the comparison a shift-click would pin |
 | <kbd>C</kbd> on the focused graph | pin the *selected* point, then walk away from it with the arrow keys |
+| <kbd>P</kbd>, or "Compare with the previous push" in the pane | pin the push before the selected one; again unpins |
 | Escape, or click empty space | unpin the comparison; a second press clears the selection |
+
+**"Compare with the previous push" is a button because it is the question a
+single selected point raises.** Every other pair needs the user to say which two
+points they mean, but "what changed here" names its own second end, and reaching
+it by hand means aiming at one dot inside the previous push's replicate cloud —
+the fiddliest shift-click in the app, and the one whose result doesn't depend on
+which dot you hit, since the pool is the whole push. `compareWithPreviousPush`
+pins that push's latest retrigger and carries the replicate slot across the way
+the arrow keys do. It sits in the hint box, which is exactly where the
+comparison card it produces will appear.
 
 **Pinning the selected point is a state, not an error.** It's the middle step of
 the keyboard path — there is no keyboard gesture for "shift-click *that* dot",

@@ -50,6 +50,10 @@
     // walk away from it with the arrow keys. There is no keyboard gesture for
     // "shift-click *that* dot", so the marking has to come first.
     onkeycompare?: () => void;
+    // "Compare the selection with the push before it" — the one pair worth a key
+    // of its own, since aiming at a dot in the previous push's cloud is the
+    // fiddliest part of the pointer gesture.
+    onkeyprevious?: () => void;
     ariaLabel: string;
   };
 
@@ -69,6 +73,7 @@
     onbrush,
     onkeymove,
     onkeycompare,
+    onkeyprevious,
     ariaLabel,
   }: Props = $props();
 
@@ -361,6 +366,10 @@
       case 'c':
       case 'C':
         onkeycompare?.();
+        break;
+      case 'p':
+      case 'P':
+        onkeyprevious?.();
         break;
       case 'Escape':
         onselect?.(null, { shift: false });

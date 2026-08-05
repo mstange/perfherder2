@@ -210,7 +210,8 @@
       onkeymove={(axis, delta) =>
         axis === 'run' ? app.stepRun(delta) : app.stepReplicate(delta)}
       onkeycompare={() => app.comparePoint(app.selectedPoint)}
-      ariaLabel="Detail graph; click a point to inspect it, shift-click a second to compare, or use the arrow keys and C to mark a point for comparison"
+      onkeyprevious={() => app.compareWithPreviousPush()}
+      ariaLabel="Detail graph; click a point to inspect it, shift-click a second to compare, P to compare it with the previous push, or use the arrow keys and C to mark a point for comparison"
     />
     {#if app.series.length === 0}
       <p class="overlay-note">Add a series to see data.</p>

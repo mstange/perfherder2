@@ -549,6 +549,95 @@ describe('AppState comparison', () => {
     }));
 });
 
+// "What changed here?" in one click — see `compareWithPreviousPush`.
+describe('AppState compare with the previous push', () => {
+  it('pins the previous push, keeping the replicate slot', () =>
+    withApp('?series=autoland,1,1&sel=autoland,1,11,1', async (app) => {
+      await settle();
+      app.compareWithPreviousPush();
+      expect(app.comparedPoint).toMatchObject({ datumId: 10, replicateIndex: 1 });
+      expect(app.comparison?.kind).toBe('push');
+      // The pool is the whole push either way, so the comparison is the same
+      // one a shift-click on any of the earlier push's dots would produce.
+      expect(app.comparison?.base.values).toEqual([100, 110, 120]);
+      expect(app.comparison?.next.values).toEqual([200, 210]);
+      expect(location.search).toContain('cmp=autoland,1,10,1');
+    }));
+
+  it('clamps the replicate slot to what the previous run recorded', async () => {
+    // One value on the first push, three on the second: replicate 2 has no
+    // counterpart to keep.
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.includes('/performance/summary/')) {
+        return json([
+          summary(1, [
+            datum({ id: 10, value: 100, push_id: 1, push_timestamp: '2026-07-21T06:00:00' }),
+            datum({ id: 11, value: 200, push_id: 2, push_timestamp: '2026-07-22T06:00:00' }),
+            datum({ id: 11, value: 210, push_id: 2, push_timestamp: '2026-07-22T06:00:00' }),
+            datum({ id: 11, value: 220, push_id: 2, push_timestamp: '2026-07-22T06:00:00' }),
+          ]),
+        ]);
+      }
+      if (url.includes('/repository/')) return json([]);
+      return json({});
+    });
+    await withApp('?series=autoland,1,1&sel=autoland,1,11,2', async (app) => {
+      await settle();
+      app.compareWithPreviousPush();
+      expect(app.comparedPoint).toMatchObject({ datumId: 10, replicateIndex: 0 });
+    });
+  });
+
+  it('keeps a mean selection comparing against a mean', () =>
+    withApp('?series=autoland,1,1&sel=autoland,1,11,-1', async (app) => {
+      await settle();
+      expect(app.selection?.replicateIndex).toBe(MEAN_REPLICATE);
+      app.compareWithPreviousPush();
+      expect(app.comparedPoint?.replicateIndex).toBe(MEAN_REPLICATE);
+    }));
+
+  it('does nothing on the earliest push in range', () =>
+    withApp('?series=autoland,1,1&sel=autoland,1,10,0', async (app) => {
+      await settle();
+      expect(app.previousPush).toBeNull();
+      app.compareWithPreviousPush();
+      expect(app.comparedPoint).toBeNull();
+    }));
+
+  it('is its own undo, like every other way of pinning', () =>
+    withApp('?series=autoland,1,1&sel=autoland,1,11,0', async (app) => {
+      await settle();
+      app.compareWithPreviousPush();
+      expect(app.comparedPoint).not.toBeNull();
+      app.compareWithPreviousPush();
+      expect(app.comparedPoint).toBeNull();
+    }));
+
+  it('picks the latest retrigger of the previous push', async () => {
+    // Two runs on the first push; the second (job 512) is the one to pin.
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.includes('/performance/summary/')) {
+        return json([
+          summary(1, [
+            datum({ id: 10, value: 100, push_id: 1, push_timestamp: '2026-07-21T06:00:00' }),
+            datum({ id: 12, value: 130, push_id: 1, push_timestamp: '2026-07-21T06:00:00' }),
+            datum({ id: 11, value: 200, push_id: 2, push_timestamp: '2026-07-22T06:00:00' }),
+          ]),
+        ]);
+      }
+      if (url.includes('/repository/')) return json([]);
+      return json({});
+    });
+    await withApp('?series=autoland,1,1&sel=autoland,1,11,0', async (app) => {
+      await settle();
+      app.compareWithPreviousPush();
+      expect(app.comparedPoint?.datumId).toBe(12);
+      // Both runs pool into the baseline regardless of which one wears the ring.
+      expect(app.comparison?.base.values).toEqual([100, 130]);
+    });
+  });
+});
+
 describe('AppState job details', () => {
   const jobCalls = () =>
     fetchMock.mock.calls.filter((c) => String(c[0]).includes('/jobs/')).length;

@@ -673,6 +673,32 @@ export class AppState {
     this.syncUrl('push');
   }
 
+  // "What changed here?" — the question a lone selected point raises and no
+  // gesture answers, because shift-clicking the previous push means finding a
+  // dot that may be one pixel away from four others (see graphs-todo.md,
+  // "Retrigger / delta-vs-previous readouts").
+  //
+  // The pinned point is the *last* run of that push — its latest retrigger,
+  // since a push's runs are ordered by job id — and the comparison pools the whole
+  // push either way (compare.ts::poolFor), so the choice only decides which dot
+  // wears the ring. The replicate slot carries over exactly as it does when the
+  // arrow keys walk a run — like against like, and a mean stays a mean.
+  compareWithPreviousPush(): void {
+    const sel = this.selection;
+    const prev = this.previousPush;
+    const run = prev?.runs.at(-1);
+    if (!sel || !run) return;
+    this.comparePoint({
+      repository: sel.entry.ref.repository,
+      signatureId: sel.entry.ref.signatureId,
+      datumId: run.datumId,
+      replicateIndex:
+        sel.replicateIndex === MEAN_REPLICATE
+          ? MEAN_REPLICATE
+          : Math.min(sel.replicateIndex, run.values.length - 1),
+    });
+  }
+
   clearComparison(): void {
     if (!this.comparedPoint) return;
     this.comparedPoint = null;

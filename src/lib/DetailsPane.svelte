@@ -412,11 +412,28 @@
       {:else}
         <!-- The affordance sits exactly where its result will appear, which is
              the only place a user looking at one selected point would find it.
-             Nothing else on screen says the gesture exists. -->
-        <p class="cmp-hint muted">
-          Shift-click another point to compare it with this one, or press
-          <kbd>C</kbd> to mark this one and walk away with the arrow keys.
-        </p>
+             Nothing else on screen says the gesture exists.
+
+             The button leads, because "what changed here" is the question a
+             single selected point actually raises, and the answer is one click
+             rather than a hunt for a dot in the previous push's cloud. The
+             gestures below it reach every *other* pair. -->
+        <div class="cmp-hint">
+          {#if app.previousPush}
+            <button
+              type="button"
+              class="cmp-prev"
+              title="Pin the push before this one as the comparison (P, with the graph focused)"
+              onclick={() => app.compareWithPreviousPush()}
+            >
+              Compare with the previous push
+            </button>
+          {/if}
+          <p class="muted">
+            Shift-click another point to compare it with this one, or press
+            <kbd>C</kbd> to mark this one and walk away with the arrow keys.
+          </p>
+        </div>
       {/if}
 
       <section>
@@ -912,7 +929,8 @@
   .cmp-head .muted {
     font-size: 11px;
   }
-  .unpin {
+  .unpin,
+  .cmp-prev {
     font: inherit;
     font-size: 11px;
     padding: 1px 6px;
@@ -921,7 +939,8 @@
     background: var(--bg-canvas);
     cursor: pointer;
   }
-  .unpin:hover {
+  .unpin:hover,
+  .cmp-prev:hover {
     background: var(--bg-hover);
   }
   .cmp-kind {
@@ -934,6 +953,12 @@
     border: 1px dashed var(--border-default);
     border-radius: 6px;
     font-size: 11px;
+  }
+  .cmp-hint p {
+    margin: 0;
+  }
+  .cmp-prev + p {
+    margin-top: 6px;
   }
   /* The marked state is a step the user took, not a suggestion, so it reads like
      the comparison card it is about to become. */
