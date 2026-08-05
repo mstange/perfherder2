@@ -6,11 +6,16 @@ import {
   attrsFromMeta,
   commonAttrs,
   commonFilterChips,
+  commonMeasurement,
   documentTitle,
   isEmptyAttrs,
+  measurementForEntry,
+  measurementParts,
   NO_ATTRS,
+  NO_MEASUREMENT,
   splitCommonAttrs,
   splitOptions,
+  type Measurement,
   type SeriesAttrs,
 } from './seriesSummary';
 
@@ -71,16 +76,40 @@ describe('attrsFromMeta', () => {
 });
 
 describe('splitCommonAttrs', () => {
-  it('hoists nothing for a single series', () => {
-    const one = attrs({});
-    const split = splitCommonAttrs([one]);
+  // One series has nothing to intersect with, so the split is by role: the
+  // header takes the details, the card keeps the name. Without that, the card
+  // would either repeat everything or go blank.
+  it('hoists everything but the name for a single series', () => {
+    const split = splitCommonAttrs([attrs({ test: 'ContentfulSpeedIndex' })]);
+    expect(split.mode).toBe('single');
+    expect(split.hasCommon).toBe(true);
+    expect(split.common).toEqual(attrs({ suite: '', test: '' }));
+    expect(split.distinct).toEqual([
+      { ...NO_ATTRS, suite: 'speedometer3', test: 'ContentfulSpeedIndex' },
+    ]);
+  });
+
+  it('keeps a summary series identifiable when it has no subtest name', () => {
+    // `test` is '' for a suite-level series, so the card is carried by `suite`
+    // alone — which is exactly what the graph in the wild looks like.
+    const split = splitCommonAttrs([attrs({ test: '' })]);
+    expect(split.distinct).toEqual([{ ...NO_ATTRS, suite: 'speedometer3', test: '' }]);
+    expect(isEmptyAttrs(split.distinct[0]!)).toBe(false);
+  });
+
+  it('hoists nothing for a single series with no metadata yet', () => {
+    const split = splitCommonAttrs([null]);
     expect(split.hasCommon).toBe(false);
-    expect(split.common).toEqual(NO_ATTRS);
-    expect(split.distinct).toEqual([one]);
+    expect(split.mode).toBe('single');
   });
 
   it('hoists nothing for an empty list', () => {
-    expect(splitCommonAttrs([])).toEqual({ common: NO_ATTRS, distinct: [], hasCommon: false });
+    expect(splitCommonAttrs([])).toEqual({
+      common: NO_ATTRS,
+      distinct: [],
+      hasCommon: false,
+      mode: 'multi',
+    });
   });
 
   // The four-browser speedometer3 case: everything is shared but `application`.
@@ -186,16 +215,90 @@ describe('splitCommonAttrs', () => {
 });
 
 describe('commonAttrs', () => {
-  // The difference from splitCommonAttrs: no "fewer than two has no common
-  // set" rule. The picker prefill wants one series' attributes as-is.
-  it('is a single series’ own attributes', () => {
+  // The difference from splitCommonAttrs: it keeps the name. The picker prefill
+  // and the document title want one series' attributes whole, suite and test
+  // included; only the display peels the name off for the card to carry.
+  it('keeps the name a single series’ split hoists away', () => {
     expect(commonAttrs([attrs({})])).toEqual(attrs({}));
-    expect(splitCommonAttrs([attrs({})]).common).toEqual(NO_ATTRS);
+    expect(splitCommonAttrs([attrs({})]).common).toEqual(attrs({ suite: '', test: '' }));
   });
 
   it('is empty for no series', () => {
     expect(commonAttrs([])).toEqual(NO_ATTRS);
     expect(commonAttrs([null])).toEqual(NO_ATTRS);
+  });
+});
+
+describe('commonMeasurement', () => {
+  const m = (unit: string, lowerIsBetter = true): Measurement => ({ unit, lowerIsBetter });
+
+  it('reports a unit and direction every series agrees on', () => {
+    expect(commonMeasurement([m('score', false), m('score', false)])).toEqual({
+      unit: 'score',
+      lowerIsBetter: false,
+    });
+  });
+
+  it('says nothing about a unit the series disagree on', () => {
+    expect(commonMeasurement([m('ms'), m('score')]).unit).toBe('');
+  });
+
+  it('says nothing about a direction the series disagree on', () => {
+    expect(commonMeasurement([m('ms', true), m('ms', false)]).lowerIsBetter).toBeNull();
+  });
+
+  it('judges unit and direction independently', () => {
+    // Different units but the same direction: withholding "lower is better"
+    // because the units differ would suppress something true.
+    expect(commonMeasurement([m('ms', true), m('score', true)])).toEqual({
+      unit: '',
+      lowerIsBetter: true,
+    });
+  });
+
+  it('ignores a series with no unit rather than calling it disagreement', () => {
+    // Matches the graph's y-axis label, which filters empty units out before
+    // deciding whether there is one unit or several.
+    expect(commonMeasurement([m(''), m('ms'), m('ms')]).unit).toBe('ms');
+  });
+
+  it('ignores series with no metadata yet', () => {
+    expect(commonMeasurement([null, m('ms', false), null])).toEqual({
+      unit: 'ms',
+      lowerIsBetter: false,
+    });
+    expect(commonMeasurement([null])).toEqual(NO_MEASUREMENT);
+    expect(commonMeasurement([])).toEqual(NO_MEASUREMENT);
+  });
+});
+
+describe('measurementForEntry', () => {
+  const ref: SeriesRef = { repository: 'autoland', signatureId: 5690953, frameworkId: 13 };
+
+  it('has nothing to say for an unloaded series or a placeholder', () => {
+    expect(measurementForEntry(null)).toBeNull();
+    // A placeholder's `lowerIsBetter: true` is a default nobody stated, so
+    // counting it would report a unanimous direction from one real opinion.
+    expect(measurementForEntry(placeholderMeta(ref))).toBeNull();
+  });
+});
+
+describe('measurementParts', () => {
+  it('names the unit and the direction', () => {
+    expect(measurementParts({ unit: 'score', lowerIsBetter: false })).toEqual([
+      'score',
+      'higher is better',
+    ]);
+    expect(measurementParts({ unit: 'ms', lowerIsBetter: true })).toEqual([
+      'ms',
+      'lower is better',
+    ]);
+  });
+
+  it('omits whichever half is unknown', () => {
+    expect(measurementParts({ unit: 'ms', lowerIsBetter: null })).toEqual(['ms']);
+    expect(measurementParts({ unit: '', lowerIsBetter: true })).toEqual(['lower is better']);
+    expect(measurementParts(NO_MEASUREMENT)).toEqual([]);
   });
 });
 

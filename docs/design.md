@@ -297,6 +297,52 @@ series have in common into one header ("All series share …") and leaves
 each card with only its own attributes. The split is
 [seriesSummary.ts::splitCommonAttrs](../src/lib/seriesSummary.ts).
 
+**The header has two modes**, because with one series there is nothing to
+intersect. `AttrSplit.mode` says which, and the heading follows it:
+
+- `multi` — "All series share …", the case above.
+- `single` — "This series". The split is by *role* rather than by agreement:
+  the header takes the series' details and the card keeps only its name
+  (suite + test). Splitting it this way rather than leaving the card to spell
+  itself out in full keeps the one card short and puts its attributes where
+  the eye already looks for context. The card can't be left with nothing —
+  it carries the swatch, the point count and the controls, so it needs a
+  name; suite + test is that name, and `suite` alone carries it for a
+  summary series, whose `test` is `''`.
+
+`commonAttrs` is deliberately a separate function from `splitCommonAttrs`,
+and over one series it returns that series' attributes **whole**, name
+included. Two callers depend on that — the picker prefill and
+`documentTitle` — and neither wants the name peeled off. Only the display
+splits them.
+
+**Unit and better-direction live outside `SeriesAttrs`.** They're a property
+of the measurement, not part of the series' identity, and `SeriesAttrs` feeds
+`commonFilterChips` and `documentTitle`, which want neither a `unit:` chip
+nor "ms" in the tab title. So `commonMeasurement` / `measurementParts` travel
+separately and reach only the header, as a quieter second line: `score ·
+higher is better`.
+
+- **Judged independently, each shown only when unanimous.** Two series in
+  different units that agree on direction still get "higher is better";
+  suppressing it because the units differ would withhold something true.
+  Nothing is printed for a fact that isn't unanimous — no "mixed units"
+  string, since the y-axis already says that.
+- **The direction has no other unconditional home**, which is why this is
+  worth the line. [DetailsPane](../src/lib/DetailsPane.svelte) states it only
+  for a *selected* point, and the graph's y-axis only ever shows the unit —
+  so before this, loading a graph and just looking at it told you nothing
+  about which way was good.
+- **Placeholders are excluded**, as they are from `attrsForEntry`. A
+  placeholder's `lowerIsBetter: true` is a default nobody stated, so counting
+  it would report a unanimous direction derived from one real opinion.
+- **An empty unit is ignored rather than counted as disagreement**, matching
+  the y-axis label: one unitless series alongside two in `ms` still says
+  `ms`.
+- The header renders when there are shared attributes **or** a measurement
+  line, so two series sharing nothing but their unit still have somewhere to
+  say so.
+
 Points worth knowing before changing it:
 
 - **Options are compared token by token, not as a string.** The server

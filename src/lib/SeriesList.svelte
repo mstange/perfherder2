@@ -19,7 +19,10 @@
   import {
     attrChips,
     attrsForEntry,
+    commonMeasurement,
     isEmptyAttrs,
+    measurementForEntry,
+    measurementParts,
     splitCommonAttrs,
     type AttrChip,
     type SeriesAttrs,
@@ -33,6 +36,15 @@
   const attrs = $derived(app.series.map((e) => attrsForEntry(e.ref, e.meta)));
   const split = $derived(splitCommonAttrs(attrs));
   const commonChips = $derived(attrChips(split.common));
+
+  // The unit and better-direction, when every series agrees. Kept out of the
+  // attribute chips because they're a property of the measurement rather than
+  // part of the series' identity — and because the direction has nowhere else
+  // unconditional to appear: the details pane only states it for a point you
+  // have selected, and the y-axis only ever shows the unit.
+  const measurementBits = $derived(
+    measurementParts(commonMeasurement(app.series.map((e) => measurementForEntry(e.meta)))),
+  );
 
   // A card shows only the differences, so its hover text spells the series out
   // in full.
@@ -178,6 +190,13 @@
       >·</span
     >{' '}{/if}<span class="attr {chip.field}">{chip.value}</span>{' '}{/each}{/snippet}
 
+<!-- Plain strings rather than attributes, but separated the same way, so the
+     measurement line reads as part of the same header. Same load-bearing
+     `{' '}` as above. -->
+{#snippet textRow(parts: string[])}{#each parts as part, i}{#if i > 0}<span class="sep"
+      >·</span
+    >{' '}{/if}{part}{' '}{/each}{/snippet}
+
 <!-- Declarative, so there's no listener lifecycle to get wrong; the handler is
      a no-op unless a drag is in flight. -->
 <svelte:window onkeydown={(e) => e.key === 'Escape' && cancelDrag()} />
@@ -190,12 +209,21 @@
     </button>
   </header>
 
-  {#if split.hasCommon}
+  {#if split.hasCommon || measurementBits.length > 0}
     <!-- Outside the scroller: with the differences reduced to a word or two,
-         the cards are unreadable without this, so it must not scroll away. -->
+         the cards are unreadable without this, so it must not scroll away.
+
+         The heading names which job the block is doing — see SplitMode. The
+         measurement line can appear on its own: two series that share nothing
+         but their unit still have somewhere to say so. -->
     <div class="common">
-      <h3>All series share</h3>
-      <div class="attrs">{@render chipRow(commonChips)}</div>
+      <h3>{split.mode === 'single' ? 'This series' : 'All series share'}</h3>
+      {#if split.hasCommon}
+        <div class="attrs">{@render chipRow(commonChips)}</div>
+      {/if}
+      {#if measurementBits.length > 0}
+        <div class="measurement">{@render textRow(measurementBits)}</div>
+      {/if}
     </div>
   {/if}
 
@@ -346,6 +374,13 @@
   /* Background information: the cards are what the eye should land on. */
   .common .attrs {
     color: var(--fg-muted);
+  }
+  /* A step quieter again than the attributes: this says how to read the
+     numbers, which you need once and then stop looking at. */
+  .common .measurement {
+    margin-top: 2px;
+    color: var(--fg-subtle);
+    font-size: 12px;
   }
   .list {
     flex: 1;
