@@ -90,11 +90,11 @@
   // this build"; see docs/comparison.md.
   //
   // Below two values there is nothing to say that the headline value above hasn't
-  // already said, and the whole section is dropped. That's the normal case for
-  // every framework that records no replicates (talos, awsy): the backend falls
-  // back to one row carrying the summary value, so the "distribution" would be a
-  // strip with a single dot on it and the chip list a single chip repeating the
-  // number above.
+  // already said, and the whole section is dropped. Where a harness records no
+  // replicates the backend falls back to one row carrying the summary value, so
+  // the "distribution" would be a strip with a single dot on it and the chip list
+  // a single chip repeating the number above. That is every awsy signature (talos,
+  // by contrast, records 20 replicates for a ts_paint).
   const pushPool = $derived(sel ? pushValues(sel.push) : []);
 
   // Suppressed while a comparison is drawing its own chart: one of that chart's
@@ -407,7 +407,10 @@
       {/if}
 
       <section>
-        <h3>{meanSelected ? 'Run mean' : 'Replicate'}</h3>
+        <!-- "Replicate" and "Run mean" both promise a set this value came out of.
+             With one measurement there is no such set — the common case for the
+             frameworks that record no replicates — so it's just the value. -->
+        <h3>{meanSelected ? 'Run mean' : replicateValues.length > 1 ? 'Replicate' : 'Value'}</h3>
         <p class="value">
           {formatValue(sel.value)}
           {#if sel.entry.meta?.measurementUnit}
@@ -417,26 +420,28 @@
             ({sel.entry.meta?.lowerIsBetter === false ? 'higher' : 'lower'} is better)
           </span>
         </p>
-        <dl>
-          {#if meanSelected}
-            <dt>Replicates</dt>
-            <dd>{replicateValues.length} averaged</dd>
-          {:else}
-            <!-- A rank, not a trial number. Trial ordering isn't implemented
-                 on the API side (bug 1981623): the endpoint returns a datum's
-                 replicate rows in a different order on every request and exposes
-                 no trial number, so we sort by value and say so rather than
-                 implying an execution order we don't have. See graphData.ts,
-                 `Run.values`. -->
-            <dt title={REPLICATE_ORDER_HINT}>Replicate</dt>
-            <dd>
-              {sel.replicateIndex + 1} of {replicateValues.length}
-              <span class="muted">by value</span>
-            </dd>
-            <dt>Run mean</dt>
-            <dd>{formatValue(runMean)}</dd>
-          {/if}
-        </dl>
+        {#if replicateValues.length > 1}
+          <dl>
+            {#if meanSelected}
+              <dt>Replicates</dt>
+              <dd>{replicateValues.length} averaged</dd>
+            {:else}
+              <!-- A rank, not a trial number. Trial ordering isn't implemented
+                   on the API side (bug 1981623): the endpoint returns a datum's
+                   replicate rows in a different order on every request and exposes
+                   no trial number, so we sort by value and say so rather than
+                   implying an execution order we don't have. See graphData.ts,
+                   `Run.values`. -->
+              <dt title={REPLICATE_ORDER_HINT}>Replicate</dt>
+              <dd>
+                {sel.replicateIndex + 1} of {replicateValues.length}
+                <span class="muted">by value</span>
+              </dd>
+              <dt>Run mean</dt>
+              <dd>{formatValue(runMean)}</dd>
+            {/if}
+          </dl>
+        {/if}
       </section>
 
       <!-- Directly under the selected value, because it is the context that

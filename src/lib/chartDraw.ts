@@ -282,11 +282,10 @@ const DOT_PATHS = 8;
 // them: an opaque fill would turn a dense cluster into a flat blob, and a
 // translucent white one into a milky smear over the series behind.
 //
-// Each dot is nudged sideways by its own share of the room around its push —
-// without it every
-// replicate of a run lands on that run's push timestamp and a 25-replicate run
-// draws as one vertical line, in which the only thing legible is its extremes.
-// See chart.ts, "Jitter".
+// Each dot is nudged sideways by its own share of the room around its push.
+// Without that, every replicate of a run lands on that run's push timestamp and a
+// 25-replicate run draws as one vertical line, in which the only legible feature
+// is its extremes. See chart.ts, "Jitter".
 function drawDots(ctx: CanvasRenderingContext2D, o: DrawOptions, s: DrawSeries): void {
   const points = s.points;
   if (points.length === 0) return;

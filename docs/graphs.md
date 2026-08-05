@@ -51,10 +51,12 @@ which would put the twenty-commit pushlog above the value you asked about.
    agree — and because the other runs' values were otherwise reachable only by
    hunting for their dots on the graph.
 
-   **Absent below two values**, which is the normal case for every framework that
-   records no replicates (talos, awsy): the backend then falls back to one row
-   carrying the summary value, so the distribution would be a strip with one dot
-   on it and the chip list one chip repeating the headline above. A heavily
+   **Absent below two values.** Where a harness records no replicates the backend
+   falls back to one row carrying the summary value, so the distribution would be
+   a strip with one dot on it and the chip list one chip repeating the headline
+   above. That's every awsy signature — checked against production: 23 of 23
+   datums with one value each, where a talos `ts_paint` has 20 apiece — so it is
+   a case worth suppressing rather than a theoretical one. A heavily
    retriggered push goes the other way and makes this the longest section in the
    pane — twelve runs is twelve groups — which is the cost of the ask, and the
    cost falls on Build, which is meant to be at the bottom anyway.
