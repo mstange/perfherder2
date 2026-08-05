@@ -109,6 +109,12 @@ Living checklist. Update in the same commit as the work it describes.
   - *Clicking a marker.* The marker locates an alert; reading it still means
     clicking a dot in that push. Hit-testing the triangles would close that,
     and the hit test currently only knows about dots.
+  - *Markers don't dodge each other.* Two alerts on nearby pushes overlap into
+    one blob: seen on speedometer3 (signature 5352597), whose 2026-06-02
+    regression and improvement are 14 hours apart — about 5px at a 90-day range
+    against an 8px triangle, so red and green land on top of each other.
+    Nudging collided markers sideways would lie about which column they mark;
+    stacking them vertically wouldn't, and is the thing to try.
 - **Retrigger / delta-vs-previous readouts.** Treeherder's tooltip shows the
   delta from the previous data point and a retrigger count. We show the
   retrigger count, and hovering any dot gives the delta against the *selected*
