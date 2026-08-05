@@ -360,6 +360,49 @@ export function indexInPushValues(
   return -1;
 }
 
+// Every value the push recorded, grouped by the job that produced it — what the
+// details pane lists under the push distribution.
+//
+// Grouped rather than pooled, and over the whole push rather than the selected
+// run, for the same reason `pushValues` pools the whole push: the interesting
+// question about a retriggered build is whether its runs agree, and a flat list
+// of fifteen numbers can't answer that. The pane used to list the selected run's
+// values only, which made a push that recorded fifteen look like it recorded
+// five and left the other runs' values reachable only by finding their dots.
+export type ReplicateGroup = {
+  run: Run;
+  // 1-based position among the push's runs, which is the only name a run always
+  // has: `jobId` is null for anything past treeherder's job retention window
+  // (see `Run.jobId`), so "run 2 of 3" is what the label falls back to.
+  ordinal: number;
+  // Index into `run.values` of the selected replicate, or null when the
+  // selection is elsewhere — another run of this push, or this run's mean.
+  selectedIndex: number | null;
+  // True for the run the selection belongs to, mean selections included. That's
+  // a weaker statement than `selectedIndex !== null`, and the difference is
+  // exactly the mean case.
+  selectedRun: boolean;
+};
+
+export function replicateGroups(
+  push: PushGroup,
+  datumId: number,
+  replicateIndex: number,
+): ReplicateGroup[] {
+  return push.runs.map((run, i) => {
+    const selectedRun = run.datumId === datumId;
+    return {
+      run,
+      ordinal: i + 1,
+      selectedIndex:
+        selectedRun && replicateIndex >= 0 && replicateIndex < run.values.length
+          ? replicateIndex
+          : null,
+      selectedRun,
+    };
+  });
+}
+
 // Resolve a URL-level selection triple against loaded data. Returns null when
 // the point isn't present — the range may have been narrowed since the link
 // was made, and a phantom selection is worse than none.

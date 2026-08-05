@@ -7,6 +7,7 @@ import {
   MEAN_REPLICATE,
   metaFromSummary,
   pushValues,
+  replicateGroups,
   resolvePoint,
   seriesKey,
   seriesLabel,
@@ -278,6 +279,29 @@ describe('pushValues and indexInPushValues', () => {
   it('has no index for an unknown run or an out-of-range replicate', () => {
     expect(indexInPushValues(push, 99, 0)).toBe(-1);
     expect(indexInPushValues(push, 1, 5)).toBe(-1);
+  });
+
+  it('groups every run of the push, marking the selected replicate', () => {
+    const groups = replicateGroups(push, 2, 1);
+    expect(groups.map((g) => [g.run.datumId, g.ordinal])).toEqual([
+      [1, 1],
+      [2, 2],
+    ]);
+    // Only the selected run carries an index; the other one is listed in full
+    // but has nothing marked.
+    expect(groups.map((g) => g.selectedIndex)).toEqual([null, 1]);
+    expect(groups.map((g) => g.selectedRun)).toEqual([false, true]);
+  });
+
+  it('marks the run but no replicate when a run mean is selected', () => {
+    const groups = replicateGroups(push, 1, MEAN_REPLICATE);
+    expect(groups.map((g) => g.selectedRun)).toEqual([true, false]);
+    expect(groups.map((g) => g.selectedIndex)).toEqual([null, null]);
+  });
+
+  it('marks nothing for a selection in another push', () => {
+    const groups = replicateGroups(push, 99, 0);
+    expect(groups.every((g) => !g.selectedRun && g.selectedIndex === null)).toBe(true);
   });
 });
 
