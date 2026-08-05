@@ -905,12 +905,8 @@ Rules that keep this honest:
   cheap and needs no browser, so the bar for adding another is just "does
   this component own state that can disagree with its props" — for
   everything else, test the `PickerState` / `AppState` seam instead.
-- **UI flows**: no committed browser tests. During development, I've been
-  running a throwaway puppeteer smoke script (`smoke.mjs`) that types into
-  the filter, clicks badges, checks headers. It's not in the repo because
-  puppeteer downloads a ~200 MB Chromium and CI doesn't need it. If you
-  need to reproduce the pattern, `npm install --save-dev puppeteer`, write
-  the script, run it against `npm run dev`, then remove.
+- **UI flows**: no committed browser tests — throwaway puppeteer scripts instead,
+  which is the first half of "Measuring" below.
 - Every commit runs `npm run check` and `npm run build` cleanly. Keep both
   green: [.github/workflows/ci.yml](../.github/workflows/ci.yml) runs those
   two plus `npm test` on every push and pull request, so a red CI is a
@@ -920,6 +916,44 @@ Rules that keep this honest:
     imports `defineConfig` from `vitest/config` rather than from `vite` —
     `vite`'s narrower type rejects the `test` block, and bare
     `npx svelte-check` never looks at the file to notice.
+
+## Measuring
+
+Most of the decisions in these documents cite a number, and most of those numbers
+came from one of two throwaway setups. Neither leaves anything behind, and that's
+deliberate — the scripts are shaped by the question, and a question rarely comes
+back in the same shape.
+
+**In a browser: `tools/visual/`.** Gitignored, with **its own** puppeteer install
+(`npm i puppeteer --prefix tools/visual`, once — it survives, being ignored rather
+than deleted). Write a script there, run it against `npm run dev` with
+`node tools/visual/whatever.mjs`, delete it or don't. Do **not** install puppeteer
+in the app's `package.json`: it pulls a ~200 MB Chromium, CI has no use for it, and
+every install/uninstall cycle rewrites the root lockfile.
+
+This is for anything about pixels or layout: a screenshot to look at, an element's
+height across a sweep of hovers, or the canvas itself — `getImageData` over a
+`<canvas>` answers questions no unit test can, and has repeatedly answered them
+differently than expected. Two examples that both changed the code: an ink
+histogram showed dots at a flat 50% opacity where the code intended them to
+accumulate, and the x of the ring around a selected value showed it moving 13px on
+every hover.
+
+**Over real data: a throwaway vitest file.** `curl` a payload into `/tmp`, then run
+the *real* modules over it from `src/lib/<thing>.explore.test.ts` (gitignored, and
+named `.test.ts` so vitest's glob picks it up). `npx vitest run --reporter=verbose
+<file>` — the default reporter swallows `console.log` from a passing test, which is
+a confusing five minutes if you don't know it. Delete it when done; it reads a
+local file, so it would fail CI.
+
+This is what makes a tuning constant a measurement instead of a guess: sweeping
+every push of a real series through `buildDistribution` is what produced the
+headroom tables in [comparison.md](comparison.md), and what showed that a rule that
+looked obviously right gave one chart 2% of its plot.
+
+**Say where a number came from.** Timings in particular: headless Chrome
+rasterizes in software, so the absolute figures are several times slower than the
+browser anyone uses, and only the ratios between them transfer.
 
 ## Perfherder data model, cheat sheet
 
@@ -970,3 +1004,35 @@ these strings for display — you'll get bitten by edge cases.**
   file, but Svelte 5 reactive tracking across component boundaries can
   make snappy interactions surprisingly re-render-heavy. Only pull this
   trigger if we hit perf issues, and profile before/after.
+
+### Documentation upkeep
+
+- **A decision is currently written down three or four times, and revising one
+  means revising all of them.** The distribution's value-axis rule, to take the
+  worst case, is stated in `distribution.ts`, again in `appState.svelte.ts`'s
+  comment over `selectionChart`, again in comparison.md, and again in the commit
+  message — including the measured figures, which is where it hurts: changing the
+  rule meant rewriting four copies of "2% of the plot" and "63% of hovers".
+
+  The fix isn't less prose, it's one home per *kind* of statement. Roughly:
+  measurements next to the constant they justify, since that's what a reader
+  about to change the number needs; mechanism in the module comment; the
+  cross-cutting narrative in the doc, *linking* to the code rather than
+  restating its numbers; and the commit message for why it changed now. Worth
+  doing as a pass over graphs.md and comparison.md rather than a rule invented
+  in advance.
+- **No routing table for the docs.** design.md is ~1000 lines and graphs.md ~500,
+  and a session that only needs one section has no way to know which. A short
+  map at the top of design.md — picker here, graphs in graphs.md, the details
+  pane's distributions in comparison.md, status in graphs-todo.md, plus "if you
+  touch X, check section Y" — would cost a dozen lines and save reading both
+  files end to end.
+
+### Naming
+
+- **`.replicates` means two different things.** It's the class on GraphPane's
+  "Replicates" checkbox label *and* on DetailsPane's chip list. Svelte scopes
+  both, so the app is fine; anything that queries the DOM globally is not, and
+  a `document.querySelectorAll('.replicates')` in a throwaway measurement script
+  silently measured the checkbox. Rename one — `.draw-replicates` on the
+  control, probably, since the chip list is the one the docs talk about.

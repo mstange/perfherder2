@@ -23,6 +23,11 @@ dist-ssr
 *.sln
 *.sw?
 
-# Throwaway dev smoke script (see docs/design.md); needs a local puppeteer.
+# Browser checks: throwaway scripts plus their own puppeteer install, kept out of
+# the app's dependencies entirely. See docs/design.md, "Measuring".
+tools/visual/
+# Older root-level throwaway scripts, still ignored so a stray one can't land.
 smoke.mjs
 perf.mjs
+# Throwaway analysis runs — real modules over a locally fetched payload.
+src/**/*.explore.test.ts
