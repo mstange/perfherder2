@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
+import { JITTER_GAP_FRACTION } from './chart';
 import type { RawDatum, RawSummary } from './graphApi';
 import { parseApiDate } from './graphApi';
 import {
   buildSeriesData,
   indexInPushValues,
+  jitterForSelection,
   MEAN_REPLICATE,
   metaFromSummary,
   pushValues,
@@ -302,6 +304,132 @@ describe('pushValues and indexInPushValues', () => {
   it('marks nothing for a selection in another push', () => {
     const groups = replicateGroups(push, 99, 0);
     expect(groups.every((g) => !g.selectedRun && g.selectedIndex === null)).toBe(true);
+  });
+});
+
+describe('jitter', () => {
+  it('spreads the dots of a run and leaves a lone dot alone', () => {
+    const spread = buildSeriesData(
+      summary([
+        datum({ id: 1, value: 10, push_id: 7 }),
+        datum({ id: 1, value: 11, push_id: 7 }),
+        datum({ id: 1, value: 12, push_id: 7 }),
+      ]),
+    ).replicates.points;
+    expect(spread.every((p) => p.jitter !== 0)).toBe(true);
+    expect(new Set(spread.map((p) => p.jitter)).size).toBe(3);
+    for (const p of spread) {
+      expect(p.jitter).toBeGreaterThanOrEqual(-1);
+      expect(p.jitter).toBeLessThanOrEqual(1);
+    }
+
+    // A single measurement on a push has nothing to be separated from, and
+    // nudging it would put it off the connecting line's vertex for nothing.
+    const alone = buildSeriesData(summary([datum({ id: 1, value: 10 })]));
+    expect(alone.replicates.points[0].jitter).toBe(0);
+    expect(alone.means.points[0].jitter).toBe(0);
+  });
+
+  it('judges the two point sets separately', () => {
+    // One push, one run, three replicates: the replicate dots overlap and get
+    // spread, but the single mean dot doesn't.
+    const data = buildSeriesData(
+      summary([
+        datum({ id: 1, value: 10, push_id: 7 }),
+        datum({ id: 1, value: 11, push_id: 7 }),
+        datum({ id: 1, value: 12, push_id: 7 }),
+      ]),
+    );
+    expect(data.replicates.points.every((p) => p.jitter !== 0)).toBe(true);
+    expect(data.means.points.map((p) => p.jitter)).toEqual([0]);
+
+    // Retriggered: now the mean dots share an x too, so they get spread.
+    const retriggered = buildSeriesData(
+      summary([
+        datum({ id: 1, value: 10, push_id: 7, job_id: 1 }),
+        datum({ id: 2, value: 20, push_id: 7, job_id: 2 }),
+      ]),
+    );
+    expect(retriggered.means.points.every((p) => p.jitter !== 0)).toBe(true);
+  });
+
+  it('is stable across the two ways of computing it', () => {
+    // The dots are drawn from `points`, the selection ring from a push resolved
+    // out of `pushById`. If those two disagreed the ring would sit beside the dot
+    // it names, which is the failure this pins.
+    const data = buildSeriesData(
+      summary([
+        datum({ id: 1, value: 10, push_id: 7, job_id: 1 }),
+        datum({ id: 1, value: 12, push_id: 7, job_id: 1 }),
+        datum({ id: 2, value: 20, push_id: 7, job_id: 2 }),
+        datum({ id: 3, value: 30, push_id: 8, job_id: 3 }),
+      ]),
+    );
+    for (const set of [data.replicates, data.means]) {
+      for (const p of set.points) {
+        const push = data.pushById.get(data.runByDatumId.get(p.datumId)!.pushId)!;
+        expect(jitterForSelection(push, p.datumId, p.replicateIndex)).toBe(p.jitter);
+      }
+    }
+  });
+
+  it('gives each push the room to its nearer neighbour', () => {
+    // Pushes at 0, 1h, 5h: the middle one is 1h from the first and 4h from the
+    // last, so the nearer neighbour caps it at the same room the first one gets.
+    const at = (h: number, id: number) =>
+      datum({
+        id,
+        value: 10,
+        push_id: id,
+        push_timestamp: `2026-07-21T${String(h).padStart(2, '0')}:00:00`,
+      });
+    const HOUR = 3600000;
+    const pushes = buildSeriesData(summary([at(0, 1), at(1, 2), at(5, 3)])).pushes;
+    expect(pushes.map((p) => p.xRoom / (HOUR * JITTER_GAP_FRACTION))).toEqual([1, 1, 4]);
+  });
+
+  it('leaves a lone push unbounded, for the pixel ceiling to decide', () => {
+    // No neighbour, so nothing to collide with. Infinity rather than zero: the
+    // alternative is that a series with one push draws its replicates as a line
+    // even when the plot is nothing but empty space.
+    expect(buildSeriesData(summary([datum({ id: 1, value: 10 })])).pushes[0].xRoom).toBe(
+      Infinity,
+    );
+  });
+
+  it('copies the room onto every dot of the push', () => {
+    const data = buildSeriesData(
+      summary([
+        datum({ id: 1, value: 10, push_id: 7, push_timestamp: '2026-07-21T00:00:00' }),
+        datum({ id: 1, value: 11, push_id: 7, push_timestamp: '2026-07-21T00:00:00' }),
+        datum({ id: 2, value: 20, push_id: 8, push_timestamp: '2026-07-21T01:00:00' }),
+      ]),
+    );
+    for (const set of [data.replicates, data.means]) {
+      for (const p of set.points) {
+        expect(p.xRoom).toBe(data.pushById.get(data.runByDatumId.get(p.datumId)!.pushId)!.xRoom);
+      }
+    }
+  });
+
+  it('keeps the point arrays x-sorted', () => {
+    // Emitting points push by push (needed to know how many dots share an x)
+    // must not disturb the order every binary search in chart.ts relies on.
+    const rows = [8, 5, 9, 5, 7].map((day, i) =>
+      datum({
+        id: i + 1,
+        value: 10 + i,
+        push_id: day,
+        push_timestamp: `2026-07-0${day}T06:00:00`,
+      }),
+    );
+    for (const set of [
+      buildSeriesData(summary(rows)).replicates,
+      buildSeriesData(summary(rows)).means,
+    ]) {
+      const xs = set.points.map((p) => p.x);
+      expect(xs).toEqual([...xs].sort((a, b) => a - b));
+    }
   });
 });
 

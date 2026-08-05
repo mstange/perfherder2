@@ -21,19 +21,22 @@ ticked and the outcome has landed in [graphs.md](graphs.md) /
       selected replicate marked. + test.
 - [x] `DetailsPane.svelte` — new section order; replicate chips per job;
       `Result` demoted to the end of the Run list.
-- [ ] Dot alpha + jitter, pure half: `SeriesPoint.jitter`, `pointJitter`,
+- [x] Dot alpha + jitter, pure half: `SeriesPoint.jitter`, `pointJitter`,
       `chart.ts::jitterAmplitudePx`. + tests.
-- [ ] Wire jitter through `chartDraw`, `hitTest*`, `Highlight`, `ScatterChart`,
+- [x] Wire jitter through `chartDraw`, `hitTest*`, `Highlight`, `ScatterChart`,
       `GraphPane`.
-- [ ] Docs: graphs.md ("Rendering"), comparison.md code map if it moves.
-- [ ] Screenshot check in the real app (puppeteer, then uninstall).
+- [x] Docs: graphs.md ("Rendering"), comparison.md code map if it moves.
+- [x] Screenshot check in the real app (puppeteer, then uninstall).
 
 ## Notes
 
-- Jitter is **pixel-space**, amplitude derived per series from the median gap
-  between consecutive pushes in the visible domain and capped at a multiple of
-  the dot radius. Data-space jitter was rejected: it has no pixel cap, so a deep
-  zoom would smear one build's dots across the width of the plot.
+- Jitter is **pixel-space at draw time, from room measured in x units at build
+  time**, capped at a multiple of the dot radius. Two rejected shapes, both tried:
+  a pure data-space offset baked into `SeriesPoint.x` (no pixel cap, so a deep zoom
+  smears one build across the plot — and it breaks the x-sorted order), and one
+  amplitude per chart from the median push gap (measured on real autoland data the
+  median gap is four minutes, because landings come in bursts, so every isolated
+  push stayed a vertical line).
 - The unit offset (`SeriesPoint.jitter`, in [-1, 1]) is stored on the point, so
   drawing, hit-testing and the selection ring all read the same number instead
   of three copies of a hash.

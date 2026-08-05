@@ -177,7 +177,9 @@ Layout, top to bottom, in one canvas:
   changes; random jitter would make every dot jump on an unrelated state
   change. (PerfCompare hit this too and worked around it by hoisting the
   jitter into a `useMemo` keyed on the values — the same fix, expressed in a
-  different framework.)
+  different framework.) The hash is `chart.ts::jitterAt`, shared with the
+  time-series graphs' horizontal jitter — see graphs.md, "Dots are translucent,
+  and jittered sideways", where the stake is higher than shimmer.
 - **Mode detail goes below the chart, not on it.** The details pane is 320px
   wide; PerfCompare's on-chart labels ("Base A: 123.4 (67%)") need most of
   that each and it staggers them vertically to cope. Here the chart carries
@@ -247,7 +249,8 @@ Pure, and unit tested:
 - `stats.ts` — Mann-Whitney U, Cliff's delta, CLES, pool summaries, the
   improvement/regression reading.
 - `distribution.ts` — one or two pools → curves, modes, jitter, and the chart's
-  geometry.
+  geometry. The jitter hash itself is `chart.ts::jitterAt`, since both charts
+  scatter overlapping dots with it.
 - `compare.ts` — kinds, side ordering, pools, labels, outgoing links.
 - `graphData.ts::pushValues` / `indexInPushValues` / `replicateGroups` — the
   pooling rule itself, which belongs with the push/run/replicate structure, and

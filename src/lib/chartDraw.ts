@@ -7,9 +7,12 @@
 
 import {
   formatTickValue,
+  jitterOffsetPx,
   lowerBound,
+  pixelSpan,
   timeTicks,
   valueTicks,
+  type JitterScale,
   type PlotGeometry,
   type Range,
   type SeriesShape,
@@ -42,6 +45,10 @@ export type DrawOptions = {
   // The theme's chart colors. Passed in rather than read off the DOM so the
   // drawing stays a function of its arguments — see theme.ts.
   palette: ChartPalette;
+  // Turns each dot's stored room into a pixel offset. The caller must hand the
+  // same scale to `hitTestAll`, or the cursor and the dots disagree about where
+  // the dots are.
+  jitter: JitterScale;
 };
 
 // Why a point is highlighted. Three states that have to be told apart at a
@@ -55,7 +62,20 @@ export type DrawOptions = {
 export type HighlightKind = 'selected' | 'compared' | 'hovered';
 
 // A highlighted point, in data coordinates.
-export type Highlight = { x: number; y: number; color: string; kind: HighlightKind };
+//
+// `jitter` and `xRoom` are what put the ring on the dot rather than beside it: the
+// dot was drawn some way off its push time, and the caller has no point object to
+// read that offset from — it resolves a URL triple against the push structure, not
+// against the point arrays. So it passes the same two numbers a `SeriesPoint`
+// carries and lets the chart scale them (see graphData.ts::jitterForSelection).
+export type Highlight = {
+  x: number;
+  y: number;
+  jitter: number;
+  xRoom: number;
+  color: string;
+  kind: HighlightKind;
+};
 
 const FONT = '11px system-ui, sans-serif';
 
@@ -202,15 +222,71 @@ function traceSymbol(
   ctx.arc(x, y, r, 0, Math.PI * 2);
 }
 
-// All dots of one series in a single path. Batching matters: a 90-day range
-// with replicates is easily 20k dots per series, and one fill() beats 20k. An
-// outline symbol is the same single path, stroked instead of filled — so it
-// costs one extra rasterization pass over the path, not per-dot state changes.
+// How opaque one dot is. One dot covers half the background, two 75%, four 94%,
+// so the bulk of a cloud is where the color saturates and a lone outlier is
+// visibly lighter than the crowd. It was 0.75, which is past the useful range:
+// two dots already reached 94% and every cluster from two upwards looked the
+// same.
+//
+// Not lower, because the palette's light end has to survive it too: orange
+// (#FFB851, the fifth series) at 0.5 on the light theme's canvas is still a
+// visible dot, and below about 0.4 it stops being one.
+//
+// Filled and outline symbols share the value: the stroke width scales with the
+// radius (see below), which happens to leave the two carrying about the same
+// area of ink, so one alpha gives them the same weight.
+const DOT_ALPHA = 0.5;
+
+// How many paths a series' dots are split across, which is what makes the
+// accumulated numbers above true — see `drawDots`. It also caps the accumulation,
+// at 1 − (1 − DOT_ALPHA)^DOT_PATHS ≈ 99.6% for eight; that's past the point where
+// another path changes a pixel.
+const DOT_PATHS = 8;
+
+// All dots of one series, split across DOT_PATHS paths — point i goes into path
+// i % DOT_PATHS — each filled (or stroked) once.
+//
+// **The split is what makes the dots' translucency mean anything, and the reason
+// is that canvas composites per draw call, not per shape.** `fill()` rasterizes
+// the whole path into a coverage mask first — under the nonzero winding rule a
+// pixel inside two overlapping circles has coverage 1, exactly like a pixel inside
+// one — and then composites the paint through that mask a single time. So one path
+// per series, which is the obvious batching and is what this did at first, gave
+// sixty overlapping replicates the same flat 50% as a lone outlier: a series-wide
+// opacity rather than density. Note that this has nothing to do with *how* the
+// translucency is expressed; a `rgba(…, 0.5)` fill style behaves identically,
+// because it's still one composite. The overlapping dots have to be in different
+// draw calls, and that's all this is.
+//
+// Split **by index** rather than by anything semantic, because overlapping dots
+// are the ones adjacent in the array: the points are x-sorted, so a run's
+// replicates are consecutive, and any DOT_PATHS consecutive dots are guaranteed to
+// land in that many distinct paths. Dots further apart in the array (neighbouring
+// pushes at a wide zoom) accumulate too, just probabilistically — they collide in
+// the same path 1 time in 8.
+//
+// **Worth simplifying to one `fill()` per dot, once someone measures it
+// properly.** That would drop the interleaving and the `DOT_PATHS` constant
+// entirely and make the accumulation exact instead of approximate, and the
+// expectation is that it performs fine. What's measured so far is only headless
+// Chrome under software rasterization, over 111k dots — ratios, not absolutes: a
+// full repaint takes 63ms with one path per series, 59ms with four, 66ms with
+// eight, 63ms with sixteen, and 69ms with a fill per dot. All inside each other's
+// noise, because rasterizing the dots dominates whatever the call count is. The
+// open question is a GPU-backed canvas, where the per-draw-call overhead that a
+// software rasterizer can't see is what the batching was here for in the first
+// place — measure a repaint on real hardware at 100k+ dots before deciding. Until
+// then eight paths are the conservative version of the same effect.
 //
 // Outline symbols are deliberately *not* filled white the way treeherder fills
-// them. Our dots are translucent so that a dense cluster reads as density; an
-// opaque fill would turn those clusters into flat blobs, and a translucent
-// white one into a milky smear over the series behind.
+// them: an opaque fill would turn a dense cluster into a flat blob, and a
+// translucent white one into a milky smear over the series behind.
+//
+// Each dot is nudged sideways by its own share of the room around its push —
+// without it every
+// replicate of a run lands on that run's push timestamp and a 25-replicate run
+// draws as one vertical line, in which the only thing legible is its extremes.
+// See chart.ts, "Jitter".
 function drawDots(ctx: CanvasRenderingContext2D, o: DrawOptions, s: DrawSeries): void {
   const points = s.points;
   if (points.length === 0) return;
@@ -218,27 +294,34 @@ function drawDots(ctx: CanvasRenderingContext2D, o: DrawOptions, s: DrawSeries):
   const r = o.dotRadius;
   // The widest a symbol reaches from its centre, for the cull below.
   const reach = r * DIAMOND_HALF_DIAGONAL + 1;
-  const start = lowerBound(points, o.xDomain.min);
-  ctx.globalAlpha = 0.75;
-  ctx.beginPath();
-  for (let i = start; i < points.length; i++) {
-    const p = points[i];
-    if (p.x > o.xDomain.max) break;
-    const x = geom.xScale.toPixel(p.x);
-    const y = geom.yScale.toPixel(p.y);
-    // Cheap vertical cull: points can sit outside a zoomed y domain.
-    if (y < geom.y0 - reach || y > geom.y1 + reach) continue;
-    traceSymbol(ctx, s.symbol.shape, x, y, r);
-  }
+  // Widened by the jitter's ceiling, so the dots the loop covers are the same
+  // ones the hit test considers. Both ends: a dot can be nudged either way.
+  const slack = pixelSpan(geom.xScale, o.jitter.maxPx);
+  const start = lowerBound(points, o.xDomain.min - slack);
+  ctx.globalAlpha = DOT_ALPHA;
+  // Set once for all the paths below; neither fill() nor stroke() disturbs it.
   if (s.symbol.filled) {
     ctx.fillStyle = s.color;
-    ctx.fill();
   } else {
     ctx.strokeStyle = s.color;
     // Thin enough that the hole in the middle survives at the overview's dot
     // size, where a 1.5px stroke would close a 1px-radius ring into a blob.
     ctx.lineWidth = Math.min(1.5, Math.max(0.75, r * 0.5));
-    ctx.stroke();
+  }
+  for (let path = 0; path < DOT_PATHS; path++) {
+    ctx.beginPath();
+    // Each path walks its own x-sorted subsequence, so the break is still sound.
+    for (let i = start + path; i < points.length; i += DOT_PATHS) {
+      const p = points[i];
+      if (p.x > o.xDomain.max + slack) break;
+      const x = geom.xScale.toPixel(p.x) + jitterOffsetPx(p, o.jitter);
+      const y = geom.yScale.toPixel(p.y);
+      // Cheap vertical cull: points can sit outside a zoomed y domain.
+      if (y < geom.y0 - reach || y > geom.y1 + reach) continue;
+      traceSymbol(ctx, s.symbol.shape, x, y, r);
+    }
+    if (s.symbol.filled) ctx.fill();
+    else ctx.stroke();
   }
   ctx.globalAlpha = 1;
 }
@@ -257,10 +340,12 @@ export function drawHighlights(
   highlights: Highlight[],
   dotRadius: number,
   palette: ChartPalette,
+  // The same scale the dots were drawn with.
+  jitter: JitterScale,
 ): void {
   for (const kind of HIGHLIGHT_ORDER) {
     for (const h of highlights) {
-      if (h.kind === kind) drawHighlight(ctx, geom, h, dotRadius, palette);
+      if (h.kind === kind) drawHighlight(ctx, geom, h, dotRadius, palette, jitter);
     }
   }
 }
@@ -271,8 +356,9 @@ function drawHighlight(
   h: Highlight,
   dotRadius: number,
   palette: ChartPalette,
+  jitter: JitterScale,
 ): void {
-  const x = geom.xScale.toPixel(h.x);
+  const x = geom.xScale.toPixel(h.x) + jitterOffsetPx(h, jitter);
   const y = geom.yScale.toPixel(h.y);
   // Off-plot highlights (a point outside the zoomed window) must not paint
   // over the axes.

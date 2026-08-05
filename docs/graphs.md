@@ -220,7 +220,8 @@ Recovery is the explicit Retry button.
   push/run/replicate, plus the flat arrays the renderer walks — both of them,
   see "Replicates" above.
 - [chart.ts](../src/lib/chart.ts) — **pure**. Scales, domains, ticks,
-  formatting, plot geometry, hit-testing, palette.
+  formatting, plot geometry, hit-testing, palette, and the jitter both charts
+  use (see "Dots are translucent, and jittered sideways" below).
 - [chartDraw.ts](../src/lib/chartDraw.ts) — canvas painting. Imperative, but
   takes all its coordinates from a `PlotGeometry`.
 - [timeRange.ts](../src/lib/timeRange.ts) — **pure**. Presets ↔ absolute
@@ -261,6 +262,81 @@ one combined layer gave p90 25ms frames and a 134ms worst frame, because
 moving the window repainted all 111k dots; split, the same drag is p90 17ms,
 worst 18ms. Pointer and keyboard events live on the wrapper `<div>`, since
 the overlay canvas would otherwise swallow them.
+
+### Dots are translucent, and jittered sideways
+
+Every replicate of a run shares its run's push timestamp, and every retrigger of a
+build shares it too. Drawn literally, a push that recorded 12 runs × 5 replicates
+is 60 dots on one x — a vertical line whose only legible feature is its extremes.
+Two things fix that, and they cover different densities:
+
+- **`DOT_ALPHA = 0.5`, drawn in interleaved passes**
+  ([chartDraw.ts](../src/lib/chartDraw.ts)). One dot covers half the background,
+  two 75%, four 94%, so the bulk of a cloud is where the color saturates. It used
+  to be 0.75, which is past the useful range: two dots already reached 94% and
+  every cluster from two upwards looked identical. Not lower, because the palette's
+  light end has to survive it — orange (the fifth series) stops being a visible dot
+  below about 0.4.
+
+  **The alpha only means anything because a series' dots are split across
+  `DOT_PATHS = 8` paths** (point *i* into path *i* mod 8), and the reason is that
+  **canvas composites once per draw call, not once per shape**. `fill()` rasterizes
+  the whole path into a coverage mask first — under the nonzero winding rule a pixel
+  inside two overlapping circles has coverage 1, exactly like a pixel inside one —
+  and then composites the paint through that mask a single time. So batching a
+  series into one path, which is the obvious thing and is what this did at first,
+  gave sixty overlapping replicates the same flat 50% as a lone outlier: the series
+  read as a series-wide opacity rather than as density. Expressing the translucency
+  as an `rgba()` fill style instead of `globalAlpha` changes nothing, for the same
+  reason; the overlapping dots have to be in *different* draw calls.
+
+  Splitting **by index** is what makes that reliable rather than lucky: the points
+  are x-sorted, so a run's replicates are consecutive, and any 8 consecutive dots
+  land in 8 distinct paths. It costs nothing — measured over 111k dots (headless
+  Chrome, software rasterization, so ratios not absolutes): 63ms for one path, 59ms
+  for four, 66ms for eight, 63ms for sixteen, 69ms for a `fill()` per dot, all
+  inside each other's noise. **One fill per dot is the simplification to make here**
+  — exact rather than approximate, and no interleaving to explain — pending a
+  measurement on GPU-backed canvas; see graphs-todo.md. The distribution strip
+  ([distributionDraw.ts](../src/lib/distributionDraw.ts)) had the identical bug and
+  carries the identical fix, where a pool of tens of values makes the question moot.
+- **Horizontal jitter**, sized in x units and applied in pixels, from a
+  deterministic hash of `(datumId, replicateIndex)`. See "Jitter" in
+  [chart.ts](../src/lib/chart.ts) for the arithmetic; the decisions:
+
+  - **The room is a property of the push, not of the chart.** CI landings come in
+    bursts: measured on autoland over one day, the *median* gap between
+    consecutive pushes was four minutes — 4px on a 1500px plot — while the
+    isolated pushes on either side of the burst had hours of room each. One
+    amplitude for the whole graph is therefore wrong for most of the pushes on
+    screen: the median leaves the isolated columns as vertical lines, and anything
+    wider makes the bursts overlap. So `PushGroup.xRoom` is
+    `JITTER_GAP_FRACTION` of the distance to that push's *nearer* neighbour, which
+    also means two clouds can never meet — each keeps to 30% of the gap between
+    them and 40% of it always stays clear.
+  - **Stored on the point, in x units; converted to pixels at draw time.** That
+    way it scales with the zoom for free, and the pixel *ceiling*
+    (`JITTER_MAX_RADII` dot radii) can still stop a deep zoom — or a
+    post-weekend push — from smearing one build across a quarter of the plot.
+    Baking pixels into the data instead would need a rebuild per zoom step;
+    baking the offset into `SeriesPoint.x` would break the x-sorted order every
+    binary search in `chart.ts` relies on.
+  - **A dot that shares its x with no other dot is not moved** (`pointJitter`).
+    x means *time* here, not a category, so a lone dot nudged off its push would
+    sit beside the connecting line's vertex and read as noise in a quantity that
+    has none. The two point sets are judged separately: with replicates hidden, an
+    un-retriggered push is a single dot and stays exactly on the line.
+  - **The offset is a pure function of the point's identity, and three code paths
+    compute it** — the dots, the hit test, and the selection ring, which is drawn
+    from a resolved URL triple and never sees a `SeriesPoint`. They share
+    `jitterOffsetPx`; if they disagreed, the graph would answer clicks somewhere
+    other than where it drew, and the ring would sit beside the dot it names.
+    `graphData.test.ts` pins that `jitterForSelection` agrees with the stored
+    values.
+
+The same hash serves the distribution strip's vertical jitter, which is why it
+lives in `chart.ts` rather than in either chart's own module. See
+[comparison.md](comparison.md) for why it can't be `Math.random()`.
 
 Decisions carried over from treeherder:
 
@@ -363,9 +439,10 @@ Drawing details, in [chartDraw.ts](../src/lib/chartDraw.ts):
   ones one `stroke()`. That keeps the per-series cost at one rasterization
   pass, which is what makes 20k dots per series affordable.
 - **Hollow symbols are not filled white**, though treeherder fills them.
-  Our dots are translucent so a dense cluster reads as density; an opaque
-  fill would flatten those clusters into blobs and a translucent white one
-  would smear over the series behind.
+  Our dots are translucent so a dense cluster reads as density (see "Dots are
+  translucent, and jittered sideways" above); an opaque fill would flatten those
+  clusters into blobs and a translucent white one would smear over the series
+  behind.
 - The stroke thins with the radius (`min(1.5, max(0.75, r/2))`), or the
   overview's 1.25px symbols would close up into solid dots.
 

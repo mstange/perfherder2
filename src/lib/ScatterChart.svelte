@@ -7,7 +7,7 @@
   // pointer events only — the arithmetic is in chart.ts, the drawing in
   // chartDraw.ts.
 
-  import { hitTestAll, makeGeometry, type Padding, type Range } from './chart';
+  import { hitTestAll, makeGeometry, makeJitterScale, type Padding, type Range } from './chart';
   import { drawBrush, drawChart, drawHighlights, type Highlight } from './chartDraw';
   import type { SeriesEntry } from './appState.svelte';
   import { theme } from './theme.svelte';
@@ -108,6 +108,12 @@
   const geom = $derived(makeGeometry(width, height, pad, xDomain, yDomain));
   const effectiveBrush = $derived(pending ?? brush);
 
+  // Turns each dot's stored room into a pixel offset. One object for the whole
+  // chart, derived rather than recomputed per draw: the dots, the selection rings
+  // and the hit test all have to agree on it, and the overlay layer repaints on
+  // every frame of a drag.
+  const jitter = $derived(makeJitterScale(geom.xScale, dotRadius));
+
   $effect(() => {
     if (!wrapper) return;
     const ro = new ResizeObserver((entries) => {
@@ -157,6 +163,7 @@
       // Read inside the effect, so a theme change repaints the canvas — the
       // one thing on the page that CSS can't restyle on its own.
       palette: theme.chartPalette,
+      jitter,
     });
   });
 
@@ -179,7 +186,7 @@
       );
     }
     if (highlights.length > 0) {
-      drawHighlights(ctx, geom, highlights, dotRadius, theme.chartPalette);
+      drawHighlights(ctx, geom, highlights, dotRadius, theme.chartPalette, jitter);
     }
   });
 
@@ -246,6 +253,7 @@
       px,
       py,
       HIT_RADIUS,
+      jitter,
     );
   }
 

@@ -34,6 +34,10 @@ Living checklist. Update in the same commit as the work it describes.
   selected time range, fetched in batches for the visible window only
   (`activity.ts`, `activityApi.ts`, + tests). See design.md, "Run activity is
   fetched for the visible window only"
+- Translucent, horizontally jittered dots, so a dense replicate cloud reads as
+  density instead of as a vertical line (`chart.ts` "Jitter",
+  `graphData.ts::pointJitter`, + tests). See graphs.md, "Dots are translucent, and
+  jittered sideways"
 - Push value distributions and comparison mode — `kde.ts`, `stats.ts`,
   `distribution.ts`, `distributionDraw.ts`, `compare.ts`,
   `DistributionChart.svelte` (+ tests for all the pure halves). See
@@ -59,6 +63,15 @@ Living checklist. Update in the same commit as the work it describes.
   browsertime run is routinely the slow one. The machine identifiers would also
   make "is this retrigger on a different machine" answerable, which is currently
   a guess from the job's `machine_name` alone.
+- **One `fill()` per dot instead of the eight interleaved paths.** The dots are
+  split across `DOT_PATHS` paths so overlapping ones accumulate their alpha (see
+  graphs.md, "Dots are translucent, and jittered sideways"); a fill per dot would
+  do the same thing exactly rather than approximately and delete the concept. The
+  expectation is that it's fine: measured headless, over 111k dots, per-dot came out
+  at 69ms against 66ms for eight paths, inside the noise. That environment
+  rasterizes in software, though, so it can't see the per-draw-call overhead the
+  batching was introduced to avoid. **What's needed is one repaint measured on real
+  hardware at 100k+ dots**; if it holds, simplify.
 - **Mixed units on one y-axis.** Following treeherder for now; the axis says
   "mixed units" when it happens. A per-series normalized mode ("% of the
   first value") would be the real fix.

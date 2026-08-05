@@ -5,7 +5,6 @@ import {
   distributionHeight,
   distributionLayout,
   GRID_POINTS,
-  jitterAt,
   MIN_CURVE_VALUES,
   STRIP_ROW_HEIGHT,
   type DistributionInput,
@@ -14,32 +13,6 @@ import {
 function input(values: number[], over: Partial<DistributionInput> = {}): DistributionInput {
   return { label: 'A', color: '#000', values, markedIndex: -1, ...over };
 }
-
-describe('jitterAt', () => {
-  it('is deterministic and in range', () => {
-    for (let i = 0; i < 500; i++) {
-      const j = jitterAt(i, i % 2);
-      expect(j).toBeGreaterThanOrEqual(-1);
-      expect(j).toBeLessThanOrEqual(1);
-      expect(jitterAt(i, i % 2)).toBe(j);
-    }
-  });
-
-  it('differs between the two sides at the same index', () => {
-    // Otherwise both sides' strips would carry an identical pattern of
-    // offsets, which reads as a relationship between the pools that isn't
-    // there.
-    for (let i = 0; i < 20; i++) expect(jitterAt(i, 0)).not.toBe(jitterAt(i, 1));
-  });
-
-  it('spreads consecutive indices across the band', () => {
-    // Equal neighbouring values (an integer-valued metric) must not stack up.
-    const first = Array.from({ length: 40 }, (_, i) => jitterAt(i, 0));
-    const above = first.filter((j) => j > 0).length;
-    expect(above).toBeGreaterThan(10);
-    expect(above).toBeLessThan(30);
-  });
-});
 
 describe('buildDistribution', () => {
   const pool = (n: number, base: number) => Array.from({ length: n }, (_, i) => base + (i % 5));

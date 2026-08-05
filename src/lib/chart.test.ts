@@ -7,12 +7,17 @@ import {
   formatValue,
   hitTestAll,
   hitTestSeries,
+  JITTER_MAX_RADII,
+  jitterAt,
+  jitterOffsetPx,
   lowerBound,
   makeGeometry,
   makeScale,
   niceStep,
+  makeJitterScale,
   padDomain,
   pickTimeStep,
+  pixelSpan,
   SERIES_COLORS,
   SERIES_SYMBOLS,
   styleForIndex,
@@ -25,8 +30,12 @@ import type { SeriesPoint } from './graphData';
 const DAY = 86400000;
 const HOUR = 3600000;
 
+function point(o: Partial<SeriesPoint> & { x: number; y: number }): SeriesPoint {
+  return { datumId: 1, replicateIndex: 0, jitter: 0, xRoom: Infinity, ...o };
+}
+
 function pts(xs: number[]): SeriesPoint[] {
-  return xs.map((x, i) => ({ x, y: x, datumId: i, replicateIndex: 0 }));
+  return xs.map((x, i) => point({ x, y: x, datumId: i }));
 }
 
 describe('makeScale', () => {
@@ -193,9 +202,9 @@ describe('hitTestSeries', () => {
   const xScale = makeScale(0, 100, 0, 100);
   const yScale = makeScale(0, 100, 0, 100);
   const points: SeriesPoint[] = [
-    { x: 10, y: 10, datumId: 1, replicateIndex: 0 },
-    { x: 50, y: 50, datumId: 2, replicateIndex: 0 },
-    { x: 52, y: 55, datumId: 2, replicateIndex: 1 },
+    point({ x: 10, y: 10, datumId: 1 }),
+    point({ x: 50, y: 50, datumId: 2 }),
+    point({ x: 52, y: 55, datumId: 2, replicateIndex: 1 }),
   ];
 
   it('finds the nearest point inside the radius', () => {
@@ -215,13 +224,41 @@ describe('hitTestSeries', () => {
     const hit = hitTestSeries(points, xScale, yScale, 13, 14, 10);
     expect(hit?.distanceSq).toBe(25);
   });
+
+  // The dots are drawn at their jittered position, so the cursor has to be
+  // tested against that position and not against the push time.
+  describe('with jitter', () => {
+    const jittered: SeriesPoint[] = [
+      point({ x: 50, y: 50, datumId: 1, jitter: -1 }),
+      point({ x: 50, y: 50, datumId: 2, jitter: 1 }),
+    ];
+
+    // maxPx 8, and enough room that the ceiling governs: the two dots are drawn
+    // at px 42 and 58.
+    const scale = { pxPerValue: 1, maxPx: 8 };
+
+    it('measures from the jittered position', () => {
+      expect(hitTestSeries(jittered, xScale, yScale, 42, 50, 3, scale)?.pointIndex).toBe(0);
+      expect(hitTestSeries(jittered, xScale, yScale, 58, 50, 3, scale)?.pointIndex).toBe(1);
+      // And the un-jittered position between them is now a miss, which is the
+      // whole point: that gap is empty on screen too.
+      expect(hitTestSeries(jittered, xScale, yScale, 50, 50, 3, scale)).toBeNull();
+    });
+
+    it('finds a dot the jitter pushed outside the search window', () => {
+      // Without widening the x-sorted scan by the ceiling, the binary search for
+      // px 58 ± 3 would start past this point and miss it entirely.
+      const far = [point({ x: 50, y: 50, jitter: 1 })];
+      expect(hitTestSeries(far, xScale, yScale, 58, 50, 3, scale)?.pointIndex).toBe(0);
+    });
+  });
 });
 
 describe('hitTestAll', () => {
   const xScale = makeScale(0, 100, 0, 100);
   const yScale = makeScale(0, 100, 0, 100);
-  const a = { points: [{ x: 10, y: 10, datumId: 1, replicateIndex: 0 }] };
-  const b = { points: [{ x: 12, y: 12, datumId: 2, replicateIndex: 0 }] };
+  const a = { points: [point({ x: 10, y: 10, datumId: 1 })] };
+  const b = { points: [point({ x: 12, y: 12, datumId: 2 })] };
 
   it('picks the closest point across series', () => {
     expect(hitTestAll([a, b], xScale, yScale, 12, 12, 10)?.seriesIndex).toBe(1);
@@ -230,6 +267,99 @@ describe('hitTestAll', () => {
 
   it('returns null when every series misses', () => {
     expect(hitTestAll([a, b], xScale, yScale, 80, 80, 3)).toBeNull();
+  });
+
+  it('offsets by each point own room', () => {
+    // Two series over the same push time, one of them with a crowded neighbour
+    // and so almost no room to spread into.
+    const roomy = { points: [point({ x: 50, y: 50, jitter: -1, xRoom: 10 })] };
+    const tight = { points: [point({ x: 50, y: 50, jitter: -1, xRoom: 2 })] };
+    const scale = { pxPerValue: 1, maxPx: 20 };
+    expect(hitTestAll([roomy, tight], xScale, yScale, 40, 50, 3, scale)?.seriesIndex).toBe(0);
+    expect(hitTestAll([roomy, tight], xScale, yScale, 48, 50, 3, scale)?.seriesIndex).toBe(1);
+  });
+});
+
+describe('jitterAt', () => {
+  it('is deterministic and in range', () => {
+    for (let i = 0; i < 500; i++) {
+      const j = jitterAt(i, i % 2);
+      expect(j).toBeGreaterThanOrEqual(-1);
+      expect(j).toBeLessThanOrEqual(1);
+      expect(jitterAt(i, i % 2)).toBe(j);
+    }
+  });
+
+  it('differs between two salts at the same index', () => {
+    // For the distribution strip, otherwise both sides carry an identical
+    // pattern of offsets, which reads as a relationship between the pools that
+    // isn't there. For the graphs, otherwise every replicate of a run lands on
+    // the same offset and the vertical line the jitter exists to break up
+    // survives unchanged.
+    for (let i = 0; i < 20; i++) expect(jitterAt(i, 0)).not.toBe(jitterAt(i, 1));
+  });
+
+  it('spreads consecutive indices across the band', () => {
+    // Equal neighbouring values (an integer-valued metric) must not stack up.
+    const first = Array.from({ length: 40 }, (_, i) => jitterAt(i, 0));
+    const above = first.filter((j) => j > 0).length;
+    expect(above).toBeGreaterThan(10);
+    expect(above).toBeLessThan(30);
+  });
+});
+
+describe('makeJitterScale and jitterOffsetPx', () => {
+  // 100 units of time onto 1000px, so one unit is 10px.
+  const xScale = makeScale(0, 100, 0, 1000);
+
+  it('scales a point room into pixels', () => {
+    const scale = makeJitterScale(xScale, 100);
+    // 2 units of room is 20px, and the dot radius is far too big to cap it.
+    expect(jitterOffsetPx({ jitter: 1, xRoom: 2 }, scale)).toBeCloseTo(20);
+    expect(jitterOffsetPx({ jitter: -0.5, xRoom: 2 }, scale)).toBeCloseTo(-10);
+    expect(jitterOffsetPx({ jitter: 0, xRoom: 2 }, scale)).toBe(0);
+  });
+
+  it('caps at a multiple of the dot radius', () => {
+    // A push isolated by a weekend has hours of room; without the cap its
+    // replicates would smear across a quarter of the plot.
+    const scale = makeJitterScale(xScale, 3);
+    expect(jitterOffsetPx({ jitter: 1, xRoom: 50 }, scale)).toBe(3 * JITTER_MAX_RADII);
+  });
+
+  it('grows as you zoom in, since the room is in data units', () => {
+    const zoomed = makeJitterScale(makeScale(0, 10, 0, 1000), 100);
+    expect(jitterOffsetPx({ jitter: 1, xRoom: 2 }, zoomed)).toBeCloseTo(200);
+  });
+
+  it('falls back to the ceiling for a lone push', () => {
+    // `xRoom` is Infinity there, and Infinity × a zero-width domain's scale is
+    // NaN — which would spread from one dot into every coordinate on the canvas.
+    const scale = makeJitterScale(xScale, 3);
+    expect(jitterOffsetPx({ jitter: 1, xRoom: Infinity }, scale)).toBe(3 * JITTER_MAX_RADII);
+    const degenerate = makeJitterScale(makeScale(5, 5, 0, 1000), 3);
+    expect(jitterOffsetPx({ jitter: 1, xRoom: Infinity }, degenerate)).toBe(
+      3 * JITTER_MAX_RADII,
+    );
+  });
+
+  it('is positive-going for an inverted scale', () => {
+    // pxPerValue is a magnitude; a reversed x scale must not flip every dot's
+    // offset, which would put the ring on the wrong side of its dot.
+    const scale = makeJitterScale(makeScale(0, 100, 1000, 0), 100);
+    expect(jitterOffsetPx({ jitter: 1, xRoom: 2 }, scale)).toBeCloseTo(20);
+  });
+});
+
+describe('pixelSpan', () => {
+  it('converts a pixel width into data units', () => {
+    expect(pixelSpan(makeScale(0, 100, 0, 1000), 50)).toBeCloseTo(5);
+  });
+
+  it('is positive for an inverted scale', () => {
+    // The y scale is built inverted (p0 = bottom), so a negative answer here
+    // would silently reverse whichever window a caller widens with it.
+    expect(pixelSpan(makeScale(0, 100, 1000, 0), 50)).toBeCloseTo(5);
   });
 });
 

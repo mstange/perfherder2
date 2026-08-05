@@ -7,7 +7,7 @@
 // job (see docs/comparison.md). This module only knows it has one or two lists
 // of numbers to describe on a shared axis.
 
-import { makeScale, type Range, type Scale } from './chart';
+import { jitterAt, makeScale, type Range, type Scale } from './chart';
 import {
   computeModeInfo,
   EMPTY_MODE_INFO,
@@ -83,26 +83,6 @@ export type DistributionPlot = {
   // height instead of reserving space for an empty band.
   hasCurves: boolean;
 };
-
-// Deterministic jitter in [-1, 1] from a value's index and its side.
-//
-// Not `Math.random()`. A Svelte `$derived` re-runs whenever anything it reads
-// changes, and random jitter would make every dot in the strip jump when an
-// unrelated part of the state moved. (PerfCompare hit the same thing from the
-// other direction — its jitter visibly re-rolled while dragging the
-// valley-depth slider — and fixed it by hoisting the roll into a `useMemo`.)
-//
-// The mix is the finaliser from MurmurHash3, which decorrelates neighbouring
-// indices well enough that consecutive equal values don't stack up.
-export function jitterAt(index: number, side: number): number {
-  let h = (index * 0x9e3779b1 + side * 0x85ebca6b) | 0;
-  h ^= h >>> 16;
-  h = Math.imul(h, 0x21f0aaad);
-  h ^= h >>> 15;
-  h = Math.imul(h, 0x735a2d97);
-  h ^= h >>> 15;
-  return ((h >>> 0) / 0x100000000) * 2 - 1;
-}
 
 export function buildDistribution(inputs: readonly DistributionInput[]): DistributionPlot {
   const bandwidths = inputs.map((input) => silvermanBandwidth(input.values));

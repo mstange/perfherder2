@@ -49,6 +49,7 @@ function push(o: { pushId: number; x: number; rev: string; runs: Run[] }): PushG
     revision: o.rev,
     x: o.x,
     runs,
+    xRoom: Infinity,
     mean: runs.reduce((s, r) => s + r.mean, 0) / runs.length,
   };
 }

@@ -10,6 +10,7 @@
 // and precompute the flat arrays the renderer wants, so drawing never has to
 // walk a tree.
 
+import { JITTER_GAP_FRACTION, jitterAt } from './chart';
 import { parseApiDate, type RawSummary } from './graphApi';
 
 // One job's worth of values for one signature: a single performance datum
@@ -61,6 +62,15 @@ export type PushGroup = {
   // (The two coincide whenever the retriggers ran the same number of
   // replicates, which is the normal case.)
   mean: number;
+  // How far this push's dots may be jittered sideways, in x units (ms), as a
+  // half-width: `JITTER_GAP_FRACTION` of the distance to whichever neighbouring
+  // push is nearer. `Infinity` for a series with a single push, which has nothing
+  // to collide with — the pixel ceiling then decides on its own.
+  //
+  // A property of the push and not of the graph, because CI landings come in
+  // bursts: two pushes four minutes apart have room for almost nothing, and the
+  // isolated one after a weekend has hours. See chart.ts, "Jitter".
+  xRoom: number;
 };
 
 // A single plotted dot: one replicate of one run, or — in the `means` point
@@ -71,6 +81,16 @@ export type SeriesPoint = {
   datumId: number;
   // Index into the run's `values`, or MEAN_REPLICATE for the run's mean.
   replicateIndex: number;
+  // Horizontal jitter, in [-1, 1] — a *unit* offset, scaled at draw time by the
+  // room below and by the zoom (chart.ts::jitterOffsetPx).
+  //
+  // Stored rather than hashed on demand because three code paths have to agree
+  // on it exactly — the dots, the hit test, and the selection ring — and because
+  // the alternative is a hash per point per frame in the one loop that runs
+  // 100k times. `pointJitter` is where the number comes from.
+  jitter: number;
+  // Its push's `xRoom`, copied so the draw loop doesn't have to chase a map.
+  xRoom: number;
 };
 
 // Stands in for "not one replicate, but the run's mean" everywhere a replicate
@@ -212,6 +232,35 @@ export const EMPTY_SERIES_DATA: SeriesData = {
   pushById: new Map(),
 };
 
+// One dot's share of the horizontal jitter, in [-1, 1]. `dotsAtX` is how many
+// dots of this series land on the same push in the point set being built.
+//
+// Zero when there's only one, and that exemption is the point of taking the
+// count at all: a lone dot nudged off its push time would sit beside the
+// connecting line's vertex for no gain, and — since x means *time* here, not a
+// category — reads as measurement noise in a quantity that has none. So a series
+// drawn as one mean per un-retriggered push keeps its dots exactly on the line,
+// and only the clouds that genuinely overlap get spread.
+export function pointJitter(dotsAtX: number, datumId: number, replicateIndex: number): number {
+  return dotsAtX > 1 ? jitterAt(datumId, replicateIndex) : 0;
+}
+
+// The same number for callers that hold a push rather than a `SeriesPoint`: the
+// graph's selection ring, which resolves a URL triple against `pushById` and
+// never touches the point arrays. `buildSeriesData` computes it inline with the
+// count hoisted out of its loops; graphData.test.ts pins that the two agree,
+// because a disagreement would draw the ring beside the dot it names.
+export function jitterForSelection(
+  push: PushGroup,
+  datumId: number,
+  replicateIndex: number,
+): number {
+  let dots = 0;
+  if (replicateIndex === MEAN_REPLICATE) dots = push.runs.length;
+  else for (const run of push.runs) dots += run.values.length;
+  return pointJitter(dots, datumId, replicateIndex);
+}
+
 function mean(values: number[]): number {
   if (values.length === 0) return 0;
   let sum = 0;
@@ -268,6 +317,33 @@ export function buildSeriesData(summary: RawSummary | null): SeriesData {
 
   const pushById = new Map<number, PushGroup>();
   const pushes: PushGroup[] = [];
+  for (const run of runs) {
+    let push = pushById.get(run.pushId);
+    if (!push) {
+      push = {
+        pushId: run.pushId,
+        revision: run.revision,
+        x: run.x,
+        runs: [],
+        mean: 0,
+        xRoom: Infinity,
+      };
+      pushById.set(run.pushId, push);
+      pushes.push(push);
+    }
+    push.runs.push(run);
+  }
+  for (let i = 0; i < pushes.length; i++) {
+    const push = pushes[i];
+    push.mean = mean(push.runs.map((r) => r.mean));
+    // The nearer neighbour decides, so two clouds can never meet: each keeps to
+    // `JITTER_GAP_FRACTION` of the distance between them. A push at either end of
+    // the series has one neighbour and takes its distance from that one alone.
+    const prev = i > 0 ? push.x - pushes[i - 1].x : Infinity;
+    const next = i + 1 < pushes.length ? pushes[i + 1].x - push.x : Infinity;
+    push.xRoom = Math.min(prev, next) * JITTER_GAP_FRACTION;
+  }
+
   const points: SeriesPoint[] = [];
   const meanPoints: SeriesPoint[] = [];
   let minY = Infinity;
@@ -275,35 +351,47 @@ export function buildSeriesData(summary: RawSummary | null): SeriesData {
   let meanMinY = Infinity;
   let meanMaxY = -Infinity;
 
-  for (const run of runs) {
-    let push = pushById.get(run.pushId);
-    if (!push) {
-      push = { pushId: run.pushId, revision: run.revision, x: run.x, runs: [], mean: 0 };
-      pushById.set(run.pushId, push);
-      pushes.push(push);
-    }
-    push.runs.push(run);
+  // Emitted push by push rather than run by run, because a dot's jitter depends
+  // on how many *other* dots share its push — a fact that isn't known until the
+  // push's runs are all in. Both arrays come out x-sorted regardless: every run
+  // of a push shares that push's timestamp, and `pushes` was built in the run
+  // order, which is already sorted by x.
+  for (const push of pushes) {
+    let replicateDots = 0;
+    for (const run of push.runs) replicateDots += run.values.length;
 
-    for (let i = 0; i < run.values.length; i++) {
-      const y = run.values[i];
-      points.push({ x: run.x, y, datumId: run.datumId, replicateIndex: i });
-      if (y < minY) minY = y;
-      if (y > maxY) maxY = y;
-    }
+    for (const run of push.runs) {
+      for (let i = 0; i < run.values.length; i++) {
+        const y = run.values[i];
+        points.push({
+          x: run.x,
+          y,
+          datumId: run.datumId,
+          replicateIndex: i,
+          jitter: pointJitter(replicateDots, run.datumId, i),
+          xRoom: push.xRoom,
+        });
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+      }
 
-    meanPoints.push({
-      x: run.x,
-      y: run.mean,
-      datumId: run.datumId,
-      replicateIndex: MEAN_REPLICATE,
-    });
-    if (run.mean < meanMinY) meanMinY = run.mean;
-    if (run.mean > meanMaxY) meanMaxY = run.mean;
+      meanPoints.push({
+        x: run.x,
+        y: run.mean,
+        datumId: run.datumId,
+        replicateIndex: MEAN_REPLICATE,
+        // One mean dot per run, so the count that matters here is the number of
+        // retriggers — an un-retriggered push gets no jitter in this point set
+        // even when its replicates are spread out in the other one.
+        jitter: pointJitter(push.runs.length, run.datumId, MEAN_REPLICATE),
+        xRoom: push.xRoom,
+      });
+      if (run.mean < meanMinY) meanMinY = run.mean;
+      if (run.mean > meanMaxY) meanMaxY = run.mean;
+    }
   }
 
   if (points.length === 0) return EMPTY_SERIES_DATA;
-
-  for (const push of pushes) push.mean = mean(push.runs.map((r) => r.mean));
 
   return {
     pushes,

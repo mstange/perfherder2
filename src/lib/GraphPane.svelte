@@ -4,6 +4,7 @@
 
   import type { AppState, Selection } from './appState.svelte';
   import type { Highlight } from './chartDraw';
+  import { jitterForSelection } from './graphData';
   import ScatterChart, { type ChartHit } from './ScatterChart.svelte';
   import ThemeToggle from './ThemeToggle.svelte';
   import type { SelectedPoint } from './urlState';
@@ -46,7 +47,17 @@
     const out: Highlight[] = [];
     const ring = (sel: Selection | null, kind: Highlight['kind']) => {
       if (!sel || !sel.entry.visible) return;
-      out.push({ x: sel.run.x, y: sel.value, color: sel.entry.color, kind });
+      out.push({
+        x: sel.run.x,
+        y: sel.value,
+        // The dot was drawn some way off its push time, so the ring has to be
+        // too. Recomputed from the push rather than read off a point, because a
+        // selection is a resolved URL triple and never carries one.
+        jitter: jitterForSelection(sel.push, sel.run.datumId, sel.replicateIndex),
+        xRoom: sel.push.xRoom,
+        color: sel.entry.color,
+        kind,
+      });
     };
     ring(app.selection, 'selected');
     if (app.comparisonSource === 'pinned') ring(app.comparedSelection, 'compared');

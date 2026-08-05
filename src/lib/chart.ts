@@ -242,6 +242,100 @@ export function formatTimestamp(ms: number): string {
 }
 
 // ---------------------------------------------------------------------------
+// Jitter
+// ---------------------------------------------------------------------------
+//
+// Both charts scatter dots that would otherwise land on top of each other: the
+// distribution strip vertically (every dot shares one axis position), the
+// time-series graphs horizontally (every replicate of a run shares its push
+// timestamp, so a 25-replicate run draws as one vertical line).
+
+// Deterministic jitter in [-1, 1] from an index and a salt.
+//
+// Not `Math.random()`. A Svelte `$derived` re-runs whenever anything it reads
+// changes, and random jitter would make every dot jump when an unrelated part of
+// the state moved. (PerfCompare hit the same thing from the other direction — its
+// strip jitter visibly re-rolled while dragging the valley-depth slider — and
+// fixed it by hoisting the roll into a `useMemo`.) On the time-series graphs the
+// stake is higher than shimmer: the selection ring is drawn from a different code
+// path than the dots, so an offset that isn't a pure function of the point's
+// identity would put the ring beside the dot it names.
+//
+// The mix is the finaliser from MurmurHash3, which decorrelates neighbouring
+// indices well enough that consecutive equal values don't stack up.
+export function jitterAt(index: number, salt: number): number {
+  let h = (index * 0x9e3779b1 + salt * 0x85ebca6b) | 0;
+  h ^= h >>> 16;
+  h = Math.imul(h, 0x21f0aaad);
+  h ^= h >>> 15;
+  h = Math.imul(h, 0x735a2d97);
+  h ^= h >>> 15;
+  return ((h >>> 0) / 0x100000000) * 2 - 1;
+}
+
+// How much of the space around a push its own dots may occupy, as the half-width
+// of the cloud. Each push measures its distance to the *nearer* of its two
+// neighbours, so at 0.3 two adjacent clouds can cover at most 0.6 of the gap
+// between them and 40% of it always stays clear — which is what keeps the columns
+// readable as separate builds. It is applied in graphData, which owns the push
+// structure (`PushGroup.xRoom`), but it lives here so the whole jitter policy
+// reads in one place.
+export const JITTER_GAP_FRACTION = 0.3;
+// Ceiling on that half-width, in dot radii. Zoom in far enough — or land on an
+// isolated push after a weekend — and there are hundreds of pixels of room;
+// without a cap one build's replicates would smear across a quarter of the plot
+// and stop reading as one measurement. Tied to the dot size because the point of
+// the spread is to separate dots, and the dots' own size is the scale on which
+// "separated" means anything.
+export const JITTER_MAX_RADII = 4;
+
+// Turns a point's stored room into pixels. Fixed for a whole repaint, since it
+// depends only on the zoom and the dot size — the *per-point* half of the answer
+// is `SeriesPoint.xRoom`, because how much room a dot has is a fact about its own
+// push and not about the graph.
+//
+// Why per push rather than one amplitude for the chart: CI landings come in
+// bursts. Measured on autoland over one day, the median gap between consecutive
+// pushes was four minutes — 4px on a 1500px plot — while the isolated pushes
+// either side of it had hours of room each. Any single number derived from that
+// distribution is wrong for most of the pushes on screen: the median leaves the
+// isolated columns as vertical lines, and anything wider makes the bursts overlap.
+export type JitterScale = { pxPerValue: number; maxPx: number };
+
+export function makeJitterScale(xScale: Scale, dotRadius: number): JitterScale {
+  return {
+    pxPerValue: Math.abs(xScale.toPixel(1) - xScale.toPixel(0)),
+    maxPx: dotRadius * JITTER_MAX_RADII,
+  };
+}
+
+// The horizontal offset of one dot, in pixels. Same call in the draw loop, in the
+// hit test and under the selection ring — three places that must agree to the
+// pixel, or the graph responds to clicks somewhere other than where it drew.
+export function jitterOffsetPx(
+  point: { jitter: number; xRoom: number },
+  scale: JitterScale,
+): number {
+  const room = point.xRoom * scale.pxPerValue;
+  // `room < maxPx` rather than `Math.min`, because a lone push's `xRoom` is
+  // `Infinity` and a degenerate (zero-width) domain has `pxPerValue` 0, whose
+  // product is NaN. A failed comparison then falls through to the ceiling, where
+  // `Math.min` would have propagated the NaN into every coordinate on the canvas.
+  return point.jitter * (room < scale.maxPx ? room : scale.maxPx);
+}
+
+// For callers that don't jitter at all — the tests, and anything hit-testing a
+// chart drawn without it.
+export const NO_JITTER: JitterScale = { pxPerValue: 0, maxPx: 0 };
+
+// Data-space width of `px` pixels under `scale`. Used to widen the x-sorted
+// searches that drawing and hit-testing do by the jitter's reach, so a dot the
+// jitter has nudged into view is still found.
+export function pixelSpan(scale: Scale, px: number): number {
+  return Math.abs(scale.toValue(px) - scale.toValue(0));
+}
+
+// ---------------------------------------------------------------------------
 // Hit-testing
 // ---------------------------------------------------------------------------
 
@@ -268,6 +362,10 @@ export type Hit = {
 // Nearest point to a pixel position, within `radius` pixels. The x-sorted
 // order lets us restrict the scan to a time window instead of touching every
 // point — with 20k points per series that matters on every mousemove.
+//
+// `jitter` must be the same scale the dots were drawn with, or the cursor and the
+// dots disagree about where the dots are. The scan window widens by its ceiling,
+// since a jittered dot can be that much further out than its push is.
 export function hitTestSeries(
   points: SeriesPoint[],
   xScale: Scale,
@@ -275,10 +373,12 @@ export function hitTestSeries(
   px: number,
   py: number,
   radius: number,
+  jitter: JitterScale = NO_JITTER,
 ): { pointIndex: number; distanceSq: number } | null {
   if (points.length === 0) return null;
-  const xLo = xScale.toValue(px - radius);
-  const xHi = xScale.toValue(px + radius);
+  const reach = radius + jitter.maxPx;
+  const xLo = xScale.toValue(px - reach);
+  const xHi = xScale.toValue(px + reach);
   // A reversed x scale would invert the bounds; normalize.
   const lo = lowerBound(points, Math.min(xLo, xHi));
   const hi = lowerBound(points, Math.max(xLo, xHi));
@@ -286,7 +386,7 @@ export function hitTestSeries(
   let best = -1;
   let bestDist = Infinity;
   for (let i = lo; i <= hi && i < points.length; i++) {
-    const dx = xScale.toPixel(points[i].x) - px;
+    const dx = xScale.toPixel(points[i].x) + jitterOffsetPx(points[i], jitter) - px;
     const dy = yScale.toPixel(points[i].y) - py;
     const d = dx * dx + dy * dy;
     if (d < bestDist && d <= rSq) {
@@ -306,10 +406,11 @@ export function hitTestAll(
   px: number,
   py: number,
   radius: number,
+  jitter: JitterScale = NO_JITTER,
 ): Hit | null {
   let best: Hit | null = null;
   for (let s = 0; s < list.length; s++) {
-    const hit = hitTestSeries(list[s].points, xScale, yScale, px, py, radius);
+    const hit = hitTestSeries(list[s].points, xScale, yScale, px, py, radius, jitter);
     if (hit && (!best || hit.distanceSq < best.distanceSq)) {
       best = { seriesIndex: s, pointIndex: hit.pointIndex, distanceSq: hit.distanceSq };
     }
