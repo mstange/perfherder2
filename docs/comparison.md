@@ -172,6 +172,52 @@ Layout, top to bottom, in one canvas:
 
 - **Both sides share one x domain and one KDE grid.** Two curves drawn on
   separate domains cannot be compared by eye, which is the entire point.
+- **That domain is anchored to the selection, not fitted to the pair on screen**
+  (`distribution.ts::stableAxis` → `AppState.selectionAxis` →
+  `buildDistribution`'s `axis` argument). The pane redraws on every hover, and
+  fitting the axis to the two pools meant the *selected* side — the one thing the
+  reader is holding still — moved under the pointer on every dot. Measured over one
+  series' 84 pushes, hovering each against a fixed selection: the fitted axis width
+  swung 12% and the selected pool's median slid 15px across a 260px plot.
+
+  The anchor is what the *selected* pool would get to itself, widened by
+  `AXIS_HEADROOM` (0.4) on each side. A hovered pool whose values fall inside that
+  headroom changes nothing at all; one that doesn't still widens the axis, in
+  `buildDistribution`, because both distributions have to fit and a strip dot off
+  the end of the plot would be worse. So the axis is a function of the selection
+  alone, and the headroom decides how often that's the whole story.
+
+  **The first version of this took the union over every push a hover could reach**,
+  which is stable by construction and was wrong: it is only tight when the series
+  is. On the series that produced the complaint — a zoom window holding outliers 8
+  score apart, with a selected pool 0.18 wide — it gave the selected distribution
+  **2% of the plot**. The anchored version gives it 15%, and in the browser the
+  selected side holds still on 55% of hovers there against 0% before. Measured
+  alternatives for the headroom, on that series and on a tight one:
+
+  | headroom | axis unchanged | selected pool fills |
+  |---|---|---|
+  | 0.2 | 34% / 100% | 19% / 38% |
+  | **0.4** | **63% / 100%** | **15% / 29%** |
+  | 0.6 | 87% / 100% | 12% / 24% |
+
+  A hover onto another *series* is the case no headroom helps: two distributions
+  four score apart need an axis that spans them, and then the selected one is a
+  sliver whatever the rule.
+- **The density band's height scale is still shared and still per-pair**, so
+  hovering a tight pool does shrink the selected curve — up to 19× on the series
+  above. That's kept deliberately: both curves integrate to 1, so height *is*
+  spread, and normalizing each side to its own peak would throw away the one
+  reading that says one distribution is tighter than the other. The axis fix
+  removes the sideways movement; this is the vertical movement we chose to keep.
+- **The band keeps its space when a hover could produce a curve** even if neither
+  pool on screen has one (`distributionHeight`'s `reserveBand`, from
+  `selectionAxis`). A series whose pushes straddle `MIN_CURVE_VALUES` — most with
+  enough replicates for a curve, one with three — otherwise grew and shrank by 73px
+  as the pointer moved between them. This half *does* scan the zoom window, since
+  what matters is whether a pool the pointer can reach has a curve. Where none can
+  (every awsy signature) nothing is reserved, so those charts stay 61px rather than
+  carrying a permanently empty band.
 - **Overlapping dots darken.** The strip's dots are translucent and drawn in
   interleaved paths so that several values landing on the same spot accumulate;
   see graphs.md, "Dots are translucent, and jittered sideways", for why one

@@ -82,6 +82,10 @@
         values: side.values,
         markedIndex: side.markedIndex,
       })),
+      // The axis is the selection's, not this pair's, so sweeping the pointer
+      // across pushes doesn't rescale the chart on every dot. See
+      // AppState.selectionAxis.
+      app.selectionAxis?.domain ?? null,
     );
   });
 
@@ -102,14 +106,19 @@
   // a difference between them.
   const pushDistribution = $derived.by(() => {
     if (!sel || comparisonDistribution || pushPool.length < 2) return null;
-    return buildDistribution([
-      {
-        label: `${sel.push.runs.length} run${sel.push.runs.length === 1 ? '' : 's'}`,
-        color: sel.entry.color,
-        values: pushPool,
-        markedIndex: indexInPushValues(sel.push, sel.run.datumId, sel.replicateIndex),
-      },
-    ]);
+    return buildDistribution(
+      [
+        {
+          label: `${sel.push.runs.length} run${sel.push.runs.length === 1 ? '' : 's'}`,
+          color: sel.entry.color,
+          values: pushPool,
+          markedIndex: indexInPushValues(sel.push, sel.run.datumId, sel.replicateIndex),
+        },
+      ],
+      // The same axis the comparison chart uses, so a value sits at the same x in
+      // both and the hover preview replacing this one doesn't slide it sideways.
+      app.selectionAxis?.domain ?? null,
+    );
   });
 
   // `swapped` means the baseline is the shift-clicked (or hovered) point, so the
@@ -302,7 +311,11 @@
           {/if}
 
           {#if comparisonDistribution}
-            <DistributionChart plot={comparisonDistribution} unit={cmp.unit} />
+            <DistributionChart
+              plot={comparisonDistribution}
+              unit={cmp.unit}
+              reserveBand={app.selectionAxis?.reserveBand ?? false}
+            />
           {/if}
 
           <ul class="sides">
@@ -457,6 +470,7 @@
             <DistributionChart
               plot={pushDistribution}
               unit={sel.entry.meta?.measurementUnit ?? ''}
+              reserveBand={app.selectionAxis?.reserveBand ?? false}
             />
           {/if}
           <!-- Every run of the push, not just the selected one: the pane used to

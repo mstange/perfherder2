@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  AXIS_HEADROOM,
   buildDistribution,
   DENSITY_HEIGHT,
   distributionHeight,
@@ -7,6 +8,7 @@ import {
   GRID_POINTS,
   MIN_CURVE_VALUES,
   paddedExtent,
+  stableAxis,
   STRIP_ROW_HEIGHT,
   type DistributionInput,
 } from './distribution';
@@ -187,6 +189,34 @@ describe('paddedExtent', () => {
     const fit = paddedExtent([values]);
     expect(plot.domain.min).toBeCloseTo(fit.min, 9);
     expect(plot.domain.max).toBeCloseTo(fit.max, 9);
+  });
+});
+
+describe('stableAxis', () => {
+  const pool = Array.from({ length: 20 }, (_, i) => 100 + (i % 5));
+
+  it('is the pool own fit plus headroom on each side', () => {
+    const fit = paddedExtent([pool]);
+    const axis = stableAxis(pool);
+    const width = fit.max - fit.min;
+    expect(axis.min).toBeCloseTo(fit.min - width * AXIS_HEADROOM, 9);
+    expect(axis.max).toBeCloseTo(fit.max + width * AXIS_HEADROOM, 9);
+  });
+
+  it('leaves the pool centred, so the headroom is on both sides', () => {
+    const fit = paddedExtent([pool]);
+    const axis = stableAxis(pool);
+    expect((fit.min + fit.max) / 2).toBeCloseTo((axis.min + axis.max) / 2, 9);
+  });
+
+  it('is what makes a nearby pool a no-op and a distant one not', () => {
+    const near = pool.map((v) => v + 1);
+    const far = pool.map((v) => v + 500);
+    const axis = stableAxis(pool);
+    const with_ = (other: number[]) =>
+      buildDistribution([input(pool), input(other, { color: '#f00' })], axis).domain;
+    expect(with_(near)).toEqual(axis);
+    expect(with_(far).max).toBeGreaterThan(axis.max);
   });
 });
 

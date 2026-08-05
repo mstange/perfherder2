@@ -16,15 +16,22 @@
   type Props = {
     plot: DistributionPlot;
     unit?: string;
+    // Keep the density band's space even when nothing is drawn in it. The pane
+    // sets this when some other pool the pointer could land on *does* have a
+    // curve, so the chart doesn't change height under the reader — see
+    // AppState.selectionAxis.
+    reserveBand?: boolean;
   };
-  let { plot, unit = '' }: Props = $props();
+  let { plot, unit = '', reserveBand = false }: Props = $props();
 
   let wrapper: HTMLDivElement | undefined = $state();
   let canvas: HTMLCanvasElement | undefined = $state();
   let width = $state(0);
 
-  const height = $derived(distributionHeight(plot.series.length, plot.hasCurves));
-  const layout = $derived(distributionLayout(width, plot));
+  const height = $derived(
+    distributionHeight(plot.series.length, plot.hasCurves, reserveBand),
+  );
+  const layout = $derived(distributionLayout(width, plot, reserveBand));
 
   // A single side is the plain "this push" case; two sides are a comparison, and
   // the first is drawn dashed and hollow. Mirrors `isBaseSide` in

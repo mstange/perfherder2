@@ -911,6 +911,133 @@ describe('AppState y domains', () => {
     }));
 });
 
+// The whole point of this one: hovering a dot must not rescale the details pane's
+// distribution chart, and the axis is what decides that.
+describe('AppState selectionAxis', () => {
+  const selected = '?series=autoland,1,1&sel=autoland,1,10,1';
+
+  it('is null with nothing selected', () =>
+    withApp('?series=autoland,1,1', async (app) => {
+      await settle();
+      expect(app.selectionAxis).toBeNull();
+    }));
+
+  it('does not move when the compared or hovered point does', () =>
+    withApp(selected, async (app) => {
+      await settle();
+      const before = app.selectionAxis;
+      expect(before).not.toBeNull();
+
+      const other = { repository: 'autoland', signatureId: 1, datumId: 11, replicateIndex: 0 };
+      app.setHoveredPoint(other);
+      expect(app.comparisonSource).toBe('hover');
+      expect(app.selectionAxis?.domain).toEqual(before?.domain);
+
+      app.comparePoint(other);
+      expect(app.comparisonSource).toBe('pinned');
+      expect(app.selectionAxis?.domain).toEqual(before?.domain);
+    }));
+
+  it('is the selected pool with headroom, not the whole series', () =>
+    withApp(selected, async (app) => {
+      await settle();
+      // The selected push is 100..120; the other one, 200..210, is a *hover* away
+      // and deliberately not on the axis. Covering every push a hover could reach
+      // is what the first version of this did, and on a series with outliers it
+      // left the selected distribution 2% of the plot.
+      const axis = app.selectionAxis!.domain;
+      expect(axis.min).toBeLessThan(100);
+      expect(axis.max).toBeGreaterThan(120);
+      expect(axis.max).toBeLessThan(200);
+    }));
+
+  it('does not follow the zoom, since it never looked at the window', () =>
+    withApp(selected, async (app) => {
+      await settle();
+      const before = app.selectionAxis!.domain;
+      const firstPushDay = Date.UTC(2026, 6, 21, 6, 0, 0);
+      app.setZoom({ start: firstPushDay - 3600000, end: firstPushDay + 3600000 });
+      expect(app.selectionAxis!.domain).toEqual(before);
+    }));
+
+  it('stays on the selection when the zoom excludes it', () =>
+    withApp(selected, async (app) => {
+      await settle();
+      // A selection survives a zoom that scrolls it off screen — the pane says so
+      // and offers to reset — and the pane still draws its values.
+      const secondPushDay = Date.UTC(2026, 6, 22, 6, 0, 0);
+      app.setZoom({ start: secondPushDay - 3600000, end: secondPushDay + 3600000 });
+      expect(app.selectionInView).toBe(false);
+      expect(app.selectionAxis!.domain.min).toBeLessThan(100);
+      expect(app.selectionAxis!.domain.max).toBeGreaterThan(120);
+    }));
+
+  it('has room for a nearby pool but not a distant one', async () => {
+    // The headroom is the whole trade: a hover onto push 2 changes nothing,
+    // because its values are inside the axis already, while push 3 has to widen it
+    // — which `buildDistribution` does, since both distributions have to fit.
+    const spread = summary(1, [
+      ...[100, 110, 120].map((value) =>
+        datum({ id: 10, value, push_id: 1, push_timestamp: '2026-07-21T06:00:00' }),
+      ),
+      ...[104, 112, 118].map((value) =>
+        datum({ id: 11, value, push_id: 2, push_timestamp: '2026-07-22T06:00:00' }),
+      ),
+      ...[400, 410, 420].map((value) =>
+        datum({ id: 12, value, push_id: 3, push_timestamp: '2026-07-23T06:00:00' }),
+      ),
+    ]);
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.includes('/performance/summary/')) return json([spread]);
+      if (url.includes('/repository/')) return json([]);
+      if (url.includes('/push/')) return json(push());
+      if (url.includes('/jobs/')) return json(job());
+      return json({});
+    });
+    await withApp(selected, async (app) => {
+      await settle();
+      const axis = app.selectionAxis!.domain;
+      expect(axis.min).toBeLessThan(104);
+      expect(axis.max).toBeGreaterThan(118);
+      expect(axis.max).toBeLessThan(400);
+    });
+  });
+
+  it('reserves the density band when any hoverable push has enough values', () =>
+    withApp(selected, async (app) => {
+      await settle();
+      // Push 1 has three replicates and push 2 has two, so neither draws a curve
+      // — and reserving space for one would be a permanently empty band.
+      expect(app.selectionAxis!.reserveBand).toBe(false);
+    }));
+
+  it('reserves it for a series that straddles MIN_CURVE_VALUES', async () => {
+    // Four replicates on one push, two on the other: hovering between them used
+    // to add and remove the density band, 73px at a time.
+    const straddles = summary(1, [
+      ...[100, 105, 110, 115].map((value) =>
+        datum({ id: 10, value, push_id: 1, push_timestamp: '2026-07-21T06:00:00' }),
+      ),
+      ...[200, 210].map((value) =>
+        datum({ id: 11, value, push_id: 2, push_timestamp: '2026-07-22T06:00:00' }),
+      ),
+    ]);
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.includes('/performance/summary/')) return json([straddles]);
+      if (url.includes('/repository/')) return json([]);
+      if (url.includes('/push/')) return json(push());
+      if (url.includes('/jobs/')) return json(job());
+      return json({});
+    });
+    await withApp('?series=autoland,1,1&sel=autoland,1,11,0', async (app) => {
+      await settle();
+      // The selected push is the two-value one, which has no curve of its own.
+      expect(app.selection?.run.values).toEqual([200, 210]);
+      expect(app.selectionAxis!.reserveBand).toBe(true);
+    });
+  });
+});
+
 describe('AppState page title', () => {
   it('names the plotted series once their metadata lands', () =>
     withApp('?series=autoland,1,1', async (app) => {

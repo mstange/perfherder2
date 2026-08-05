@@ -25,6 +25,7 @@ import {
   MEAN_REPLICATE,
   metaFromSummary,
   placeholderMeta,
+  pushValues,
   resolvePoint,
   seriesKey,
   type PlotPoints,
@@ -43,6 +44,7 @@ import {
   type SeriesSymbol,
 } from './chart';
 import { buildComparison, type CompareSide, type Comparison } from './compare';
+import { MIN_CURVE_VALUES, stableAxis } from './distribution';
 import { EMPTY_FILTER, isFilterActive, sameFilter, type Filter } from './filter';
 import {
   attrsForEntry,
@@ -285,6 +287,45 @@ export class AppState {
   // Distinguishes the two reasons a selected point might not be on screen, so
   // the details pane can offer the right way out of each.
   selectionHiddenBySeries = $derived(this.selection ? !this.selection.entry.visible : false);
+
+  // The value axis both distribution charts draw against, and whether the density
+  // band gets space whatever the pool. Both are functions of the selection, not of
+  // whatever the pointer is over, which is the point: the pane's chart is redrawn
+  // on every hover, and deriving its axis from the two pools on screen made the
+  // *selected* side move under the reader. Measured over one series' 84 pushes,
+  // hovering each in turn against a fixed selection: the axis width swung 12% and
+  // the selected pool's median slid 15px across a 260px plot, every time the
+  // pointer moved to another push.
+  //
+  // `stableAxis` is the selected pool's own axis with headroom, so a hovered pool
+  // that lands inside that headroom changes nothing; one that doesn't still widens
+  // the axis, in `buildDistribution`, because both distributions have to fit. See
+  // there for why the headroom is what it is, and for the wider rule this replaced.
+  //
+  // The band is the other half. A series whose pushes straddle MIN_CURVE_VALUES —
+  // most with enough replicates for a curve, one with three — grew and shrank by
+  // 73px as the pointer moved between them, so the *window* is scanned for whether
+  // any pool the pointer can reach has a curve. Where none can (every awsy
+  // signature), nothing is reserved and the chart stays compact.
+  selectionAxis = $derived.by((): { domain: Range; reserveBand: boolean } | null => {
+    const sel = this.selection;
+    if (!sel) return null;
+    const pool = pushValues(sel.push);
+    const span = this.detailSpan;
+    let reserveBand = pool.length >= MIN_CURVE_VALUES;
+    if (!reserveBand) {
+      for (const push of sel.entry.data.pushes) {
+        if (push.x < span.start || push.x > span.end) continue;
+        let values = 0;
+        for (const run of push.runs) values += run.values.length;
+        if (values >= MIN_CURVE_VALUES) {
+          reserveBand = true;
+          break;
+        }
+      }
+    }
+    return { domain: stableAxis(pool), reserveBand };
+  });
 
   // Push / job details for the selection, once fetched.
   selectedPush = $derived.by((): Push | null => {

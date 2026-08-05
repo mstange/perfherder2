@@ -72,6 +72,14 @@ Living checklist. Update in the same commit as the work it describes.
   rasterizes in software, though, so it can't see the per-draw-call overhead the
   batching was introduced to avoid. **What's needed is one repaint measured on real
   hardware at 100k+ dots**; if it holds, simplify.
+- **The comparison card's remaining hover movement.** The distribution's value
+  axis and height are now fixed for a (selection, zoom) pair, and the density
+  scale's 19× swing is a deliberate keep (see comparison.md). What's left, both
+  unmeasured in the wild: the legend's detail line wraps to a second line for a
+  multi-modal pool ("modes A … B … C …"), which moves everything below it by 14px
+  per side; and the verdict badge appears and disappears between hovers, which is
+  inline and so only bites at a narrow pane width. A sweep of 40 hovers over two
+  real series found neither, so this is waiting for a case that shows it.
 - **Mixed units on one y-axis.** Following treeherder for now; the axis says
   "mixed units" when it happens. A per-series normalized mode ("% of the
   first value") would be the real fix.

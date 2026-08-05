@@ -7,7 +7,7 @@
 // job (see docs/comparison.md). This module only knows it has one or two lists
 // of numbers to describe on a shared axis.
 
-import { jitterAt, makeScale, type Range, type Scale } from './chart';
+import { jitterAt, makeScale, padDomain, type Range, type Scale } from './chart';
 import {
   computeModeInfo,
   EMPTY_MODE_INFO,
@@ -93,9 +93,7 @@ export type DistributionPlot = {
 // substantial and pool-dependent: measured across one series' 84 pushes it ran
 // from 0.03 to 0.50 score, against a 1.25-wide series.
 //
-// Exported because the caller sometimes wants the axis of pools it *isn't*
-// drawing: see `DistributionInput`'s use from AppState.selectionAxis, which fixes
-// the axis across every push a hover could land on.
+// Exported for `stableAxis` below, which needs the fit of a pool on its own.
 export function paddedExtent(pools: readonly (readonly number[])[]): Range {
   let lo = Infinity;
   let hi = -Infinity;
@@ -115,6 +113,34 @@ export function paddedExtent(pools: readonly (readonly number[])[]): Range {
   if (allNonNegative && lo < 0) lo = 0;
   if (!Number.isFinite(lo)) return { min: 0, max: 1 };
   return { min: lo, max: hi };
+}
+
+// Headroom on each side of the axis the details pane fixes for a selection, as a
+// fraction of the width the selected pool would have had to itself. It buys
+// stability: a hovered pool whose values land inside the headroom doesn't move the
+// axis at all, so sweeping the pointer across nearby pushes leaves the chart
+// alone. It costs width, since the selected distribution then occupies less of the
+// plot.
+//
+// 0.4 measured across two real series (see `stableAxis`): the axis holds still for
+// 63% of hovers on a series with 8-score outliers and 100% on a tight one, at 15%
+// and 29% of the plot given to the selected pool. Sizing it up to 0.6 buys 87% and
+// costs 3 points of that; down to 0.2 gives 34% and gains 4.
+export const AXIS_HEADROOM = 0.4;
+
+// The axis the details pane fixes for one selection: what the selected pool would
+// get to itself, plus headroom, and nothing to do with whatever is hovered.
+//
+// The alternative that shipped first — the union over every push a hover could
+// land on — is stable by construction but only tight when the series is. Measured
+// on the series in the bug report, whose window holds outliers 8 score apart from
+// a selected pool 0.18 wide: it gave the selected distribution 2% of the plot.
+// Anchoring to the selection instead gives it 15%, and the axis still has to widen
+// for a genuinely distant hovered pool — 2% again in that case, unavoidably, since
+// both distributions have to fit.
+export function stableAxis(pool: readonly number[]): Range {
+  const fit = paddedExtent([pool]);
+  return padDomain(fit.min, fit.max, AXIS_HEADROOM);
 }
 
 // `axis` fixes the value axis instead of fitting it to `inputs`. The details pane
