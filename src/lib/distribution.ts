@@ -75,9 +75,11 @@ export type DistributionPlot = {
   domain: Range;
   grid: number[];
   series: DistributionSeries[];
-  // Peak density across every side, for the density band's y scale. Shared, so
-  // a tighter distribution legitimately draws taller: both curves integrate to
-  // 1, so height is spread, in comparable units.
+  // What the density band's y scale runs to. The peak across every side — shared,
+  // so a tighter distribution legitimately draws taller: both curves integrate to
+  // 1, so height is spread, in comparable units — or the caller's `densityCeiling`
+  // where that is higher, which is what keeps a hovered curve from squashing the
+  // selected one.
   maxDensity: number;
   // False when nothing has a curve, so the chart can give the strip the whole
   // height instead of reserving space for an empty band.
@@ -93,7 +95,7 @@ export type DistributionPlot = {
 // substantial and pool-dependent: measured across one series' 84 pushes it ran
 // from 0.03 to 0.50 score, against a 1.25-wide series.
 //
-// Exported for `stableAxis` below, which needs the fit of a pool on its own.
+// Exported for `stableScales` below, which needs the fit of a pool on its own.
 export function paddedExtent(pools: readonly (readonly number[])[]): Range {
   let lo = Infinity;
   let hi = -Infinity;
@@ -122,46 +124,92 @@ export function paddedExtent(pools: readonly (readonly number[])[]): Range {
 // alone. It costs width, since the selected distribution then occupies less of the
 // plot.
 //
-// 0.4 measured across two real series (see `stableAxis`): the axis holds still for
+// 0.4 measured across two real series (see `stableScales`): the axis holds still for
 // 63% of hovers on a series with 8-score outliers and 100% on a tight one, at 15%
 // and 29% of the plot given to the selected pool. Sizing it up to 0.6 buys 87% and
 // costs 3 points of that; down to 0.2 gives 34% and gains 4.
 export const AXIS_HEADROOM = 0.4;
 
-// The axis the details pane fixes for one selection: what the selected pool would
-// get to itself, plus headroom, and nothing to do with whatever is hovered.
+// Headroom above the selected pool's own peak density, as a fraction of it. Same
+// bargain as AXIS_HEADROOM in the other direction: the density band's y scale is
+// shared between the two sides, so a taller hovered curve squashes the selected
+// one, and reserving height above it means a hovered peak within the headroom
+// changes nothing.
 //
-// The alternative that shipped first — the union over every push a hover could
-// land on — is stable by construction but only tight when the series is. Measured
-// on the series in the bug report, whose window holds outliers 8 score apart from
-// a selected pool 0.18 wide: it gave the selected distribution 2% of the plot.
-// Anchoring to the selection instead gives it 15%, and the axis still has to widen
-// for a genuinely distant hovered pool — 2% again in that case, unavoidably, since
-// both distributions have to fit.
-export function stableAxis(pool: readonly number[]): Range {
+// 0.5 because that is where the typical hover sits. Measured over three
+// series/window pairs, the hovered pool's peak against the selected pool's: p50
+// 1.20, 1.25 and 1.49, p90 2.6 to 5.3. So about two thirds of hovers land inside
+// 1.5×, and the cost is that the selected curve tops out at 1/1.5 = 67% of the band
+// instead of filling it.
+//
+// **This does nothing for the worst case, and that is measured too.** The ratio
+// reaches 16–20× when a hovered push happens to be one tight run, and no headroom
+// worth paying for covers that: on the worst decile of hovers the selected curve is
+// squashed to a third of the band or less whatever this is set to. Compressing the
+// scale (sqrt or log) is the only thing that would, and it would trade away the
+// plain reading that height is spread — see graphs-todo.md.
+export const DENSITY_HEADROOM = 0.5;
+
+// Both scales the details pane fixes for one selection, so that a hover preview
+// can't rescale the chart under the reader: the value axis, and a floor under the
+// density band's y scale.
+export type StableScales = {
+  axis: Range;
+  // Peak density to reserve room for, whatever the pools on screen turn out to
+  // peak at. Zero for a pool with no curve of its own, which has no height to
+  // protect.
+  densityCeiling: number;
+};
+
+// What the *selected* pool would get to itself, plus headroom in both directions,
+// and nothing to do with whatever is hovered.
+//
+// The alternative that shipped first for the axis — the union over every push a
+// hover could land on — is stable by construction but only tight when the series
+// is. Measured on the series in the bug report, whose window holds outliers 8 score
+// apart from a selected pool 0.18 wide: it gave the selected distribution 2% of the
+// plot. Anchoring to the selection instead gives it 15%, and the axis still has to
+// widen for a genuinely distant hovered pool — 2% again in that case, unavoidably,
+// since both distributions have to fit.
+export function stableScales(pool: readonly number[]): StableScales {
   const fit = paddedExtent([pool]);
-  return padDomain(fit.min, fit.max, AXIS_HEADROOM);
+  const axis = padDomain(fit.min, fit.max, AXIS_HEADROOM);
+  if (pool.length < MIN_CURVE_VALUES) return { axis, densityCeiling: 0 };
+  // The pool's own peak, on the grid it will be drawn against. Sampled rather than
+  // solved for, so that it matches the curve the chart actually paints — the two
+  // disagree by a hair once a distant hovered pool widens the axis and coarsens the
+  // grid, which costs nothing: the scale takes whichever is larger.
+  const grid = linearGrid(axis.min, axis.max, GRID_POINTS);
+  const density = gaussianKde(pool, silvermanBandwidth(pool), grid);
+  let peak = 0;
+  for (const d of density) if (d > peak) peak = d;
+  return { axis, densityCeiling: peak * (1 + DENSITY_HEADROOM) };
 }
 
-// `axis` fixes the value axis instead of fitting it to `inputs`. The details pane
-// passes one so that a hover preview can't rescale the chart under the reader —
-// see AppState.selectionAxis and docs/comparison.md. It is unioned with, not
-// substituted for, the fit: a pool that falls outside the given axis (a compared
-// point in another series, or one outside the zoom) still has to fit on screen.
+// `scales` fixes the value axis and the density band's scale instead of fitting
+// both to `inputs`. The details pane passes the selection's, so that a hover
+// preview can't rescale the chart under the reader — see AppState.selectionChart
+// and docs/comparison.md.
+//
+// Both are floors, not substitutes: a pool outside the given axis (a compared point
+// in another series, or one outside the zoom) still has to fit on screen, and a
+// curve taller than the ceiling still has to fit in the band. Which is why the
+// stability is a *usually*, and why the headroom sizes are measured rather than
+// picked.
 export function buildDistribution(
   inputs: readonly DistributionInput[],
-  axis: Range | null = null,
+  scales: StableScales | null = null,
 ): DistributionPlot {
   const bandwidths = inputs.map((input) => silvermanBandwidth(input.values));
 
   const fit = paddedExtent(inputs.map((input) => input.values));
-  const lo = axis ? Math.min(axis.min, fit.min) : fit.min;
-  const hi = axis ? Math.max(axis.max, fit.max) : fit.max;
+  const lo = scales ? Math.min(scales.axis.min, fit.min) : fit.min;
+  const hi = scales ? Math.max(scales.axis.max, fit.max) : fit.max;
 
   const grid = linearGrid(lo, hi, GRID_POINTS);
   const domain: Range = { min: grid[0], max: grid[grid.length - 1] };
 
-  let maxDensity = 0;
+  let maxDensity = scales?.densityCeiling ?? 0;
   const series = inputs.map((input, side): DistributionSeries => {
     const enoughForCurve = input.values.length >= MIN_CURVE_VALUES;
     const density = enoughForCurve ? gaussianKde(input.values, bandwidths[side], grid) : [];

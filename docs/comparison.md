@@ -181,7 +181,8 @@ Layout, top to bottom, in one canvas:
   swung 12% and the selected pool's median slid 15px across a 260px plot.
 
   The anchor is what the *selected* pool would get to itself, widened by
-  `AXIS_HEADROOM` (0.4) on each side. A hovered pool whose values fall inside that
+  `AXIS_HEADROOM` (0.4) on each side — `stableScales` computes it alongside the
+  density ceiling below, since both are the same bargain in different directions. A hovered pool whose values fall inside that
   headroom changes nothing at all; one that doesn't still widens the axis, in
   `buildDistribution`, because both distributions have to fit and a strip dot off
   the end of the plot would be worse. So the axis is a function of the selection
@@ -204,12 +205,23 @@ Layout, top to bottom, in one canvas:
   A hover onto another *series* is the case no headroom helps: two distributions
   four score apart need an axis that spans them, and then the selected one is a
   sliver whatever the rule.
-- **The density band's height scale is still shared and still per-pair**, so
-  hovering a tight pool does shrink the selected curve — up to 19× on the series
-  above. That's kept deliberately: both curves integrate to 1, so height *is*
-  spread, and normalizing each side to its own peak would throw away the one
-  reading that says one distribution is tighter than the other. The axis fix
-  removes the sideways movement; this is the vertical movement we chose to keep.
+- **The density band's height scale is shared between the sides, with headroom.**
+  Shared is deliberate: both curves integrate to 1, so height *is* spread, and
+  normalizing each side to its own peak would throw away the one reading that says
+  which distribution is tighter. But shared also means a taller hovered curve
+  squashes the selected one, so `stableScales` reserves `DENSITY_HEADROOM` (0.5)
+  above the selected pool's own peak, and a hovered peak inside that changes
+  nothing. Measured by sweeping the pointer in the browser, distinct values of the
+  band's scale: 25 across 33 hovers before, 11 after, with the reserved ceiling
+  holding for 67% of them on one series and 95% on another.
+
+  The cost is that the selected curve tops out at 1/1.5 = 67% of the band instead
+  of filling it, and **the worst case is not improved at all**: the hovered peak
+  reaches 16–20× the selected one when a hovered push happens to be a single tight
+  run, and on the worst decile of hovers the selected curve is squashed to a third
+  of the band or less whatever the headroom is. Only compressing the scale (sqrt or
+  log) would fix that, at the price of the plain height-is-spread reading — see
+  graphs-todo.md.
 - **The band keeps its space when a hover could produce a curve** even if neither
   pool on screen has one (`distributionHeight`'s `reserveBand`, from
   `selectionAxis`). A series whose pushes straddle `MIN_CURVE_VALUES` — most with

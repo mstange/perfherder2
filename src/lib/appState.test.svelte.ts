@@ -913,29 +913,32 @@ describe('AppState y domains', () => {
 
 // The whole point of this one: hovering a dot must not rescale the details pane's
 // distribution chart, and the axis is what decides that.
-describe('AppState selectionAxis', () => {
+describe('AppState selectionChart', () => {
   const selected = '?series=autoland,1,1&sel=autoland,1,10,1';
 
   it('is null with nothing selected', () =>
     withApp('?series=autoland,1,1', async (app) => {
       await settle();
-      expect(app.selectionAxis).toBeNull();
+      expect(app.selectionChart).toBeNull();
     }));
 
   it('does not move when the compared or hovered point does', () =>
     withApp(selected, async (app) => {
       await settle();
-      const before = app.selectionAxis;
-      expect(before).not.toBeNull();
+      const before = app.selectionChart?.scales;
+      expect(before).toBeDefined();
+      // Three replicates is below MIN_CURVE_VALUES, so this selection has no curve
+      // of its own and no height to protect; the axis still has to hold still.
+      expect(before!.densityCeiling).toBe(0);
 
       const other = { repository: 'autoland', signatureId: 1, datumId: 11, replicateIndex: 0 };
       app.setHoveredPoint(other);
       expect(app.comparisonSource).toBe('hover');
-      expect(app.selectionAxis?.domain).toEqual(before?.domain);
+      expect(app.selectionChart?.scales).toEqual(before);
 
       app.comparePoint(other);
       expect(app.comparisonSource).toBe('pinned');
-      expect(app.selectionAxis?.domain).toEqual(before?.domain);
+      expect(app.selectionChart?.scales).toEqual(before);
     }));
 
   it('is the selected pool with headroom, not the whole series', () =>
@@ -945,7 +948,7 @@ describe('AppState selectionAxis', () => {
       // and deliberately not on the axis. Covering every push a hover could reach
       // is what the first version of this did, and on a series with outliers it
       // left the selected distribution 2% of the plot.
-      const axis = app.selectionAxis!.domain;
+      const axis = app.selectionChart!.scales.axis;
       expect(axis.min).toBeLessThan(100);
       expect(axis.max).toBeGreaterThan(120);
       expect(axis.max).toBeLessThan(200);
@@ -954,10 +957,10 @@ describe('AppState selectionAxis', () => {
   it('does not follow the zoom, since it never looked at the window', () =>
     withApp(selected, async (app) => {
       await settle();
-      const before = app.selectionAxis!.domain;
+      const before = app.selectionChart!.scales.axis;
       const firstPushDay = Date.UTC(2026, 6, 21, 6, 0, 0);
       app.setZoom({ start: firstPushDay - 3600000, end: firstPushDay + 3600000 });
-      expect(app.selectionAxis!.domain).toEqual(before);
+      expect(app.selectionChart!.scales.axis).toEqual(before);
     }));
 
   it('stays on the selection when the zoom excludes it', () =>
@@ -968,9 +971,42 @@ describe('AppState selectionAxis', () => {
       const secondPushDay = Date.UTC(2026, 6, 22, 6, 0, 0);
       app.setZoom({ start: secondPushDay - 3600000, end: secondPushDay + 3600000 });
       expect(app.selectionInView).toBe(false);
-      expect(app.selectionAxis!.domain.min).toBeLessThan(100);
-      expect(app.selectionAxis!.domain.max).toBeGreaterThan(120);
+      expect(app.selectionChart!.scales.axis.min).toBeLessThan(100);
+      expect(app.selectionChart!.scales.axis.max).toBeGreaterThan(120);
     }));
+
+  it('reserves height above the selected pool own peak', async () => {
+    // Five replicates, so the selected push has a curve — and the ceiling above it
+    // is what a hovered pool has to exceed before the band's scale moves.
+    const withCurve = summary(1, [
+      ...[100, 104, 110, 116, 120].map((value) =>
+        datum({ id: 10, value, push_id: 1, push_timestamp: '2026-07-21T06:00:00' }),
+      ),
+      ...[200, 210].map((value) =>
+        datum({ id: 11, value, push_id: 2, push_timestamp: '2026-07-22T06:00:00' }),
+      ),
+    ]);
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.includes('/performance/summary/')) return json([withCurve]);
+      if (url.includes('/repository/')) return json([]);
+      if (url.includes('/push/')) return json(push());
+      if (url.includes('/jobs/')) return json(job());
+      return json({});
+    });
+    await withApp(selected, async (app) => {
+      await settle();
+      const ceiling = app.selectionChart!.scales.densityCeiling;
+      expect(ceiling).toBeGreaterThan(0);
+      // And it doesn't budge for the hover, which is the whole point.
+      app.setHoveredPoint({
+        repository: 'autoland',
+        signatureId: 1,
+        datumId: 11,
+        replicateIndex: 0,
+      });
+      expect(app.selectionChart!.scales.densityCeiling).toBe(ceiling);
+    });
+  });
 
   it('has room for a nearby pool but not a distant one', async () => {
     // The headroom is the whole trade: a hover onto push 2 changes nothing,
@@ -996,7 +1032,7 @@ describe('AppState selectionAxis', () => {
     });
     await withApp(selected, async (app) => {
       await settle();
-      const axis = app.selectionAxis!.domain;
+      const axis = app.selectionChart!.scales.axis;
       expect(axis.min).toBeLessThan(104);
       expect(axis.max).toBeGreaterThan(118);
       expect(axis.max).toBeLessThan(400);
@@ -1008,7 +1044,7 @@ describe('AppState selectionAxis', () => {
       await settle();
       // Push 1 has three replicates and push 2 has two, so neither draws a curve
       // — and reserving space for one would be a permanently empty band.
-      expect(app.selectionAxis!.reserveBand).toBe(false);
+      expect(app.selectionChart!.reserveBand).toBe(false);
     }));
 
   it('reserves it for a series that straddles MIN_CURVE_VALUES', async () => {
@@ -1033,7 +1069,7 @@ describe('AppState selectionAxis', () => {
       await settle();
       // The selected push is the two-value one, which has no curve of its own.
       expect(app.selection?.run.values).toEqual([200, 210]);
-      expect(app.selectionAxis!.reserveBand).toBe(true);
+      expect(app.selectionChart!.reserveBand).toBe(true);
     });
   });
 });

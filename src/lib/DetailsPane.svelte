@@ -82,10 +82,10 @@
         values: side.values,
         markedIndex: side.markedIndex,
       })),
-      // The axis is the selection's, not this pair's, so sweeping the pointer
+      // The scales are the selection's, not this pair's, so sweeping the pointer
       // across pushes doesn't rescale the chart on every dot. See
-      // AppState.selectionAxis.
-      app.selectionAxis?.domain ?? null,
+      // AppState.selectionChart.
+      app.selectionChart?.scales ?? null,
     );
   });
 
@@ -115,9 +115,9 @@
           markedIndex: indexInPushValues(sel.push, sel.run.datumId, sel.replicateIndex),
         },
       ],
-      // The same axis the comparison chart uses, so a value sits at the same x in
+      // The same scales the comparison chart uses, so a value sits at the same x in
       // both and the hover preview replacing this one doesn't slide it sideways.
-      app.selectionAxis?.domain ?? null,
+      app.selectionChart?.scales ?? null,
     );
   });
 
@@ -314,7 +314,7 @@
             <DistributionChart
               plot={comparisonDistribution}
               unit={cmp.unit}
-              reserveBand={app.selectionAxis?.reserveBand ?? false}
+              reserveBand={app.selectionChart?.reserveBand ?? false}
             />
           {/if}
 
@@ -470,7 +470,7 @@
             <DistributionChart
               plot={pushDistribution}
               unit={sel.entry.meta?.measurementUnit ?? ''}
-              reserveBand={app.selectionAxis?.reserveBand ?? false}
+              reserveBand={app.selectionChart?.reserveBand ?? false}
             />
           {/if}
           <!-- Every run of the push, not just the selected one: the pane used to

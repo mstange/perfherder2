@@ -7,8 +7,9 @@ import {
   distributionLayout,
   GRID_POINTS,
   MIN_CURVE_VALUES,
+  DENSITY_HEADROOM,
   paddedExtent,
-  stableAxis,
+  stableScales,
   STRIP_ROW_HEIGHT,
   type DistributionInput,
 } from './distribution';
@@ -103,13 +104,13 @@ describe('buildDistribution', () => {
     expect(plot.hasCurves).toBe(false);
   });
 
-  // The details pane hands in an axis derived from the whole selection, so that
+  // The details pane hands in scales derived from the selection alone, so that
   // swapping one side for another — which is what a hover does, on every dot —
   // can't rescale the chart under the reader.
-  describe('with a fixed axis', () => {
-    const wide = { min: 0, max: 1000 };
+  describe('with fixed scales', () => {
+    const wide = { axis: { min: 0, max: 1000 }, densityCeiling: 0 };
 
-    it('uses it instead of fitting the pools', () => {
+    it('uses the axis instead of fitting the pools', () => {
       const plot = buildDistribution([input(pool(20, 100))], wide);
       expect(plot.domain.min).toBe(0);
       expect(plot.domain.max).toBe(1000);
@@ -129,6 +130,25 @@ describe('buildDistribution', () => {
       const plot = buildDistribution([input(pool(20, 100)), input([5000])], wide);
       expect(plot.domain.min).toBe(0);
       expect(plot.domain.max).toBeGreaterThan(5000);
+    });
+
+    it('holds the density scale at the ceiling', () => {
+      const tall = { ...wide, densityCeiling: 5 };
+      // Nothing here peaks anywhere near 5, so the band's scale is the ceiling and
+      // the curves are drawn at whatever fraction of it they reach.
+      expect(buildDistribution([input(pool(20, 100))], tall).maxDensity).toBe(5);
+    });
+
+    it('raises the density scale for a taller curve', () => {
+      // A hovered pool tighter than the headroom allows for: it has to fit in the
+      // band, so it sets the scale and the other side is squashed. Measured on real
+      // series, the ratio reaches 16–20×, which is why this can't be a hard cap.
+      const loose = pool(20, 100);
+      const tight = Array.from({ length: 20 }, (_, i) => 100 + (i % 2) * 0.1);
+      const scales = stableScales(loose);
+      const plot = buildDistribution([input(loose), input(tight, { color: '#f00' })], scales);
+      expect(plot.maxDensity).toBeGreaterThan(scales.densityCeiling);
+      expect(plot.maxDensity).toBeCloseTo(Math.max(...plot.series[1].density), 12);
     });
   });
 
@@ -192,12 +212,12 @@ describe('paddedExtent', () => {
   });
 });
 
-describe('stableAxis', () => {
+describe('stableScales', () => {
   const pool = Array.from({ length: 20 }, (_, i) => 100 + (i % 5));
 
   it('is the pool own fit plus headroom on each side', () => {
     const fit = paddedExtent([pool]);
-    const axis = stableAxis(pool);
+    const { axis } = stableScales(pool);
     const width = fit.max - fit.min;
     expect(axis.min).toBeCloseTo(fit.min - width * AXIS_HEADROOM, 9);
     expect(axis.max).toBeCloseTo(fit.max + width * AXIS_HEADROOM, 9);
@@ -205,18 +225,49 @@ describe('stableAxis', () => {
 
   it('leaves the pool centred, so the headroom is on both sides', () => {
     const fit = paddedExtent([pool]);
-    const axis = stableAxis(pool);
+    const { axis } = stableScales(pool);
     expect((fit.min + fit.max) / 2).toBeCloseTo((axis.min + axis.max) / 2, 9);
+  });
+
+  it('reserves headroom above the pool own peak', () => {
+    const { densityCeiling } = stableScales(pool);
+    const drawn = buildDistribution([input(pool)], stableScales(pool));
+    const peak = Math.max(...drawn.series[0].density);
+    expect(densityCeiling).toBeCloseTo(peak * (1 + DENSITY_HEADROOM), 9);
+    // Which is exactly what leaves the curve short of the band's ceiling.
+    expect(drawn.maxDensity).toBeCloseTo(densityCeiling, 9);
+    expect(peak / drawn.maxDensity).toBeCloseTo(1 / (1 + DENSITY_HEADROOM), 9);
+  });
+
+  it('has no peak to protect for a pool with no curve', () => {
+    expect(stableScales([10, 11, 12]).densityCeiling).toBe(0);
+    expect(stableScales([]).densityCeiling).toBe(0);
   });
 
   it('is what makes a nearby pool a no-op and a distant one not', () => {
     const near = pool.map((v) => v + 1);
     const far = pool.map((v) => v + 500);
-    const axis = stableAxis(pool);
+    const scales = stableScales(pool);
     const with_ = (other: number[]) =>
-      buildDistribution([input(pool), input(other, { color: '#f00' })], axis).domain;
-    expect(with_(near)).toEqual(axis);
-    expect(with_(far).max).toBeGreaterThan(axis.max);
+      buildDistribution([input(pool), input(other, { color: '#f00' })], scales);
+    expect(with_(near).domain).toEqual(scales.axis);
+    expect(with_(near).maxDensity).toBe(scales.densityCeiling);
+    expect(with_(far).domain.max).toBeGreaterThan(scales.axis.max);
+  });
+
+  it('keeps the selected curve the same height across a sweep of hovers', () => {
+    // The whole point: three different hovered pools, all within the headroom, and
+    // the selected side is drawn identically — same domain, same scale, so the same
+    // pixels.
+    const scales = stableScales(pool);
+    const heights = [1, 2, 3].map((offset) => {
+      const plot = buildDistribution(
+        [input(pool), input(pool.map((v) => v + offset), { color: '#f00' })],
+        scales,
+      );
+      return Math.max(...plot.series[0].density) / plot.maxDensity;
+    });
+    expect(new Set(heights).size).toBe(1);
   });
 });
 

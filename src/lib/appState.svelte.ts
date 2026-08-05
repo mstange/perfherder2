@@ -44,7 +44,7 @@ import {
   type SeriesSymbol,
 } from './chart';
 import { buildComparison, type CompareSide, type Comparison } from './compare';
-import { MIN_CURVE_VALUES, stableAxis } from './distribution';
+import { MIN_CURVE_VALUES, stableScales, type StableScales } from './distribution';
 import { EMPTY_FILTER, isFilterActive, sameFilter, type Filter } from './filter';
 import {
   attrsForEntry,
@@ -288,26 +288,27 @@ export class AppState {
   // the details pane can offer the right way out of each.
   selectionHiddenBySeries = $derived(this.selection ? !this.selection.entry.visible : false);
 
-  // The value axis both distribution charts draw against, and whether the density
-  // band gets space whatever the pool. Both are functions of the selection, not of
-  // whatever the pointer is over, which is the point: the pane's chart is redrawn
-  // on every hover, and deriving its axis from the two pools on screen made the
-  // *selected* side move under the reader. Measured over one series' 84 pushes,
-  // hovering each in turn against a fixed selection: the axis width swung 12% and
-  // the selected pool's median slid 15px across a 260px plot, every time the
-  // pointer moved to another push.
+  // What both distribution charts in the pane are drawn with. Everything here is a
+  // function of the selection, not of whatever the pointer is over, which is the
+  // point: the pane redraws on every hover, and letting the two pools on screen
+  // decide the scales made the *selected* side move and change height under the
+  // reader. Measured over one series' 84 pushes, hovering each in turn against a
+  // fixed selection: the axis width swung 12%, the selected pool's median slid 15px
+  // across a 260px plot, and the shared density scale swung 19×.
   //
-  // `stableAxis` is the selected pool's own axis with headroom, so a hovered pool
-  // that lands inside that headroom changes nothing; one that doesn't still widens
-  // the axis, in `buildDistribution`, because both distributions have to fit. See
-  // there for why the headroom is what it is, and for the wider rule this replaced.
+  // `stableScales` is the selected pool's own axis and peak, each with headroom, so
+  // a hovered pool inside that headroom changes nothing. One outside it still
+  // widens the axis or raises the scale in `buildDistribution` — both distributions
+  // have to fit — so this is a *usually*, and distribution.ts records how often,
+  // measured, for each headroom size.
   //
-  // The band is the other half. A series whose pushes straddle MIN_CURVE_VALUES —
-  // most with enough replicates for a curve, one with three — grew and shrank by
-  // 73px as the pointer moved between them, so the *window* is scanned for whether
-  // any pool the pointer can reach has a curve. Where none can (every awsy
-  // signature), nothing is reserved and the chart stays compact.
-  selectionAxis = $derived.by((): { domain: Range; reserveBand: boolean } | null => {
+  // The band is the other half, and the only part that looks at the zoom window. A
+  // series whose pushes straddle MIN_CURVE_VALUES — most with enough replicates for
+  // a curve, one with three — grew and shrank by 73px as the pointer moved between
+  // them, so the window is scanned for whether any pool the pointer can reach has a
+  // curve at all. Where none can (every awsy signature), nothing is reserved and
+  // the chart stays compact.
+  selectionChart = $derived.by((): { scales: StableScales; reserveBand: boolean } | null => {
     const sel = this.selection;
     if (!sel) return null;
     const pool = pushValues(sel.push);
@@ -324,7 +325,7 @@ export class AppState {
         }
       }
     }
-    return { domain: stableAxis(pool), reserveBand };
+    return { scales: stableScales(pool), reserveBand };
   });
 
   // Push / job details for the selection, once fetched.
