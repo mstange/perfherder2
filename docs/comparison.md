@@ -106,6 +106,14 @@ once: filled with a solid ring for the selection, filled and dashed for the
 pin, hollow and dashed for the hover. The hover is provisional, and a filled
 disc following the pointer reads as a selection that keeps moving.
 
+**With nothing selected the hover still gets a ring, hollow and solid.** There
+is no comparison to preview yet — `comparisonSource` is null, and the pane
+declines — but the graph would otherwise give no feedback at all until after
+the first click, which is exactly when the dots most need to look like targets.
+Solid rather than dashed because the dashes mean "provisional second end of a
+comparison", and a click here would select, not compare. It can't be confused
+with the selection ring: that one is filled.
+
 **The hover path is cheap enough to run on pointer moves.** Measured with four
 series over 90 days, sweeping the pointer across dots: the whole
 hover → recompute → repaint chain is a median of 0.3 ms and a worst case of

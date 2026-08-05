@@ -249,9 +249,12 @@ export class AppState {
   comparedSelection = $derived(
     this.resolveSelection(this.comparisonSource === 'pinned' ? this.comparedPoint : null),
   );
-  hoveredSelection = $derived(
-    this.resolveSelection(this.comparisonSource === 'hover' ? this.hoveredPoint : null),
-  );
+  // The dot under the pointer, resolved whether or not it is previewing a
+  // comparison. With nothing selected there is no comparison to preview, but the
+  // graph still rings it — otherwise the dots give no sign that they are
+  // clickable until after the first click.
+  hoveredResolved = $derived(this.resolveSelection(this.hoveredPoint));
+  hoveredSelection = $derived(this.comparisonSource === 'hover' ? this.hoveredResolved : null);
 
   // The described comparison, or null when there is no second end — or when the
   // second end *is* the selection, which has nothing to say.

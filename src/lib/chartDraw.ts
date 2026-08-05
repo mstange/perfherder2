@@ -51,15 +51,19 @@ export type DrawOptions = {
   jitter: JitterScale;
 };
 
-// Why a point is highlighted. Three states that have to be told apart at a
+// Why a point is highlighted. Four states that have to be told apart at a
 // glance on a plot with thousands of dots on it:
 //
-//   selected — the point the details pane is describing. Filled, solid ring.
-//   compared — the pinned other end of a comparison. Filled, dashed ring: same
-//              standing as the selection, but it's the second thing.
-//   hovered  — the comparison a shift-click *would* pin. Hollow and dashed —
-//              provisional, and not committed to anything.
-export type HighlightKind = 'selected' | 'compared' | 'hovered';
+//   selected  — the point the details pane is describing. Filled, solid ring.
+//   compared  — the pinned other end of a comparison. Filled, dashed ring: same
+//               standing as the selection, but it's the second thing.
+//   hovered   — the comparison a shift-click *would* pin. Hollow and dashed —
+//               provisional, and not committed to anything.
+//   hoverable — with nothing selected yet, the point a plain click would
+//               select. Hollow and solid: there is no comparison to be
+//               provisional about, and a solid ring is the only cue that the
+//               dots are targets at all.
+export type HighlightKind = 'selected' | 'compared' | 'hovered' | 'hoverable';
 
 // A highlighted point, in data coordinates.
 //
@@ -331,7 +335,7 @@ function drawDots(ctx: CanvasRenderingContext2D, o: DrawOptions, s: DrawSeries):
 //
 // Painted in increasing order of standing, so the selection ends up on top when
 // two of them land on the same dot.
-const HIGHLIGHT_ORDER: HighlightKind[] = ['hovered', 'compared', 'selected'];
+const HIGHLIGHT_ORDER: HighlightKind[] = ['hoverable', 'hovered', 'compared', 'selected'];
 
 export function drawHighlights(
   ctx: CanvasRenderingContext2D,
@@ -362,19 +366,23 @@ function drawHighlight(
   // Off-plot highlights (a point outside the zoomed window) must not paint
   // over the axes.
   if (x < geom.x0 || x > geom.x1 || y < geom.y0 || y > geom.y1) return;
-  const r = dotRadius + (h.kind === 'hovered' ? 4 : 3);
+  const hover = h.kind === 'hovered' || h.kind === 'hoverable';
+  const r = dotRadius + (hover ? 4 : 3);
   ctx.beginPath();
   ctx.arc(x, y, r, 0, Math.PI * 2);
   // Hollow for a hover: it marks a point the user hasn't committed to, and a
   // filled disc following the pointer around reads as a selection that keeps
   // moving.
-  if (h.kind !== 'hovered') {
+  if (!hover) {
     ctx.fillStyle = h.color;
     ctx.fill();
   }
   ctx.lineWidth = 2;
   ctx.strokeStyle = palette.ring;
-  ctx.setLineDash(h.kind === 'selected' ? [] : [3, 2]);
+  // Dashes mean "provisional second end of a comparison", which is why the
+  // plain hover ring is solid: nothing is selected, so it is previewing a
+  // selection rather than a comparison.
+  ctx.setLineDash(h.kind === 'compared' || h.kind === 'hovered' ? [3, 2] : []);
   ctx.stroke();
   ctx.setLineDash([]);
 }

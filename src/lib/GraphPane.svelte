@@ -41,8 +41,8 @@
   //
   // The hovered ring is drawn from `app.hoveredPoint` rather than kept inside
   // ScatterChart, so it agrees with the comparison the pane is previewing —
-  // including disappearing when the pane declines the preview (no selection, or
-  // the hovered dot *is* the selection).
+  // dashed while it previews one, and solid when it can't (nothing is selected,
+  // so a click would select rather than compare).
   const highlights = $derived.by((): Highlight[] => {
     const out: Highlight[] = [];
     const ring = (sel: Selection | null, kind: Highlight['kind']) => {
@@ -62,6 +62,7 @@
     ring(app.selection, 'selected');
     if (app.comparisonSource === 'pinned') ring(app.comparedSelection, 'compared');
     else if (app.comparisonSource === 'hover') ring(app.hoveredSelection, 'hovered');
+    else if (!app.selection) ring(app.hoveredResolved, 'hoverable');
     return out;
   });
 
