@@ -85,23 +85,28 @@
     );
   });
 
-  // Every value the series recorded on the clicked push, as a distribution. The
-  // pool is the push's whole replicate cloud — retriggers included — because the
-  // question this answers is "how noisy is this measurement on this build";
-  // see docs/comparison.md.
+  // Every value the series recorded on the clicked push — retriggers included,
+  // because the question the section answers is "how noisy is this measurement on
+  // this build"; see docs/comparison.md.
   //
+  // Below two values there is nothing to say that the headline value above hasn't
+  // already said, and the whole section is dropped. That's the normal case for
+  // every framework that records no replicates (talos, awsy): the backend falls
+  // back to one row carrying the summary value, so the "distribution" would be a
+  // strip with a single dot on it and the chip list a single chip repeating the
+  // number above.
+  const pushPool = $derived(sel ? pushValues(sel.push) : []);
+
   // Suppressed while a comparison is drawing its own chart: one of that chart's
   // two rows *is* this pool, and showing it twice invites the reader to look for
   // a difference between them.
   const pushDistribution = $derived.by(() => {
-    if (!sel || comparisonDistribution) return null;
-    const values = pushValues(sel.push);
-    if (values.length === 0) return null;
+    if (!sel || comparisonDistribution || pushPool.length < 2) return null;
     return buildDistribution([
       {
         label: `${sel.push.runs.length} run${sel.push.runs.length === 1 ? '' : 's'}`,
         color: sel.entry.color,
-        values,
+        values: pushPool,
         markedIndex: indexInPushValues(sel.push, sel.run.datumId, sel.replicateIndex),
       },
     ]);
@@ -440,76 +445,78 @@
            to sit at the bottom of the Build section, below the commit list,
            where it was off-screen unless you went looking.
            `pushValues` explains why the pool is the whole push. -->
-      <section>
-        <h3>Values on this push</h3>
-        {#if pushDistribution}
-          <DistributionChart
-            plot={pushDistribution}
-            unit={sel.entry.meta?.measurementUnit ?? ''}
-          />
-        {/if}
-        <!-- Every run of the push, not just the selected one: the pane used to
-             list the clicked run's values alone, which made a retriggered build
-             look like it recorded five numbers when it recorded fifteen, and
-             left the other runs' values reachable only by hunting for their
-             dots on the graph. Listed whether or not the dots are drawn — with
-             replicates hidden this is the only way to see the spread — and
-             ascending, since there's no execution order to show instead. -->
-        <ul class="runs">
-          {#each runGroups as group (group.run.datumId)}
-            <li class:selected={group.selectedRun}>
-              <div class="run-head">
-                <span class="run-name">
-                  {runGroups.length > 1
-                    ? `Run ${group.ordinal} of ${runGroups.length}`
-                    : 'Replicates'}
-                </span>
-                <!-- Only worth a link when there's more than one run; with a
-                     single one this would repeat the Run section right below. -->
-                {#if runGroups.length > 1 && group.run.jobId !== null}
-                  <a
-                    href={jobsUrl(repo, sel.push.revision, group.run.jobId)}
-                    target="_blank"
-                    rel="noopener">job {group.run.jobId}</a
-                  >
-                {/if}
-                {#if group.run.values.length > 1}
-                  <span class="muted">mean {formatValue(group.run.mean)}</span>
-                {/if}
-              </div>
-              <ol class="replicates" title={REPLICATE_ORDER_HINT}>
-                {#each group.run.values as v, i}
-                  <li class:selected={i === group.selectedIndex}>
-                    <button
-                      type="button"
-                      onclick={() =>
-                        app.selectPoint({
-                          repository: repo,
-                          signatureId: sel.entry.ref.signatureId,
-                          datumId: group.run.datumId,
-                          replicateIndex: i,
-                        })}
+      {#if pushPool.length > 1}
+        <section>
+          <h3>Values on this push</h3>
+          {#if pushDistribution}
+            <DistributionChart
+              plot={pushDistribution}
+              unit={sel.entry.meta?.measurementUnit ?? ''}
+            />
+          {/if}
+          <!-- Every run of the push, not just the selected one: the pane used to
+               list the clicked run's values alone, which made a retriggered build
+               look like it recorded five numbers when it recorded fifteen, and
+               left the other runs' values reachable only by hunting for their
+               dots on the graph. Listed whether or not the dots are drawn — with
+               replicates hidden this is the only way to see the spread — and
+               ascending, since there's no execution order to show instead. -->
+          <ul class="runs">
+            {#each runGroups as group (group.run.datumId)}
+              <li class:selected={group.selectedRun}>
+                <div class="run-head">
+                  <span class="run-name">
+                    {runGroups.length > 1
+                      ? `Run ${group.ordinal} of ${runGroups.length}`
+                      : 'Replicates'}
+                  </span>
+                  <!-- Only worth a link when there's more than one run; with a
+                       single one this would repeat the Run section right below. -->
+                  {#if runGroups.length > 1 && group.run.jobId !== null}
+                    <a
+                      href={jobsUrl(repo, sel.push.revision, group.run.jobId)}
+                      target="_blank"
+                      rel="noopener">job {group.run.jobId}</a
                     >
-                      <span class="idx">{i + 1}</span>
-                      <span class="num">{formatValue(v)}</span>
-                    </button>
-                  </li>
-                {/each}
-              </ol>
-            </li>
-          {/each}
-        </ul>
-        <!-- The value the connecting line passes through, which is why the line
-             can sit off a retriggered push's individual dots. Only worth
-             spelling out when there is more than one run; otherwise it just
-             repeats the run mean above. -->
-        {#if runGroups.length > 1}
-          <dl class="push-mean">
-            <dt>Push mean</dt>
-            <dd>{formatValue(sel.push.mean)}</dd>
-          </dl>
-        {/if}
-      </section>
+                  {/if}
+                  {#if group.run.values.length > 1}
+                    <span class="muted">mean {formatValue(group.run.mean)}</span>
+                  {/if}
+                </div>
+                <ol class="replicates" title={REPLICATE_ORDER_HINT}>
+                  {#each group.run.values as v, i}
+                    <li class:selected={i === group.selectedIndex}>
+                      <button
+                        type="button"
+                        onclick={() =>
+                          app.selectPoint({
+                            repository: repo,
+                            signatureId: sel.entry.ref.signatureId,
+                            datumId: group.run.datumId,
+                            replicateIndex: i,
+                          })}
+                      >
+                        <span class="idx">{i + 1}</span>
+                        <span class="num">{formatValue(v)}</span>
+                      </button>
+                    </li>
+                  {/each}
+                </ol>
+              </li>
+            {/each}
+          </ul>
+          <!-- The value the connecting line passes through, which is why the line
+               can sit off a retriggered push's individual dots. Only worth
+               spelling out when there is more than one run; otherwise it just
+               repeats the run mean above. -->
+          {#if runGroups.length > 1}
+            <dl class="push-mean">
+              <dt>Push mean</dt>
+              <dd>{formatValue(sel.push.mean)}</dd>
+            </dl>
+          {/if}
+        </section>
+      {/if}
 
       <section>
         <h3>Run</h3>

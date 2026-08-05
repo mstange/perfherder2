@@ -50,6 +50,14 @@ which would put the twenty-commit pushlog above the value you asked about.
    run, because the question a retriggered build raises is whether its runs
    agree — and because the other runs' values were otherwise reachable only by
    hunting for their dots on the graph.
+
+   **Absent below two values**, which is the normal case for every framework that
+   records no replicates (talos, awsy): the backend then falls back to one row
+   carrying the summary value, so the distribution would be a strip with one dot
+   on it and the chip list one chip repeating the headline above. A heavily
+   retriggered push goes the other way and makes this the longest section in the
+   pane — twelve runs is twelve groups — which is the cost of the ask, and the
+   cost falls on Build, which is meant to be at the bottom anyway.
 5. **Run** — the job: type, machine, start, duration, task. `result` comes
    **last**; it reads "success" for all but a handful of points, since a job that
    failed outright recorded no performance data to click on. It's kept rather
