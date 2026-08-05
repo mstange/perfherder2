@@ -19,6 +19,8 @@ import {
   type Push,
   type RepositoryInfo,
 } from './graphApi';
+import { alertsByPush, alertsForSeries, type SeriesAlert } from './alerts';
+import { fetchAlertSummaries } from './alertsApi';
 import {
   buildSeriesData,
   EMPTY_SERIES_DATA,
@@ -85,7 +87,15 @@ export type SeriesEntry = {
   plot: PlotPoints;
   loading: boolean;
   error: string | null;
+  // Alerts perfherder raised for this series, on pushes inside the loaded
+  // range. Empty until they land, which is deliberate: they're a second fetch,
+  // and the graph must not wait for them to draw its dots.
+  alerts: readonly SeriesAlert[];
 };
+
+// Shared so that every un-fetched series' `alerts` is the same array, and a
+// `$derived` recomputation doesn't look like a change to anything downstream.
+const EMPTY_ALERTS: readonly SeriesAlert[] = [];
 
 // Everything the details pane needs about the current selection.
 export type Selection = {
@@ -104,6 +114,8 @@ export type Selection = {
 export type ComparisonSource = 'pinned' | 'hover';
 
 type LoadedSeries = { meta: SeriesMeta; data: SeriesData };
+
+const DAY_SECONDS = 86400;
 
 function dataKey(ref: SeriesRef, span: Span): string {
   return `${seriesKey(ref)}|${span.start}|${span.end}`;
@@ -155,6 +167,13 @@ export class AppState {
   // the selection effect re-firing before a fetch resolves issues a duplicate.
   private detailRequests = new Set<string>();
 
+  // Alert summaries per series, keyed the same way as `seriesCache` and pruned
+  // with it. A missing entry means "not fetched yet", an empty array "fetched,
+  // no alerts" — the graph must be able to tell those apart or it would draw
+  // nothing and look identical either way.
+  private alertCache = $state(new Map<string, SeriesAlert[]>());
+  private alertRequests = new Set<string>();
+
   pushCache = $state(new Map<string, Push>());
   jobCache = $state(new Map<string, Job>());
   // `${repo}|${jobId}` lookups that came back an error. A negative cache, so
@@ -181,6 +200,7 @@ export class AppState {
         plot: this.showReplicates ? data.replicates : data.means,
         loading: this.loadingKeys.has(key),
         error: this.errorsByKey.get(key) ?? null,
+        alerts: this.alertCache.get(key) ?? EMPTY_ALERTS,
       };
     }),
   );
@@ -377,6 +397,14 @@ export class AppState {
     ),
   );
 
+  // The alert on the selected build, if perfherder raised one for the selected
+  // series. What turns a marker on the graph into something readable.
+  selectedAlert = $derived.by((): SeriesAlert | null => {
+    const sel = this.selection;
+    if (!sel) return null;
+    return alertsByPush(sel.entry.alerts).get(sel.push.pushId) ?? null;
+  });
+
   // The push immediately before the selected one in the same series — the
   // details pane's "Since previous" pushlog link needs it, to name the range
   // that landed in between.
@@ -408,6 +436,16 @@ export class AppState {
           continue;
         }
         void this.loadSeries(ref, span, key);
+      }
+    });
+
+    // Alerts, once the series they belong to has loaded. Second, not in
+    // parallel: placing an alert needs the pushes, and a series that failed or
+    // came back empty has nothing to place them on.
+    $effect(() => {
+      for (const entry of this.series) {
+        if (entry.loading || entry.error || entry.data.pushes.length === 0) continue;
+        void this.loadAlerts(entry.ref, dataKey(entry.ref, this.range), entry.data);
       }
     });
 
@@ -463,6 +501,33 @@ export class AppState {
       const done = new Set(this.loadingKeys);
       done.delete(key);
       this.loadingKeys = done;
+    }
+  }
+
+  // Alerts for one loaded series. `key` is the series-data key, so the result
+  // is thrown away by the same prune as the data it was matched against.
+  //
+  // `alertRequests` is never cleared on failure, only on prune: it marks "we
+  // have asked", which is what keeps the effect above — which re-runs on every
+  // series change — from reissuing a request that failed. Alerts are decoration
+  // on someone else's graph; a missing marker is a smaller harm than a retry
+  // loop, and changing the range or the series list is the retry.
+  private async loadAlerts(ref: SeriesRef, key: string, data: SeriesData): Promise<void> {
+    if (this.alertCache.has(key) || this.alertRequests.has(key)) return;
+    this.alertRequests.add(key);
+    // Server-side, `timerange` counts back from now, so this asks for
+    // everything since the start of our window and lets `alertsForSeries` drop
+    // what lands outside it. A day's floor keeps a degenerate range (start in
+    // the future, or a few minutes wide) from asking for nothing at all.
+    const seconds = Math.max(DAY_SECONDS, (Date.now() - this.range.start) / 1000);
+    try {
+      const summaries = await fetchAlertSummaries(ref.signatureId, ref.frameworkId, seconds);
+      this.alertCache = new Map(this.alertCache).set(
+        key,
+        alertsForSeries(summaries, ref.signatureId, data),
+      );
+    } catch {
+      // As with pushes and jobs: a failed lookup must not take the graph down.
     }
   }
 
@@ -531,6 +596,15 @@ export class AppState {
       if (wanted.has(key)) errors.set(key, value);
     }
     if (errors.size !== this.errorsByKey.size) this.errorsByKey = errors;
+
+    const alerts = new Map<string, SeriesAlert[]>();
+    for (const [key, value] of this.alertCache) {
+      if (wanted.has(key)) alerts.set(key, value);
+    }
+    if (alerts.size !== this.alertCache.size) this.alertCache = alerts;
+    for (const key of this.alertRequests) {
+      if (!wanted.has(key)) this.alertRequests.delete(key);
+    }
   }
 
   private async loadRepositories(): Promise<void> {

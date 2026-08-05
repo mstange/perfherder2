@@ -202,6 +202,7 @@
       dotRadius={DETAIL_DOT}
       showLines={true}
       showAxes={true}
+      showAlerts={true}
       interaction="select"
       {highlights}
       onselect={onDetailSelect}

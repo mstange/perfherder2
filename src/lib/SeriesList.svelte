@@ -286,6 +286,16 @@
                 {entry.plot.points.length.toLocaleString()} points
               {/if}
             </span>
+            {#if entry.alerts.length > 0}
+              <!-- The only place the alert markers are counted, and the only cue
+                   that a series has any without looking at the graph. It lands
+                   after the dots do — a second fetch — so `.sub` clips rather
+                   than wraps: a row that grows a line when a late response
+                   arrives moves every card below it. -->
+              <span class="alerts" title="Perfherder alerts on this series in this range">
+                · {entry.alerts.length} alert{entry.alerts.length === 1 ? '' : 's'}
+              </span>
+            {/if}
           </div>
         </div>
         <div class="actions">
@@ -495,6 +505,10 @@
   .sub {
     color: var(--fg-muted);
     font-size: 12px;
+    /* Clipped, not wrapped — see the alert count in the markup. */
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   .count {
     /* Reserved width: "loading…" becoming "12,345 points" must not reflow

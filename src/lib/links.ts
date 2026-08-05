@@ -49,6 +49,13 @@ export function taskUrl(taskId: string): string {
   return `https://firefox-ci-tc.services.mozilla.com/tasks/${taskId}`;
 }
 
+// Perfherder's alerts view, filtered to one summary. `?id=` is the whole
+// query — checked against the live view, which keeps the URL as given and shows
+// that summary alone, its own filter checkboxes notwithstanding.
+export function alertSummaryUrl(summaryId: number): string {
+  return `${TREEHERDER_ORIGIN}/perfherder/alerts?id=${summaryId}`;
+}
+
 // ---------------------------------------------------------------------------
 // PerfCompare
 // ---------------------------------------------------------------------------

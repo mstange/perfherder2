@@ -25,6 +25,10 @@
     dotRadius?: number;
     showLines?: boolean;
     showAxes?: boolean;
+    // Alert markers, on the detail graph only: the overview is 100px tall and
+    // may hold a year of pushes, where a row of triangles would be most of what
+    // the map shows.
+    showAlerts?: boolean;
     // Shared across both graphs so their plot areas line up.
     pad?: Padding;
     // Selection, pinned comparison and hover, in data coordinates. An array
@@ -64,6 +68,7 @@
     dotRadius = 2,
     showLines = false,
     showAxes = true,
+    showAlerts = false,
     pad = { left: 56, right: 12, top: 8, bottom: 20 },
     highlights = [],
     interaction,
@@ -161,6 +166,7 @@
         symbol: s.symbol,
         points: s.plot.points,
         pushes: s.data.pushes,
+        alerts: showAlerts ? s.alerts : undefined,
       })),
       dotRadius,
       showLines,

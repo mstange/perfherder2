@@ -49,9 +49,9 @@ export function resolveTheme(preference: ThemePreference, systemPrefersDark: boo
 // draw calls instead, which also keeps chartDraw.ts and distributionDraw.ts
 // pure enough to reason about.
 //
-// The cost is that these six duplicate their CSS counterparts. They are the
-// only colors in the app that exist twice, and each line names the token it
-// mirrors so a change to one is a visible prompt to change the other.
+// The cost is that these duplicate their CSS counterparts. They are the only
+// colors in the app that exist twice, and each line names the token it mirrors
+// so a change to one is a visible prompt to change the other.
 export type ChartPalette = {
   axis: string; // --border-default
   grid: string; // --bg-inset
@@ -60,6 +60,12 @@ export type ChartPalette = {
   rowTint: string; // --bg-subtle — the distribution chart's second strip row
   brushDim: string; // dims the overview outside the zoomed window
   brushLine: string; // --accent-emphasis — the brush edges and handles
+  // Alert markers. Red and green rather than the series color, because what an
+  // alert marker says is "a sheriff-visible change happened here, in this
+  // direction" — a fact about the push, not about which line it belongs to. The
+  // series color is still on the marker's outline.
+  alertRegression: string; // --danger-fg
+  alertImprovement: string; // --success-fg
 };
 
 export const CHART_PALETTES: Record<Theme, ChartPalette> = {
@@ -71,6 +77,8 @@ export const CHART_PALETTES: Record<Theme, ChartPalette> = {
     rowTint: '#f6f8fa',
     brushDim: 'rgba(31, 35, 40, 0.1)',
     brushLine: '#0969da',
+    alertRegression: '#cf222e',
+    alertImprovement: '#116329',
   },
   dark: {
     axis: '#3d444d',
@@ -83,5 +91,7 @@ export const CHART_PALETTES: Record<Theme, ChartPalette> = {
     // the excluded region the brightest thing on the chart.
     brushDim: 'rgba(1, 4, 9, 0.5)',
     brushLine: '#4493f8',
+    alertRegression: '#f85149',
+    alertImprovement: '#3fb950',
   },
 };

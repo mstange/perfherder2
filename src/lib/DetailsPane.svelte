@@ -5,6 +5,7 @@
   // would put the twenty-commit pushlog first. See graphs.md, "The details
   // pane, top to bottom".
 
+  import { alertStatusLabel, summaryStatusLabel } from './alerts';
   import type { AppState } from './appState.svelte';
   import {
     formatPValue,
@@ -25,6 +26,7 @@
     seriesLabel,
   } from './graphData';
   import {
+    alertSummaryUrl,
     bugsInComment,
     bugUrl,
     jobsUrl,
@@ -70,6 +72,7 @@
   const meanSelected = $derived(sel?.replicateIndex === MEAN_REPLICATE);
 
   const cmp = $derived(app.comparison);
+  const alert = $derived(app.selectedAlert);
 
   // Both sides on one axis. Withheld for the `replicate` kind, where each side
   // is a single value and two one-dot strips say less than the push
@@ -444,6 +447,58 @@
             <kbd>C</kbd> to mark this one and walk away with the arrow keys.
           </p>
         </div>
+      {/if}
+
+      <!-- Perfherder's own verdict on this build, when it has one. Above the
+           single-point sections for the same reason the comparison card is: it
+           is a statement about two pushes, and it is the loudest fact about the
+           point — a sheriff looking at this graph is usually here because of
+           it. Read-only: creating and triaging alerts needs an authenticated
+           session, which this app deliberately doesn't have. -->
+      {#if alert}
+        <section class="alert-card">
+          <div class="cmp-head">
+            <h3>Alert</h3>
+            <a href={alertSummaryUrl(alert.summaryId)} target="_blank" rel="noopener">
+              #{alert.summaryId} on perfherder
+            </a>
+          </div>
+          <p class="value">
+            {alert.amountPct.toFixed(2)}<span class="unit">%</span>
+            <span class="verdict {alert.isRegression ? 'regression' : 'improvement'}">
+              {alert.isRegression ? 'regression' : 'improvement'}
+            </span>
+          </p>
+          <p class="cmp-sub muted">
+            {formatValue(alert.prevValue)} → {formatValue(alert.newValue)}
+            {#if sel.entry.meta?.measurementUnit}{' '}{sel.entry.meta.measurementUnit}{/if}
+            <!-- The alert compares this push with the one perfherder analysed
+                 before it, which is not always the previous push in *this*
+                 graph: a series with no data on a push isn't analysed there. -->
+            against the previous analysed push
+          </p>
+          <dl>
+            <dt title="Perfherder's own status for this series' alert">Alert</dt>
+            <dd>{alertStatusLabel(alert.alertStatus)}</dd>
+            <dt title="The triage state of the whole push's alert summary">Summary</dt>
+            <dd>{summaryStatusLabel(alert.summaryStatus)}</dd>
+            {#if alert.tValue !== null}
+              <!-- Perfherder's own t, not the Mann-Whitney U this pane computes
+                   for a comparison. Named as theirs so the two aren't read as
+                   one number that disagrees with itself. -->
+              <dt title="Perfherder's t-value for the change it detected">t-value</dt>
+              <dd>{alert.tValue.toFixed(2)}</dd>
+            {/if}
+            {#if alert.bugNumber !== null}
+              <dt>Bug</dt>
+              <dd>
+                <a href={bugUrl(alert.bugNumber)} target="_blank" rel="noopener">
+                  {alert.bugNumber}
+                </a>
+              </dd>
+            {/if}
+          </dl>
+        </section>
       {/if}
 
       <section>
@@ -962,6 +1017,20 @@
   .replicates li.selected button {
     border-color: var(--accent-emphasis);
     background: var(--accent-subtle);
+  }
+  /* Carded like the comparison, for the same reason: it is a two-push statement
+     sitting above a run of single-point sections. Its own border color, because
+     an alert is somebody else's finding about this build rather than something
+     this pane computed. */
+  section.alert-card {
+    padding: 8px 10px 10px;
+    border: 1px solid var(--attention-border);
+    border-radius: 6px;
+    background: var(--bg-canvas);
+  }
+  section.alert-card dl {
+    grid-template-columns: 6.5em minmax(0, 1fr);
+    font-size: 11px;
   }
   /* The comparison sits in a tinted card so the two-point reading is visibly a
      different thing from the single-point sections under it. */

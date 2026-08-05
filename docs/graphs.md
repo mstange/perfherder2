@@ -226,6 +226,62 @@ Consequences, all in `Run.jobId: number | null`:
 - The "Job" link degrades to the push's job list, with no `selectedJob`
   parameter.
 
+### Alerts
+
+Perfherder's own verdicts on the plotted series: `GET
+/api/performance/alertsummary/?framework=<id>&alerts__series_signature=<id>&timerange=<sec>`,
+one request per series, the same parameters treeherder's own graphs view sends
+(`GraphsView.jsx::getAlertSummaries`). An *alert summary* is a push where the
+analysis found at least one series changing; the alerts inside it are one per
+signature, so a summary filtered to our signature still arrives carrying
+everyone else's — `alerts.ts::alertsForSeries` picks ours out, `related_alerts`
+included, since a reassigned alert is as much about the push as an original one.
+
+**The range filter is the push lookup, not a timestamp comparison.**
+`timerange` is server-side and counts back from *now*, while our range is
+absolute and may end in the past, so the request deliberately asks for a
+superset — everything since the start of the window — and a summary whose
+`push_id` isn't one of the pushes we plotted is dropped. That is a stricter test
+than comparing timestamps: it also drops a push the series has no data on.
+
+**Invalid alerts are the one status not drawn.** A sheriff marking an alert
+invalid is saying the change was an artefact, and a mark on the graph would
+contradict the person who owns it. Downstream, reassigned and infra alerts *are*
+drawn, even though perfherder's own alerts list hides all four by default: those
+three are real movements in the data, tracked elsewhere or blamed on the
+infrastructure rather than on the patch, and the pane names the status so a
+marker never claims more than the sheriff did.
+
+The two status maps in `alerts.ts` are treeherder's `summaryStatusMap` and
+`alertStatusMap` from `perf-helpers/constants.js`, taken from master rather than
+from a local checkout — a three-month-old checkout was already missing both
+"infra" statuses (alert 5, summary 9) and had 9 meaning something else. They
+were cross-checked by loading one summary per status in the live alerts view and
+reading the word it printed. Unknown codes render as `status N`.
+
+Alerts are **decoration on someone else's graph**: they load after the series
+data (placing one needs the pushes), a failed request is swallowed rather than
+surfaced, and it isn't retried — the retry is changing the range or the series
+list. The dots are the point; a missing marker is a smaller harm than a retry
+loop or an error banner over a working graph.
+
+**Marker shape is a deliberate deviation.** Treeherder highlights the alerted
+*dot* with a 12px translucent halo, behind a "highlight alerts" toggle. That
+works when the graph draws one dot per push; ours draws every replicate, so the
+alerted point is a cloud and the halo would have to pick one arbitrary member of
+it. Instead the marker belongs to the pixel column: a triangle at the top of the
+plot — down for a regression, up for an improvement, filled red or green and
+outlined in the series color — over a faint full-height guide. Light enough that
+it doesn't need a toggle. Detail graph only: the overview is 100px tall and may
+hold a year of pushes.
+
+The details pane's Alert card carries the rest — percentage, the two values,
+both statuses, perfherder's t-value, the bug, and a link to the summary. It sits
+with the comparison card, above the single-point sections, because it is a
+two-push statement and usually the reason a sheriff is looking at the graph at
+all. Read-only: creating and triaging alerts needs an authenticated session,
+which this app doesn't have.
+
 ### Caching and failure
 
 Series data is cached under `(repo, signature, rangeStart, rangeEnd)` — the
@@ -256,6 +312,9 @@ Recovery is the explicit Retry button.
   use (see "Dots are translucent, and jittered sideways" below).
 - [chartDraw.ts](../src/lib/chartDraw.ts) — canvas painting. Imperative, but
   takes all its coordinates from a `PlotGeometry`.
+- [alertsApi.ts](../src/lib/alertsApi.ts) — `/performance/alertsummary/`, and
+  the schemas for it. [alerts.ts](../src/lib/alerts.ts) — **pure**. Summaries →
+  the marks the graph draws and the facts the pane prints. See "Alerts" above.
 - [timeRange.ts](../src/lib/timeRange.ts) — **pure**. Presets ↔ absolute
   bounds.
 - [urlState.ts](../src/lib/urlState.ts) — **pure**. Query string ↔ `ViewState`.

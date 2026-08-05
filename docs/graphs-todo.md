@@ -38,6 +38,9 @@ Living checklist. Update in the same commit as the work it describes.
   density instead of as a vertical line (`chart.ts` "Jitter",
   `graphData.ts::pointJitter`, + tests). See graphs.md, "Dots are translucent, and
   jittered sideways"
+- Alert markers on the detail graph, an alert card in the details pane, and a
+  per-series count in the list — `alertsApi.ts`, `alerts.ts` (+ tests). See
+  graphs.md, "Alerts"
 - Push value distributions and comparison mode — `kde.ts`, `stats.ts`,
   `distribution.ts`, `distributionDraw.ts`, `compare.ts`,
   `DistributionChart.svelte` (+ tests for all the pure halves). See
@@ -93,9 +96,19 @@ Living checklist. Update in the same commit as the work it describes.
 - **Mixed units on one y-axis.** Following treeherder for now; the axis says
   "mixed units" when it happens. A per-series normalized mode ("% of the
   first value") would be the real fix.
-- **Alert markers.** Treeherder highlights alert summaries on the graph and
-  can create alerts from the tooltip. Not implemented; the create path needs
-  auth, the display path needs `/performance/alertsummary/`.
+- **Alert markers: the parts still missing.** The display path is done (see
+  graphs.md, "Alerts"): markers on the detail graph, a card in the pane, a count
+  in the series list. Not done, and each needs something we don't have:
+  - *Creating and triaging* alerts from the graph — needs an authenticated
+    session.
+  - *Common alerts*: treeherder also marks pushes where some **other** series in
+    the framework alerted, which is how you spot a change that hit everything.
+    It fetches the framework's whole summary list for that
+    (`GraphsView.jsx::getCommonAlerts`), which is the 848-summary request the
+    per-signature filter exists to avoid, so it wants a think about cost first.
+  - *Clicking a marker.* The marker locates an alert; reading it still means
+    clicking a dot in that push. Hit-testing the triangles would close that,
+    and the hit test currently only knows about dots.
 - **Retrigger / delta-vs-previous readouts.** Treeherder's tooltip shows the
   delta from the previous data point and a retrigger count. We show the
   retrigger count, and hovering any dot gives the delta against the *selected*

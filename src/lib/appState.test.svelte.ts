@@ -60,6 +60,7 @@ function entry(s: RawSummary, showReplicates = true): SeriesEntry {
     plot: showReplicates ? data.replicates : data.means,
     loading: false,
     error: null,
+    alerts: [],
   };
 }
 
@@ -111,11 +112,53 @@ function job(overrides: Partial<Job> = {}): Job {
   };
 }
 
+// One page of /performance/alertsummary/. The envelope matters as much as the
+// rows: the schema rejects a bare array, which is what the endpoint would send
+// if it weren't paginated.
+function alertPage(results: unknown[]) {
+  return { count: results.length, next: null, previous: null, results };
+}
+
+// An alert summary for SAMPLE's second push (datum 11), regressing by 95%.
+function alertSummary(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 900,
+    push_id: 2,
+    prev_push_id: 1,
+    push_timestamp: 1784700000,
+    revision: 'b'.repeat(40),
+    prev_push_revision: 'c'.repeat(40),
+    repository: 'autoland',
+    framework: 1,
+    status: 5,
+    bug_number: 1234567,
+    alerts: [
+      {
+        id: 77,
+        status: 0,
+        series_signature: { id: 1 },
+        is_regression: true,
+        prev_value: 110,
+        new_value: 205,
+        t_value: 9.1,
+        amount_abs: 95,
+        amount_pct: 86.36,
+        summary_id: 900,
+        related_summary_id: null,
+        manually_created: false,
+        starred: false,
+      },
+    ],
+    ...overrides,
+  };
+}
+
 let fetchMock: ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
   fetchMock = vi.fn(async (url: string) => {
     if (url.includes('/performance/summary/')) return json([SAMPLE]);
+    if (url.includes('/performance/alertsummary/')) return json(alertPage([]));
     if (url.includes('/repository/')) return json([]);
     if (url.includes('/push/')) return json(push());
     if (url.includes('/jobs/')) return json(job());
@@ -634,6 +677,76 @@ describe('AppState compare with the previous push', () => {
       expect(app.comparedPoint?.datumId).toBe(12);
       // Both runs pool into the baseline regardless of which one wears the ring.
       expect(app.comparison?.base.values).toEqual([100, 130]);
+    });
+  });
+});
+
+describe('AppState alerts', () => {
+  const withAlerts = (results: unknown[]) => {
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.includes('/performance/summary/')) return json([SAMPLE]);
+      if (url.includes('/performance/alertsummary/')) return json(alertPage(results));
+      if (url.includes('/repository/')) return json([]);
+      return json({});
+    });
+  };
+
+  it('hangs the alerts off the series and finds the selected one', async () => {
+    withAlerts([alertSummary()]);
+    await withApp('?series=autoland,1,1&sel=autoland,1,11,0', async (app) => {
+      await settle();
+      expect(app.series[0].alerts.map((a) => a.pushId)).toEqual([2]);
+      expect(app.selectedAlert).toMatchObject({
+        summaryId: 900,
+        isRegression: true,
+        amountPct: 86.36,
+        bugNumber: 1234567,
+        summaryStatus: 5,
+      });
+      // The other push has none, and asking about it must not resurrect one.
+      app.selectPoint({ repository: 'autoland', signatureId: 1, datumId: 10, replicateIndex: 0 });
+      expect(app.selectedAlert).toBeNull();
+    });
+  });
+
+  it('asks for alerts once per series, after the data lands', async () => {
+    withAlerts([alertSummary()]);
+    await withApp('?series=autoland,1,1', async (app) => {
+      await settle();
+      const calls = fetchMock.mock.calls.filter((c: unknown[]) =>
+        String(c[0]).includes('/alertsummary/'),
+      );
+      expect(calls).toHaveLength(1);
+      // Filtered to the series' signature, so the response isn't the whole
+      // framework's alert history.
+      expect(String(calls[0][0])).toContain('alerts__series_signature=1');
+      expect(app.series[0].alerts).toHaveLength(1);
+    });
+  });
+
+  it('survives an alert endpoint that fails, and does not retry it', async () => {
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.includes('/performance/summary/')) return json([SAMPLE]);
+      if (url.includes('/performance/alertsummary/')) {
+        return { ok: false, status: 503, statusText: '' } as Response;
+      }
+      if (url.includes('/repository/')) return json([]);
+      return json({});
+    });
+    await withApp('?series=autoland,1,1&sel=autoland,1,11,0', async (app) => {
+      await settle();
+      // The graph is unharmed: the dots are the point, the markers decoration.
+      expect(app.series[0].alerts).toEqual([]);
+      expect(app.selectedAlert).toBeNull();
+      expect(app.failedSeries).toEqual([]);
+      const before = fetchMock.mock.calls.length;
+      app.selectPoint({ repository: 'autoland', signatureId: 1, datumId: 10, replicateIndex: 0 });
+      await settle();
+      const after = fetchMock.mock.calls.filter((c: unknown[]) =>
+        String(c[0]).includes('/alertsummary/'),
+      );
+      expect(after).toHaveLength(1);
+      expect(fetchMock.mock.calls.length).toBeGreaterThanOrEqual(before);
     });
   });
 });

@@ -30,7 +30,13 @@ export type DrawSeries = {
   // The connecting line goes through the per-push means whichever point set is
   // being drawn, so it needs the pushes regardless.
   pushes: PushGroup[];
+  // Pushes where perfherder raised an alert for this series. Only the x and the
+  // direction, because that is all a marker says; everything else about the
+  // alert is the details pane's business (see alerts.ts).
+  alerts?: readonly AlertMark[];
 };
+
+export type AlertMark = { x: number; isRegression: boolean };
 
 export type DrawOptions = {
   geom: PlotGeometry;
@@ -102,6 +108,9 @@ export function drawChart(ctx: CanvasRenderingContext2D, o: DrawOptions): void {
     for (const s of o.series) drawPushLine(ctx, o, s);
   }
   for (const s of o.series) drawDots(ctx, o, s);
+  // Over the dots: an alert marks a build, so it has to be findable without
+  // first finding the build's cloud.
+  for (const s of o.series) drawAlerts(ctx, o, s);
   ctx.restore();
   if (o.showAxes) drawAxisLabels(ctx, o, vTicks, tTicks);
 }
@@ -189,6 +198,71 @@ function drawPushLine(ctx: CanvasRenderingContext2D, o: DrawOptions, s: DrawSeri
   }
   ctx.stroke();
   ctx.globalAlpha = 1;
+}
+
+// Alert markers: a triangle hanging from the top of the plot, with a faint
+// guide down to the floor.
+//
+// Treeherder marks an alerted point differently — `GraphsContainer.jsx` gives
+// the dot itself a 12px translucent halo in the series color, behind a
+// "highlight alerts" toggle. That works there because its graph draws one dot
+// per push. Ours draws every replicate, so the alerted "point" is a cloud of
+// twenty or a hundred, and a halo would have to go around one arbitrary member
+// of it. Hence a marker that belongs to the column rather than to a dot — and
+// one light enough not to need a toggle.
+//
+// At the top rather than on the dots, because an alert belongs to the *build*
+// and its dots are a cloud that may be anywhere vertically — a mark inside the
+// cloud is one more dot to disentangle, and one at a fixed height is a row of
+// marks you can read across. The guide is what ties it to a pixel column; a
+// triangle alone at the top of a 700px plot doesn't say which push it means.
+//
+// Pointing down for a regression and up for an improvement: not "the value went
+// up or down" (which lower-is-better makes ambiguous) but the same up-is-good
+// convention the verdict badges use.
+const ALERT_TRIANGLE_HALF = 4;
+const ALERT_TRIANGLE_HEIGHT = 7;
+const ALERT_GUIDE_ALPHA = 0.22;
+
+function drawAlerts(ctx: CanvasRenderingContext2D, o: DrawOptions, s: DrawSeries): void {
+  if (!s.alerts?.length) return;
+  const { geom } = o;
+  for (const alert of s.alerts) {
+    const x = Math.round(geom.xScale.toPixel(alert.x)) + 0.5;
+    // Off-screen after a zoom: the marker would otherwise pile up against the
+    // clip edge and imply an alert at the window's boundary.
+    if (x < geom.x0 || x > geom.x1) continue;
+    const color = alert.isRegression ? o.palette.alertRegression : o.palette.alertImprovement;
+
+    ctx.strokeStyle = color;
+    ctx.globalAlpha = ALERT_GUIDE_ALPHA;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(x, geom.y0);
+    ctx.lineTo(x, geom.y1);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+
+    const top = geom.y0 + 1;
+    ctx.beginPath();
+    if (alert.isRegression) {
+      ctx.moveTo(x, top + ALERT_TRIANGLE_HEIGHT);
+      ctx.lineTo(x - ALERT_TRIANGLE_HALF, top);
+      ctx.lineTo(x + ALERT_TRIANGLE_HALF, top);
+    } else {
+      ctx.moveTo(x, top);
+      ctx.lineTo(x - ALERT_TRIANGLE_HALF, top + ALERT_TRIANGLE_HEIGHT);
+      ctx.lineTo(x + ALERT_TRIANGLE_HALF, top + ALERT_TRIANGLE_HEIGHT);
+    }
+    ctx.closePath();
+    ctx.fillStyle = color;
+    ctx.fill();
+    // The series' own color, so a graph with two alerting series says which is
+    // which without a legend.
+    ctx.strokeStyle = s.color;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  }
 }
 
 // Shape scaling, so the three symbols carry about the same amount of ink at a
