@@ -6,7 +6,9 @@ machinery:
 1. **Push distributions.** Selecting a dot shows, in the details pane, the
    distribution of *every* value that series recorded on that push — a kernel
    density curve with detected modes, and the raw values below it as a jittered
-   strip.
+   strip. Under the chart the same values appear as chips, grouped by the job
+   that produced them, so a retriggered build's runs can be compared one by one
+   and any of their values can be selected directly.
 2. **Comparison mode.** Shift-clicking a second dot pins it as a comparison.
    The pane then draws both distributions on one axis and adds the statistics
    and links that only make sense for a pair: Mann-Whitney U, Cliff's delta, a
@@ -28,7 +30,8 @@ values differently.
 
 - **A selection with no comparison** pools **every replicate of every run of
   the selected push**. That is the answer to "how noisy is this measurement on
-  this build", which is the question the push section exists to answer. It is
+  this build", which is the question the pane's "Values on this push" section
+  exists to answer. It is
   deliberately *not* filtered by `showReplicates`: that flag decides what gets
   *drawn* on the time-series graph (see graphs.md), and collapsing the pool to
   one mean per run would leave a 4-value distribution where 60 real
@@ -246,8 +249,9 @@ Pure, and unit tested:
 - `distribution.ts` — one or two pools → curves, modes, jitter, and the chart's
   geometry.
 - `compare.ts` — kinds, side ordering, pools, labels, outgoing links.
-- `graphData.ts::pushValues` / `indexInPushValues` — the pooling rule itself,
-  which belongs with the push/run/replicate structure.
+- `graphData.ts::pushValues` / `indexInPushValues` / `replicateGroups` — the
+  pooling rule itself, which belongs with the push/run/replicate structure, and
+  the same values grouped by job for the chip list.
 - `links.ts::perfCompareUrl` / `perfCompareSubtestsUrl`, and
   `chart.ts`'s signed/percent/p-value formatting.
 

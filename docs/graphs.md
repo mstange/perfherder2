@@ -20,13 +20,43 @@ Three panes, filling the viewport, no page scroll:
 │ Series list  │  overview graph (thin, full    │ Selection     │
 │ (left)       │  time range, no lines)         │ details       │
 │              ├────────────────────────────────┤ (right)       │
-│ + Add series │  detail graph (zoomed range)   │ build / run / │
-│              │                                │ replicate     │
+│ + Add series │  detail graph (zoomed range)   │ value / push  │
+│              │                                │ / run / build │
 └──────────────┴────────────────────────────────┴───────────────┘
 ```
 
 The "Add series" picker opens as an overlay panel over the whole area rather
 than living in the left pane — it needs the full width for its table.
+
+### The details pane, top to bottom
+
+The pane is read from the top on every click, so its order is by how immediately
+each fact bears on the dot you just clicked, not by the shape of the data model —
+which would put the twenty-commit pushlog above the value you asked about.
+
+1. **The series** — which line this is, spelled out in full. The series *list*
+   deliberately shows only what distinguishes one card from the next (design.md,
+   "The series list shows differences, not descriptions"), so this is the one
+   place that answers "which series is this, exactly?".
+2. **Comparison**, when a second point is pinned or hovered. Two points on screen
+   make the difference between them the headline and everything below supporting
+   detail. See [comparison.md](comparison.md).
+3. **The value** — the clicked replicate and its rank, or the run's mean.
+4. **Values on this push** — the push distribution, then every value the build
+   recorded as a clickable chip, grouped by the job that produced it. High up
+   because this is the context the value above needs: 3% off the previous push
+   means one thing when the build's own replicates span 1% and another when they
+   span 10%. Grouped by job, and covering the whole push rather than the clicked
+   run, because the question a retriggered build raises is whether its runs
+   agree — and because the other runs' values were otherwise reachable only by
+   hunting for their dots on the graph.
+5. **Run** — the job: type, machine, start, duration, task. `result` comes
+   **last**; it reads "success" for all but a handful of points, since a job that
+   failed outright recorded no performance data to click on. It's kept rather
+   than dropped only because the `bad` styling makes the rare exception jump out.
+6. **Build** — push time, revision, author, the pushlog link, and the commit
+   list. Last because it's the longest section by far and the least specific to
+   the dot: two dots on the same push have identical builds.
 
 ## Data model
 

@@ -15,7 +15,8 @@ Living checklist. Update in the same commit as the work it describes.
 - `ScatterChart.svelte` — one canvas component for both graphs
 - Overview graph with brush-to-zoom (create / move / resize the window)
 - Detail graph: drag to zoom, double-click to reset, click to select
-- `DetailsPane.svelte` — build / run / replicate, with external links
+- `DetailsPane.svelte` — value / push values / run / build, with external links.
+  See graphs.md, "The details pane, top to bottom", for the order
 - URL sync both directions, including back-button support
 - Keyboard navigation (arrow keys walk runs and replicates), hover feedback,
   and a focusable detail graph
@@ -87,7 +88,13 @@ Living checklist. Update in the same commit as the work it describes.
 - **Highlighting the clicked run's contribution to a push pool.** With
   retriggers, the push distribution pools every run, and which dots came from
   the run you clicked is a question the strip could answer by shading them.
-  `DistributionInput.markedIndex` would become a set.
+  `DistributionInput.markedIndex` would become a set. The chip list under the
+  chart now groups the same values by job, which answers the question in numbers
+  but not on the strip.
+- **Selecting a run's mean from the pane.** The chips select replicates; a run's
+  mean is selectable only by clicking its dot with replicates hidden. A chip for
+  it in each run's head would close that loop, but "mean" sitting in a row of
+  measured values needs a visual distinction the row doesn't have yet.
 - **Comparing more than two points.** The `cmp` parameter holds one. Three or
   more would want a table rather than a card, and it isn't clear anyone wants
   it.

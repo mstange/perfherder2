@@ -17,9 +17,9 @@ ticked and the outcome has landed in [graphs.md](graphs.md) /
 
 ## Plan
 
-- [ ] `graphData.ts::replicateGroups` — pure: a push's runs, each with the
+- [x] `graphData.ts::replicateGroups` — pure: a push's runs, each with the
       selected replicate marked. + test.
-- [ ] `DetailsPane.svelte` — new section order; replicate chips per job;
+- [x] `DetailsPane.svelte` — new section order; replicate chips per job;
       `Result` demoted to the end of the Run list.
 - [ ] Dot alpha + jitter, pure half: `SeriesPoint.jitter`, `pointJitter`,
       `chart.ts::jitterAmplitudePx`. + tests.

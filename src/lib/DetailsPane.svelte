@@ -1,6 +1,9 @@
 <script lang="ts">
-  // Right pane: everything about the clicked dot, grouped the way the data is
-  // structured — build (push), run (job), replicate.
+  // Right pane: everything about the clicked dot. Ordered by how immediately
+  // each fact bears on that dot — value, then the push's whole spread, then the
+  // job, then the build — rather than by the shape of the data model, which
+  // would put the twenty-commit pushlog first. See graphs.md, "The details
+  // pane, top to bottom".
 
   import type { AppState } from './appState.svelte';
   import {
@@ -13,7 +16,13 @@
   import { comparisonLinks, type ComparisonSide } from './compare';
   import DistributionChart from './DistributionChart.svelte';
   import { buildDistribution } from './distribution';
-  import { indexInPushValues, MEAN_REPLICATE, pushValues, seriesLabel } from './graphData';
+  import {
+    indexInPushValues,
+    MEAN_REPLICATE,
+    pushValues,
+    replicateGroups,
+    seriesLabel,
+  } from './graphData';
   import {
     bugsInComment,
     bugUrl,
@@ -29,6 +38,14 @@
   type Props = { app: AppState };
   let { app }: Props = $props();
 
+  // Said in two places — over the selected replicate's rank and over each run's
+  // list of values — so it lives in one. See `Run.values`: the index is a rank
+  // over values we sorted ourselves, because the API neither orders its
+  // replicate rows nor says which trial each came from.
+  const REPLICATE_ORDER_HINT =
+    'Replicates are ordered by value: treeherder returns them in an arbitrary ' +
+    'order and does not yet expose which trial each came from (bug 1981623)';
+
   const sel = $derived(app.selection);
   const repo = $derived(sel?.entry.ref.repository ?? '');
 
@@ -39,8 +56,11 @@
 
   const repoLink = $derived(linkInfoFor(repo));
 
-  // Runs of the same push are retriggers of the same build.
-  const retriggerCount = $derived(sel ? sel.push.runs.length - 1 : 0);
+  // Every value the build recorded, grouped by job. More than one group means
+  // the push was retriggered.
+  const runGroups = $derived(
+    sel ? replicateGroups(sel.push, sel.run.datumId, sel.replicateIndex) : [],
+  );
 
   const replicateValues = $derived(sel ? sel.run.values : []);
   const runMean = $derived(sel ? sel.run.mean : 0);
@@ -403,10 +423,7 @@
                  no trial number, so we sort by value and say so rather than
                  implying an execution order we don't have. See graphData.ts,
                  `Run.values`. -->
-            <dt
-              title="Replicates are ordered by value: treeherder returns them in an arbitrary order and does not yet expose which trial each came from (bug 1981623)"
-              >Replicate</dt
-            >
+            <dt title={REPLICATE_ORDER_HINT}>Replicate</dt>
             <dd>
               {sel.replicateIndex + 1} of {replicateValues.length}
               <span class="muted">by value</span>
@@ -415,31 +432,82 @@
             <dd>{formatValue(runMean)}</dd>
           {/if}
         </dl>
-        <!-- Listed whether or not the dots are drawn: with replicates hidden
-             this is the only way to see a run's spread, and picking one from
-             here moves the selection ring onto that value. Ascending, so the
-             spread reads off the list directly — see `Run.values` for why
-             there's no execution order to show instead. -->
-        {#if replicateValues.length > 1}
-          <ol class="replicates">
-            {#each replicateValues as v, i}
-              <li class:selected={i === sel.replicateIndex}>
-                <button
-                  type="button"
-                  onclick={() =>
-                    app.selectPoint({
-                      repository: repo,
-                      signatureId: sel.entry.ref.signatureId,
-                      datumId: sel.run.datumId,
-                      replicateIndex: i,
-                    })}
-                >
-                  <span class="idx">{i + 1}</span>
-                  <span class="num">{formatValue(v)}</span>
-                </button>
-              </li>
-            {/each}
-          </ol>
+      </section>
+
+      <!-- Directly under the selected value, because it is the context that
+           value needs: a number 3% off the last one means one thing when the
+           build's own replicates span 1% and another when they span 10%. It used
+           to sit at the bottom of the Build section, below the commit list,
+           where it was off-screen unless you went looking.
+           `pushValues` explains why the pool is the whole push. -->
+      <section>
+        <h3>Values on this push</h3>
+        {#if pushDistribution}
+          <DistributionChart
+            plot={pushDistribution}
+            unit={sel.entry.meta?.measurementUnit ?? ''}
+          />
+        {/if}
+        <!-- Every run of the push, not just the selected one: the pane used to
+             list the clicked run's values alone, which made a retriggered build
+             look like it recorded five numbers when it recorded fifteen, and
+             left the other runs' values reachable only by hunting for their
+             dots on the graph. Listed whether or not the dots are drawn — with
+             replicates hidden this is the only way to see the spread — and
+             ascending, since there's no execution order to show instead. -->
+        <ul class="runs">
+          {#each runGroups as group (group.run.datumId)}
+            <li class:selected={group.selectedRun}>
+              <div class="run-head">
+                <span class="run-name">
+                  {runGroups.length > 1
+                    ? `Run ${group.ordinal} of ${runGroups.length}`
+                    : 'Replicates'}
+                </span>
+                <!-- Only worth a link when there's more than one run; with a
+                     single one this would repeat the Run section right below. -->
+                {#if runGroups.length > 1 && group.run.jobId !== null}
+                  <a
+                    href={jobsUrl(repo, sel.push.revision, group.run.jobId)}
+                    target="_blank"
+                    rel="noopener">job {group.run.jobId}</a
+                  >
+                {/if}
+                {#if group.run.values.length > 1}
+                  <span class="muted">mean {formatValue(group.run.mean)}</span>
+                {/if}
+              </div>
+              <ol class="replicates" title={REPLICATE_ORDER_HINT}>
+                {#each group.run.values as v, i}
+                  <li class:selected={i === group.selectedIndex}>
+                    <button
+                      type="button"
+                      onclick={() =>
+                        app.selectPoint({
+                          repository: repo,
+                          signatureId: sel.entry.ref.signatureId,
+                          datumId: group.run.datumId,
+                          replicateIndex: i,
+                        })}
+                    >
+                      <span class="idx">{i + 1}</span>
+                      <span class="num">{formatValue(v)}</span>
+                    </button>
+                  </li>
+                {/each}
+              </ol>
+            </li>
+          {/each}
+        </ul>
+        <!-- The value the connecting line passes through, which is why the line
+             can sit off a retriggered push's individual dots. Only worth
+             spelling out when there is more than one run; otherwise it just
+             repeats the run mean above. -->
+        {#if runGroups.length > 1}
+          <dl class="push-mean">
+            <dt>Push mean</dt>
+            <dd>{formatValue(sel.push.mean)}</dd>
+          </dl>
         {/if}
       </section>
 
@@ -466,8 +534,6 @@
             {@const job = app.selectedJob}
             <dt>Type</dt>
             <dd class="mono">{job.job_type_name}</dd>
-            <dt>Result</dt>
-            <dd class:bad={job.result !== 'success'}>{job.result}</dd>
             <dt>Machine</dt>
             <dd class="mono">{job.machine_name}</dd>
             <dt>Started</dt>
@@ -482,6 +548,14 @@
                 </a>
               </dd>
             {/if}
+            <!-- Last on purpose. It reads "success" for all but a handful of
+                 points — a job that failed outright recorded no performance
+                 data to click on — so it's the least informative line here,
+                 and putting it near the top pushed the facts that do vary
+                 (machine, duration) down the pane. Kept rather than dropped
+                 because `bad` styling makes the rare exception jump out. -->
+            <dt>Result</dt>
+            <dd class:bad={job.result !== 'success'}>{job.result}</dd>
           {:else if app.selectedJobStatus === 'expired'}
             <!-- Treeherder keeps performance data much longer than the jobs
                  that produced it, so for older points there is no job row to
@@ -496,16 +570,6 @@
           {:else}
             <dt>Details</dt>
             <dd class="muted">loading…</dd>
-          {/if}
-          {#if retriggerCount > 0}
-            <dt>Retriggers</dt>
-            <dd>{retriggerCount} other run{retriggerCount === 1 ? '' : 's'} of this push</dd>
-            <!-- Worth spelling out only when there is more than one run:
-                 otherwise it just repeats the run mean. This is the value the
-                 connecting line passes through, which is why the line can sit
-                 off a retriggered push's individual dots. -->
-            <dt>Push mean</dt>
-            <dd>{formatValue(sel.push.mean)}</dd>
           {/if}
         </dl>
       </section>
@@ -543,18 +607,6 @@
             </dd>
           {/if}
         </dl>
-
-        <!-- The spread of everything this series measured on this build. The
-             time-series graph shows one dot per replicate at one x, which stacks
-             them into a vertical smear; spreading them along the value axis is
-             what makes a second mode visible. -->
-        {#if pushDistribution}
-          <h4>Values on this push</h4>
-          <DistributionChart
-            plot={pushDistribution}
-            unit={sel.entry.meta?.measurementUnit ?? ''}
-          />
-        {/if}
 
         {#if app.selectedPush}
           {@const push = app.selectedPush}
@@ -736,12 +788,47 @@
   .wrap {
     overflow-wrap: anywhere;
   }
+  /* One block per run of the push. The vertical rule is what keeps a
+     three-retrigger push from reading as one long undifferentiated chip field:
+     the values of one job belong together. */
+  .runs {
+    list-style: none;
+    margin: 6px 0 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .runs > li {
+    padding-left: 7px;
+    border-left: 2px solid var(--border-muted);
+  }
+  .runs > li.selected {
+    border-left-color: var(--accent-emphasis);
+  }
+  .run-head {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 8px;
+    font-size: 11px;
+    color: var(--fg-muted);
+  }
+  /* The run the selection is in, named plainly while the others stay muted. It
+     carries the mark on its own for a run-mean selection, where no individual
+     value is highlighted. */
+  .runs > li.selected .run-name {
+    font-weight: 600;
+    color: var(--fg-default);
+  }
+  .push-mean {
+    margin-top: 8px;
+  }
   .replicates {
     list-style: none;
     display: flex;
     flex-wrap: wrap;
     gap: 3px;
-    margin: 8px 0 0;
+    margin: 4px 0 0;
     padding: 0;
   }
   .replicates button {
