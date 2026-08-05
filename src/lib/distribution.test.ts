@@ -83,6 +83,26 @@ describe('buildDistribution', () => {
     expect(plot.series[0].strip.map((d) => d.marked)).toEqual([false, false, true, false]);
   });
 
+  it("groups the clicked value's run without double-marking the value itself", () => {
+    const plot = buildDistribution([
+      input([5, 6, 5, 7, 8], { markedIndex: 3, markedGroup: { start: 2, end: 5 } }),
+    ]);
+    // The marked dot has the stronger mark, so it is not also a group member —
+    // the drawing would otherwise put a halo and a ring on the same dot.
+    expect(plot.series[0].strip.map((d) => d.inGroup)).toEqual([
+      false,
+      false,
+      true,
+      false,
+      true,
+    ]);
+  });
+
+  it('leaves every dot ungrouped when no group is given', () => {
+    const plot = buildDistribution([input([5, 6, 7], { markedIndex: 1 })]);
+    expect(plot.series[0].strip.some((d) => d.inGroup)).toBe(false);
+  });
+
   it('does not run a non-negative axis below zero', () => {
     // Values small relative to the kernel width would otherwise pad the domain
     // into negative milliseconds.

@@ -118,12 +118,6 @@ Living checklist. Update in the same commit as the work it describes.
   out for now: 9999 resamples × two medians is tens of milliseconds, which is
   fine for a pinned comparison and not for the hover preview, so it needs a
   split between cheap and full statistics that nothing else currently wants.
-- **Highlighting the clicked run's contribution to a push pool.** With
-  retriggers, the push distribution pools every run, and which dots came from
-  the run you clicked is a question the strip could answer by shading them.
-  `DistributionInput.markedIndex` would become a set. The chip list under the
-  chart now groups the same values by job, which answers the question in numbers
-  but not on the strip.
 - **Comparing more than two points.** The `cmp` parameter holds one. Three or
   more would want a table rather than a card, and it isn't clear anyone wants
   it.

@@ -44,6 +44,14 @@ export type DistributionInput = {
   // pool has no distinguished member. The strip rings it, which is what
   // connects the chart back to the dot on the time-series graph.
   markedIndex: number;
+  // A half-open sub-range of `values` that belongs together — the details pane
+  // passes the clicked *job's* replicates within a retriggered push's pooled
+  // values. The strip outlines them, which answers "how much of this cloud is
+  // the run I clicked" without a second chart or a second color.
+  //
+  // Null where the question doesn't arise: a pool that is one run, or a
+  // comparison side, where the two rows are the distinction being drawn.
+  markedGroup?: { start: number; end: number } | null;
 };
 
 // One raw value on the strip: its position on the value axis, plus where in the
@@ -54,6 +62,9 @@ export type StripDot = {
   // the strip.
   jitter: number;
   marked: boolean;
+  // In the input's `markedGroup` — the clicked run's other replicates. Never
+  // true for the marked dot itself, which has its own, stronger mark.
+  inGroup: boolean;
 };
 
 export type DistributionSeries = {
@@ -228,6 +239,11 @@ export function buildDistribution(
         value,
         jitter: jitterAt(i, side),
         marked: i === input.markedIndex,
+        inGroup:
+          !!input.markedGroup &&
+          i !== input.markedIndex &&
+          i >= input.markedGroup.start &&
+          i < input.markedGroup.end,
       })),
     };
   });

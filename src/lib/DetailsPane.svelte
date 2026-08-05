@@ -21,6 +21,7 @@
     MEAN_REPLICATE,
     pushValues,
     replicateGroups,
+    runRangeInPushValues,
     seriesLabel,
   } from './graphData';
   import {
@@ -113,6 +114,15 @@
           color: sel.entry.color,
           values: pushPool,
           markedIndex: indexInPushValues(sel.push, sel.run.datumId, sel.replicateIndex),
+          // Which of these dots came out of the job the user clicked. Only with
+          // retriggers: on a single-run push every dot is in the group, and
+          // haloing all of them says nothing. A mean selection gets the halo
+          // too — no dot to ring, but the cluster it averages is exactly what
+          // the reader is looking for.
+          markedGroup:
+            sel.push.runs.length > 1
+              ? runRangeInPushValues(sel.push, sel.run.datumId)
+              : null,
         },
       ],
       // The same scales the comparison chart uses, so a value sits at the same x in

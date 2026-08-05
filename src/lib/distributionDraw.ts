@@ -20,6 +20,11 @@ const FILL_ALPHA = 0.16;
 const DOT_RADIUS = 2;
 const MARKED_RADIUS = 3.5;
 const DOT_ALPHA = 0.6;
+// The halo around the clicked run's other replicates. Between the dot and the
+// marked ring in weight, so the three ranks — clicked value, its run, the rest
+// of the push — read in that order.
+const GROUP_RADIUS = 3;
+const GROUP_ALPHA = 0.45;
 // How many paths the strip's dots are split across, so that overlapping ones
 // darken instead of all reading as one. See the strip drawing below, and
 // `chartDraw.ts::drawDots` for why a single path can't do it.
@@ -270,6 +275,7 @@ function drawStrip(
     ctx.fillStyle = side.color;
   }
   let marked: { x: number; y: number } | null = null;
+  const group: { x: number; y: number }[] = [];
   for (let path = 0; path < DOT_PATHS; path++) {
     ctx.beginPath();
     for (let i = path; i < side.strip.length; i += DOT_PATHS) {
@@ -280,6 +286,7 @@ function drawStrip(
         marked = { x, y };
         continue;
       }
+      if (dot.inGroup) group.push({ x, y });
       ctx.moveTo(x + DOT_RADIUS, y);
       ctx.arc(x, y, DOT_RADIUS, 0, Math.PI * 2);
     }
@@ -287,6 +294,25 @@ function drawStrip(
     else ctx.fill();
   }
   ctx.globalAlpha = 1;
+
+  // The rest of the clicked run, haloed rather than recolored: the pool's whole
+  // point is that the runs are one sample, so its dots have to stay the same
+  // dots. A hairline at GROUP_ALPHA is enough to pick a run out of a
+  // three-retrigger cloud and light enough that a dozen of them don't read as a
+  // second series. Drawn over the fill in one path — these never overlap
+  // themselves the way the fills do, since they are outlines.
+  if (group.length > 0) {
+    ctx.globalAlpha = GROUP_ALPHA;
+    ctx.strokeStyle = palette.ring;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (const g of group) {
+      ctx.moveTo(g.x + GROUP_RADIUS, g.y);
+      ctx.arc(g.x, g.y, GROUP_RADIUS, 0, Math.PI * 2);
+    }
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
 
   // The clicked value last and opaque, with the same ring the graphs put around
   // a selection, so the two charts agree about which dot the pane is describing.

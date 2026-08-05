@@ -65,6 +65,16 @@ which would put the twenty-commit pushlog above the value you asked about.
    execution order, and dropping it bought about a quarter of each chip's width —
    enough to fit a five-replicate run on one line instead of two.
 
+   **On a retriggered push the clicked run's dots are haloed** on the strip — a
+   hairline outline, so they stay the same dots at the same weight; the pool's
+   whole point is that the runs are one sample of one build. That is the
+   question the grouping raises and the chip list answers only in numbers:
+   which part of this cloud is the job I clicked. `markedGroup` is an index
+   *range*, not a set, because `pushValues` concatenates in run order
+   (`runRangeInPushValues`). A run-mean selection gets the halo with no ringed
+   dot, which is the one case where the halo is the whole answer. Not drawn on
+   a single-run push, where every dot would wear one.
+
    **Each run's mean is selectable too**, from the button in that run's head
    line. It is a point the app already has — the `means` drawing mode plots it
    and `sel=…,-1` names it — but with replicates drawn its dot isn't on the

@@ -448,6 +448,27 @@ export function indexInPushValues(
   return -1;
 }
 
+// Where one run's values sit in `pushValues(push)`, as a half-open range.
+//
+// A range rather than a set of indices because the pool is a concatenation in
+// run order, so a run's contribution to it is always contiguous — which is what
+// lets the strip shade "the run you clicked" with two numbers.
+//
+// Null for a datum that isn't in this push, and for a run that recorded nothing.
+export function runRangeInPushValues(
+  push: PushGroup,
+  datumId: number,
+): { start: number; end: number } | null {
+  let offset = 0;
+  for (const run of push.runs) {
+    if (run.datumId === datumId) {
+      return run.values.length > 0 ? { start: offset, end: offset + run.values.length } : null;
+    }
+    offset += run.values.length;
+  }
+  return null;
+}
+
 // Every value the push recorded, grouped by the job that produced it — what the
 // details pane lists under the push distribution.
 //

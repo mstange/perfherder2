@@ -11,6 +11,7 @@ import {
   pushValues,
   replicateGroups,
   resolvePoint,
+  runRangeInPushValues,
   seriesKey,
   seriesLabel,
 } from './graphData';
@@ -304,6 +305,20 @@ describe('pushValues and indexInPushValues', () => {
   it('marks nothing for a selection in another push', () => {
     const groups = replicateGroups(push, 99, 0);
     expect(groups.every((g) => !g.selectedRun && g.selectedIndex === null)).toBe(true);
+  });
+
+  it('gives each run a contiguous range of the pool', () => {
+    expect(runRangeInPushValues(push, 1)).toEqual({ start: 0, end: 3 });
+    expect(runRangeInPushValues(push, 2)).toEqual({ start: 3, end: 5 });
+    // The range is over the same array `pushValues` builds, which is what lets
+    // the strip use it as an index range.
+    const values = pushValues(push);
+    const r = runRangeInPushValues(push, 2)!;
+    expect(values.slice(r.start, r.end)).toEqual([20, 21]);
+  });
+
+  it('has no range for a run that is not in this push', () => {
+    expect(runRangeInPushValues(push, 99)).toBeNull();
   });
 });
 
