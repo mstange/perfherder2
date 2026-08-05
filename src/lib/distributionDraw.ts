@@ -20,6 +20,10 @@ const FILL_ALPHA = 0.16;
 const DOT_RADIUS = 2;
 const MARKED_RADIUS = 3.5;
 const DOT_ALPHA = 0.6;
+// How many paths the strip's dots are split across, so that overlapping ones
+// darken instead of all reading as one. See the strip drawing below, and
+// `chartDraw.ts::drawDots` for why a single path can't do it.
+const DOT_PATHS = 8;
 
 // One tick per ~64px: enough to read the axis at pane width without the labels
 // touching.
@@ -249,28 +253,38 @@ function drawStrip(
     ctx.globalAlpha = 1;
   }
 
-  // Every dot in one path, filled or stroked once — the same batching the
-  // time-series graph relies on, and for the same reason.
-  ctx.beginPath();
-  let marked: { x: number; y: number } | null = null;
-  for (const dot of side.strip) {
-    const x = layout.xScale.toPixel(dot.value);
-    const y = row.centerY + dot.jitter * amplitude;
-    if (dot.marked) {
-      marked = { x, y };
-      continue;
-    }
-    ctx.moveTo(x + DOT_RADIUS, y);
-    ctx.arc(x, y, DOT_RADIUS, 0, Math.PI * 2);
-  }
+  // The dots split across DOT_PATHS paths, each filled or stroked once, so that
+  // where several land on top of each other the color accumulates and the pile-up
+  // is visible. One path for the whole strip does not do that — canvas composites
+  // once per draw call, not once per shape, so twenty values at the same
+  // measurement came out exactly as dark as one. Same fix and same reasoning as
+  // `chartDraw.ts::drawDots`, which explains it at length — change one, look at
+  // the other. (Including the note there about collapsing this to one fill per
+  // dot, which for a pool of tens of values is obviously affordable; it stays
+  // uniform with the graphs instead of deciding that on its own.)
   ctx.globalAlpha = DOT_ALPHA;
   if (isBase) {
     ctx.strokeStyle = side.color;
     ctx.lineWidth = 1;
-    ctx.stroke();
   } else {
     ctx.fillStyle = side.color;
-    ctx.fill();
+  }
+  let marked: { x: number; y: number } | null = null;
+  for (let path = 0; path < DOT_PATHS; path++) {
+    ctx.beginPath();
+    for (let i = path; i < side.strip.length; i += DOT_PATHS) {
+      const dot = side.strip[i];
+      const x = layout.xScale.toPixel(dot.value);
+      const y = row.centerY + dot.jitter * amplitude;
+      if (dot.marked) {
+        marked = { x, y };
+        continue;
+      }
+      ctx.moveTo(x + DOT_RADIUS, y);
+      ctx.arc(x, y, DOT_RADIUS, 0, Math.PI * 2);
+    }
+    if (isBase) ctx.stroke();
+    else ctx.fill();
   }
   ctx.globalAlpha = 1;
 

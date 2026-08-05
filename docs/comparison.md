@@ -172,6 +172,10 @@ Layout, top to bottom, in one canvas:
 
 - **Both sides share one x domain and one KDE grid.** Two curves drawn on
   separate domains cannot be compared by eye, which is the entire point.
+- **Overlapping dots darken.** The strip's dots are translucent and drawn in
+  interleaved paths so that several values landing on the same spot accumulate;
+  see graphs.md, "Dots are translucent, and jittered sideways", for why one
+  batched path silently defeats that.
 - **The jitter is deterministic**, from a hash of the value's index, not
   `Math.random()`. A Svelte `$derived` re-runs whenever anything it reads
   changes; random jitter would make every dot jump on an unrelated state
