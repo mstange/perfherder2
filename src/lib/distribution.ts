@@ -84,33 +84,53 @@ export type DistributionPlot = {
   hasCurves: boolean;
 };
 
-export function buildDistribution(inputs: readonly DistributionInput[]): DistributionPlot {
-  const bandwidths = inputs.map((input) => silvermanBandwidth(input.values));
-
-  // Each side's own [min − support, max + support]: padded by *its* bandwidth,
-  // so every curve has room to taper to ~0 inside the domain rather than being
-  // cut off mid-slope. A cliff at the edge of the plot reads as a mode boundary
-  // that isn't there.
+// The narrowest axis that fits every one of these pools *and* the tails of their
+// density curves: each pool's [min − support, max + support], unioned.
+//
+// Padded by each pool's *own* bandwidth support, so every curve has room to taper
+// to ~0 inside the domain rather than being cut off mid-slope — a cliff at the
+// edge of the plot reads as a mode boundary that isn't there. That padding is
+// substantial and pool-dependent: measured across one series' 84 pushes it ran
+// from 0.03 to 0.50 score, against a 1.25-wide series.
+//
+// Exported because the caller sometimes wants the axis of pools it *isn't*
+// drawing: see `DistributionInput`'s use from AppState.selectionAxis, which fixes
+// the axis across every push a hover could land on.
+export function paddedExtent(pools: readonly (readonly number[])[]): Range {
   let lo = Infinity;
   let hi = -Infinity;
   let allNonNegative = true;
-  inputs.forEach((input, i) => {
-    if (input.values.length === 0) return;
-    const pad = gaussianSupport(bandwidths[i]);
-    for (const v of input.values) {
+  for (const values of pools) {
+    if (values.length === 0) continue;
+    const pad = gaussianSupport(silvermanBandwidth(values));
+    for (const v of values) {
       if (v - pad < lo) lo = v - pad;
       if (v + pad > hi) hi = v + pad;
       if (v < 0) allNonNegative = false;
     }
-  });
+  }
   // Perf metrics don't go negative, and an axis that runs to -8 ms because the
   // kernel is wider than the values are large is worse than a curve clipped at
   // zero — which is where the true density stops anyway.
   if (allNonNegative && lo < 0) lo = 0;
-  if (!Number.isFinite(lo)) {
-    lo = 0;
-    hi = 1;
-  }
+  if (!Number.isFinite(lo)) return { min: 0, max: 1 };
+  return { min: lo, max: hi };
+}
+
+// `axis` fixes the value axis instead of fitting it to `inputs`. The details pane
+// passes one so that a hover preview can't rescale the chart under the reader —
+// see AppState.selectionAxis and docs/comparison.md. It is unioned with, not
+// substituted for, the fit: a pool that falls outside the given axis (a compared
+// point in another series, or one outside the zoom) still has to fit on screen.
+export function buildDistribution(
+  inputs: readonly DistributionInput[],
+  axis: Range | null = null,
+): DistributionPlot {
+  const bandwidths = inputs.map((input) => silvermanBandwidth(input.values));
+
+  const fit = paddedExtent(inputs.map((input) => input.values));
+  const lo = axis ? Math.min(axis.min, fit.min) : fit.min;
+  const hi = axis ? Math.max(axis.max, fit.max) : fit.max;
 
   const grid = linearGrid(lo, hi, GRID_POINTS);
   const domain: Range = { min: grid[0], max: grid[grid.length - 1] };
@@ -162,12 +182,22 @@ export const DENSITY_HEIGHT = 68;
 export const BAND_GAP = 5;
 export const STRIP_ROW_HEIGHT = 20;
 
-// The chart is as tall as its content needs and no taller. This *is* a height
-// that changes with the data — a pool too small for a density loses the band —
-// but only when the selection changes, which redraws the whole pane anyway. The
-// alternative is a labelled empty box in every narrow-pool case.
-export function distributionHeight(sideCount: number, hasCurves: boolean): number {
-  const bands = hasCurves ? DENSITY_HEIGHT + BAND_GAP : 0;
+// The chart is as tall as its content needs and no taller: a pool too small for a
+// density loses the band entirely.
+//
+// `reserveBand` overrides that, for the case where the height would otherwise
+// change *under the pointer*. A series whose pushes straddle MIN_CURVE_VALUES —
+// most have enough replicates for a curve, one has three — would grow and shrink
+// by 73px as a hover moved between them, and it is the pane's job to know that in
+// advance (AppState.selectionAxis) rather than discover it per hover. Left false
+// where every candidate pool is too small: an awsy series never draws a curve, and
+// a permanently empty band would be 73px of labelled nothing.
+export function distributionHeight(
+  sideCount: number,
+  hasCurves: boolean,
+  reserveBand = false,
+): number {
+  const bands = hasCurves || reserveBand ? DENSITY_HEIGHT + BAND_GAP : 0;
   return (
     DISTRIBUTION_PAD.top +
     bands +
@@ -199,15 +229,19 @@ export type DistributionLayout = {
 export function distributionLayout(
   width: number,
   plot: DistributionPlot,
+  reserveBand = false,
 ): DistributionLayout {
   const pad = DISTRIBUTION_PAD;
   const sideCount = Math.max(1, plot.series.length);
-  const height = distributionHeight(plot.series.length, plot.hasCurves);
+  const height = distributionHeight(plot.series.length, plot.hasCurves, reserveBand);
   const x0 = pad.left;
   const x1 = Math.max(pad.left + 1, width - pad.right);
   const bandY0 = pad.top;
-  const bandY1 = plot.hasCurves ? bandY0 + DENSITY_HEIGHT : bandY0;
-  const rowsTop = plot.hasCurves ? bandY1 + BAND_GAP : bandY0;
+  // The band keeps its space when it's reserved even though nothing is drawn in
+  // it, so the strip rows below don't move.
+  const band = plot.hasCurves || reserveBand;
+  const bandY1 = band ? bandY0 + DENSITY_HEIGHT : bandY0;
+  const rowsTop = band ? bandY1 + BAND_GAP : bandY0;
   const rows: StripRow[] = [];
   for (let i = 0; i < sideCount; i++) {
     const y0 = rowsTop + i * STRIP_ROW_HEIGHT;
