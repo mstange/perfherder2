@@ -64,6 +64,14 @@ which would put the twenty-commit pushlog above the value you asked about.
    ourselves (see "The three-level hierarchy"), so it named no trial and no
    execution order, and dropping it bought about a quarter of each chip's width —
    enough to fit a five-replicate run on one line instead of two.
+
+   **Each run's mean is selectable too**, from the button in that run's head
+   line. It is a point the app already has — the `means` drawing mode plots it
+   and `sel=…,-1` names it — but with replicates drawn its dot isn't on the
+   graph, so before this a chip click was a one-way door: nothing led back to
+   the run as a whole. It stays in the head rather than joining the chip row,
+   quieter than a chip until hovered or selected, because a mean in a row of
+   measured values is a different kind of number wearing the same clothes.
 5. **Run** — the job: type, machine, start, duration, task. `result` comes
    **last**; it reads "success" for all but a handful of points, since a job that
    failed outright recorded no performance data to click on. It's kept rather

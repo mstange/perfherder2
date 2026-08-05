@@ -516,7 +516,31 @@
                     >
                   {/if}
                   {#if group.run.values.length > 1}
-                    <span class="muted">mean {formatValue(group.run.mean)}</span>
+                    <!-- Selectable, not just printed. A run's mean is a point the
+                         app has — it's what the `means` drawing mode plots, and
+                         what a `sel=…,-1` link names — but with replicates drawn
+                         its dot isn't on the graph, so clicking a chip below used
+                         to be a one-way door: nothing in the pane led back to the
+                         run as a whole. It stays in the head rather than joining
+                         the chip row, because a mean sitting in a row of measured
+                         values is a different kind of number wearing the same
+                         clothes. -->
+                    <button
+                      type="button"
+                      class="run-mean"
+                      class:selected={group.selectedRun && meanSelected}
+                      aria-pressed={group.selectedRun && meanSelected}
+                      title="Select this run's mean"
+                      onclick={() =>
+                        app.selectPoint({
+                          repository: repo,
+                          signatureId: sel.entry.ref.signatureId,
+                          datumId: group.run.datumId,
+                          replicateIndex: MEAN_REPLICATE,
+                        })}
+                    >
+                      mean {formatValue(group.run.mean)}
+                    </button>
                   {/if}
                 </div>
                 <!-- Values only. The chips used to lead with the replicate's
@@ -867,6 +891,29 @@
      value is highlighted. */
   .runs > li.selected .run-name {
     font-weight: 600;
+    color: var(--fg-default);
+  }
+  /* Quieter than a replicate chip — borderless until it's hovered or selected —
+     because it sits in the muted head line and must not read as a fifth
+     measurement in a run of four. */
+  .run-mean {
+    font: inherit;
+    font-size: 11px;
+    padding: 0 4px;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    background: none;
+    color: inherit;
+    cursor: pointer;
+    font-variant-numeric: tabular-nums;
+  }
+  .run-mean:hover {
+    border-color: var(--border-default);
+    background: var(--bg-hover);
+  }
+  .run-mean.selected {
+    border-color: var(--accent-emphasis);
+    background: var(--accent-subtle);
     color: var(--fg-default);
   }
   .push-mean {

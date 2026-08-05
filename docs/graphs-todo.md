@@ -124,10 +124,6 @@ Living checklist. Update in the same commit as the work it describes.
   `DistributionInput.markedIndex` would become a set. The chip list under the
   chart now groups the same values by job, which answers the question in numbers
   but not on the strip.
-- **Selecting a run's mean from the pane.** The chips select replicates; a run's
-  mean is selectable only by clicking its dot with replicates hidden. A chip for
-  it in each run's head would close that loop, but "mean" sitting in a row of
-  measured values needs a visual distinction the row doesn't have yet.
 - **Comparing more than two points.** The `cmp` parameter holds one. Three or
   more would want a table rather than a card, and it isn't clear anyone wants
   it.
