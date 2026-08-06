@@ -48,7 +48,7 @@
        takes you. Swapping a single glyph would leave it ambiguous which of the
        two a lone sun meant. -->
   <span class="thumb" class:dark={isDark} aria-hidden="true"></span>
-  <span class="glyph" class:lit={!isDark} aria-hidden="true">☀</span>
+  <span class="glyph" class:lit={!isDark} aria-hidden="true">☼</span>
   <span class="glyph" class:lit={isDark} aria-hidden="true">☾</span>
 </button>
 
