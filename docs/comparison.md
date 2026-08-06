@@ -134,15 +134,24 @@ undos for one shift-click.
 
 **The pane does not move while the pointer does.** The comparison block is two
 slots with reserved heights — 89px for the headline (or the hint, or "marked")
-and 203px for the chart — so crossing a dot changes what is *in* them and
+and 171px for the chart — so crossing a dot changes what is *in* them and
 nothing below. It was 419px of movement before: the full card is 508px against
 the 89px hint it replaced, and the chart it drew was a second copy of one
 DetailsPane was drawing 250px lower, so the two swapping places moved another
-154px the other way. Now there is one chart in one place, with a second strip
-row when there is something to compare — `distributionHeight` puts the two forms
-20px apart, 55px with the extra legend row, which is what the reserve costs.
-Only pinning grows the block, by adding the stats, the sides and the links below
-the chart; pinning is deliberate and may rearrange the pane, hovering may not.
+154px the other way.
+
+Now there is one chart in one place, with a second strip row when there is
+something to compare. The reserve is what a comparison *adds* to the single-push
+form: one strip row, plus the second legend head. **The hover preview drops the
+spread/cv line from each legend row** (`legendDetail`) — it is the expensive
+half, and losing it takes the reserve from 203px to 171px and the slack under
+the single-push chart from 55px to 25px, while the rows stay labelled with their
+`n` and median. Reserving a blank legend row instead would read worse than the
+gap it filled.
+
+Only pinning grows the block, by adding the spread/cv lines back along with the
+stats, the sides and the links below the chart; pinning is deliberate and may
+rearrange the pane, hovering may not.
 
 **Escape unwinds one level at a time**, comparison before selection. Doing both
 at once makes the commoner action — drop the comparison, keep looking at the

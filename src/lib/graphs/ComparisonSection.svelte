@@ -232,6 +232,7 @@
         {plot}
         unit={plotUnit}
         reserveBand={app.selectionChart?.reserveBand ?? false}
+        legendDetail={pinned || !cmp}
       />
     {/if}
   </div>
@@ -393,17 +394,23 @@
 
      89px is the hint, which is taller than the headline or the marked line.
 
-     203px is the whole two-side chart: a 134px canvas (`distributionHeight` for
-     two strip rows over a density band) plus two legend rows. One side is 148px
-     — a 114px canvas and one legend row — so the reserve costs 55px of slack
-     below the chart whenever nothing is being compared. That is the price of a
-     chart that neither moves nor blinks out while the pointer sweeps, and it is
-     paid in one place instead of 419px being paid on every dot. */
+     171px is the chart while hovering: a 134px canvas (`distributionHeight` for
+     two strip rows over a density band) plus two legend heads and the gap
+     between them. One side is 146px — a 114px canvas and one 32px legend row,
+     head and detail — so the reserve leaves 25px of slack under the chart when
+     nothing is compared.
+
+     That slack is exactly what a comparison adds: one strip row (20px) and the
+     5px the second legend head costs over the detail line it replaces. It was
+     55px until the hover preview dropped the spread/cv line (`legendDetail`);
+     the alternative was reserving a blank legend row, which reads worse than a
+     gap. Pinned is 201px and deliberately outside this budget — pinning may
+     rearrange the pane, hovering may not. */
   .cmp-lede {
     min-height: 89px;
   }
   .cmp-chart {
-    min-height: 203px;
+    min-height: 171px;
   }
   .cmp-head {
     display: flex;

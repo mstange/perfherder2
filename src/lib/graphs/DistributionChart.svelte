@@ -21,8 +21,15 @@
     // curve, so the chart doesn't change height under the reader — see
     // AppState.selectionChart.
     reserveBand?: boolean;
+    // The *second* line of each legend row — the spread and cv, or the mode
+    // breakdown. Off for the hover preview. The labels and `n · med` stay, so
+    // the rows are still named; only the detail goes, and it is the expensive
+    // half: two of these lines are 35px, which is most of what the pane has to
+    // reserve for a comparison that may never be pinned. See ComparisonSection,
+    // `.cmp-chart`, for the arithmetic that reserve comes out of.
+    legendDetail?: boolean;
   };
-  let { plot, unit = '', reserveBand = false }: Props = $props();
+  let { plot, unit = '', reserveBand = false, legendDetail = true }: Props = $props();
 
   let wrapper: HTMLDivElement | undefined = $state();
   let canvas: HTMLCanvasElement | undefined = $state();
@@ -133,7 +140,7 @@
               </span>
             {/if}
           </div>
-          {#if side.summary}
+          {#if side.summary && legendDetail}
             <div class="key-detail">
               {#if side.modes.peakLocs.length > 1}
                 <!-- Modes are worth naming only when there is more than one;
@@ -154,7 +161,7 @@
                 {cvPercent(side.summary.cv)}
               {/if}
             </div>
-          {:else}
+          {:else if legendDetail}
             <div class="key-detail">no values</div>
           {/if}
         </div>
