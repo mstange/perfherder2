@@ -1,9 +1,10 @@
 // Treeherder API calls that back the graphs view.
 //
-// Three endpoints:
+// Four endpoints:
 //   /performance/summary/       the actual data points for one signature
 //   /project/<repo>/push/<id>/  push ("build") metadata for a clicked point
 //   /project/<repo>/jobs/<id>/  job ("run") metadata for a clicked point
+//   /repository/                repo list; `dvcs_type` and `url` shape the links
 //
 // See docs/graphs.md for why we pass absolute startday/endday instead of
 // treeherder's relative `interval`, and for the replicates quirk.

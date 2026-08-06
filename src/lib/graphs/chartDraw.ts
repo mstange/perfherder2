@@ -44,8 +44,8 @@ export type DrawOptions = {
   yDomain: Range;
   series: DrawSeries[];
   dotRadius: number;
-  // The detail graph joins per-run means; the overview deliberately doesn't
-  // (task requirement) — at overview density the lines are just noise.
+  // The detail graph joins the per-push means; the overview deliberately
+  // doesn't (task requirement) — at overview density the lines are just noise.
   showLines: boolean;
   showAxes: boolean;
   // The theme's chart colors. Passed in rather than read off the DOM so the

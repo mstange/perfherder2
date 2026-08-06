@@ -93,7 +93,8 @@ export type Comparison = {
   // says so, because otherwise "before" silently means "the one you clicked
   // second".
   swapped: boolean;
-  // Null only when a side has no values at all.
+  // Null for a `replicate` comparison — one value against one value is not a
+  // test, see below — and when a side has no values at all.
   test: MannWhitneyResult | null;
   // next − base, on the medians. Median rather than mean because a multi-modal
   // cloud's mean sits between its modes, where no measurement is.

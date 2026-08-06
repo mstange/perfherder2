@@ -51,8 +51,8 @@ export function quantileSorted(sorted: readonly number[], q: number): number {
 // This is PerfCompare's `approximateSJBandwidth`, which it uses for exactly
 // our case — sparse, non-subtest pools, where it found the data-driven ISJ
 // bandwidth over-fits. (KDEpy's own `silvermans_rule` is the normal-reference
-// variant, ~6% wider; the difference is far below what the smoothing
-// multiplier in distribution.ts spans.)
+// variant, ~6% wider; we take the robust form as-is, with no smoothing
+// multiplier on top — see "No knobs" in docs/comparison.md.)
 //
 // The `0.001 · |mean|` fallback covers a degenerate sample whose σ and IQR are
 // both zero — every value identical, which happens on integer-valued metrics —

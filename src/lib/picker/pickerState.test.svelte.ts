@@ -3,11 +3,12 @@
 // `fetch` stubbed. See docs/design.md "Testing" for why the file is named
 // `.test.svelte.ts` and why the environment must be happy-dom.
 //
-// Coverage here is deliberately narrow: the seam between the app and the
-// picker. `seed` is where the app hands over a starting point, and where
-// getting the ordering wrong (seed after the fetch effect) would quietly fetch
-// the wrong repos or the wrong interval; `view` is the way back, and what ends
-// up in a shared link.
+// Most of what follows is the seam between the app and the picker. `seed` is
+// where the app hands over a starting point, and where getting the ordering
+// wrong (seed after the fetch effect) would quietly fetch the wrong repos or
+// the wrong interval; `view` is the way back, and what ends up in a shared
+// link. The rest is state PickerState owns itself: `listStatus`, `plotted`,
+// and the batching, debouncing and caching behind run activity.
 
 import { flushSync } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';

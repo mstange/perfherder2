@@ -87,9 +87,9 @@ export function chipMatchesRow(row: Series, chip: FilterChip): boolean {
   }
 }
 
-// Get the exact string on the row that a chip would compare against, for
-// the given field. Used to decide if a badge's value equals an existing
-// chip's value (so the badge can flip to "remove filter" mode).
+// The row's raw values for a given field — the strings a chip of that field is
+// compared against (case-insensitively; see `chipMatchesRow`). Multi-valued for
+// `option`; empty when the row has no value, as suite-level rows have no `test`.
 export function fieldValues(row: Series, field: FilterField): string[] {
   switch (field) {
     case 'repo':

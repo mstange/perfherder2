@@ -233,8 +233,9 @@ export class PickerState {
   }
 
   constructor() {
-    // Load framework + option-collection maps once. Cannot happen before
-    // any repo fetches: `toSeries` needs both maps to enrich signatures.
+    // Load framework + option-collection maps once. Must happen before any
+    // repo fetch — the effect below waits on `metadataReady` — because
+    // `toSeries` needs both maps to enrich signatures.
     void this.loadMetadata();
 
     // Fetch missing (repo, needSubtestsFetch, interval) tuples.

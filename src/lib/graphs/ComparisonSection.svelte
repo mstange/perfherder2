@@ -87,11 +87,8 @@
   );
 </script>
 
-<!-- Above the single-point sections, because when there are two points on
-     screen the difference between them is the headline and everything
-     below is supporting detail. A hovered comparison is styled as a
-     preview: it isn't the user's yet, and it disappears when the pointer
-     leaves the graph. -->
+<!-- A hovered comparison is styled as a preview: it isn't the user's yet, and
+     it disappears when the pointer leaves the graph. -->
 {#if cmp}
   <section class="comparison" class:preview={app.comparisonSource === 'hover'}>
     <div class="cmp-head">

@@ -878,15 +878,15 @@ describe('AppState picker prefill', () => {
     };
   }
 
-  // Four speedometer3 series that differ only by browser: everything else is
+  // Two speedometer3 series that differ only by browser: everything else is
   // shared, so everything else becomes a chip.
-  const FOUR_BROWSERS = new Map([
+  const TWO_BROWSERS = new Map([
     [1, meta(1, { application: 'chrome' })],
     [2, meta(2, { application: 'safari' })],
   ]);
 
   it('prefills from what the plotted series share', () => {
-    stubSummaries(FOUR_BROWSERS);
+    stubSummaries(TWO_BROWSERS);
     return withApp('?series=mozilla-central,1,1&series=mozilla-central,2,1', async (app) => {
       await settle();
       app.setPickerOpen(true);
@@ -902,7 +902,7 @@ describe('AppState picker prefill', () => {
   });
 
   it('expresses the repository as a repo selection, not a chip', () => {
-    stubSummaries(FOUR_BROWSERS);
+    stubSummaries(TWO_BROWSERS);
     return withApp('?series=mozilla-central,1,1&series=autoland,2,1', async (app) => {
       await settle();
       app.setPickerOpen(true);
@@ -912,7 +912,7 @@ describe('AppState picker prefill', () => {
   });
 
   it('prefills from a single series too', () => {
-    stubSummaries(FOUR_BROWSERS);
+    stubSummaries(TWO_BROWSERS);
     return withApp('?series=mozilla-central,1,1', async (app) => {
       await settle();
       app.setPickerOpen(true);
@@ -937,7 +937,7 @@ describe('AppState picker prefill', () => {
   });
 
   it('leaves a filter the user has edited alone', () => {
-    stubSummaries(FOUR_BROWSERS);
+    stubSummaries(TWO_BROWSERS);
     return withApp('?series=mozilla-central,1,1&series=mozilla-central,2,1', async (app) => {
       await settle();
       app.setPickerOpen(true);
@@ -955,7 +955,7 @@ describe('AppState picker prefill', () => {
   });
 
   it('re-derives an untouched prefill when the series change', () => {
-    stubSummaries(FOUR_BROWSERS);
+    stubSummaries(TWO_BROWSERS);
     return withApp('?series=mozilla-central,1,1', async (app) => {
       await settle();
       app.setPickerOpen(true);
@@ -1004,7 +1004,7 @@ describe('AppState picker prefill', () => {
     }));
 
   it('does not prefill while the metadata is still in flight', () => {
-    stubSummaries(FOUR_BROWSERS);
+    stubSummaries(TWO_BROWSERS);
     return withApp('?series=mozilla-central,1,1', (app) => {
       // No `settle()`: the summary fetch hasn't resolved, so there is nothing
       // to derive from. The next open picks it up.
@@ -1014,7 +1014,7 @@ describe('AppState picker prefill', () => {
   });
 
   it('carries the prefill into the URL', () => {
-    stubSummaries(FOUR_BROWSERS);
+    stubSummaries(TWO_BROWSERS);
     return withApp('?series=mozilla-central,1,1&series=mozilla-central,2,1', async (app) => {
       await settle();
       app.setPickerOpen(true);
@@ -1027,7 +1027,7 @@ describe('AppState picker prefill', () => {
   });
 
   it('resets an untouched panel to its defaults on reopen', () => {
-    stubSummaries(FOUR_BROWSERS);
+    stubSummaries(TWO_BROWSERS);
     return withApp('?series=mozilla-central,1,1', async (app) => {
       await settle();
       app.setPickerOpen(true);

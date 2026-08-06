@@ -116,7 +116,6 @@
     const chipsFromText: FilterChip[] = [];
     // Match `field:value` where the value ends at whitespace. Any run of
     // whitespace between tokens is treated as the boundary.
-    // eslint-disable-next-line no-useless-escape
     const pattern = /(\S+?):(\S+)(\s+)/g;
     let residue = raw.replace(pattern, (_full, f, v) => {
       if (isFilterField(f) && v.length > 0) {

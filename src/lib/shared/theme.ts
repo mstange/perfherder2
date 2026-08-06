@@ -79,7 +79,7 @@ export type ChartPalette = {
   ring: string; // --fg-default — the outline around a selected/compared dot
   rowTint: string; // --bg-subtle — the distribution chart's second strip row
   brushDim: string; // dims the overview outside the zoomed window
-  brushLine: string; // --accent-emphasis — the brush edges and handles
+  brushLine: string; // --accent-fg — the brush edges and handles
   // Alert markers. Red and green rather than the series color, because what an
   // alert marker says is "a sheriff-visible change happened here, in this
   // direction" — a fact about the push, not about which line it belongs to. The

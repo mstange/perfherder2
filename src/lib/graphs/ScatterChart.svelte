@@ -25,7 +25,7 @@
     dotRadius?: number;
     showLines?: boolean;
     showAxes?: boolean;
-    // Alert markers, on the detail graph only: the overview is 100px tall and
+    // Alert markers, on the detail graph only: the overview is 84px tall and
     // may hold a year of pushes, where a row of triangles would be most of what
     // the map shows.
     showAlerts?: boolean;

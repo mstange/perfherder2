@@ -783,15 +783,13 @@ import { TIME_RANGES } from './pickerOptions';
        cleanly against the first data row. */
     height: var(--row-height);
     box-sizing: border-box;
+    /* No padding: a sortable header fills the cell with a `.sort-btn` that pads
+       itself, so `thead th:not(.sortable)` adds the padding back for the rest. */
     padding: 0;
     z-index: 1;
   }
   thead th:not(.sortable) {
     padding: 0 8px;
-  }
-  .sortable {
-    /* Ensure the header cell fills so the button occupies it entirely. */
-    background: var(--bg-subtle);
   }
   .sortable-active {
     background: var(--accent-subtle);
