@@ -27,7 +27,8 @@ src/lib/
   graphs/   the graphs view and its two side panes: graphApi, graphData,
             alerts(+Api), appState.svelte, chartDraw, ScatterChart, GraphPane,
             SeriesList, seriesSummary, reorder, and the details pane's
-            compare, distribution(+Draw), kde, DistributionChart, DetailsPane
+            compare, distribution(+Draw), kde, DistributionChart, DetailsPane,
+            ComparisonSection, detailsPane.css
   urlState.ts   the whole app's URL schema — it names picker state and graph
                 state alike, so it sits above both rather than inside either
   schema.test.ts + fixtures/   recorded payloads for both halves
@@ -1099,24 +1100,32 @@ these strings for display — you'll get bitten by edge cases.**
   file, but Svelte 5 reactive tracking across component boundaries can
   make snappy interactions surprisingly re-render-heavy. Only pull this
   trigger if we hit perf issues, and profile before/after.
-- **Splitting DetailsPane.svelte was looked at and declined.** It is the
-  largest file in the app (~1200 lines: ~600 of template, ~430 of CSS), and
-  its `<section>` boundaries look like ready-made components — the comparison
-  card alone is ~200 lines of markup and ~160 of CSS.
+- **DetailsPane.svelte is part-way split, and the rest is optional.** It was
+  ~1200 lines; the comparison card is now
+  [ComparisonSection.svelte](../src/lib/graphs/ComparisonSection.svelte) and
+  the pane is ~740.
 
-  What stops it is the CSS. The pane's sections share one typographic
-  vocabulary — `h3`, `.value` and its `.unit`/`.muted` spans, `.muted`,
-  `.mono`, `dl`/`dt`/`dd` — and Svelte scopes styles per component, so every
-  extracted child has to restate the ~29 lines of it that it uses. Trading
-  one long file for three copies of a shared vocabulary is the same mistake
-  as the five copied button blocks, in the other direction, and this pane
-  redraws on every hover.
+  What unblocked it was giving the sections' shared text styles one home —
+  [detailsPane.css](../src/lib/graphs/detailsPane.css) — because Svelte scopes
+  styles per component and without that every extracted section restates the
+  handful of rules it uses. **Do that first for any further split**, and keep
+  the test for what belongs there as "does a second section read it".
 
-  If it does get split, do the enabling step first: give those shared text
-  styles one home the way `.btn` got one — either as `.detail-*` classes in
-  app.css, or as a stylesheet both ends import. Extract the comparison card
-  first; it is the biggest section and the least entangled, since it already
-  overrides `dl`/`dt`/`dd` with its own compact variant.
+  Two things the split had to be careful about, and any further one will too:
+
+  - **A rule two sections both act on has to live in one of them.** The pane
+    suppresses its own push distribution exactly when the comparison card
+    draws one; that was `kind !== 'replicate'` written in a single place and
+    would have become two. It is now
+    [compare.ts::hasDistribution](../src/lib/graphs/compare.ts), read by both.
+  - **Helpers shared by two sections move to the module that owns them**, not
+    into both — `shortRevision` to shared/links.ts, `linkInfoFor` to
+    `AppState.repoLinkFor`.
+
+  The remaining sections (values-on-this-push, run, build) are smaller and
+  more entangled with each other than the comparison was, and the pane is a
+  readable length now. Not obviously worth doing; if it is done, the same two
+  rules apply.
 
 ### Documentation upkeep
 

@@ -112,6 +112,18 @@ export type Comparison = {
   warning: string | null;
 };
 
+// Whether this comparison has a spread to draw, rather than two bare numbers.
+// A `replicate` comparison is one value against one value: two one-dot strips
+// say less than the push distribution underneath them does.
+//
+// Asked from two places — the comparison card, deciding whether to draw a
+// chart, and the details pane, deciding whether to suppress the push
+// distribution it would duplicate — so the rule lives here rather than being
+// spelled `kind !== 'replicate'` in both.
+export function hasDistribution(cmp: Comparison): boolean {
+  return cmp.kind !== 'replicate';
+}
+
 // ---------------------------------------------------------------------------
 // Classification and ordering
 // ---------------------------------------------------------------------------

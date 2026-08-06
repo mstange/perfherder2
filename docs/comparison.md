@@ -348,7 +348,10 @@ Not pure:
   legend.
 - `appState.svelte.ts` — `comparedPoint`, `hoveredPoint`, `comparisonSource`,
   `comparison`, `comparisonMarkedHere`.
-- `DetailsPane.svelte` — the comparison card and the push distribution.
+- `ComparisonSection.svelte` — the comparison card, in all three of its
+  states (compared, marked-here, and the hint that says the gesture exists).
+- `DetailsPane.svelte` — the push distribution, and everything else in the
+  pane.
 
 Open items — a bootstrap CI, per-run shading inside a push pool, comparing more
 than two points — live in [graphs-todo.md](graphs-todo.md).

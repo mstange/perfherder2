@@ -331,6 +331,10 @@ Recovery is the explicit Retry button.
 - [SeriesList.svelte](../src/lib/graphs/SeriesList.svelte),
   [GraphPane.svelte](../src/lib/graphs/GraphPane.svelte),
   [DetailsPane.svelte](../src/lib/graphs/DetailsPane.svelte) — the three panes.
+  The details pane delegates its comparison card to
+  [ComparisonSection.svelte](../src/lib/graphs/ComparisonSection.svelte) and
+  shares its text styles with it through
+  [detailsPane.css](../src/lib/graphs/detailsPane.css).
 
 **Do not put a `SeriesData` inside a `$state` object or array.** Svelte 5
 deep-proxies plain objects and arrays assigned to `$state`, and a proxied
