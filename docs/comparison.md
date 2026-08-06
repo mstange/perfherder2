@@ -31,7 +31,8 @@ values differently.
 - **A selection with no comparison** pools **every replicate of every run of
   the selected push**. That is the answer to "how noisy is this measurement on
   this build", which is the question the pane's "Values on this push" section
-  exists to answer. It is
+  exists to answer — and it is the one-row form of the same chart a comparison
+  fills with two rows, in the same place. It is
   deliberately *not* filtered by `showReplicates`: that flag decides what gets
   *drawn* on the time-series graph (see graphs.md), and collapsing the pool to
   one mean per run would leave a 4-value distribution where 60 real
@@ -130,6 +131,18 @@ having a silent state of its own, and the graph stays honest: the hover ring
 said this click would pin the dot, and it did. Unpinning is still the gesture's
 own undo, and it leaves the selection behind — dropping that too would be two
 undos for one shift-click.
+
+**The pane does not move while the pointer does.** The comparison block is two
+slots with reserved heights — 89px for the headline (or the hint, or "marked")
+and 203px for the chart — so crossing a dot changes what is *in* them and
+nothing below. It was 419px of movement before: the full card is 508px against
+the 89px hint it replaced, and the chart it drew was a second copy of one
+DetailsPane was drawing 250px lower, so the two swapping places moved another
+154px the other way. Now there is one chart in one place, with a second strip
+row when there is something to compare — `distributionHeight` puts the two forms
+20px apart, 55px with the extra legend row, which is what the reserve costs.
+Only pinning grows the block, by adding the stats, the sides and the links below
+the chart; pinning is deliberate and may rearrange the pane, hovering may not.
 
 **Escape unwinds one level at a time**, comparison before selection. Doing both
 at once makes the commoner action — drop the comparison, keep looking at the

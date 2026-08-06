@@ -5,9 +5,31 @@
   // single-point sections: when there are two points on screen, the difference
   // between them is the headline and everything else is supporting detail.
   //
-  // Its three states are all here, because they are one slot: the comparison
-  // itself, the "marked, now move" step of the keyboard path, and the hint that
-  // says the gesture exists at all.
+  // Its states are all here, because they are one slot: the pinned comparison,
+  // the hover preview, the "marked, now move" step of the keyboard path, and
+  // the hint that says the gesture exists at all.
+  //
+  // Two reserved slots, and the reason for both is layout. The full card used to
+  // be 508px against the 89px hint it replaced, so sweeping the pointer across
+  // dots moved "Replicate" and everything under it by 419px, over and over,
+  // which is what reading a graph looks like.
+  //
+  //   `.cmp-lede`   89px — the headline, or the hint, or "marked".
+  //   `.cmp-chart` 134px — the distribution. **Always.**
+  //
+  // The chart is the whole point of the second slot. There is only ever one
+  // distribution on screen, but it used to be drawn by two components in two
+  // *places* — this one for a comparison, DetailsPane for the push on its own —
+  // each suppressing the other, so swapping between them moved 154px of pane.
+  // One chart in one place instead: one strip row for this push, two when
+  // comparing, which `distributionHeight` puts 20px apart. Reserving the taller
+  // costs 20px and buys a chart that never moves and never blinks out — and
+  // seeing the distributions while sweeping the pointer is the point of hovering
+  // at all.
+  //
+  // Only a *pinned* comparison gets the rest: the stats table, the side list and
+  // the links, below the chart. Pinning is a deliberate act and may reasonably
+  // rearrange the pane; hovering may not.
 
   import type { AppState } from './appState.svelte';
   import {
@@ -20,7 +42,12 @@
   import { comparisonLinks, hasDistribution, type ComparisonSide } from './compare';
   import DistributionChart from './DistributionChart.svelte';
   import { buildDistribution } from './distribution';
-  import { seriesLabel } from './graphData';
+  import {
+    indexInPushValues,
+    pushValues,
+    runRangeInPushValues,
+    seriesLabel,
+  } from './graphData';
   import { jobsUrl, revisionUrl, shortRevision } from '../shared/links';
   import { SIGNIFICANCE_ALPHA } from '../shared/stats';
 
@@ -29,24 +56,58 @@
 
   const cmp = $derived(app.comparison);
 
-  // Both sides on one axis. Withheld for the `replicate` kind, where each side
-  // is a single value — see compare.ts::hasDistribution, which the details pane
-  // also reads so it knows to keep its own push distribution.
-  const comparisonDistribution = $derived.by(() => {
-    if (!cmp || !hasDistribution(cmp)) return null;
+  const pinned = $derived(app.comparisonSource === 'pinned');
+  const sel = $derived(app.selection);
+
+  // The one chart. Two rows when there is a comparison to draw, otherwise the
+  // selected push on its own — the same plot DetailsPane used to render further
+  // down the pane, moved here so that gaining and losing the second row is the
+  // only thing that ever changes about it.
+  //
+  // Both branches pass `app.selectionChart.scales`, so a value sits at the same
+  // x whichever is showing and the second row appears without sliding the first.
+  const plot = $derived.by(() => {
+    if (cmp && hasDistribution(cmp)) {
+      return buildDistribution(
+        [cmp.base, cmp.next].map((side) => ({
+          label: side.label,
+          color: side.color,
+          values: side.values,
+          markedIndex: side.markedIndex,
+        })),
+        app.selectionChart?.scales ?? null,
+      );
+    }
+    // Every value the series recorded on this push, retriggers included: the
+    // question is "how noisy is this measurement on this build". Below two
+    // values there is nothing a strip can say that the headline hasn't — that
+    // is every awsy signature, where the backend returns one row carrying the
+    // summary value.
+    const pool = sel ? pushValues(sel.push) : [];
+    if (!sel || pool.length < 2) return null;
     return buildDistribution(
-      [cmp.base, cmp.next].map((side) => ({
-        label: side.label,
-        color: side.color,
-        values: side.values,
-        markedIndex: side.markedIndex,
-      })),
-      // The scales are the selection's, not this pair's, so sweeping the pointer
-      // across pushes doesn't rescale the chart on every dot. See
-      // AppState.selectionChart.
+      [
+        {
+          label: `${sel.push.runs.length} run${sel.push.runs.length === 1 ? '' : 's'}`,
+          color: sel.entry.color,
+          values: pool,
+          markedIndex: indexInPushValues(sel.push, sel.run.datumId, sel.replicateIndex),
+          // Which dots came out of the job the user clicked. Only with
+          // retriggers: on a single-run push every dot is in the group, and
+          // haloing all of them says nothing. A mean selection gets the halo
+          // too — no dot to ring, but the cluster it averages is what the
+          // reader is looking for.
+          markedGroup:
+            sel.push.runs.length > 1 ? runRangeInPushValues(sel.push, sel.run.datumId) : null,
+        },
+      ],
       app.selectionChart?.scales ?? null,
     );
   });
+
+  const plotUnit = $derived(
+    (cmp ? cmp.unit : sel?.entry.meta?.measurementUnit) ?? '',
+  );
 
   // `swapped` means the baseline is the shift-clicked (or hovered) point, so the
   // selection is the *later* side. Reported per side rather than as a footnote,
@@ -87,41 +148,95 @@
   );
 </script>
 
-<!-- A hovered comparison is styled as a preview: it isn't the user's yet, and
-     it disappears when the pointer leaves the graph. -->
-{#if cmp}
-  <section class="comparison" class:preview={app.comparisonSource === 'hover'}>
-    <div class="cmp-head">
-      <h3>Comparison</h3>
-      {#if app.comparisonSource === 'pinned'}
-        <button
-          type="button"
-          class="btn unpin"
-          title="Stop comparing"
-          onclick={() => app.clearComparison()}>Unpin</button
-        >
-      {:else}
-        <span class="muted">shift-click to pin</span>
-      {/if}
-    </div>
-    <p class="cmp-kind muted">{cmp.headline}</p>
+<!-- One structure for every state, so only the *contents* of the two reserved
+     slots change as the pointer moves. See the note at the top of this file. -->
+<section class="cmp-block" class:carded={!!cmp} class:preview={!!cmp && !pinned}>
+  <div class="cmp-lede">
+    {#if cmp}
+      <div class="cmp-head">
+        <h3>Comparison</h3>
+        {#if pinned}
+          <button
+            type="button"
+            class="btn unpin"
+            title="Stop comparing"
+            onclick={() => app.clearComparison()}>Unpin</button
+          >
+        {:else}
+          <span class="muted">shift-click to pin</span>
+        {/if}
+      </div>
+      <p class="value">
+        {formatSignedValue(cmp.medianDelta)}
+        {#if cmp.unit}<span class="unit">{cmp.unit}</span>{/if}
+        {#if cmp.medianDeltaFraction !== null}
+          <span class="muted">({formatSignedPercent(cmp.medianDeltaFraction)})</span>
+        {/if}
+        {#if cmp.direction !== 'none'}
+          <span class="verdict {cmp.direction}">{cmp.direction}</span>
+        {/if}
+      </p>
+      <!-- Clipped to one line rather than wrapped. The labels are revisions and
+           platform strings, so their length is not ours to predict, and a line
+           that sometimes becomes two would put the jump straight back. The
+           comparison's own kind ("one series, two pushes") is dropped for the
+           same reason — it is a second variable-length line saying what the two
+           labels here already show. -->
+      <p class="cmp-sub muted one-line">
+        {#if cmp.kind !== 'replicate'}median,{' '}{/if}{cmp.base.label} → {cmp.next.label}
+      </p>
+    {:else if app.comparisonMarkedHere}
+      <!-- The pin is on this very point, so there is nothing to compare yet.
+           That's the keyboard path's middle step, and it's also where arrowing
+           back onto a pinned point lands, so it has to say what to do next
+           rather than look like a comparison that failed. -->
+      <p class="cmp-hint marked">
+        <span>Marked for comparison — now move to another point.</span>
+        <button type="button" class="btn unpin" onclick={() => app.clearComparison()}>
+          Unmark
+        </button>
+      </p>
+    {:else}
+      <!-- The affordance sits exactly where its result will appear, which is
+           the only place a user looking at one selected point would find it.
+           Nothing else on screen says the gesture exists.
 
-    <p class="value">
-      {formatSignedValue(cmp.medianDelta)}
-      {#if cmp.unit}<span class="unit">{cmp.unit}</span>{/if}
-      {#if cmp.medianDeltaFraction !== null}
-        <span class="muted">({formatSignedPercent(cmp.medianDeltaFraction)})</span>
-      {/if}
-      {#if cmp.direction !== 'none'}
-        <span class="verdict {cmp.direction}">{cmp.direction}</span>
-      {/if}
-    </p>
-    <p class="cmp-sub muted">
-      <!-- "median" only where there is a distribution to take one of; two
-           replicates of a job are just two numbers. -->
-      {#if cmp.kind !== 'replicate'}median,{' '}{/if}{cmp.base.label} → {cmp.next.label}
-    </p>
+           The button leads, because "what changed here" is the question a
+           single selected point actually raises, and the answer is one click
+           rather than a hunt for a dot in the previous push's cloud. The
+           gestures below it reach every *other* pair. -->
+      <div class="cmp-hint">
+        {#if app.previousPush}
+          <button
+            type="button"
+            class="btn cmp-prev"
+            title="Pin the push before this one as the comparison (P, with the graph focused)"
+            onclick={() => app.compareWithPreviousPush()}
+          >
+            Compare with the previous push
+          </button>
+        {/if}
+        <p class="muted">
+          Shift-click another point to compare it with this one, or press
+          <kbd>C</kbd> to mark this one and walk away with the arrow keys.
+        </p>
+      </div>
+    {/if}
+  </div>
 
+  <!-- Always rendered, and always the height of the two-row form. This is the
+       slot that used to blink between here and "Values on this push". -->
+  <div class="cmp-chart">
+    {#if plot}
+      <DistributionChart
+        {plot}
+        unit={plotUnit}
+        reserveBand={app.selectionChart?.reserveBand ?? false}
+      />
+    {/if}
+  </div>
+
+  {#if cmp && pinned}
     {#if cmp.warning}
       <p class="warn">{cmp.warning}</p>
     {/if}
@@ -160,14 +275,6 @@
           {/if}
         </dd>
       </dl>
-    {/if}
-
-    {#if comparisonDistribution}
-      <DistributionChart
-        plot={comparisonDistribution}
-        unit={cmp.unit}
-        reserveBand={app.selectionChart?.reserveBand ?? false}
-      />
     {/if}
 
     <ul class="sides">
@@ -249,52 +356,23 @@
         {/if}
       </div>
     {/if}
-  </section>
-{:else if app.comparisonMarkedHere}
-  <!-- The pin is on this very point, so there is nothing to compare yet.
-       That's the keyboard path's middle step, and it's also where arrowing
-       back onto a pinned point lands, so it has to say what to do next
-       rather than look like a comparison that failed. -->
-  <p class="cmp-hint marked">
-    <span>Marked for comparison — now move to another point.</span>
-    <button type="button" class="btn unpin" onclick={() => app.clearComparison()}>
-      Unmark
-    </button>
-  </p>
-{:else}
-  <!-- The affordance sits exactly where its result will appear, which is
-       the only place a user looking at one selected point would find it.
-       Nothing else on screen says the gesture exists.
-
-       The button leads, because "what changed here" is the question a
-       single selected point actually raises, and the answer is one click
-       rather than a hunt for a dot in the previous push's cloud. The
-       gestures below it reach every *other* pair. -->
-  <div class="cmp-hint">
-    {#if app.previousPush}
-      <button
-        type="button"
-        class="btn cmp-prev"
-        title="Pin the push before this one as the comparison (P, with the graph focused)"
-        onclick={() => app.compareWithPreviousPush()}
-      >
-        Compare with the previous push
-      </button>
-    {/if}
-    <p class="muted">
-      Shift-click another point to compare it with this one, or press
-      <kbd>C</kbd> to mark this one and walk away with the arrow keys.
-    </p>
-  </div>
-{/if}
+  {/if}
+</section>
 
 <style>
-  /* The comparison sits in a tinted card so the two-point reading is visibly a
-     different thing from the single-point sections under it. */
-  section.comparison {
+  /* One box for every state, with constant padding and a constant border width
+     so the chart below the lede sits at the same y whether or not there is a
+     comparison to frame. Only the border's *color* and the fill change. */
+  .cmp-block {
     padding: 8px 10px 10px;
-    border: 1px solid var(--border-default);
+    border: 1px solid transparent;
     border-radius: 6px;
+    margin-bottom: 14px;
+  }
+  /* Tinted once there are two points, so the two-point reading is visibly a
+     different thing from the single-point sections under it. */
+  .cmp-block.carded {
+    border-color: var(--border-default);
     background: var(--bg-canvas);
   }
   /* A hovered comparison is a preview, not a commitment, and says so on its
@@ -303,9 +381,29 @@
      which is a different question and one the pane can't answer (see
      chartDraw.ts::hoverRingKind). So the dashed border, the quieter fill and
      the "shift-click to pin" hint carry the whole message here. */
-  section.comparison.preview {
+  .cmp-block.preview {
     border-style: dashed;
     background: var(--bg-nested-quiet);
+  }
+  /* The two reserved slots. Hard numbers because the states have nothing in
+     common to derive one from: each is the tallest of its alternatives,
+     measured at the pane's 320px. Same bargain as `.zoom-label`'s
+     `min-width: 23ch` in GraphPane, in the other axis — if the wording or the
+     chart's constants change, re-measure.
+
+     89px is the hint, which is taller than the headline or the marked line.
+
+     203px is the whole two-side chart: a 134px canvas (`distributionHeight` for
+     two strip rows over a density band) plus two legend rows. One side is 148px
+     — a 114px canvas and one legend row — so the reserve costs 55px of slack
+     below the chart whenever nothing is being compared. That is the price of a
+     chart that neither moves nor blinks out while the pointer sweeps, and it is
+     paid in one place instead of 419px being paid on every dot. */
+  .cmp-lede {
+    min-height: 89px;
+  }
+  .cmp-chart {
+    min-height: 203px;
   }
   .cmp-head {
     display: flex;
@@ -323,16 +421,24 @@
     font-size: 11px;
     padding: 1px 6px;
   }
-  .cmp-kind {
-    margin: 0 0 6px;
-    font-size: 11px;
-  }
   .cmp-hint {
-    margin: 0 0 14px;
+    margin: 0;
     padding: 6px 8px;
     border: 1px dashed var(--border-default);
     border-radius: 6px;
     font-size: 11px;
+  }
+  .cmp-lede .value {
+    margin: 2px 0 0;
+    font-size: 18px;
+  }
+  .cmp-lede .cmp-sub {
+    margin: 0;
+  }
+  .one-line {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   .cmp-hint p {
     margin: 0;
@@ -362,12 +468,12 @@
   /* Not the pane-wide `max-content` label column. A label here can be a platform
      string, and `max-content` on one of those makes the grid wider than the pane
      and pushes every value out of sight. Fixed label column, wrapping values. */
-  section.comparison dl {
+  .cmp-block dl {
     grid-template-columns: 6.5em minmax(0, 1fr);
     font-size: 11px;
   }
-  section.comparison dt,
-  section.comparison dd {
+  .cmp-block dt,
+  .cmp-block dd {
     overflow-wrap: anywhere;
   }
   .cmp-sub {

@@ -9,10 +9,7 @@
   import { alertStatusLabel, summaryStatusLabel } from './alerts';
   import type { AppState } from './appState.svelte';
   import { formatTimestamp, formatValue } from '../shared/chart';
-  import { hasDistribution } from './compare';
   import ComparisonSection from './ComparisonSection.svelte';
-  import DistributionChart from './DistributionChart.svelte';
-  import { buildDistribution } from './distribution';
   import {
     indexInPushValues,
     MEAN_REPLICATE,
@@ -63,53 +60,10 @@
 
   const alert = $derived(app.selectedAlert);
 
-  // Whether ComparisonSection is drawing a distribution of its own. Both ends
-  // read compare.ts::hasDistribution so the two can't disagree about it — see
-  // `pushDistribution`, which is suppressed exactly when this is true.
-  const comparisonDrawsDistribution = $derived(
-    !!app.comparison && hasDistribution(app.comparison),
-  );
-
-  // Every value the series recorded on the clicked push — retriggers included,
-  // because the question the section answers is "how noisy is this measurement on
-  // this build"; see docs/comparison.md.
-  //
-  // Below two values there is nothing to say that the headline value above hasn't
-  // already said, and the whole section is dropped. Where a harness records no
-  // replicates the backend falls back to one row carrying the summary value, so
-  // the "distribution" would be a strip with a single dot on it and the chip list
-  // a single chip repeating the number above. That is every awsy signature (talos,
-  // by contrast, records 20 replicates for a ts_paint).
+  // Only whether there is a spread worth listing. The chart built from this pool
+  // lives in ComparisonSection now, as the one-row form of the one chart the
+  // pane draws; `pushValues` explains why the pool is the whole push.
   const pushPool = $derived(sel ? pushValues(sel.push) : []);
-
-  // Suppressed while a comparison is drawing its own chart: one of that chart's
-  // two rows *is* this pool, and showing it twice invites the reader to look for
-  // a difference between them.
-  const pushDistribution = $derived.by(() => {
-    if (!sel || comparisonDrawsDistribution || pushPool.length < 2) return null;
-    return buildDistribution(
-      [
-        {
-          label: `${sel.push.runs.length} run${sel.push.runs.length === 1 ? '' : 's'}`,
-          color: sel.entry.color,
-          values: pushPool,
-          markedIndex: indexInPushValues(sel.push, sel.run.datumId, sel.replicateIndex),
-          // Which of these dots came out of the job the user clicked. Only with
-          // retriggers: on a single-run push every dot is in the group, and
-          // haloing all of them says nothing. A mean selection gets the halo
-          // too — no dot to ring, but the cluster it averages is exactly what
-          // the reader is looking for.
-          markedGroup:
-            sel.push.runs.length > 1
-              ? runRangeInPushValues(sel.push, sel.run.datumId)
-              : null,
-        },
-      ],
-      // The same scales the comparison chart uses, so a value sits at the same x in
-      // both and the hover preview replacing this one doesn't slide it sideways.
-      app.selectionChart?.scales ?? null,
-    );
-  });
 
   function jobDuration(startS: number | null, endS: number | null): string {
     if (!startS || !endS || endS < startS) return '';
@@ -291,13 +245,10 @@
       {#if pushPool.length > 1}
         <section>
           <h3>Values on this push</h3>
-          {#if pushDistribution}
-            <DistributionChart
-              plot={pushDistribution}
-              unit={sel.entry.meta?.measurementUnit ?? ''}
-              reserveBand={app.selectionChart?.reserveBand ?? false}
-            />
-          {/if}
+          <!-- No chart here any more. The push's strip is the one-row form of
+               the chart ComparisonSection now holds, which is what stops it
+               vanishing and reappearing 250px up the pane every time the
+               pointer crosses a dot. This section keeps the numbers. -->
           <!-- Every run of the push, not just the selected one: the pane used to
                list the clicked run's values alone, which made a retriggered build
                look like it recorded five numbers when it recorded fifteen, and
