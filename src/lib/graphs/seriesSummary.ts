@@ -151,6 +151,28 @@ export function splitCommonAttrs(sets: (SeriesAttrs | null)[]): AttrSplit {
     for (const field of SCALAR_FIELDS) {
       if (common[field] === '') rest[field] = s[field];
     }
+    // Nothing left over. That isn't the same as nothing to say, and the card
+    // must not fall through to "signature 5304038" — which is what it prints
+    // for metadata that hasn't arrived, so a loaded series would be wearing a
+    // loading state.
+    //
+    // It happens when a series' options are exactly the intersection while
+    // another series has more: plot twinopen on windows11 (5304038) against the
+    // same test with `no-nova` (5926558) and every attribute of the first is
+    // shared, so the second's card gets "no-nova" and the first's gets nothing.
+    // Its distinguishing feature is an *absent* option, which a list of present
+    // ones cannot express — and spelling it out is worse than it sounds, since
+    // the missing option here is itself called "no-nova".
+    //
+    // Only options can do this. A scalar is either shared by everyone, and so
+    // in the header for all, or absent from `common` and so on every card.
+    //
+    // So the card falls back to the series' name, duplicating the suite and
+    // test already in the header. Redundant, but a card that repeats the header
+    // still reads as a series; a bare signature id reads as a failure.
+    if (isEmptyAttrs(rest)) {
+      for (const field of NAME_FIELDS) rest[field] = s[field];
+    }
     return rest;
   });
 

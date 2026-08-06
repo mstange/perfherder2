@@ -269,9 +269,11 @@
             {#if own && !isEmptyAttrs(own)}
               {@render chipRow(attrChips(own))}
             {:else}
-              <!-- Either the metadata hasn't landed, or two series are
-                   identical in every attribute we display (rare, but the card
-                   still has to say which one it is). -->
+              <!-- Either the metadata hasn't landed, or the series has no suite
+                   and no test to fall back on — `splitCommonAttrs` hands back
+                   the name for any other card that would come out empty, so
+                   this no longer fires for a loaded series that simply has
+                   nothing left after the header takes the shared attributes. -->
               <span class="pending">signature {entry.ref.signatureId}</span>
             {/if}
           </div>

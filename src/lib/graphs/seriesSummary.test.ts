@@ -167,6 +167,57 @@ describe('splitCommonAttrs', () => {
     ]);
   });
 
+  // The twinopen case: signature 5304038 against 5926558, identical but for
+  // the extra `no-nova` option on the second. The first series has nothing left
+  // over, because what distinguishes it is an option it *lacks*.
+  it('names a card whose options are exactly the shared set', () => {
+    const base = { suite: 'twinopen', test: 'ext+twinopen:twinopen.html' };
+    const shared = ['opt', 'e10s', 'fission', 'stylo', 'webrender'];
+    const split = splitCommonAttrs([
+      attrs({ ...base, options: shared }),
+      attrs({ ...base, options: [...shared, 'no-nova'] }),
+    ]);
+    expect(split.common.options).toEqual(shared);
+    // Not empty, so the card doesn't print "signature 5304038" and read as a
+    // series whose metadata never arrived.
+    expect(isEmptyAttrs(split.distinct[0]!)).toBe(false);
+    expect(attrChips(split.distinct[0]!)).toEqual([
+      { field: 'suite', value: 'twinopen' },
+      { field: 'test', value: 'ext+twinopen:twinopen.html' },
+    ]);
+    // The series that does have something of its own is untouched by the
+    // fallback.
+    expect(attrChips(split.distinct[1]!)).toEqual([{ field: 'option', value: 'no-nova' }]);
+  });
+
+  it('names both cards when two series are alike in everything shown', () => {
+    // Two signatures that differ only in something this app never displays.
+    // Both cards fall back, so they read the same — the swatch, the point count
+    // and the graph are what tell them apart.
+    const split = splitCommonAttrs([attrs({}), attrs({})]);
+    expect(split.distinct.map((d) => d && attrChips(d))).toEqual([
+      [{ field: 'suite', value: 'speedometer3' }],
+      [{ field: 'suite', value: 'speedometer3' }],
+    ]);
+  });
+
+  it('still falls through for a series with no suite and no test', () => {
+    // Nothing to name it with, so the card keeps the signature id — which is
+    // the only remaining case that branch is for.
+    const split = splitCommonAttrs([
+      attrs({ suite: '', test: '' }),
+      attrs({ suite: '', test: '', options: ['opt', 'cold'] }),
+    ]);
+    expect(isEmptyAttrs(split.distinct[0]!)).toBe(true);
+  });
+
+  it('leaves an unloaded series null rather than naming it', () => {
+    // The fallback is for series we know about. A null stays null, so the card
+    // keeps showing the signature id until the metadata lands.
+    const split = splitCommonAttrs([attrs({}), attrs({ options: ['opt', 'cold'] }), null]);
+    expect(split.distinct[2]).toBeNull();
+  });
+
   it('preserves the first series’ option order in the common set', () => {
     const split = splitCommonAttrs([
       attrs({ options: ['opt', 'fission', 'webrender'] }),
@@ -187,13 +238,6 @@ describe('splitCommonAttrs', () => {
       [{ field: 'platform', value: 'macosx1500-aarch64-shippable' }],
       [{ field: 'platform', value: 'linux2404-64-shippable' }],
     ]);
-  });
-
-  it('can leave a card with nothing to show', () => {
-    // Two signatures identical in every displayed attribute. Rare, but the
-    // list has to render something for them.
-    const split = splitCommonAttrs([attrs({}), attrs({})]);
-    expect(split.distinct.every((d) => d && isEmptyAttrs(d))).toBe(true);
   });
 
   it('ignores series whose metadata has not arrived', () => {
