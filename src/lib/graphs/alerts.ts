@@ -78,6 +78,12 @@ export type SeriesAlert = {
   summaryId: number;
   alertId: number;
   pushId: number;
+  // The push perfherder analysed *before* this one, which is not always the
+  // previous push in this graph: a series with no data on an intervening push
+  // isn't analysed there. Carried as an id rather than matched on
+  // `prevRevision`, so clicking a marker pins the pair perfherder actually
+  // used and not a lookalike.
+  prevPushId: number;
   // The plotted push's x, so the marker lands on the same pixel column as its
   // dots. Taken from the series data rather than from `push_timestamp`, which
   // is the same instant but arrives as seconds and would round differently.
@@ -128,6 +134,7 @@ export function alertsForSeries(
       summaryId: summary.id,
       alertId: alert.id,
       pushId: summary.push_id,
+      prevPushId: summary.prev_push_id,
       x: push.x,
       revision: summary.revision,
       prevRevision: summary.prev_push_revision,

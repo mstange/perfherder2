@@ -94,6 +94,31 @@ describe('alertsForSeries', () => {
     expect(placed.isRegression).toBe(true);
   });
 
+  it('carries the push perfherder measured against', () => {
+    // As an id, not as `prevRevision`. Clicking a marker pins this push, and
+    // the pair has to be the one the alert used — not the graph's neighbour,
+    // which differs whenever the series has no data on an intervening push.
+    const [placed] = alertsForSeries(
+      [summary({ id: 900, push_id: 8, prev_push_id: 7 })],
+      SIGNATURE,
+      data,
+    );
+    expect(placed.prevPushId).toBe(7);
+  });
+
+  it('keeps a prev push the series never ran on', () => {
+    // The alert is still real and still placeable; only its "before" is
+    // missing from this graph. Dropping it here would hide the alert entirely.
+    const [placed] = alertsForSeries(
+      [summary({ id: 900, push_id: 8, prev_push_id: 99 })],
+      SIGNATURE,
+      data,
+    );
+    expect(placed.pushId).toBe(8);
+    expect(placed.prevPushId).toBe(99);
+    expect(data.pushById.has(99)).toBe(false);
+  });
+
   it('drops a summary whose push this series has no data for', () => {
     // How the range filter happens: the endpoint answers relative to *now*, so
     // it sends summaries from before the window as well.

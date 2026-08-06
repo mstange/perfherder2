@@ -88,6 +88,8 @@ so there `sideOrder` returns 0 and click order stands. The pane reports
 | hover a dot (with a selection) | preview the comparison a shift-click would pin |
 | <kbd>C</kbd> on the focused graph | pin the *selected* point, then walk away from it with the arrow keys |
 | <kbd>P</kbd>, or "Compare with the previous push" in the pane | pin the push before the selected one; again unpins |
+| click an alert marker | select the alerted push *and* pin the one perfherder measured against, in one history entry |
+| <kbd>A</kbd> / <kbd>shift-A</kbd> on the focused graph | the same, stepping to the next or previous alert; stops at the ends |
 | Escape, or click empty space | unpin the comparison; a second press clears the selection |
 
 **"Compare with the previous push" is a button because it is the question a
@@ -99,6 +101,13 @@ which dot you hit, since the pool is the whole push. `compareWithPreviousPush`
 pins that push's latest retrigger and carries the replicate slot across the way
 the arrow keys do. It sits in the hint box, which is exactly where the
 comparison card it produces will appear.
+
+**An alert marker is the same shortcut with its second end already named.** It
+pins `prev_push_id` — the push perfherder measured against, which is not always
+the graph's previous push — and ignores modifiers, since there is no second
+thing left for shift to mean. The comparison it produces will not match the
+numbers on the Alert card, because perfherder's are window averages over 12–24
+pushes; see graphs.md, "Alerts".
 
 **Pinning the selected point is a state, not an error.** It's the middle step of
 the keyboard path — there is no keyboard gesture for "shift-click *that* dot",

@@ -353,6 +353,46 @@ two-push statement and usually the reason a sheriff is looking at the graph at
 all. Read-only: creating and triaging alerts needs an authenticated session,
 which this app doesn't have.
 
+**Clicking a marker sets up both ends of the alert.** The alerted push is
+selected and `prev_push_id` is pinned as the comparison, so one gesture goes
+from "perfherder flagged this" to the comparison card — KDE, rank-sum test,
+effect size — computed from the replicates this app fetched.
+`AppState.selectAlert` assigns both ends before a single `syncUrl`, because
+routing through `selectPoint` and `comparePoint` would spend two history
+entries on one click and leave Back on a half-built comparison.
+
+The pinned end is **`prev_push_id`, not the previous push on the graph**. The
+two differ whenever the series has no data on an intervening push, and pinning
+the graph's neighbour would put a before-value in the comparison card that the
+alert never used, directly under a card quoting the one it did. When that push
+isn't loaded — out of range, or expired — the selection still happens and the
+comparison simply doesn't: better than a substitute.
+
+**The two cards will disagree, and both are right.** Perfherder's `prev_value`
+and `new_value` are `historical_stats["avg"]` and `forward_stats["avg"]` from
+`treeherder/perf/alerts.py` — means over a *window* of 12–24 data points back
+and 12 forward (`PERFHERDER_ALERTS_{MIN_BACK,MAX_BACK,FORE}_WINDOW`) — while the
+comparison card is those two pushes and nothing else. On alert #51605 that is
++121.43% against +195%. Each card says which it is; the Alert card's line used
+to read "against the previous analysed push", which described neither.
+
+**Hit-testing.** `chart.ts::hitTestAlerts` owns the triangle's dimensions as
+well, so the draw loop and the hit test can't drift — the same reason
+`jitterOffsetPx` is shared. The target is widened to 13×16 around the ink's
+8×7, and confined to a band across the top of the plot: the guide runs the full
+height, and a hit area following it would swallow clicks meant for the dots it
+passes. Markers win over dots inside that band, ties go to the nearest column
+(which is what keeps two overlapping markers separately clickable), and a marker
+the draw loop clipped for being off-screen isn't clickable either.
+
+The hover highlight — a triangle 1.4× larger, and the guide from a hint to a
+line you can follow — is painted on the **overlay** canvas, not by repainting
+the markers. The markers ride the data layer with 100k+ dots on it; redrawing
+that on every mousemove across a triangle would undo the two-layer split.
+<kbd>A</kbd> and <kbd>shift-A</kbd> step between alerts without a pointer,
+stopping at the ends rather than wrapping: an alert list is short and unevenly
+spaced, so jumping from December's back to January's reads as a bug.
+
 ### Caching and failure
 
 Series data is cached under `(repo, signature, rangeStart, rangeEnd)` — the

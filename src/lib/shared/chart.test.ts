@@ -5,8 +5,11 @@ import {
   formatSignedValue,
   formatTickValue,
   formatValue,
+  hitTestAlerts,
   hitTestAll,
   hitTestSeries,
+  ALERT_HIT_HALF_WIDTH,
+  ALERT_HIT_HEIGHT,
   JITTER_MAX_RADII,
   jitterAt,
   jitterOffsetPx,
@@ -277,6 +280,67 @@ describe('hitTestAll', () => {
     const scale = { pxPerValue: 1, maxPx: 20 };
     expect(hitTestAll([roomy, tight], xScale, yScale, 40, 50, 3, scale)?.seriesIndex).toBe(0);
     expect(hitTestAll([roomy, tight], xScale, yScale, 48, 50, 3, scale)?.seriesIndex).toBe(1);
+  });
+});
+
+describe('hitTestAlerts', () => {
+  // 100 time units across 100px of plot, offset so x0 isn't 0 — a bug that
+  // forgets the left padding still passes when the plot starts at the origin.
+  const xScale = makeScale(0, 100, 20, 120);
+  const geom = { x0: 20, x1: 120, y0: 8 };
+  // Rounded to pixel 40.5 and 90.5 by the same +0.5 the draw loop applies.
+  const one = { alerts: [{ x: 20 }, { x: 70 }] };
+
+  it('finds the marker under the cursor', () => {
+    expect(hitTestAlerts([one], xScale, geom, 40, 10)).toMatchObject({
+      seriesIndex: 0,
+      alertIndex: 0,
+    });
+    expect(hitTestAlerts([one], xScale, geom, 90, 10)).toMatchObject({ alertIndex: 1 });
+  });
+
+  it('only answers inside the band at the top of the plot', () => {
+    // The guide line runs the full height; a hit area that followed it would
+    // swallow clicks meant for the dots it passes.
+    expect(hitTestAlerts([one], xScale, geom, 40, geom.y0 - 1)).toBeNull();
+    expect(hitTestAlerts([one], xScale, geom, 40, geom.y0 + ALERT_HIT_HEIGHT)).not.toBeNull();
+    expect(hitTestAlerts([one], xScale, geom, 40, geom.y0 + ALERT_HIT_HEIGHT + 1)).toBeNull();
+  });
+
+  it('reaches ALERT_HIT_HALF_WIDTH either side and no further', () => {
+    const at = (px: number) => hitTestAlerts([one], xScale, geom, px, 10);
+    expect(at(40.5 + ALERT_HIT_HALF_WIDTH)).not.toBeNull();
+    expect(at(40.5 - ALERT_HIT_HALF_WIDTH)).not.toBeNull();
+    expect(at(40.5 + ALERT_HIT_HALF_WIDTH + 0.5)).toBeNull();
+  });
+
+  it('picks the nearest of two overlapping markers', () => {
+    // The case from graphs-todo.md: two alerts hours apart draw as one blob at
+    // a long range, but they are still two separate click targets.
+    const near = { alerts: [{ x: 50 }, { x: 53 }] };
+    expect(hitTestAlerts([near], xScale, geom, 70, 10)?.alertIndex).toBe(0);
+    expect(hitTestAlerts([near], xScale, geom, 74, 10)?.alertIndex).toBe(1);
+  });
+
+  it('picks the nearest across series', () => {
+    const a = { alerts: [{ x: 50 }] };
+    const b = { alerts: [{ x: 54 }] };
+    expect(hitTestAlerts([a, b], xScale, geom, 71, 10)?.seriesIndex).toBe(0);
+    expect(hitTestAlerts([a, b], xScale, geom, 74, 10)?.seriesIndex).toBe(1);
+  });
+
+  it('ignores markers the draw loop clipped', () => {
+    // Zoomed past them. Drawing skips these so they don't pile up against the
+    // edge; if the hit test kept them, the plot's border would be a row of
+    // invisible buttons.
+    const outside = { alerts: [{ x: -50 }, { x: 150 }] };
+    expect(hitTestAlerts([outside], xScale, geom, geom.x0, 10)).toBeNull();
+    expect(hitTestAlerts([outside], xScale, geom, geom.x1, 10)).toBeNull();
+  });
+
+  it('skips a series with no alerts', () => {
+    expect(hitTestAlerts([{}, one], xScale, geom, 40, 10)?.seriesIndex).toBe(1);
+    expect(hitTestAlerts([{ alerts: [] }], xScale, geom, 40, 10)).toBeNull();
   });
 });
 

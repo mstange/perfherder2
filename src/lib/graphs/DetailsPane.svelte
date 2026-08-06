@@ -209,10 +209,16 @@
           <p class="cmp-sub muted">
             {formatValue(alert.prevValue)} → {formatValue(alert.newValue)}
             {#if sel.entry.meta?.measurementUnit}{' '}{sel.entry.meta.measurementUnit}{/if}
-            <!-- The alert compares this push with the one perfherder analysed
-                 before it, which is not always the previous push in *this*
-                 graph: a series with no data on a push isn't analysed there. -->
-            against the previous analysed push
+            <!-- Not "against the previous push", which this said until the
+                 numbers were checked against treeherder. `prev_value` and
+                 `new_value` are `historical_stats["avg"]` and
+                 `forward_stats["avg"]` (treeherder/perf/alerts.py) — means over
+                 a window of 12-24 data points back and 12 forward, not over one
+                 push each. On alert #51605 that is +121% where the two pushes
+                 alone moved +194%, so a reader who took this for a two-push
+                 figure would think the comparison card below contradicted it.
+                 It doesn't; they measure different things, and both say which. -->
+            perfherder's window averages, 12–24 pushes before against 12 after
           </p>
           <dl>
             <dt title="Perfherder's own status for this series' alert">Alert</dt>

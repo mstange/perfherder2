@@ -419,6 +419,66 @@ export function hitTestAll(
 }
 
 // ---------------------------------------------------------------------------
+// Alert markers
+// ---------------------------------------------------------------------------
+//
+// The triangle's dimensions live here rather than next to the code that paints
+// it, for the same reason `jitterOffsetPx` does: the draw loop and the hit test
+// have to agree to the pixel, and a marker you can't click where you see it is
+// worse than one you can't click at all.
+
+export const ALERT_TRIANGLE_HALF = 4;
+export const ALERT_TRIANGLE_HEIGHT = 7;
+// The triangle's top edge, as an offset from the plot's top.
+export const ALERT_MARKER_TOP = 1;
+
+// The click target is deliberately larger than the ink. The triangle is 8x7,
+// which is under the ~24px a pointer can be aimed at reliably; these widen it
+// to 13x16 without drawing anything, the way a small icon button gets padding.
+export const ALERT_HIT_HALF_WIDTH = 6;
+export const ALERT_HIT_HEIGHT = 16;
+
+export type AlertHit = { seriesIndex: number; alertIndex: number; distancePx: number };
+
+// The marker nearest the cursor, or null. Only markers in the band across the
+// top of the plot are candidates: the guide line runs the full height, and a
+// hit area that followed it would swallow clicks meant for the dots it passes.
+//
+// Ties go to the nearest column, which is what makes two alerts on nearby
+// pushes separately clickable even while their triangles overlap (they can be
+// ~5px apart at a 90-day range — see graphs-todo.md). It does not make them
+// separately *visible*; that needs the stacking fix, and is why this returns
+// the distance for the caller to reason about.
+//
+// A linear scan: a series has tens of alerts over a year, against the tens of
+// thousands of dots that made `hitTestSeries` binary-search.
+export function hitTestAlerts(
+  list: readonly { alerts?: readonly { x: number }[] }[],
+  xScale: Scale,
+  geom: { x0: number; x1: number; y0: number },
+  px: number,
+  py: number,
+): AlertHit | null {
+  if (py < geom.y0 || py > geom.y0 + ALERT_HIT_HEIGHT) return null;
+  let best: AlertHit | null = null;
+  for (let s = 0; s < list.length; s++) {
+    const alerts = list[s].alerts;
+    if (!alerts) continue;
+    for (let a = 0; a < alerts.length; a++) {
+      // Rounded exactly as the draw loop rounds it, and clipped by the same
+      // test, so a marker suppressed for being off-screen isn't clickable at
+      // the edge it would have piled up against.
+      const x = Math.round(xScale.toPixel(alerts[a].x)) + 0.5;
+      if (x < geom.x0 || x > geom.x1) continue;
+      const d = Math.abs(x - px);
+      if (d > ALERT_HIT_HALF_WIDTH) continue;
+      if (!best || d < best.distancePx) best = { seriesIndex: s, alertIndex: a, distancePx: d };
+    }
+  }
+  return best;
+}
+
+// ---------------------------------------------------------------------------
 // Plot geometry
 // ---------------------------------------------------------------------------
 

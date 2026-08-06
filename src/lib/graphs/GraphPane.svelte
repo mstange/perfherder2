@@ -5,7 +5,7 @@
   import type { AppState, Selection } from './appState.svelte';
   import type { Highlight } from './chartDraw';
   import { jitterForSelection } from './graphData';
-  import ScatterChart, { type ChartHit } from './ScatterChart.svelte';
+  import ScatterChart, { type ChartAlertHit, type ChartHit } from './ScatterChart.svelte';
   import type { SelectedPoint } from '../urlState';
   import { describeSpan, matchingPreset, RANGE_PRESETS } from '../shared/timeRange';
 
@@ -90,6 +90,15 @@
       datumId: point.datumId,
       replicateIndex: point.replicateIndex,
     };
+  }
+
+  // Same index discipline as `pointFor`: the chart was handed the *visible*
+  // series and each one's `alerts` array untouched, so both indices are
+  // straight lookups.
+  function onAlertSelect(hit: ChartAlertHit): void {
+    const entry = app.visibleSeries[hit.seriesIndex];
+    const alert = entry?.alerts[hit.alertIndex];
+    if (entry && alert) app.selectAlert(entry.ref, alert);
   }
 
   function onDetailSelect(hit: ChartHit | null, modifiers: { shift: boolean }): void {
@@ -203,13 +212,15 @@
       interaction="select"
       {highlights}
       onselect={onDetailSelect}
+      onalertselect={onAlertSelect}
       onhover={(hit) => app.setHoveredPoint(pointFor(hit))}
       onbrush={(span) => app.setZoom(span)}
       onkeymove={(axis, delta) =>
         axis === 'run' ? app.stepRun(delta) : app.stepReplicate(delta)}
       onkeycompare={() => app.comparePoint(app.selectedPoint)}
+      onkeyalert={(delta) => app.stepAlert(delta)}
       onkeyprevious={() => app.compareWithPreviousPush()}
-      ariaLabel="Detail graph; click a point to inspect it, shift-click a second to compare, P to compare it with the previous push, or use the arrow keys and C to mark a point for comparison"
+      ariaLabel="Detail graph; click a point to inspect it, shift-click a second to compare, click an alert marker to compare the alerted push with the one before it, P to compare with the previous push, A and shift-A to step between alerts, or use the arrow keys and C to mark a point for comparison"
     />
     {#if app.series.length === 0}
       <p class="overlay-note">Add a series to see data.</p>

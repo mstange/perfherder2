@@ -721,6 +721,158 @@ describe('AppState alerts', () => {
     });
   });
 
+  // Clicking a marker, and the keyboard's version of it. SAMPLE has two
+  // pushes: 1 (datum 10) and 2 (datum 11). alertSummary() alerts on push 2 and
+  // names push 1 as the one perfherder measured against.
+  describe('selectAlert', () => {
+    it('selects the alerted push and pins the one the alert measured against', async () => {
+      withAlerts([alertSummary()]);
+      await withApp('?series=autoland,1,1', async (app) => {
+        await settle();
+        app.selectAlert(app.series[0].ref, app.series[0].alerts[0]);
+        expect(app.selection?.push.pushId).toBe(2);
+        expect(app.comparedSelection?.push.pushId).toBe(1);
+        // Both ends are the push, not one of its replicates: an alert is about
+        // the build.
+        expect(app.selection?.replicateIndex).toBe(MEAN_REPLICATE);
+        expect(app.comparedSelection?.replicateIndex).toBe(MEAN_REPLICATE);
+        // And the card the click was aiming at is now on screen.
+        expect(app.selectedAlert?.summaryId).toBe(900);
+        expect(app.comparison).not.toBeNull();
+      });
+    });
+
+    it('pins prev_push_id rather than the previous push on the graph', async () => {
+      // Perfherder skipped push 1 — the series had no data when it analysed —
+      // so its "before" is a push this graph doesn't hold. Pinning push 1
+      // anyway would put a before-value in the comparison card that the alert
+      // never used, right under a card quoting the one it did.
+      withAlerts([alertSummary({ prev_push_id: 987 })]);
+      await withApp('?series=autoland,1,1', async (app) => {
+        await settle();
+        app.selectAlert(app.series[0].ref, app.series[0].alerts[0]);
+        expect(app.selection?.push.pushId).toBe(2);
+        expect(app.comparedPoint).toBeNull();
+        // The alert itself still reads, which is the point of not bailing out.
+        expect(app.selectedAlert?.summaryId).toBe(900);
+      });
+    });
+
+    it('spends one history entry on the pair, not two', async () => {
+      // selectPoint + comparePoint would push twice, and one Back would land
+      // on a half-built comparison the user never asked for.
+      withAlerts([alertSummary()]);
+      await withApp('?series=autoland,1,1', async (app) => {
+        await settle();
+        const before = history.length;
+        app.selectAlert(app.series[0].ref, app.series[0].alerts[0]);
+        expect(history.length).toBe(before + 1);
+      });
+    });
+
+    it('does nothing for an alert whose push is not loaded', async () => {
+      withAlerts([alertSummary()]);
+      await withApp('?series=autoland,1,1', async (app) => {
+        await settle();
+        const alert = { ...app.series[0].alerts[0], pushId: 999 };
+        app.selectAlert(app.series[0].ref, alert);
+        expect(app.selectedPoint).toBeNull();
+      });
+    });
+  });
+
+  describe('stepAlert', () => {
+    // Both of SAMPLE's pushes alerting, so stepping has somewhere to go.
+    const twoAlerts = () =>
+      withAlerts([
+        alertSummary(),
+        alertSummary({ id: 901, push_id: 1, prev_push_id: 0 }),
+      ]);
+
+    it('orders alerts by push time, not by the order they arrived', async () => {
+      twoAlerts();
+      await withApp('?series=autoland,1,1', async (app) => {
+        await settle();
+        expect(app.visibleAlerts.map((a) => a.alert.pushId)).toEqual([1, 2]);
+      });
+    });
+
+    it('enters at the first alert with nothing selected, and at the last going back', async () => {
+      twoAlerts();
+      await withApp('?series=autoland,1,1', async (app) => {
+        await settle();
+        app.stepAlert(1);
+        expect(app.selection?.push.pushId).toBe(1);
+        app.selectPoint(null);
+        app.stepAlert(-1);
+        expect(app.selection?.push.pushId).toBe(2);
+      });
+    });
+
+    it('walks forward and back from the selected push', async () => {
+      twoAlerts();
+      await withApp('?series=autoland,1,1', async (app) => {
+        await settle();
+        app.stepAlert(1);
+        app.stepAlert(1);
+        expect(app.selection?.push.pushId).toBe(2);
+        app.stepAlert(-1);
+        expect(app.selection?.push.pushId).toBe(1);
+      });
+    });
+
+    it('stops at the ends rather than wrapping', async () => {
+      // Unlike stepRun's clamp: alerts are few and unevenly spaced, so jumping
+      // from December's back to January's reads as a bug, not as a cycle.
+      twoAlerts();
+      await withApp('?series=autoland,1,1', async (app) => {
+        await settle();
+        app.stepAlert(-1);
+        expect(app.selection?.push.pushId).toBe(2);
+        app.stepAlert(1);
+        expect(app.selection?.push.pushId).toBe(2);
+        app.stepAlert(-1);
+        app.stepAlert(-1);
+        expect(app.selection?.push.pushId).toBe(1);
+      });
+    });
+
+    it('steps from a push with no alert of its own', async () => {
+      // Landing between two alerts is the normal case once you have clicked a
+      // dot: the step is defined by push time, not by "the next in a list I am
+      // already inside".
+      twoAlerts();
+      await withApp('?series=autoland,1,1&sel=autoland,1,10,0', async (app) => {
+        await settle();
+        expect(app.selection?.push.pushId).toBe(1);
+        app.stepAlert(1);
+        expect(app.selection?.push.pushId).toBe(2);
+      });
+    });
+
+    it('does nothing when no visible series has an alert', async () => {
+      withAlerts([]);
+      await withApp('?series=autoland,1,1', async (app) => {
+        await settle();
+        app.stepAlert(1);
+        expect(app.selectedPoint).toBeNull();
+      });
+    });
+
+    it('skips a hidden series alerts', async () => {
+      // The markers are gone from the graph, so the keyboard must not walk to
+      // one: the selection would land on a series the user can't see.
+      withAlerts([alertSummary()]);
+      await withApp('?series=autoland,1,1', async (app) => {
+        await settle();
+        app.toggleSeriesVisibility(app.series[0].ref);
+        expect(app.visibleAlerts).toEqual([]);
+        app.stepAlert(1);
+        expect(app.selectedPoint).toBeNull();
+      });
+    });
+  });
+
   it('survives an alert endpoint that fails, and does not retry it', async () => {
     fetchMock.mockImplementation(async (url: string) => {
       if (url.includes('/performance/summary/')) return json([SAMPLE]);

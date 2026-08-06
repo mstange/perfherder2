@@ -6,6 +6,9 @@
 // coordinates.
 
 import {
+  ALERT_MARKER_TOP,
+  ALERT_TRIANGLE_HALF,
+  ALERT_TRIANGLE_HEIGHT,
   formatTickValue,
   jitterOffsetPx,
   lowerBound,
@@ -220,8 +223,8 @@ function drawPushLine(ctx: CanvasRenderingContext2D, o: DrawOptions, s: DrawSeri
 // Pointing down for a regression and up for an improvement: not "the value went
 // up or down" (which lower-is-better makes ambiguous) but the same up-is-good
 // convention the verdict badges use.
-const ALERT_TRIANGLE_HALF = 4;
-const ALERT_TRIANGLE_HEIGHT = 7;
+//
+// The dimensions are chart.ts's, because the hit test needs the same numbers.
 const ALERT_GUIDE_ALPHA = 0.22;
 
 function drawAlerts(ctx: CanvasRenderingContext2D, o: DrawOptions, s: DrawSeries): void {
@@ -230,7 +233,8 @@ function drawAlerts(ctx: CanvasRenderingContext2D, o: DrawOptions, s: DrawSeries
   for (const alert of s.alerts) {
     const x = Math.round(geom.xScale.toPixel(alert.x)) + 0.5;
     // Off-screen after a zoom: the marker would otherwise pile up against the
-    // clip edge and imply an alert at the window's boundary.
+    // clip edge and imply an alert at the window's boundary. `hitTestAlerts`
+    // drops the same ones, so nothing invisible is clickable.
     if (x < geom.x0 || x > geom.x1) continue;
     const color = alert.isRegression ? o.palette.alertRegression : o.palette.alertImprovement;
 
@@ -243,18 +247,7 @@ function drawAlerts(ctx: CanvasRenderingContext2D, o: DrawOptions, s: DrawSeries
     ctx.stroke();
     ctx.globalAlpha = 1;
 
-    const top = geom.y0 + 1;
-    ctx.beginPath();
-    if (alert.isRegression) {
-      ctx.moveTo(x, top + ALERT_TRIANGLE_HEIGHT);
-      ctx.lineTo(x - ALERT_TRIANGLE_HALF, top);
-      ctx.lineTo(x + ALERT_TRIANGLE_HALF, top);
-    } else {
-      ctx.moveTo(x, top);
-      ctx.lineTo(x - ALERT_TRIANGLE_HALF, top + ALERT_TRIANGLE_HEIGHT);
-      ctx.lineTo(x + ALERT_TRIANGLE_HALF, top + ALERT_TRIANGLE_HEIGHT);
-    }
-    ctx.closePath();
+    alertTrianglePath(ctx, geom, x, alert.isRegression, 1);
     ctx.fillStyle = color;
     ctx.fill();
     // The series' own color, so a graph with two alerting series says which is
@@ -263,6 +256,78 @@ function drawAlerts(ctx: CanvasRenderingContext2D, o: DrawOptions, s: DrawSeries
     ctx.lineWidth = 1;
     ctx.stroke();
   }
+}
+
+// `scale` grows the triangle about its top edge, so a scaled one covers the
+// unscaled one exactly — which is what lets the hover highlight be painted on
+// the overlay layer without erasing the marker underneath it.
+function alertTrianglePath(
+  ctx: CanvasRenderingContext2D,
+  geom: PlotGeometry,
+  x: number,
+  isRegression: boolean,
+  scale: number,
+): void {
+  const top = geom.y0 + ALERT_MARKER_TOP;
+  const half = ALERT_TRIANGLE_HALF * scale;
+  const height = ALERT_TRIANGLE_HEIGHT * scale;
+  ctx.beginPath();
+  if (isRegression) {
+    ctx.moveTo(x, top + height);
+    ctx.lineTo(x - half, top);
+    ctx.lineTo(x + half, top);
+  } else {
+    ctx.moveTo(x, top);
+    ctx.lineTo(x - half, top + height);
+    ctx.lineTo(x + half, top + height);
+  }
+  ctx.closePath();
+}
+
+// The marker under the pointer, repainted on the *overlay*.
+//
+// Not a flag on DrawSeries: the markers ride the data layer, which holds 100k+
+// dots and is only repainted when the data or the domains change. Redrawing it
+// on every mousemove that crosses a triangle would undo the whole point of the
+// two-layer split (see ScatterChart).
+//
+// Two changes at once, because either alone is ambiguous. The triangle grows —
+// a marker that only brightened could be mistaken for the *other* direction's
+// color, which is the one confusion a graph of regressions must not invite —
+// and the guide goes from a hint to a line you can actually follow down to the
+// column it marks. The alpha composites over the guide already on the data
+// layer rather than replacing it.
+const ALERT_HOVER_SCALE = 1.4;
+const ALERT_HOVER_GUIDE_ALPHA = 0.4;
+
+export function drawAlertHover(
+  ctx: CanvasRenderingContext2D,
+  geom: PlotGeometry,
+  mark: AlertMark,
+  seriesColor: string,
+  palette: ChartPalette,
+): void {
+  const x = Math.round(geom.xScale.toPixel(mark.x)) + 0.5;
+  if (x < geom.x0 || x > geom.x1) return;
+  const color = mark.isRegression ? palette.alertRegression : palette.alertImprovement;
+
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.globalAlpha = ALERT_HOVER_GUIDE_ALPHA;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(x, geom.y0);
+  ctx.lineTo(x, geom.y1);
+  ctx.stroke();
+  ctx.globalAlpha = 1;
+
+  alertTrianglePath(ctx, geom, x, mark.isRegression, ALERT_HOVER_SCALE);
+  ctx.fillStyle = color;
+  ctx.fill();
+  ctx.strokeStyle = seriesColor;
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  ctx.restore();
 }
 
 // Shape scaling, so the three symbols carry about the same amount of ink at a

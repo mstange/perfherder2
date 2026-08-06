@@ -98,7 +98,9 @@ Living checklist. Update in the same commit as the work it describes.
   first value") would be the real fix.
 - **Alert markers: the parts still missing.** The display path is done (see
   graphs.md, "Alerts"): markers on the detail graph, a card in the pane, a count
-  in the series list. Not done, and each needs something we don't have:
+  in the series list, and the markers are clickable — a click selects the
+  alerted push and pins `prev_push_id` as the comparison. Not done, and each
+  needs something we don't have:
   - *Creating and triaging* alerts from the graph — needs an authenticated
     session.
   - *Common alerts — **decided against**, for now.* Treeherder also marks pushes
@@ -123,15 +125,16 @@ Living checklist. Update in the same commit as the work it describes.
     A marker here therefore keeps its narrow meaning: *perfherder alerted on
     this series*. The cross-platform question is answered by plotting the
     sibling platform, which is a thing you want on screen anyway.
-  - *Clicking a marker.* The marker locates an alert; reading it still means
-    clicking a dot in that push. Hit-testing the triangles would close that,
-    and the hit test currently only knows about dots.
   - *Markers don't dodge each other.* Two alerts on nearby pushes overlap into
     one blob: seen on speedometer3 (signature 5352597), whose 2026-06-02
     regression and improvement are 14 hours apart — about 5px at a 90-day range
     against an 8px triangle, so red and green land on top of each other.
     Nudging collided markers sideways would lie about which column they mark;
     stacking them vertically wouldn't, and is the thing to try.
+
+    Now that the triangles are click targets this is worth more than it was:
+    `hitTestAlerts` resolves the ambiguity by nearest column, so the two *are*
+    separately clickable, but you can't see which one you're about to get.
 - **Retrigger / delta-vs-previous readouts.** Treeherder's tooltip shows the
   delta from the previous data point and a retrigger count. We show the
   retrigger count, and hovering any dot gives the delta against the *selected*

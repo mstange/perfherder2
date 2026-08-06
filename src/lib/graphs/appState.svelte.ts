@@ -870,6 +870,97 @@ export class AppState {
     this.syncUrl('push');
   }
 
+  // Clicking an alert marker, or stepping onto one with the keyboard.
+  //
+  // An alert is a claim about a *change*, so this sets up both of its ends at
+  // once: the alerted push is selected, and the push perfherder measured
+  // against is pinned as the comparison. One gesture takes you from "perfherder
+  // flagged this" to the comparison card — distributions, rank-sum test, effect
+  // size — computed from the replicates this app fetched.
+  //
+  // Those numbers will not match the alert's, and are not meant to.
+  // `prev_value` and `new_value` are averages over a *window* either side of
+  // the change — 12 to 24 data points back and 12 forward
+  // (`historical_stats`/`forward_stats` in treeherder/perf/alerts.py, sized by
+  // PERFHERDER_ALERTS_{MIN_BACK,MAX_BACK,FORE}_WINDOW) — while the comparison
+  // card is these two pushes and nothing else. On alert #51605 that is +121%
+  // against +194%. The pane labels both, the way it already labels perfherder's
+  // t-value apart from its own U test.
+  //
+  // The pinned end is `prevPushId`, not the previous push on the graph. They
+  // differ whenever the series has no data on an intervening push, and pinning
+  // the graph's neighbour would put a "before" value in the comparison card
+  // that perfherder never used, directly under a card quoting the one it did.
+  selectAlert(ref: SeriesRef, alert: SeriesAlert): void {
+    const entry = this.series.find(
+      (s) => s.ref.repository === ref.repository && s.ref.signatureId === ref.signatureId,
+    );
+    const push = entry?.data.pushById.get(alert.pushId);
+    if (!entry || !push) return;
+    const run = push.runs.at(-1);
+    if (!run) return;
+
+    // The previous push may be outside the loaded range, or may have expired.
+    // Then the alert card still renders and the comparison card simply doesn't:
+    // better than pinning a substitute the alert didn't use.
+    const prevPush = entry.data.pushById.get(alert.prevPushId);
+    const prevRun = prevPush?.runs.at(-1);
+
+    // MEAN_REPLICATE on both ends: an alert is about the build, not about one
+    // of its twenty-five replicates. The comparison pools the whole push either
+    // way (compare.ts::poolFor), so this only decides which dot wears the ring
+    // — and the run's mean is where the connecting line already passes.
+    const at = (datumId: number): SelectedPoint => ({
+      repository: entry.ref.repository,
+      signatureId: entry.ref.signatureId,
+      datumId,
+      replicateIndex: MEAN_REPLICATE,
+    });
+
+    // Both ends assigned before a single `syncUrl`. Going through selectPoint
+    // and comparePoint would push two history entries for one click, and the
+    // back button would land on a half-built comparison nobody asked for.
+    this.selectedPoint = at(run.datumId);
+    this.comparedPoint = prevRun ? at(prevRun.datumId) : null;
+    this.syncUrl('push');
+  }
+
+  // The alerts of every visible series, in time order, as (ref, alert) pairs —
+  // what the keyboard stepper walks and what the graph's markers are drawn
+  // from. Flattened across series because the markers are: two series alerting
+  // on nearby pushes interleave on the x axis, and stepping should follow the
+  // graph rather than the series list.
+  visibleAlerts = $derived.by((): { ref: SeriesRef; alert: SeriesAlert }[] => {
+    const out: { ref: SeriesRef; alert: SeriesAlert }[] = [];
+    for (const entry of this.visibleSeries) {
+      for (const alert of entry.alerts) out.push({ ref: entry.ref, alert });
+    }
+    out.sort((a, b) => a.alert.x - b.alert.x);
+    return out;
+  });
+
+  // `A` / `shift-A` on the focused graph: the keyboard's version of clicking a
+  // marker. Steps to the next alert after the selected push, or the previous
+  // one before it; with nothing selected, enters at the first or last.
+  //
+  // Deliberately not wrapping, unlike `stepRun`'s clamp: an alert list is short
+  // and unevenly spaced, so wrapping from the last alert of the year back to
+  // the first reads as a bug rather than as a cycle.
+  stepAlert(delta: number): void {
+    const alerts = this.visibleAlerts;
+    if (alerts.length === 0) return;
+    const from = this.selection?.push.x;
+    let next: { ref: SeriesRef; alert: SeriesAlert } | undefined;
+    if (from === undefined) {
+      next = delta > 0 ? alerts[0] : alerts[alerts.length - 1];
+    } else if (delta > 0) {
+      next = alerts.find((a) => a.alert.x > from);
+    } else {
+      next = [...alerts].reverse().find((a) => a.alert.x < from);
+    }
+    if (next) this.selectAlert(next.ref, next.alert);
+  }
+
   // Transient, so no history and no URL — see `hoveredPoint`.
   setHoveredPoint(point: SelectedPoint | null): void {
     this.hoveredPoint = point;

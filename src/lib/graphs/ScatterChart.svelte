@@ -7,8 +7,15 @@
   // pointer events only — the arithmetic is in chart.ts, the drawing in
   // chartDraw.ts.
 
-  import { hitTestAll, makeGeometry, makeJitterScale, type Padding, type Range } from '../shared/chart';
-  import { drawBrush, drawChart, drawHighlights, type Highlight } from './chartDraw';
+  import {
+    hitTestAll,
+    hitTestAlerts,
+    makeGeometry,
+    makeJitterScale,
+    type Padding,
+    type Range,
+  } from '../shared/chart';
+  import { drawAlertHover, drawBrush, drawChart, drawHighlights, type Highlight } from './chartDraw';
   import type { SeriesEntry } from './appState.svelte';
   import { theme } from '../shared/theme.svelte';
 
@@ -17,6 +24,9 @@
   // Which point a pointer or key event landed on, as indices into the `series`
   // prop and its point set.
   export type ChartHit = { seriesIndex: number; pointIndex: number };
+
+  // Which alert marker, as indices into `series` and that series' `alerts`.
+  export type ChartAlertHit = { seriesIndex: number; alertIndex: number };
 
   type Props = {
     series: SeriesEntry[];
@@ -45,6 +55,10 @@
     // than "select this". Reported rather than interpreted: which gesture means
     // what is the app's decision, not the chart's.
     onselect?: (hit: ChartHit | null, modifiers: { shift: boolean }) => void;
+    // An alert marker was clicked. Separate from `onselect` because it isn't a
+    // point: the caller resolves it to a push and to the alert's own "before",
+    // which this component knows nothing about.
+    onalertselect?: (hit: ChartAlertHit) => void;
     // The point under the pointer, or null when there isn't one. Fires only on
     // change, so a mousemove inside one dot doesn't re-report it.
     onhover?: (hit: ChartHit | null) => void;
@@ -54,6 +68,9 @@
     // walk away from it with the arrow keys. There is no keyboard gesture for
     // "shift-click *that* dot", so the marking has to come first.
     onkeycompare?: () => void;
+    // The keyboard equivalent of clicking a marker: step to the next alert
+    // after the selection, or (negative) to the one before it.
+    onkeyalert?: (delta: number) => void;
     // "Compare the selection with the push before it" — the one pair worth a key
     // of its own, since aiming at a dot in the previous push's cloud is the
     // fiddliest part of the pointer gesture.
@@ -74,10 +91,12 @@
     interaction,
     brush = null,
     onselect,
+    onalertselect,
     onhover,
     onbrush,
     onkeymove,
     onkeycompare,
+    onkeyalert,
     onkeyprevious,
     ariaLabel,
   }: Props = $props();
@@ -112,8 +131,13 @@
   // Distinguishes a click from a drag: a plain click in 'select' mode must
   // select a point, not zoom into a zero-width span.
   let dragMoved = false;
-  // True while the cursor is over a hittable dot, so the cursor can say so.
+  // True while the cursor is over a hittable dot or alert marker, so the cursor
+  // can say so.
   let hovering = $state(false);
+  // The marker under the pointer. Chart-local because it changes nothing
+  // outside the chart — unlike a hovered *dot*, which previews a comparison in
+  // the details pane and therefore belongs to AppState.
+  let hoveredAlert = $state<ChartAlertHit | null>(null);
 
   const geom = $derived(makeGeometry(width, height, pad, xDomain, yDomain));
   const effectiveBrush = $derived(pending ?? brush);
@@ -199,6 +223,17 @@
     if (highlights.length > 0) {
       drawHighlights(ctx, geom, highlights, dotRadius, theme.chartPalette, jitter);
     }
+    // Last, so it sits over the rings: the marker is what the next click acts
+    // on, and the rings describe what is already selected.
+    //
+    // Both lookups can miss — a repaint can land between the pointer moving and
+    // the series list changing under it — and a miss just means no highlight
+    // until the next pointer event.
+    if (hoveredAlert) {
+      const entry = series[hoveredAlert.seriesIndex];
+      const mark = entry?.alerts[hoveredAlert.alertIndex];
+      if (entry && mark) drawAlertHover(ctx, geom, mark, entry.color, theme.chartPalette);
+    }
   });
 
   function localX(e: PointerEvent): number {
@@ -268,6 +303,28 @@
     );
   }
 
+  // Markers win over dots inside their band. They're a much smaller, more
+  // deliberate target than a cloud of replicates, and the band is a 16px strip
+  // at the top of the plot where — with the y domain padded — there is rarely a
+  // dot to steal. Aiming at a triangle and getting a dot would be the more
+  // annoying failure of the two.
+  function alertHitAt(px: number, py: number): ChartAlertHit | null {
+    if (!showAlerts) return null;
+    const hit = hitTestAlerts(
+      series.map((s) => ({ alerts: s.alerts })),
+      geom.xScale,
+      geom,
+      px,
+      py,
+    );
+    return hit ? { seriesIndex: hit.seriesIndex, alertIndex: hit.alertIndex } : null;
+  }
+
+  function sameAlert(a: ChartAlertHit | null, b: ChartAlertHit | null): boolean {
+    if (!a || !b) return a === b;
+    return a.seriesIndex === b.seriesIndex && a.alertIndex === b.alertIndex;
+  }
+
   // The last hit handed to `onhover`, so a mousemove that stays inside one dot
   // doesn't re-report it. Without this the parent's derived comparison — a KDE
   // and a rank-sum test — would recompute on every pointer event.
@@ -286,13 +343,21 @@
       // Hover feedback only matters where a click does something with a
       // point; the overview's clicks are about the window, not the dots.
       if (interaction === 'select') {
-        const hit = hitAt(localX(e), localY(e));
-        hovering = hit !== null;
+        const px = localX(e);
+        const py = localY(e);
+        const alert = alertHitAt(px, py);
+        if (!sameAlert(alert, hoveredAlert)) hoveredAlert = alert;
+        // Over a marker the pointer is not over a dot, whatever the dots think:
+        // reporting both would light up a comparison preview in the pane at the
+        // same time as the marker offers a different one.
+        const hit = alert ? null : hitAt(px, py);
+        hovering = alert !== null || hit !== null;
         reportHover(hit);
       }
       return;
     }
     // A drag is about the window, not about whatever dot it passes over.
+    hoveredAlert = null;
     reportHover(null);
     dragMoved = true;
     const value = geom.xScale.toValue(localX(e));
@@ -322,7 +387,16 @@
     }
     // A click, not a drag.
     if (interaction === 'select') {
-      const hit = hitAt(localX(e), localY(e));
+      const px = localX(e);
+      const py = localY(e);
+      const alert = alertHitAt(px, py);
+      if (alert) {
+        // Modifiers are ignored: a marker already sets both ends of a
+        // comparison, so there is no second thing for shift to mean here.
+        onalertselect?.(alert);
+        return;
+      }
+      const hit = hitAt(px, py);
       onselect?.(hit ? { seriesIndex: hit.seriesIndex, pointIndex: hit.pointIndex } : null, {
         shift: e.shiftKey,
       });
@@ -338,10 +412,12 @@
   function onPointerCancel(): void {
     drag = null;
     pending = null;
+    hoveredAlert = null;
   }
 
   function onPointerLeave(): void {
     hovering = false;
+    hoveredAlert = null;
     // The preview belongs to the pointer being over a dot; leaving the graph
     // ends it, or the pane keeps showing a comparison with nothing on screen to
     // explain where it came from.
@@ -372,6 +448,16 @@
       case 'c':
       case 'C':
         onkeycompare?.();
+        break;
+      // Shift reverses this one, where it doesn't for `c` and `p`: those two
+      // are single actions, and this is a stepper, where "the other direction"
+      // is the obvious second half. Upper case *is* shift — the graph takes no
+      // text, so there is nothing else 'A' could have meant.
+      case 'a':
+        onkeyalert?.(1);
+        break;
+      case 'A':
+        onkeyalert?.(-1);
         break;
       case 'p':
       case 'P':
