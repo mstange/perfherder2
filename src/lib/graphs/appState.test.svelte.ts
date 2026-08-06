@@ -511,6 +511,62 @@ describe('AppState comparison', () => {
       expect(app.comparison?.kind).toBe('push');
     }));
 
+  // Shift-clicking with nothing selected used to write `cmp=` and render
+  // nothing, because comparisonSource reports none without a selection.
+  describe('pinning with nothing selected', () => {
+    const pin = { repository: 'autoland', signatureId: 1, datumId: 11, replicateIndex: 0 };
+
+    it('selects the point too, landing in the state the pane explains', () =>
+      withApp('?series=autoland,1,1', async (app) => {
+        await settle();
+        expect(app.selectedPoint).toBeNull();
+        app.comparePoint(pin);
+        expect(app.selectedPoint).toEqual(pin);
+        expect(app.comparedPoint).toEqual(pin);
+        // Not a silent state any more: the pane has a branch for this one.
+        expect(app.comparisonMarkedHere).toBe(true);
+        expect(app.comparison).toBeNull();
+      }));
+
+    it('turns into a real comparison on the next move', () =>
+      withApp('?series=autoland,1,1', async (app) => {
+        await settle();
+        app.comparePoint(pin);
+        app.stepRun(-1);
+        expect(app.comparisonMarkedHere).toBe(false);
+        expect(app.comparison?.kind).toBe('push');
+      }));
+
+    it('spends one history entry', () =>
+      withApp('?series=autoland,1,1', async (app) => {
+        await settle();
+        const before = history.length;
+        app.comparePoint(pin);
+        expect(history.length).toBe(before + 1);
+      }));
+
+    it('is still its own undo', () =>
+      withApp('?series=autoland,1,1', async (app) => {
+        await settle();
+        app.comparePoint(pin);
+        app.comparePoint(pin);
+        expect(app.comparedPoint).toBeNull();
+        // The selection stays: the second shift-click undoes the pin, and
+        // clearing the selection as well would be two undos for one gesture.
+        expect(app.selectedPoint).toEqual(pin);
+        expect(location.search).not.toContain('cmp=');
+      }));
+
+    it('leaves an existing selection alone', () =>
+      withApp('?series=autoland,1,1&sel=autoland,1,10,1', async (app) => {
+        await settle();
+        const sel = app.selectedPoint;
+        app.comparePoint(pin);
+        expect(app.selectedPoint).toEqual(sel);
+        expect(app.comparison?.kind).toBe('push');
+      }));
+  });
+
   it('keeps the pin when the selection lands back on it, and says so', () =>
     withApp(withBoth, async (app) => {
       await settle();

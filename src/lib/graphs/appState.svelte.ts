@@ -833,8 +833,21 @@ export class AppState {
   // mark this point, then arrow away from it. See `comparisonMarkedHere` for the
   // state that produces.
   comparePoint(point: SelectedPoint | null): void {
-    this.comparedPoint =
-      point && this.comparedPoint && samePoint(point, this.comparedPoint) ? null : point;
+    const unpin = !!point && !!this.comparedPoint && samePoint(point, this.comparedPoint);
+    this.comparedPoint = unpin ? null : point;
+    // A pin with no selection is a comparison with one end. `comparisonSource`
+    // reports none without a selection, so this used to write `cmp=` to the URL
+    // and then display absolutely nothing — until some later plain click sprang
+    // a comparison against a dot chosen minutes before, with no way to tell
+    // where it came from.
+    //
+    // Selecting the same point lands in `comparisonMarkedHere`, which the pane
+    // already explains ("marked for comparison — now move to another point").
+    // That is the keyboard path's middle step, so the two gestures converge on
+    // one state instead of shift-click having a silent one of its own. It also
+    // keeps the graph honest: the hover ring said this click would pin the dot,
+    // and it did.
+    if (point && !unpin && !this.selectedPoint) this.selectedPoint = point;
     this.syncUrl('push');
   }
 

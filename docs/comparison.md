@@ -85,6 +85,7 @@ so there `sideOrder` returns 0 and click order stands. The pane reports
 |---|---|
 | click a dot | select it |
 | shift-click a dot | pin it as the comparison's other end; shift-clicking it again unpins |
+| shift-click with nothing selected | selects it *and* marks it, so the pin has something to hang off |
 | hover a dot (with a selection) | preview the comparison a shift-click would pin |
 | hold shift while hovering | the ring goes dashed: that click pins rather than selects |
 | <kbd>C</kbd> on the focused graph | pin the *selected* point, then walk away from it with the arrow keys |
@@ -117,6 +118,18 @@ pinned point lands. `AppState.comparisonMarkedHere` is that state, and the pane
 says what to do next rather than showing a comparison that failed. The
 alternative, silently dropping a pin the selection happens to land on, throws
 away a mark the user set deliberately whenever they walk left and then right.
+
+**It is also where a shift-click with nothing selected lands.** A pin without a
+selection is a comparison with one end, and `comparisonSource` reports none
+without a selection — so that gesture used to write `cmp=` to the URL and then
+display nothing whatsoever, until a later plain click sprang a comparison
+against a dot chosen minutes earlier with no clue where it had come from.
+`comparePoint` now selects the point as well, which is the same marked state
+the keyboard path produces. The two gestures converge rather than shift-click
+having a silent state of its own, and the graph stays honest: the hover ring
+said this click would pin the dot, and it did. Unpinning is still the gesture's
+own undo, and it leaves the selection behind — dropping that too would be two
+undos for one shift-click.
 
 **Escape unwinds one level at a time**, comparison before selection. Doing both
 at once makes the commoner action — drop the comparison, keep looking at the
