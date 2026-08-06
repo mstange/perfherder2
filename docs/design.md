@@ -1079,11 +1079,3 @@ these strings for display — you'll get bitten by edge cases.**
   touch X, check section Y" — would cost a dozen lines and save reading both
   files end to end.
 
-### Naming
-
-- **`.replicates` means two different things.** It's the class on GraphPane's
-  "Replicates" checkbox label *and* on DetailsPane's chip list. Svelte scopes
-  both, so the app is fine; anything that queries the DOM globally is not, and
-  a `document.querySelectorAll('.replicates')` in a throwaway measurement script
-  silently measured the checkbox. Rename one — `.draw-replicates` on the
-  control, probably, since the chip list is the one the docs talk about.

@@ -134,7 +134,7 @@
     <!-- A drawing switch, not a fetch switch: replicates are always fetched,
          so this is instant and the details pane keeps listing them either
          way. -->
-    <label class="replicates" title="Draw every replicate, or one dot per run at its mean">
+    <label class="draw-replicates" title="Draw every replicate, or one dot per run at its mean">
       <input
         type="checkbox"
         checked={app.showReplicates}
@@ -254,14 +254,18 @@
   .label {
     color: var(--fg-muted);
   }
-  .replicates {
+  /* Named for the control, not the data: DetailsPane's chip list of replicate
+     values is also `.replicates`, and while Svelte scopes both, a
+     `document.querySelectorAll('.replicates')` in a throwaway measurement
+     script silently measured this checkbox instead. */
+  .draw-replicates {
     display: flex;
     align-items: center;
     gap: 5px;
     white-space: nowrap;
     cursor: pointer;
   }
-  .replicates input {
+  .draw-replicates input {
     margin: 0;
     cursor: pointer;
   }
