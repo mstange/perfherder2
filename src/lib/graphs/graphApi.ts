@@ -117,7 +117,12 @@ export const JobSchema = v.object({
   who: v.string(),
   tier: v.number(),
   push_id: v.number(),
+  // Both come from `job.taskcluster_metadata`, so they are present or absent
+  // together — the view catches the missing-relation case and skips the pair.
+  // `retry_id` is the *run* number the task's artifacts hang off; see
+  // `taskArtifactsUrl`.
   task_id: v.optional(v.string()),
+  retry_id: v.optional(v.number()),
   logs: v.optional(v.array(JobLogSchema)),
 });
 export type Job = v.InferOutput<typeof JobSchema>;

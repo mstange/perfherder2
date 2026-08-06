@@ -4,10 +4,12 @@ import {
   jobsUrl,
   perfCompareSubtestsUrl,
   perfCompareUrl,
+  profilerFromUrl,
   pushLogRangeUrl,
   revisionUrl,
   shortRevision,
   splitCommitMessage,
+  taskArtifactUrl,
   type RepoLinkInfo,
 } from './links';
 
@@ -70,6 +72,32 @@ describe('pushLogRangeUrl', () => {
   it('uses compare for git', () => {
     expect(pushLogRangeUrl(git, 'aaa', 'bbb')).toBe(
       'https://github.com/mozilla-firefox/firefox/compare/aaa...bbb',
+    );
+  });
+});
+
+describe('taskArtifactUrl', () => {
+  it('hangs the artifact off the run, with its slashes intact', () => {
+    expect(taskArtifactUrl('fUUrXaqGTdySnnMCzFHhFw', 1, 'public/test_info/profile_x.zip')).toBe(
+      'https://firefox-ci-tc.services.mozilla.com/api/queue/v1/task/fUUrXaqGTdySnnMCzFHhFw' +
+        '/runs/1/artifacts/public/test_info/profile_x.zip',
+    );
+  });
+});
+
+describe('profilerFromUrl', () => {
+  // The whole artifact URL is one path segment of the profiler URL, so its own
+  // slashes and colon have to be escaped or the profiler reads a truncated one.
+  it('encodes the profile url into a single path segment', () => {
+    expect(profilerFromUrl('https://example.com/a/profile_x.json')).toBe(
+      'https://profiler.firefox.com/from-url/https%3A%2F%2Fexample.com%2Fa%2Fprofile_x.json',
+    );
+  });
+
+  it('adds profileName only when given one', () => {
+    expect(profilerFromUrl('https://example.com/p.json', 'talos (ABC.0)')).toBe(
+      'https://profiler.firefox.com/from-url/https%3A%2F%2Fexample.com%2Fp.json' +
+        '?profileName=talos%20(ABC.0)',
     );
   });
 });

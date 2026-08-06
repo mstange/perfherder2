@@ -424,6 +424,44 @@
                 </a>
               </dd>
             {/if}
+            <!-- Profiles the run uploaded, linked into profiler.firefox.com
+                 rather than at the file: an artifact named `profile_*` is one
+                 the profiler can open, and downloading a zip to re-upload it is
+                 the step this row removes. Same rule and same URLs as
+                 treeherder's artifact list.
+
+                 Drawn as soon as there is a task to ask about — "loading…"
+                 included — rather than appearing a beat after the rest of the
+                 job details land, because it is not a rare row: nearly every
+                 perf job uploads at least the resource-usage profile. -->
+            {#if app.selectedProfilesStatus !== 'absent'}
+              <dt title="Artifacts named profile_*, opened in profiler.firefox.com">
+                Profiles
+              </dt>
+              <dd>
+                {#if app.selectedProfilesStatus === 'loading'}
+                  <span class="muted">loading…</span>
+                {:else if app.selectedProfilesStatus === 'failed'}
+                  <span class="muted">Artifact lookup failed.</span>
+                {:else if app.selectedProfiles.length === 0}
+                  <span class="muted">none uploaded</span>
+                {:else}
+                  <ul class="profiles">
+                    {#each app.selectedProfiles as profile (profile.artifact)}
+                      <li>
+                        <a
+                          href={profile.url}
+                          target="_blank"
+                          rel="noopener"
+                          title="Open {profile.artifact} in the Firefox Profiler"
+                          >{profile.label}</a
+                        >
+                      </li>
+                    {/each}
+                  </ul>
+                {/if}
+              </dd>
+            {/if}
             <!-- Last on purpose. It reads "success" for all but a handful of
                  points — a job that failed outright recorded no performance
                  data to click on — so it's the least informative line here,
@@ -667,6 +705,14 @@
   }
   .push-mean {
     margin-top: 8px;
+  }
+  /* One profile per line. A run has one or two of these and their labels are
+     test names, so a wrapped inline run of them would read as one phrase —
+     "idb-open-many-seq resource-usage" — rather than as two links. */
+  .profiles {
+    list-style: none;
+    margin: 0;
+    padding: 0;
   }
   /* One chip per measurement, so how many fit on a line decides how much of a
      retriggered push is readable without scrolling. 12px and 4px of side padding,

@@ -20,6 +20,8 @@ import {
   type RepositoryInfo,
 } from './graphApi';
 import { alertsByPush, alertsForSeries, type SeriesAlert } from './alerts';
+import { profileLinks, type ProfileLink } from './artifacts';
+import { fetchTaskArtifactNames } from './artifactsApi';
 import type { RepoLinkInfo } from '../shared/links';
 import { fetchAlertSummaries } from './alertsApi';
 import {
@@ -181,6 +183,14 @@ export class AppState {
   // the pane can say "unavailable" instead of spinning on "loading…" forever,
   // and so the selection effect doesn't retry a lookup that will keep failing.
   private jobLookupFailed = $state(new Set<string>());
+
+  // Artifact names per task *run*, keyed `${taskId}|${runId}`, with the same
+  // negative cache beside it. Not pruned with the series caches: an entry is a
+  // dozen short strings, and a selection the user goes back to is the case this
+  // is for.
+  private artifactCache = $state(new Map<string, string[]>());
+  private artifactLookupFailed = $state(new Set<string>());
+
   repoInfo = $state(new Map<string, RepositoryInfo>());
 
   // What the link builders need to know about a repository: whether it's hg or
@@ -391,6 +401,42 @@ export class AppState {
       : 'loading';
   });
 
+  // The task run whose artifacts belong to the selection, when we know it. Both
+  // fields are optional on `Job` and absent together, so this is the one place
+  // that checks — everything downstream takes the pair or nothing.
+  private selectedTaskRun = $derived.by((): { taskId: string; runId: number } | null => {
+    const job = this.selectedJob;
+    if (!job || job.task_id === undefined || job.retry_id === undefined) return null;
+    return { taskId: job.task_id, runId: job.retry_id };
+  });
+
+  // Firefox Profiler links for the selected run's `profile_*` artifacts. Empty
+  // both while the list is in flight and when the task uploaded none; it's
+  // `selectedProfilesStatus` that tells those two apart.
+  selectedProfiles = $derived.by((): ProfileLink[] => {
+    const job = this.selectedJob;
+    const run = this.selectedTaskRun;
+    if (!job || !run) return [];
+    const names = this.artifactCache.get(`${run.taskId}|${run.runId}`);
+    if (!names) return [];
+    return profileLinks(names, {
+      job_type_name: job.job_type_name,
+      task_id: run.taskId,
+      retry_id: run.runId,
+    });
+  });
+
+  // `absent` means there is nothing to ask about — no job yet, or a job with no
+  // taskcluster metadata — and the pane draws no row at all. The other three
+  // mirror `selectedJobStatus`.
+  selectedProfilesStatus = $derived.by((): 'absent' | 'loading' | 'loaded' | 'failed' => {
+    const run = this.selectedTaskRun;
+    if (!run) return 'absent';
+    const key = `${run.taskId}|${run.runId}`;
+    if (this.artifactCache.has(key)) return 'loaded';
+    return this.artifactLookupFailed.has(key) ? 'failed' : 'loading';
+  });
+
   // Which signatures are already on the graph, and in what color, so the
   // picker can mark those rows instead of offering them again. Keyed by
   // `${repository}|${signature id}` — the same recipe as the picker's
@@ -469,6 +515,14 @@ export class AppState {
       const repo = sel.entry.ref.repository;
       void this.loadPush(repo, sel.push.pushId);
       void this.loadJob(repo, sel.run.jobId);
+    });
+
+    // The selected run's artifact list, in a second step rather than alongside
+    // the two above: the task id and run number it needs come out of the job,
+    // so this can only start once that lands. Re-runs when it does.
+    $effect(() => {
+      const run = this.selectedTaskRun;
+      if (run) void this.loadArtifacts(run.taskId, run.runId);
     });
 
     // Repository metadata drives the hg/git-aware pushlog links.
@@ -580,6 +634,30 @@ export class AppState {
       // As above — but remember the failure, so the pane can report it and
       // the selection effect doesn't reissue the same doomed lookup.
       this.jobLookupFailed = new Set(this.jobLookupFailed).add(cacheKey);
+    } finally {
+      this.detailRequests.delete(key);
+    }
+  }
+
+  private async loadArtifacts(taskId: string, runId: number): Promise<void> {
+    const cacheKey = `${taskId}|${runId}`;
+    const key = `artifacts|${cacheKey}`;
+    if (
+      this.artifactCache.has(cacheKey) ||
+      this.detailRequests.has(key) ||
+      this.artifactLookupFailed.has(cacheKey)
+    ) {
+      return;
+    }
+    this.detailRequests.add(key);
+    try {
+      const names = await fetchTaskArtifactNames(taskId, runId);
+      this.artifactCache = new Map(this.artifactCache).set(cacheKey, names);
+    } catch {
+      // As with the job lookup, remembered rather than retried. Artifacts
+      // expire a year after the run and the queue answers 404 for good once
+      // they have, so a failure here is usually permanent.
+      this.artifactLookupFailed = new Set(this.artifactLookupFailed).add(cacheKey);
     } finally {
       this.detailRequests.delete(key);
     }

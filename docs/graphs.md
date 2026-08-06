@@ -86,9 +86,80 @@ which would put the twenty-commit pushlog above the value you asked about.
    **last**; it reads "success" for all but a handful of points, since a job that
    failed outright recorded no performance data to click on. It's kept rather
    than dropped only because the `bad` styling makes the rare exception jump out.
+
+   **Profiles** sits between the task and the result — see below.
 6. **Build** — push time, revision, author, the pushlog link, and the commit
    list. Last because it's the longest section by far and the least specific to
    the dot: two dots on the same push have identical builds.
+
+### Profiles
+
+The Run section links the selected job's profiles straight into
+profiler.firefox.com. Without them, opening a profile for a point on the graph
+meant: click through to treeherder, find the job again in the push, open the
+Artifacts tab, and click the profiler link *there* — four steps to reach
+something the pane already has the task id for.
+
+**The rule is treeherder's**, from `ui/shared/JobArtifacts.jsx` and
+`getPerfAnalysisUrl` in `ui/helpers/url.js`, and following it exactly is the
+point: the same job opened from either app should land on the same profile with
+the same tab title.
+
+- An artifact is a profile iff its **file name** starts with `profile_`. A
+  prefix, not a substring — every browsertime task also uploads
+  `browsertime-profiler.tgz`, which is not one.
+- The link is `https://profiler.firefox.com/from-url/<encoded artifact url>`.
+  The profiler fetches the artifact itself (taskcluster serves
+  `access-control-allow-origin: *`), so this is a link you follow, not a file
+  you download and re-upload.
+- `profile_build_resources.json` and `profile_resource-usage.json` are
+  *resource usage* profiles — CPU, memory and IO assembled from mozharness'
+  log rather than sampled by Gecko. They carry no name of their own, so both
+  apps pass `?profileName=<job type> (<task id>.<retry id>)` for exactly these
+  two and the profiler titles the tab with it.
+
+Three deliberate deviations, all in [artifacts.ts](../src/lib/graphs/artifacts.ts):
+
+- **The label is the middle of the file name.** `profile_idb-open-many-seq.zip`
+  reads as `idb-open-many-seq`. The prefix is *why* the artifact is in the list
+  and the container format is the harness' business, so neither says which
+  profile this is — and the pane's column is narrow. Treeherder shows the whole
+  name because its artifact list is a table of every artifact, where the name is
+  the row's identity; here it's a link's text. The full name is the `title`.
+- **Resource usage sorts last.** Nearly every perf job uploads one and only a
+  gecko-profiling run uploads the other, so sorting by name would bury the
+  profile someone came looking for under the one they get for free.
+- **The row is drawn as soon as there is a task to ask about**, showing
+  "loading…" and then either the links or "none uploaded". The artifact list can
+  only be fetched once the job lookup names its task, so it lands a beat after
+  the rest of the Run section — and this is not a rare row (even a plain build
+  job has `profile_build_resources.json`), so letting it appear under the
+  reader's eyes would shift the pane on nearly every click.
+
+### Where the artifact list comes from
+
+`GET https://firefox-ci-tc.services.mozilla.com/api/queue/v1/task/<taskId>/runs/<runId>/artifacts`
+— taskcluster-queue's `listArtifacts`, the only non-treeherder endpoint the app
+calls. See [artifactsApi.ts](../src/lib/graphs/artifactsApi.ts).
+
+- **`runId` is the job's `retry_id`**, added to `JobSchema` for this. Artifacts
+  hang off the *run*, not the task: a retried task keeps its task id, so a link
+  built without the run number points at the wrong attempt's files. `task_id`
+  and `retry_id` are both `v.optional` and absent together — they come from one
+  `taskcluster_metadata` relation the view skips when it's missing — so
+  `AppState.selectedTaskRun` is the one place that checks for the pair.
+- **Only `name` is declared**, against this codebase's usual habit of
+  transcribing the whole serializer. The rows also carry `contentType`,
+  `expires` and `storageType`, none of which we show, and every declared field
+  is one more way for a shape change to turn a decorative link list into a fatal
+  `SchemaError`.
+- **The root URL is hardcoded.** Treeherder threads each repository's
+  `tc_root_url` through, because two clusters are in play; the only repositories
+  on the other one (community-tc: `servo-master`, `servo-auto`, `servo-try`)
+  have no performance signatures at all, so no point this app can plot ever came
+  out of a task there.
+- **Failures are remembered, not retried**, as with the job lookup: artifacts
+  expire a year after the run and the queue answers 404 for good once they have.
 
 ## Data model
 

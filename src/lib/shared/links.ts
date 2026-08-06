@@ -52,9 +52,47 @@ export function pushLogRangeUrl(
   return `${repo.url}/pushloghtml?${params}`;
 }
 
+// Treeherder threads each repository's `tc_root_url` through to its task and
+// artifact links, because two clusters are in play. We hardcode the Firefox CI
+// one: the only repositories on the other (community-tc — servo-master,
+// servo-auto, servo-try) have no performance signatures at all, checked against
+// `/api/project/<repo>/performance/signatures/`, so no point this app can plot
+// ever came out of a task there.
+export const FIREFOX_CI_ROOT = 'https://firefox-ci-tc.services.mozilla.com';
+
 // Taskcluster task inspector, when the job carries a task id.
 export function taskUrl(taskId: string): string {
-  return `https://firefox-ci-tc.services.mozilla.com/tasks/${taskId}`;
+  return `${FIREFOX_CI_ROOT}/tasks/${taskId}`;
+}
+
+// The queue's artifact list for one *run* of a task. `runId` is the job's
+// `retry_id`: a retried task keeps its task id and gets a new run, and the
+// artifacts hang off the run, not the task — so a link built without it points
+// at the wrong attempt's files.
+export function taskArtifactsUrl(taskId: string, runId: number): string {
+  return `${FIREFOX_CI_ROOT}/api/queue/v1/task/${taskId}/runs/${runId}/artifacts`;
+}
+
+// One artifact of that run. `name` is the full artifact name including its
+// slashes ("public/test_info/profile_resource-usage.json"), which are path
+// separators in the URL — so it is appended raw, exactly as treeherder does.
+export function taskArtifactUrl(taskId: string, runId: number, name: string): string {
+  return `${taskArtifactsUrl(taskId, runId)}/${name}`;
+}
+
+export const PROFILER_ORIGIN = 'https://profiler.firefox.com';
+
+// profiler.firefox.com's URL loader: it fetches the profile itself (the
+// artifact is CORS-open) and opens it, so this is a link the user follows
+// rather than a file they download and re-upload.
+//
+// Mirrors treeherder's `getPerfAnalysisUrl` (`ui/helpers/url.js`), including
+// `profileName` — see artifacts.ts for the one case that passes it.
+export function profilerFromUrl(profileUrl: string, profileName?: string): string {
+  const url = `${PROFILER_ORIGIN}/from-url/${encodeURIComponent(profileUrl)}`;
+  return profileName === undefined
+    ? url
+    : `${url}?profileName=${encodeURIComponent(profileName)}`;
 }
 
 // Perfherder's alerts view, filtered to one summary. `?id=` is the whole
