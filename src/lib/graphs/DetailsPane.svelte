@@ -761,8 +761,6 @@
     grid-template-columns: 6.5em minmax(0, 1fr);
     font-size: 11px;
   }
-  /* The comparison sits in a tinted card so the two-point reading is visibly a
-     different thing from the single-point sections under it. */
   .commits {
     list-style: none;
     margin: 0;

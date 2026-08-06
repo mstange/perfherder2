@@ -469,9 +469,6 @@ describe('AppState selection', () => {
     }));
 });
 
-// Treeherder expires job rows long before the performance data that points at
-// them, so `job_id: null` is normal for anything more than a few months old.
-// These cases used to leave the details pane on "loading…" indefinitely.
 describe('AppState comparison', () => {
   const withBoth = '?series=autoland,1,1&sel=autoland,1,10,1&cmp=autoland,1,11,0';
 
@@ -751,6 +748,9 @@ describe('AppState alerts', () => {
   });
 });
 
+// Treeherder expires job rows long before the performance data that points at
+// them, so `job_id: null` is normal for anything more than a few months old.
+// These cases used to leave the details pane on "loading…" indefinitely.
 describe('AppState job details', () => {
   const jobCalls = () =>
     fetchMock.mock.calls.filter((c) => String(c[0]).includes('/jobs/')).length;

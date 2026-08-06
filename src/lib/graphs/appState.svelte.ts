@@ -1079,9 +1079,6 @@ function clampIndex(i: number, length: number): number {
   return Math.max(0, Math.min(length - 1, i));
 }
 
-// A resolved selection, flattened into what compare.ts asks for. That module is
-// deliberately structural about its input so it stays free of the reactive
-// layer; this is the one place the two shapes meet.
 function samePoint(a: SelectedPoint, b: SelectedPoint): boolean {
   return (
     a.repository === b.repository &&
@@ -1091,6 +1088,9 @@ function samePoint(a: SelectedPoint, b: SelectedPoint): boolean {
   );
 }
 
+// A resolved selection, flattened into what compare.ts asks for. That module is
+// deliberately structural about its input so it stays free of the reactive
+// layer; this is the one place the two shapes meet.
 function compareSideOf(sel: Selection): CompareSide {
   return {
     ref: sel.entry.ref,

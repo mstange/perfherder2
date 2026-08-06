@@ -292,6 +292,8 @@
 {/if}
 
 <style>
+  /* The comparison sits in a tinted card so the two-point reading is visibly a
+     different thing from the single-point sections under it. */
   section.comparison {
     padding: 8px 10px 10px;
     border: 1px solid var(--border-default);
