@@ -246,6 +246,21 @@
     align-items: center;
     gap: 6px;
   }
+  /* Wraps as whole items. Without this the group is one unwrappable line whose
+     items shrink instead, and every child of it is text that will break: at a
+     680px pane the presets are still one row, at 552px they start splitting
+     their own labels ("2 / days"), and at 424px the header grows from 77px to
+     187px — a fifth of the pane — for the same seven buttons. */
+  .ranges {
+    flex-wrap: wrap;
+  }
+  /* The other half of that: a flex item's automatic minimum is its *min-content*
+     width, which for "2 days" is the width of "days". Nothing above stops a
+     button from shrinking to that and wrapping inside itself; this does. */
+  .ranges > .btn,
+  .label {
+    white-space: nowrap;
+  }
   .label {
     color: var(--fg-muted);
   }
@@ -268,6 +283,11 @@
     margin-left: 6px;
     color: var(--fg-muted);
     font-variant-numeric: tabular-nums;
+    /* Drops to its own wrapped line when the presets fill the first one, rather
+       than being squeezed to a 24px column of one character per line. It is not
+       hidden at narrow widths: when the graph is zoomed this is the only place
+       the fetched range is stated, and the axis below shows the zoom instead. */
+    white-space: nowrap;
   }
   .hint {
     color: var(--fg-subtle);
