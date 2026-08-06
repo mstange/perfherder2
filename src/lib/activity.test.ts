@@ -3,7 +3,7 @@
 // treatment instead.
 
 import { describe, expect, it } from 'vitest';
-import { TIME_RANGES } from './api';
+import { TIME_RANGES } from './pickerOptions';
 import {
   MAX_BINS,
   MAX_IDS_PER_REQUEST,

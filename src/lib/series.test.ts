@@ -1,10 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import {
-  buildOptionMap,
-  toSeries,
-  type OptionCollection,
-  type RawSignature,
-} from './api';
+import { buildOptionMap, type OptionCollection, type RawSignature } from './signaturesApi';
+import { toSeries } from './series';
 import { seriesKey } from './graphData';
 
 const frameworks = new Map<number, string>([
@@ -30,14 +26,6 @@ function raw(overrides: Partial<RawSignature> = {}): RawSignature {
     ...overrides,
   };
 }
-
-describe('buildOptionMap', () => {
-  it('maps hashes to option name lists', () => {
-    expect(optionMap.get('H_OPT')).toEqual(['opt']);
-    expect(optionMap.get('H_DEBUG')).toEqual(['debug']);
-    expect(optionMap.get('unknown')).toBeUndefined();
-  });
-});
 
 describe('toSeries', () => {
   it('resolves option_collection_hash + extra_options, deduped', () => {

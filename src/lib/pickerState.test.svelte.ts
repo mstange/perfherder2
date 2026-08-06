@@ -12,7 +12,8 @@
 import { flushSync } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MAX_IDS_PER_REQUEST } from './activity';
-import { DEFAULT_REPOS, PINNED_REPOS, type Series } from './api';
+import { type Series } from './series';
+import { DEFAULT_REPOS, PINNED_REPOS } from './pickerOptions';
 import type { FilterChip } from './filter';
 import { ACTIVITY_DEBOUNCE_MS, PickerState } from './pickerState.svelte';
 import { EMPTY_PICKER_VIEW, type PickerViewState } from './urlState';

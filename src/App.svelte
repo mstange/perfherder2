@@ -9,7 +9,7 @@
   import GraphPane from './lib/GraphPane.svelte';
   import SeriesList from './lib/SeriesList.svelte';
   import { AppState } from './lib/appState.svelte';
-  import type { Series } from './lib/api';
+  import type { Series } from './lib/series';
 
   const app = new AppState(location.search);
 

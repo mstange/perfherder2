@@ -21,13 +21,21 @@ architecture breaks.**
   Validates every response against a valibot schema; see "Validating API
   responses" below. `HttpError` and `SchemaError` both keep their messages
   short enough for an error banner.
-- [src/lib/api.ts](../src/lib/api.ts) — schemas + inferred types, network
-  calls, `toSeries`
-  (raw signature → enriched `Series`). Framework map + option-collection map
-  are fetched once and passed in. `toSeries` bakes `Series.key`
-  (`${repo}|${signatureHash}`) and `Series.parentKey` in at construction,
-  so callers never recompose the compound identity — using
-  `signatureHash` alone would collide across repos.
+- [src/lib/signaturesApi.ts](../src/lib/signaturesApi.ts) — schemas +
+  inferred types and the network calls for the signature endpoints.
+- [src/lib/series.ts](../src/lib/series.ts) — **pure logic**. `Series`, the
+  row the picker renders, and `toSeries` (raw signature → enriched `Series`).
+  Framework map + option-collection map are fetched once and passed in.
+  `toSeries` bakes `Series.key` (`${repo}|${id}`) and `Series.parentKey` in at
+  construction, so callers never recompose the compound identity — using
+  `signatureHash` alone would collide across repos. Unit-tested.
+  (Transport and domain are separate here for the same reason as
+  graphApi/graphData, alertsApi/alerts and activityApi/activity: the
+  projection is the part worth testing from a fixture, and it shouldn't drag
+  a fetch client into the import graph of everything that names a `Series`.)
+- [src/lib/pickerOptions.ts](../src/lib/pickerOptions.ts) — the repo and
+  time-range choices the panel offers. Neither is discovered from the API;
+  both mirror Perfherder's own Graphs view.
 - [src/lib/reorder.ts](../src/lib/reorder.ts) — **pure logic**. Drag
   geometry for the series list: drop index, per-card offsets, auto-scroll
   ramp. Unit-tested.
@@ -118,7 +126,7 @@ the disclosure UX.
 ### Row identity: `Series.key`, composed at construction
 
 `Series.key` = `${repository}|${id}`, populated in
-[api.ts::toSeries](../src/lib/api.ts). It's used anywhere a row needs
+[series.ts::toSeries](../src/lib/series.ts). It's used anywhere a row needs
 stable per-row identity across the union of caches — expansion state,
 parent-child grouping, master-checkbox scope, and the `#each` key in
 [AddSeriesPicker.svelte](../src/lib/AddSeriesPicker.svelte)'s virtual
@@ -145,7 +153,7 @@ to key rows by `${repository}|${signatureHash}`, and both of these bit us:
 Fix: **key by the API's row `id`**, which is per-signature and globally
 unique in the treeherder DB. `parentKey` can no longer be constructed
 from the raw `parent_signature` (also a hash — same aliasing) — the
-[toSeries](../src/lib/api.ts) pass builds a lookup from
+[toSeries](../src/lib/series.ts) pass builds a lookup from
 `(hash, application) → parentId` and stores `parentKey =
 ${repo}|${parentId}` on each child. The assumption is that a child
 inherits its parent's `application`, which holds in every sample we've
@@ -580,10 +588,10 @@ over a faint blue row tint.
   that have no checkbox (it would report "7 selected" and add four
   no-ops).
 - The lookup only works because `Series.key` (built in
-  [api.ts::toSeries](../src/lib/api.ts)) and
+  [series.ts::toSeries](../src/lib/series.ts)) and
   [graphData.ts::seriesKey](../src/lib/graphData.ts) compose the same
   `${repo}|${signature id}` string from two different modules. Drift
-  there would silently un-mark every row, so api.test.ts pins it.
+  there would silently un-mark every row, so series.test.ts pins it.
 - The prop is **synced, not seeded**: nothing can change the plotted set
   while the panel is open today (adding closes it), but stale marks would
   be a lie about the graph rather than a cosmetic issue.
@@ -933,7 +941,7 @@ Rules that keep this honest:
 
 ## Testing
 
-- **Pure logic** (`filter.ts`, parts of `api.ts`): vitest, no DOM. Run with
+- **Pure logic** (`filter.ts`, `series.ts`): vitest, no DOM. Run with
   `npm test`. This is where new invariants should be pinned.
 - **API shapes**: `schema.test.ts` (see above). Prefer adding a recorded
   payload over hand-writing a fixture whenever the question is "what does

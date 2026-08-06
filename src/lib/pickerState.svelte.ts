@@ -16,16 +16,9 @@ import {
   type Activity,
 } from './activity';
 import { fetchActivityData } from './activityApi';
-import {
-  DEFAULT_REPOS,
-  PINNED_REPOS,
-  buildOptionMap,
-  fetchFrameworks,
-  fetchOptionCollections,
-  fetchSignatures,
-  toSeries,
-  type Series,
-} from './api';
+import { buildOptionMap, fetchFrameworks, fetchOptionCollections, fetchSignatures } from './signaturesApi';
+import { type Series, toSeries } from './series';
+import { DEFAULT_REPOS, PINNED_REPOS } from './pickerOptions';
 import {
   EMPTY_FILTER,
   cacheKey,

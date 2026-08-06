@@ -9,7 +9,7 @@
 // relative "last N days". See docs/graphs.md — a relative range lets the
 // linked-to data point drift out of view as time passes.
 
-import { TIME_RANGES } from './api';
+import { TIME_RANGES } from './pickerOptions';
 import {
   parseChip,
   SORT_COLUMNS,

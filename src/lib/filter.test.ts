@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Series } from './api';
+import type { Series } from './series';
 import {
   addChip,
   cacheKey,

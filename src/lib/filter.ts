@@ -1,7 +1,7 @@
 // Pure helpers used by the picker. Kept in their own module so they can be
 // unit-tested without spinning up Svelte's runtime.
 
-import type { Series } from './api';
+import type { Series } from './series';
 
 // ---------------------------------------------------------------------------
 // Structured filter model

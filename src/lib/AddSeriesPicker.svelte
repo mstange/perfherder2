@@ -1,7 +1,8 @@
 <script lang="ts">
   import { untrack } from 'svelte';
   import { activityPath, activityTitle } from './activity';
-  import { TIME_RANGES, type Series } from './api';
+  import { type Series } from './series';
+import { TIME_RANGES } from './pickerOptions';
   import { type FilterField, type SortColumn } from './filter';
   import { PickerState } from './pickerState.svelte';
   import { EMPTY_PICKER_VIEW, type PickerViewState } from './urlState';
