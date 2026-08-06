@@ -101,11 +101,28 @@ Living checklist. Update in the same commit as the work it describes.
   in the series list. Not done, and each needs something we don't have:
   - *Creating and triaging* alerts from the graph — needs an authenticated
     session.
-  - *Common alerts*: treeherder also marks pushes where some **other** series in
-    the framework alerted, which is how you spot a change that hit everything.
-    It fetches the framework's whole summary list for that
-    (`GraphsView.jsx::getCommonAlerts`), which is the 848-summary request the
-    per-signature filter exists to avoid, so it wants a think about cost first.
+  - *Common alerts — **decided against**, for now.* Treeherder also marks pushes
+    where some **other** series in the framework alerted. The case for it is
+    real: plotting idb-open-many-seq `open_duration` on macOS (signature
+    5350956) over a year shows nothing, while its Windows counterpart
+    (5350953) carries alert #51136 for the very same push — the change hit both
+    platforms, but macOS moved +2.0% against Windows' +9.9% and never crossed
+    the threshold, so only Windows has an alert of its own.
+
+    What killed it is the cost, measured rather than assumed. There is no
+    push-id filter on `/performance/alertsummary/` (unknown parameters are
+    silently ignored, so a probe returns the unfiltered count), and
+    `alerts__series_signature` takes one id — repeating it keeps the last, and a
+    comma list is a 400. So "who else alerted here" can only be answered by
+    pulling the framework's summaries: **2,428 of them for framework 13 over a
+    year, ~29 MB across 25 pages at ~17 s a page**. Treeherder's own
+    `getCommonAlerts` dodges that by fetching a single `limit=30` page, which
+    over a long range covers the last few weeks and silently misses the rest —
+    a partial answer that looks like a complete one.
+
+    A marker here therefore keeps its narrow meaning: *perfherder alerted on
+    this series*. The cross-platform question is answered by plotting the
+    sibling platform, which is a thing you want on screen anyway.
   - *Clicking a marker.* The marker locates an alert; reading it still means
     clicking a dot in that push. Hit-testing the triangles would close that,
     and the hit test currently only knows about dots.
