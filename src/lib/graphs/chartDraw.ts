@@ -66,13 +66,36 @@ export type DrawOptions = {
 //   selected  — the point the details pane is describing. Filled, solid ring.
 //   compared  — the pinned other end of a comparison. Filled, dashed ring: same
 //               standing as the selection, but it's the second thing.
-//   hovered   — the comparison a shift-click *would* pin. Hollow and dashed —
-//               provisional, and not committed to anything.
-//   hoverable — with nothing selected yet, the point a plain click would
-//               select. Hollow and solid: there is no comparison to be
-//               provisional about, and a solid ring is the only cue that the
-//               dots are targets at all.
+//   hovered   — the point a *shift*-click would pin as the comparison. Hollow
+//               and dashed — provisional, and not committed to anything.
+//   hoverable — the point a *plain* click would select. Hollow and solid.
+//
+// The last two are one channel answering one question — "what does a click do
+// right now" — and which of them is drawn depends on the shift key, not on the
+// state of the selection. See `hoverRingKind`.
 export type HighlightKind = 'selected' | 'compared' | 'hovered' | 'hoverable';
+
+// The ring on the dot under the pointer.
+//
+// Null *only* when there is no dot under the pointer. That's the invariant
+// worth stating, because the rule this replaces was written per state and left
+// one of them out: with a comparison pinned, the hovered dot got no ring at
+// all — in the one state where a click has two possible outcomes and so needs
+// the feedback most.
+//
+// The shift key is the whole rule. What a click does depends on it and on
+// nothing else, in every state: shift pins the dot as the comparison, no shift
+// selects it. Tying the ring to `comparisonSource` instead made it answer a
+// different question in each state, and no question at all in one.
+//
+// This leaves the pane to explain the hover *preview* on its own — it already
+// does, with a dashed border and a "shift-click to pin" hint. The two channels
+// now have one job each: the ring is what a click will do, the pane is what
+// you would get.
+export function hoverRingKind(hasHover: boolean, shiftHeld: boolean): HighlightKind | null {
+  if (!hasHover) return null;
+  return shiftHeld ? 'hovered' : 'hoverable';
+}
 
 // A highlighted point, in data coordinates.
 //

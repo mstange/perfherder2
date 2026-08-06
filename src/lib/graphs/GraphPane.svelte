@@ -3,7 +3,7 @@
   // the (possibly zoomed) detail graph.
 
   import type { AppState, Selection } from './appState.svelte';
-  import type { Highlight } from './chartDraw';
+  import { hoverRingKind, type Highlight } from './chartDraw';
   import { jitterForSelection } from './graphData';
   import ScatterChart, { type ChartAlertHit, type ChartHit } from './ScatterChart.svelte';
   import type { SelectedPoint } from '../urlState';
@@ -34,18 +34,33 @@
   // a timer that exists only to un-highlight a button.
   const activePreset = $derived(matchingPreset(app.range, Date.now()));
 
+  // Is shift down? It decides what a click on the hovered dot would do, and so
+  // which ring goes on it (see `hoverRingKind`).
+  //
+  // Two sources, because either alone has a hole. The window listeners catch
+  // shift pressed or released while the pointer sits still, which no pointer
+  // event would report; `onhover` catches shift that was already down before
+  // the pointer reached the graph, which no keydown of ours ever saw. Blur
+  // resets it, or a shift-tab away from the page leaves the graph believing it
+  // is still held.
+  let shiftHeld = $state(false);
+
   // Rings for the selection, the pinned comparison, and whatever the pointer is
   // over. Only for points that are actually plotted: a hidden series' selection
   // stays in the URL but not on the canvas.
   //
   // The hovered ring is drawn from `app.hoveredPoint` rather than kept inside
-  // ScatterChart, so it agrees with the comparison the pane is previewing —
-  // dashed while it previews one, and solid when it can't (nothing is selected,
-  // so a click would select rather than compare).
+  // ScatterChart, so the graph and the pane can never disagree about which dot
+  // the pointer is on.
+  //
+  // The three rings are independent, deliberately. They used to be a chain of
+  // `else if` over `comparisonSource`, which meant a pinned comparison
+  // swallowed the hover ring entirely — no feedback at all in the one state
+  // where a click has two outcomes.
   const highlights = $derived.by((): Highlight[] => {
     const out: Highlight[] = [];
-    const ring = (sel: Selection | null, kind: Highlight['kind']) => {
-      if (!sel || !sel.entry.visible) return;
+    const ring = (sel: Selection | null, kind: Highlight['kind'] | null) => {
+      if (!sel || !kind || !sel.entry.visible) return;
       out.push({
         x: sel.run.x,
         y: sel.value,
@@ -60,8 +75,9 @@
     };
     ring(app.selection, 'selected');
     if (app.comparisonSource === 'pinned') ring(app.comparedSelection, 'compared');
-    else if (app.comparisonSource === 'hover') ring(app.hoveredSelection, 'hovered');
-    else if (!app.selection) ring(app.hoveredResolved, 'hoverable');
+    // Last, so the ring for what the *next* click does sits over the rings for
+    // what previous ones did.
+    ring(app.hoveredResolved, hoverRingKind(app.hoveredResolved !== null, shiftHeld));
     return out;
   });
 
@@ -120,6 +136,18 @@
     app.selectPoint(point);
   }
 </script>
+
+<!-- Shift changes what a click does, so the graph has to know about it even
+     when the pointer isn't moving. -->
+<svelte:window
+  onkeydown={(e) => {
+    if (e.key === 'Shift') shiftHeld = true;
+  }}
+  onkeyup={(e) => {
+    if (e.key === 'Shift') shiftHeld = false;
+  }}
+  onblur={() => (shiftHeld = false)}
+/>
 
 <section class="graph-pane">
   <header>
@@ -213,7 +241,10 @@
       {highlights}
       onselect={onDetailSelect}
       onalertselect={onAlertSelect}
-      onhover={(hit) => app.setHoveredPoint(pointFor(hit))}
+      onhover={(hit, modifiers) => {
+        shiftHeld = modifiers.shift;
+        app.setHoveredPoint(pointFor(hit));
+      }}
       onbrush={(span) => app.setZoom(span)}
       onkeymove={(axis, delta) =>
         axis === 'run' ? app.stepRun(delta) : app.stepReplicate(delta)}

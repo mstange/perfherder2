@@ -297,8 +297,12 @@
     border-radius: 6px;
     background: var(--bg-canvas);
   }
-  /* A hovered comparison is a preview, not a commitment: dashed, to match the
-     dashed ring the graph puts around the point it came from. */
+  /* A hovered comparison is a preview, not a commitment, and says so on its
+     own: the graph's ring no longer stands in for this. That ring now tracks
+     the shift key rather than the preview — it answers "what does a click do",
+     which is a different question and one the pane can't answer (see
+     chartDraw.ts::hoverRingKind). So the dashed border, the quieter fill and
+     the "shift-click to pin" hint carry the whole message here. */
   section.comparison.preview {
     border-style: dashed;
     background: var(--bg-nested-quiet);

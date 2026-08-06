@@ -61,7 +61,12 @@
     onalertselect?: (hit: ChartAlertHit) => void;
     // The point under the pointer, or null when there isn't one. Fires only on
     // change, so a mousemove inside one dot doesn't re-report it.
-    onhover?: (hit: ChartHit | null) => void;
+    //
+    // Carries `shift` for the same reason `onselect` does — it decides what a
+    // click would do, and so what ring the caller puts on the dot. Reported on
+    // entry rather than only on keydown, so shift held *before* the pointer
+    // reached the graph is still accounted for.
+    onhover?: (hit: ChartHit | null, modifiers: { shift: boolean }) => void;
     onbrush?: (span: Span | null, live: boolean) => void;
     onkeymove?: (axis: 'run' | 'replicate', delta: number) => void;
     // The keyboard equivalent of shift-clicking: mark the current selection, then
@@ -330,11 +335,11 @@
   // and a rank-sum test — would recompute on every pointer event.
   let lastHoverKey: string | null = null;
 
-  function reportHover(hit: ChartHit | null): void {
+  function reportHover(hit: ChartHit | null, shift = false): void {
     const key = hit ? `${hit.seriesIndex}:${hit.pointIndex}` : null;
     if (key === lastHoverKey) return;
     lastHoverKey = key;
-    onhover?.(hit);
+    onhover?.(hit, { shift });
   }
 
   function onPointerMove(e: PointerEvent): void {
@@ -352,7 +357,7 @@
         // same time as the marker offers a different one.
         const hit = alert ? null : hitAt(px, py);
         hovering = alert !== null || hit !== null;
-        reportHover(hit);
+        reportHover(hit, e.shiftKey);
       }
       return;
     }

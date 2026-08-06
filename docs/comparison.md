@@ -86,6 +86,7 @@ so there `sideOrder` returns 0 and click order stands. The pane reports
 | click a dot | select it |
 | shift-click a dot | pin it as the comparison's other end; shift-clicking it again unpins |
 | hover a dot (with a selection) | preview the comparison a shift-click would pin |
+| hold shift while hovering | the ring goes dashed: that click pins rather than selects |
 | <kbd>C</kbd> on the focused graph | pin the *selected* point, then walk away from it with the arrow keys |
 | <kbd>P</kbd>, or "Compare with the previous push" in the pane | pin the push before the selected one; again unpins |
 | click an alert marker | select the alerted push *and* pin the one perfherder measured against, in one history entry |
@@ -121,18 +122,37 @@ away a mark the user set deliberately whenever they walk left and then right.
 at once makes the commoner action — drop the comparison, keep looking at the
 point — unreachable.
 
-Three ring styles on the graph, since three highlights can be on screen at
-once: filled with a solid ring for the selection, filled and dashed for the
-pin, hollow and dashed for the hover. The hover is provisional, and a filled
+Three highlights can be on screen at once, and they're drawn independently:
+filled with a solid ring for the selection, filled and dashed for the pin,
+hollow for the hover. The hover is hollow because it is provisional — a filled
 disc following the pointer reads as a selection that keeps moving.
 
-**With nothing selected the hover still gets a ring, hollow and solid.** There
-is no comparison to preview yet — `comparisonSource` is null, and the pane
-declines — but the graph would otherwise give no feedback at all until after
-the first click, which is exactly when the dots most need to look like targets.
-Solid rather than dashed because the dashes mean "provisional second end of a
-comparison", and a click here would select, not compare. It can't be confused
-with the selection ring: that one is filled.
+**The hover ring answers one question: what does a click do right now.** Shift
+down and it is dashed — that click pins this dot as the comparison. Shift up
+and it is solid — that click selects it. Nothing else changes it, so the rule
+holds with nothing selected, with a selection, and with a comparison already
+pinned. `chartDraw.ts::hoverRingKind` is the whole of it, and it returns null
+only when there is no dot under the pointer.
+
+It used to key off `comparisonSource` instead, which made the ring answer a
+different question in each state — and no question at all in one. With a
+comparison pinned the hovered dot got no ring whatsoever, in the single state
+where a click has two possible outcomes and so needs the feedback most. A
+tester found it; the shape of the bug was that the ring was doing two jobs
+(what a click does, and what the pane is previewing) through one channel.
+
+Job two now sits entirely with the pane, which was already equipped for it: a
+hovered comparison card has a dashed border, a quieter fill and a "shift-click
+to pin" hint. So the ring is what a click *will* do and the card is what you
+*would* get — one channel each. The cost is that the dashed card no longer
+always pairs with a dashed ring; with shift up you get a dashed card beside a
+solid ring, which is correct, because pinning it takes shift.
+
+**Shift is tracked from two sources**, because either alone has a hole:
+`onhover` reports `e.shiftKey` so shift held *before* the pointer reached the
+graph counts, and window `keydown`/`keyup` catch shift pressed or released
+while the pointer sits still, which no pointer event would report. Window
+`blur` resets it, or tabbing away leaves the graph believing it is still held.
 
 **The hover path is cheap enough to run on pointer moves.** Measured with four
 series over 90 days, sweeping the pointer across dots: the whole
