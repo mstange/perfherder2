@@ -666,6 +666,20 @@ Light and dark, defaulting to the OS. The three moving parts:
   `system`.** Rewriting it to whichever theme it currently resolves to would
   silently stop it following the OS.
 
+**The control has three preferences but two states.** `system` is not a third
+*appearance* — at any moment it looks exactly like light or exactly like dark, so
+a three-segment control spends a third of itself distinguishing two things that
+are on screen identical. [ThemeToggle.svelte](../src/lib/ThemeToggle.svelte) is
+one `role="switch"` button showing the **resolved** theme, and the preference is
+inferred from the destination by `nextThemePreference`: an override is stored only
+when it actually overrides, so light → dark → light lands back on `system` rather
+than leaving a redundant `light` behind, and the round trip is pinned in
+`theme.test.ts` (one click always flips what's on screen; two always restore it).
+Reasoning follows [Lea Verou on dark mode
+toggles](https://lea.verou.me/blog/2026/dark-mode-toggles/). The cost is that
+"am I following the OS?" is no longer visible; it's in the `title`, because it
+changes nothing about what the next click does.
+
 `color-scheme` is set alongside the tokens rather than left as `light dark`,
 which is what gets form controls, scrollbars and default link colors to match.
 It has to be pinned per theme for the same reason as above: on `light dark` the

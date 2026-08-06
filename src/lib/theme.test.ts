@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   CHART_PALETTES,
   isThemePreference,
+  nextThemePreference,
   parseThemePreference,
   resolveTheme,
   THEME_PREFERENCES,
@@ -40,6 +41,46 @@ describe('resolveTheme', () => {
     // light must not be overridden by the OS.
     expect(resolveTheme('light', true)).toBe('light');
     expect(resolveTheme('dark', false)).toBe('dark');
+  });
+});
+
+describe('nextThemePreference', () => {
+  it('leaves "system" when the toggle disagrees with the OS', () => {
+    // The only way to get an override: the user wants the theme the OS isn't
+    // asking for.
+    expect(nextThemePreference('system', true)).toBe('light');
+    expect(nextThemePreference('system', false)).toBe('dark');
+  });
+
+  it('returns to "system" when the destination is what the OS asks for', () => {
+    // Storing 'dark' here would look identical today and diverge the moment the
+    // OS flips, so the preference that keeps following it wins.
+    expect(nextThemePreference('light', true)).toBe('system');
+    expect(nextThemePreference('dark', false)).toBe('system');
+  });
+
+  it('keeps overriding when the OS already agrees with the current theme', () => {
+    // A forced light theme on a light desktop: the destination is dark, which is
+    // not what the OS asks for, so it has to be stored explicitly.
+    expect(nextThemePreference('light', false)).toBe('dark');
+    expect(nextThemePreference('dark', true)).toBe('light');
+  });
+
+  it('always flips the resolved theme, and round-trips to "system"', () => {
+    // The two properties the control's two visual states rest on: one click
+    // always changes what's on screen, and two clicks always put it back —
+    // without leaving a redundant override behind.
+    for (const systemPrefersDark of [true, false]) {
+      for (const preference of THEME_PREFERENCES) {
+        const before = resolveTheme(preference, systemPrefersDark);
+        const once = nextThemePreference(preference, systemPrefersDark);
+        expect(resolveTheme(once, systemPrefersDark)).not.toBe(before);
+        const twice = nextThemePreference(once, systemPrefersDark);
+        expect(resolveTheme(twice, systemPrefersDark)).toBe(before);
+      }
+    }
+    expect(nextThemePreference(nextThemePreference('system', true), true)).toBe('system');
+    expect(nextThemePreference(nextThemePreference('system', false), false)).toBe('system');
   });
 });
 

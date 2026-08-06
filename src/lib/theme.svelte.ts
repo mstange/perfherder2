@@ -10,6 +10,7 @@
 
 import {
   CHART_PALETTES,
+  nextThemePreference,
   parseThemePreference,
   resolveTheme,
   THEME_STORAGE_KEY,
@@ -50,6 +51,13 @@ class ThemeController {
     this.#preference = preference;
     writeStored(preference);
     this.#apply();
+  }
+
+  // Switch to the opposite of what's currently on screen. The system query
+  // stays inside the controller — the toggle asks for "the other theme", not for
+  // a specific preference, so it never has to know whether the OS agrees.
+  toggle(): void {
+    this.setPreference(nextThemePreference(this.#preference, this.#systemPrefersDark));
   }
 
   // Applied imperatively from the three places that can change the outcome,

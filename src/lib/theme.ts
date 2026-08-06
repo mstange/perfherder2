@@ -38,6 +38,26 @@ export function resolveTheme(preference: ThemePreference, systemPrefersDark: boo
   return preference;
 }
 
+// What flipping the toggle should store, given what's on screen now.
+//
+// The control shows the *resolved* theme and switches to the other one, so the
+// destination is never in doubt. The subtlety is which preference expresses it:
+// when the destination is what the OS asks for, "system" and the explicit theme
+// look identical today but not tomorrow, and the one that keeps following the OS
+// is the better default. So an override only gets stored when it actually
+// overrides something — which also means the round trip
+// light → dark → light lands back on "system" rather than leaving a redundant
+// override behind. See https://lea.verou.me/blog/2026/dark-mode-toggles/.
+export function nextThemePreference(
+  preference: ThemePreference,
+  systemPrefersDark: boolean,
+): ThemePreference {
+  const resolved = resolveTheme(preference, systemPrefersDark);
+  const destination: Theme = resolved === 'dark' ? 'light' : 'dark';
+  const systemTheme: Theme = systemPrefersDark ? 'dark' : 'light';
+  return destination === systemTheme ? 'system' : destination;
+}
+
 // ---------------------------------------------------------------------------
 // Canvas palette
 // ---------------------------------------------------------------------------
