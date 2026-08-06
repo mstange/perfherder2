@@ -15,9 +15,9 @@
 
   import { theme } from './theme.svelte';
 
-  // Glyphs, not words: the control sits in a header row that already carries the
-  // range presets and the zoom state, and it wraps at narrow widths. The full
-  // name goes in `title` and `aria-label`.
+  // Glyphs, not words: the control shares the series pane's footer with "Remove
+  // all", inside a 280px column, and a spelled-out label would crowd it. The
+  // full name goes in `title` and `aria-label`.
   const isDark = $derived(theme.resolved === 'dark');
   const destination = $derived(isDark ? 'light' : 'dark');
   // The tooltip is where the third state goes. Worth saying, because it's the

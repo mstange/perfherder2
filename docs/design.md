@@ -725,6 +725,14 @@ toggles](https://lea.verou.me/blog/2026/dark-mode-toggles/). The cost is that
 "am I following the OS?" is no longer visible; it's in the `title`, because it
 changes nothing about what the next click does.
 
+**It lives in the series pane's footer**, not in the graph header. The app has no
+toolbar of its own, and the graph header was the only always-on-screen chrome —
+but it is a row of *graph viewport* controls (range presets, replicate drawing,
+zoom), and a global appearance preference in that run reads as a fourth one. The
+header also wraps, so the toggle's position was a function of window width. The
+footer is unconditional for this reason: it renders with no series and therefore
+nothing to remove, so the toggle keeps one fixed corner at every width.
+
 `color-scheme` is set alongside the tokens rather than left as `light dark`,
 which is what gets form controls, scrollbars and default link colors to match.
 It has to be pinned per theme for the same reason as above: on `light dark` the

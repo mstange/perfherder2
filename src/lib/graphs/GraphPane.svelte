@@ -6,7 +6,6 @@
   import type { Highlight } from './chartDraw';
   import { jitterForSelection } from './graphData';
   import ScatterChart, { type ChartHit } from './ScatterChart.svelte';
-  import ThemeToggle from '../shared/ThemeToggle.svelte';
   import type { SelectedPoint } from '../urlState';
   import { describeSpan, matchingPreset, RANGE_PRESETS } from '../shared/timeRange';
 
@@ -157,10 +156,6 @@
       <button type="button" class="btn btn-compact" disabled={!app.zoom} onclick={() => app.resetZoom()}>
         Reset zoom
       </button>
-      <!-- The app has no toolbar of its own; this header is the only chrome
-           that's always on screen, so the theme control lives at the end of
-           it. Fixed width (see ThemeToggle), so it can't reflow the row. -->
-      <ThemeToggle />
     </div>
   </header>
 

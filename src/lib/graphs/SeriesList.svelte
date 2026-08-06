@@ -7,6 +7,7 @@
 
   import { flip } from 'svelte/animate';
   import type { AppState } from './appState.svelte';
+  import ThemeToggle from '../shared/ThemeToggle.svelte';
   import {
     autoScrollDelta,
     clampDy,
@@ -337,11 +338,20 @@
     {/each}
   </div>
 
-  {#if app.series.length > 0}
-    <footer>
+  <!-- Always rendered, even with no series and so nothing to remove: it is the
+       theme control's home, and that has to be in the same place whatever the
+       app is showing. Keeping it mounted also stops the pane's bottom edge
+       from jumping when the last series goes away. -->
+  <footer>
+    {#if app.series.length > 0}
       <button type="button" class="btn" onclick={() => app.clearSeries()}>Remove all</button>
-    </footer>
-  {/if}
+    {/if}
+    <!-- An appearance preference, not a series control — which is exactly why
+         it sits down here rather than in a data toolbar. The bottom corner is
+         where settings are looked for, it is on screen at every width, and
+         unlike the graph header (which wraps) its position doesn't move. -->
+    <ThemeToggle />
+  </footer>
 </aside>
 
 <style>
@@ -545,8 +555,18 @@
     grid-area: remove;
   }
   footer {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
     padding: 8px 12px;
     border-top: 1px solid var(--border-default);
+  }
+  /* Pins the theme toggle to the trailing edge, and leaves it there on its own
+     when there is no series to remove. `justify-content: space-between` would
+     slide it back to the leading edge in that case. */
+  footer .btn {
+    margin-right: auto;
   }
   /* Chrome comes from `.btn` in app.css; only the square-icon size is local. */
   button.icon {
