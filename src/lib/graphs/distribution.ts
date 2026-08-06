@@ -278,10 +278,11 @@ export const STRIP_ROW_HEIGHT = 20;
 // `reserveBand` overrides that, for the case where the height would otherwise
 // change *under the pointer*. A series whose pushes straddle MIN_CURVE_VALUES —
 // most have enough replicates for a curve, one has three — would grow and shrink
-// by 73px as a hover moved between them, and it is the pane's job to know that in
-// advance (AppState.selectionAxis) rather than discover it per hover. Left false
-// where every candidate pool is too small: an awsy series never draws a curve, and
-// a permanently empty band would be 73px of labelled nothing.
+// by 73px as a hover moved between them, and it is the pane's job to know that
+// in advance (AppState.selectionChart.reserveBand) rather than discover it per
+// hover. Left false where every candidate pool is too small: an awsy series
+// never draws a curve, and a permanently empty band would be 73px of labelled
+// nothing.
 export function distributionHeight(
   sideCount: number,
   hasCurves: boolean,

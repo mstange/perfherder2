@@ -4,7 +4,7 @@
 // Everything here is pure. The network lives in activityApi.ts, the cache and
 // the batching in pickerState.svelte.ts, the markup in AddSeriesPicker.svelte
 // — so every calculation below is testable without a DOM or a fetch. See
-// docs/superpowers/specs/2026-08-04-picker-run-activity-design.md.
+// docs/design.md, "Run activity is fetched for the visible window only".
 
 // How many signature ids may go into one /performance/data/ request.
 //
@@ -35,7 +35,7 @@ export type Activity =
 // the dependency runs the other way.
 export type ActivityDatumLike = { signature_id: number; push_timestamp: number };
 
-// `Series.key` is already the compound `${repo}|${id}` identity (see api.ts
+// `Series.key` is already the compound `${repo}|${id}` identity (see series.ts
 // for why the numeric id and not the aliasing hash). The interval belongs in
 // the key too, so changing the Time range misses rather than showing counts
 // for a window the user isn't looking at any more.
@@ -96,8 +96,8 @@ export function binCounts(
 // Two quirks of that endpoint are handled here, and only here:
 //
 //  - It keys the response by `signature_hash`, which aliases within a repo
-//    (two rows differing only by `application` share one — see api.ts). So a
-//    single bucket can hold datums for more than one requested series, and
+//    (two rows differing only by `application` share one — see series.ts). So
+//    a single bucket can hold datums for more than one requested series, and
 //    the keys are useless. Every datum carries its own `signature_id`; that
 //    is what we group on.
 //  - It omits signatures with no data in the window rather than returning

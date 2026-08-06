@@ -1,7 +1,7 @@
-// Same discipline as api.test.ts: stub `fetch`, assert the URL we build and
-// that the schema is actually enforced. The point of the schema tests is that
-// a shape change in treeherder must be loud, not silently absorbed — see
-// docs/design.md "Validating API responses".
+// Same discipline as signaturesApi.test.ts: stub `fetch`, assert the URL we
+// build and that the schema is actually enforced. The point of the schema
+// tests is that a shape change in treeherder must be loud, not silently
+// absorbed — see docs/design.md "Validating API responses".
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SchemaError } from '../shared/http';

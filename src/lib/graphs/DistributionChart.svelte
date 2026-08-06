@@ -19,7 +19,7 @@
     // Keep the density band's space even when nothing is drawn in it. The pane
     // sets this when some other pool the pointer could land on *does* have a
     // curve, so the chart doesn't change height under the reader — see
-    // AppState.selectionAxis.
+    // AppState.selectionChart.
     reserveBand?: boolean;
   };
   let { plot, unit = '', reserveBand = false }: Props = $props();
@@ -197,8 +197,8 @@
      dashed one for the baseline. Colors can be identical (one series across two
      pushes), so the dash is what carries the distinction.
 
-     DetailsPane's `.key` is the same rule, duplicated because Svelte scopes
-     styles per component. Change one, change the other. */
+     ComparisonSection's `.key` is the same rule, duplicated because Svelte
+     scopes styles per component. Change one, change the other. */
   .key {
     height: 0;
     margin-top: 6px;

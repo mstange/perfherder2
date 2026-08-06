@@ -1,11 +1,11 @@
 // Recorded real payloads, run through the schemas that guard them.
 //
 // The point is drift detection. The schemas are written against treeherder's
-// serializers (see the comments in api.ts / graphApi.ts), and hand-written
-// fixtures elsewhere in the suite can only ever confirm our own assumptions —
-// the `job_id: number` bug survived precisely because every fixture asserting
-// it was written from the same wrong belief. These files are unedited API
-// responses, trimmed to the interesting rows.
+// serializers (see the comments in signaturesApi.ts / graphApi.ts), and
+// hand-written fixtures elsewhere in the suite can only ever confirm our own
+// assumptions — the `job_id: number` bug survived precisely because every
+// fixture asserting it was written from the same wrong belief. These files are
+// unedited API responses, trimmed to the interesting rows.
 //
 // To refresh them (from the repo root; `interval=1209600` is 14 days):
 //

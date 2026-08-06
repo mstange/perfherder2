@@ -274,8 +274,8 @@ export function compareRows(
 // Subtest grouping and cache helpers
 
 // Group subtest rows by their parent's `key`. Series carries both `key` and
-// `parentKey` fields (composed at construction in api.ts::toSeries), so
-// consumers don't need to remember the `${repo}|${signatureHash}` recipe.
+// `parentKey` fields (composed at construction in series.ts::toSeries), so
+// consumers don't need to remember the `${repository}|${id}` recipe.
 export function groupChildrenByParent(
   rows: readonly Series[],
 ): Map<string, Series[]> {

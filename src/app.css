@@ -5,12 +5,12 @@
    one theme, and it will be the one unreadable thing on the screen in the other.
 
    The switch is a `data-theme` attribute on `<html>`, holding a *resolved*
-   theme: "light" or "dark", never "system". src/lib/theme.svelte.ts answers the
-   OS query in JS and writes the attribute; the inline script in index.html does
-   the same before first paint. So there is one dark block here rather than a
-   media query plus an attribute override, and nothing in CSS has to know that
-   "follow the OS" is even an option. See src/lib/theme.ts for why the graphs'
-   canvas palette is the one exception to all of this.
+   theme: "light" or "dark", never "system". src/lib/shared/theme.svelte.ts
+   answers the OS query in JS and writes the attribute; the inline script in
+   index.html does the same before first paint. So there is one dark block here
+   rather than a media query plus an attribute override, and nothing in CSS has
+   to know that "follow the OS" is even an option. See src/lib/shared/theme.ts
+   for why the graphs' canvas palette is the one exception to all of this.
 
    The values are GitHub Primer's light and dark scales, which is where the
    original hardcoded palette came from. */

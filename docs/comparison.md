@@ -192,7 +192,7 @@ Layout, top to bottom, in one canvas:
 - **Both sides share one x domain and one KDE grid.** Two curves drawn on
   separate domains cannot be compared by eye, which is the entire point.
 - **That domain is anchored to the selection, not fitted to the pair on screen**
-  (`distribution.ts::stableAxis` → `AppState.selectionAxis` →
+  (`distribution.ts::stableAxis` → `AppState.selectionChart` →
   `buildDistribution`'s `axis` argument). The pane redraws on every hover, and
   fitting the axis to the two pools meant the *selected* side — the one thing the
   reader is holding still — moved under the pointer on every dot. Measured over one
@@ -243,7 +243,7 @@ Layout, top to bottom, in one canvas:
   graphs-todo.md.
 - **The band keeps its space when a hover could produce a curve** even if neither
   pool on screen has one (`distributionHeight`'s `reserveBand`, from
-  `selectionAxis`). A series whose pushes straddle `MIN_CURVE_VALUES` — most with
+  `selectionChart`). A series whose pushes straddle `MIN_CURVE_VALUES` — most with
   enough replicates for a curve, one with three — otherwise grew and shrank by 73px
   as the pointer moved between them. This half *does* scan the zoom window, since
   what matters is whether a pool the pointer can reach has a curve. Where none can

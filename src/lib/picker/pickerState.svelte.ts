@@ -1,7 +1,7 @@
 // The reactive core of the picker — all `$state` / `$derived` cells, plus the
 // actions and effects that mutate them. Kept out of the .svelte file so the
 // template stays a thin renderer and every piece here is exercisable without
-// a DOM (see pickerState.test.ts for the seams that need pinning).
+// a DOM (see pickerState.test.svelte.ts for the seams that need pinning).
 //
 // State-ownership rule (see docs/design.md): if a new piece of UI needs to
 // remember something across renders, it belongs on this class. Local

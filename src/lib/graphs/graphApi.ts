@@ -12,9 +12,9 @@ import * as v from 'valibot';
 import { API_BASE, fetchJson } from '../shared/http';
 
 // ---- Schemas -------------------------------------------------------------
-// As in api.ts: types are inferred, `v.object` tolerates fields we don't
-// declare, and nullability comes from treeherder's serializers rather than
-// from whatever a sample happened to contain.
+// As in signaturesApi.ts: types are inferred, `v.object` tolerates fields we
+// don't declare, and nullability comes from treeherder's serializers rather
+// than from whatever a sample happened to contain.
 
 // One row of `data[]` in a performance/summary response. With
 // `replicates=true` the backend emits one of these *per replicate value*, all
