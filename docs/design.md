@@ -729,6 +729,43 @@ key and the resolution rule in three lines; keep them in step.
 private mode. Both ends swallow it — the session just doesn't remember the
 choice, which is not worth taking the app down for.
 
+### One button, defined once
+
+`.btn` in [app.css](../src/app.css) is the app's button chrome — border,
+radius, canvas fill, hover, disabled — plus `.btn-compact` for the toolbar
+size and two fills, `.btn-primary` (accent) and `.btn-confirm` (success).
+
+It exists because the same six-line recipe had been copied into five
+components, and the copies had drifted: paddings of `4px 12px`, `4px 10px`,
+`3px 8px`, `2px 8px` and `1px 6px`, and a disabled state that was
+`opacity: 0.4` in the series list, `0.45` in the graph header and a full color
+swap in the picker — with three of those panes on screen simultaneously. The
+same rule as for colors applies, and for the same reason: a value that exists
+in five places is five values.
+
+Two things to know before changing it:
+
+- **It's opt-in (`class="btn"`), not a bare `button` rule.** Most buttons in
+  this app are *not* this shape — badges, swatches, sort headers, disclosure
+  triangles, chip removers — and they outnumber the plain ones, so a default
+  would mostly be something to undo. It was exactly such a default that made a
+  series swatch lose its color on hover: SeriesList's component-wide
+  `button:hover` outranked `.swatch`, which never declared a hover of its own,
+  so pointing at a series greyed out the one thing identifying it.
+- **A component rule that has to beat `.btn:hover` needs `.btn` in its own
+  selector.** `.btn:hover:not(:disabled)` is (0,3,0); a plain
+  `.replicates li.selected button` is (0,2,2) and loses. The selected
+  replicate chip in [DetailsPane](../src/lib/DetailsPane.svelte) names
+  `button.btn` for that reason. (Svelte's scoping class covers this for most
+  component selectors — but not for one that was already only two classes
+  deep.)
+
+Sizes used in one place only stay in that component, composed on top of
+`.btn` so the chrome is still defined once: the picker's square close button,
+the series list's icon buttons, the details pane's inline `.unpin` /
+`.cmp-prev`, and the replicate chips, whose width is a measured value (see the
+comment above `.replicates`) rather than a size anyone else should reuse.
+
 ### Layout stability
 
 Several places take care to not shift the list under the user's cursor:

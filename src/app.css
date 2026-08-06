@@ -217,6 +217,71 @@ button {
   font: inherit;
 }
 
+/* Buttons.
+   --------
+   `.btn` is the app's one button chrome. It used to be copied into every
+   component that needed a button — five near-identical blocks whose paddings
+   had drifted to 4px 12px, 4px 10px, 3px 8px, 2px 8px and 1px 6px, and whose
+   disabled state was `opacity: 0.4` in one pane, `0.45` in the next and a
+   color swap in the third. All three panes are on screen at once.
+
+   Opt *in*, rather than a bare `button` rule, because most buttons in this app
+   are not this shape: badges, swatches, sort headers, disclosure triangles and
+   chip removers all want their own chrome, and they outnumber the plain ones.
+   A default they each had to undo is how the series swatch ended up losing its
+   color on hover — SeriesList's component-wide `button:hover` outranked
+   `.swatch`, so pointing at a series greyed out the one thing identifying it.
+
+   Sizes: `.btn` is the default; `.btn-compact` is the toolbar size. Anything
+   smaller is used in one place only and stays there, composed on top of `.btn`
+   so the chrome is still defined once. Two fills, deliberately distinct rather
+   than two classes both called `primary`: `.btn-primary` (accent) is the
+   action that takes you somewhere, `.btn-confirm` (success) is the one that
+   commits what you picked. */
+.btn {
+  font: inherit;
+  padding: 4px 10px;
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+  background: var(--bg-canvas);
+  color: inherit;
+  cursor: pointer;
+}
+.btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+/* Outline buttons fade; the filled ones below swap color instead, because a
+   translucent fill reads as a rendering glitch rather than as unavailable. */
+.btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.btn-compact {
+  padding: 3px 8px;
+}
+.btn-primary {
+  background: var(--accent-emphasis);
+  border-color: var(--accent-emphasis);
+  color: var(--fg-on-emphasis);
+}
+.btn-primary:hover:not(:disabled) {
+  background: var(--accent-emphasis-hover);
+}
+.btn-confirm {
+  background: var(--success-emphasis);
+  border-color: var(--success-emphasis);
+  color: var(--fg-on-emphasis);
+}
+.btn-confirm:hover:not(:disabled) {
+  background: var(--success-emphasis-hover);
+}
+.btn-confirm:disabled {
+  opacity: 1;
+  background: var(--success-emphasis-disabled);
+  border-color: var(--success-emphasis-disabled);
+  color: var(--success-fg-on-emphasis-disabled);
+}
+
 /* The UA's link colors do follow `color-scheme`, but to a purple-blue that
    matches nothing else here. Ours is the accent the rest of the app uses. */
 a {

@@ -120,6 +120,7 @@
       {#each RANGE_PRESETS as preset (preset.seconds)}
         <button
           type="button"
+          class="btn btn-compact"
           class:active={activePreset?.seconds === preset.seconds}
           onclick={() => app.setRangePreset(preset.seconds)}
         >
@@ -153,7 +154,7 @@
       <span class="zoom-label" class:hint={!app.zoom}>
         {app.zoom ? `Zoomed: ${describeSpan(app.zoom)}` : 'Drag the overview to zoom'}
       </span>
-      <button type="button" disabled={!app.zoom} onclick={() => app.resetZoom()}>
+      <button type="button" class="btn btn-compact" disabled={!app.zoom} onclick={() => app.resetZoom()}>
         Reset zoom
       </button>
       <!-- The app has no toolbar of its own; this header is the only chrome
@@ -172,7 +173,7 @@
           </div>
         {/each}
       </div>
-      <button type="button" onclick={() => app.retryAllFailed()}>Retry</button>
+      <button type="button" class="btn btn-compact" onclick={() => app.retryAllFailed()}>Retry</button>
     </div>
   {/if}
 
@@ -289,13 +290,6 @@
     text-align: right;
     font-variant-numeric: tabular-nums;
   }
-  button:disabled {
-    opacity: 0.45;
-    cursor: default;
-  }
-  button:disabled:hover {
-    background: var(--bg-canvas);
-  }
   .errors {
     display: flex;
     align-items: flex-start;
@@ -311,17 +305,7 @@
     min-width: 0;
     overflow-wrap: anywhere;
   }
-  button {
-    font: inherit;
-    padding: 3px 8px;
-    border: 1px solid var(--border-default);
-    border-radius: 6px;
-    background: var(--bg-canvas);
-    cursor: pointer;
-  }
-  button:hover {
-    background: var(--bg-hover);
-  }
+  /* Chrome comes from `.btn` in app.css; only the pressed state is local. */
   button.active {
     background: var(--accent-emphasis);
     border-color: var(--accent-emphasis);

@@ -198,14 +198,18 @@
       {#if app.selectionHiddenBySeries}
         <p class="offscreen">
           This series is hidden.
-          <button type="button" onclick={() => app.toggleSeriesVisibility(sel.entry.ref)}>
+          <button
+            type="button"
+            class="btn btn-compact"
+            onclick={() => app.toggleSeriesVisibility(sel.entry.ref)}
+          >
             Show it
           </button>
         </p>
       {:else if !app.selectionInView}
         <p class="offscreen">
           This point is outside the zoomed range.
-          <button type="button" onclick={() => app.resetZoom()}>Show it</button>
+          <button type="button" class="btn btn-compact" onclick={() => app.resetZoom()}>Show it</button>
         </p>
       {/if}
       <!-- The full attribute set, spelled out and labelled. The series list
@@ -257,7 +261,7 @@
             {#if app.comparisonSource === 'pinned'}
               <button
                 type="button"
-                class="unpin"
+                class="btn unpin"
                 title="Stop comparing"
                 onclick={() => app.clearComparison()}>Unpin</button
               >
@@ -418,7 +422,7 @@
              rather than look like a comparison that failed. -->
         <p class="cmp-hint marked">
           <span>Marked for comparison — now move to another point.</span>
-          <button type="button" class="unpin" onclick={() => app.clearComparison()}>
+          <button type="button" class="btn unpin" onclick={() => app.clearComparison()}>
             Unmark
           </button>
         </p>
@@ -435,7 +439,7 @@
           {#if app.previousPush}
             <button
               type="button"
-              class="cmp-prev"
+              class="btn cmp-prev"
               title="Pin the push before this one as the comparison (P, with the graph focused)"
               onclick={() => app.compareWithPreviousPush()}
             >
@@ -620,6 +624,7 @@
                     <li class:selected={i === group.selectedIndex}>
                       <button
                         type="button"
+                        class="btn"
                         onclick={() =>
                           app.selectPoint({
                             repository: repo,
@@ -823,16 +828,7 @@
     font-size: 12px;
   }
   .offscreen button {
-    font: inherit;
     flex: none;
-    padding: 2px 8px;
-    border: 1px solid var(--border-default);
-    border-radius: 6px;
-    background: var(--bg-canvas);
-    cursor: pointer;
-  }
-  .offscreen button:hover {
-    background: var(--bg-hover);
   }
   .scroll {
     flex: 1;
@@ -999,22 +995,21 @@
     margin: 4px 0 0;
     padding: 0;
   }
+  /* Chrome from `.btn`; the size is this list's own — see the measurement
+     above, which is what decides how much of a retriggered push fits. */
   .replicates button {
-    font: inherit;
     font-size: 12px;
     padding: 1px 4px;
-    border: 1px solid var(--border-default);
     border-radius: 4px;
-    background: var(--bg-canvas);
-    cursor: pointer;
     /* Aligned digits, so a run's spread reads down the column the wrapping
        happens to make of it. */
     font-variant-numeric: tabular-nums;
   }
-  .replicates button:hover {
-    background: var(--bg-hover);
-  }
-  .replicates li.selected button {
+  /* `.btn` in the selector, not just on the element: it has to outrank
+     `.btn:hover` in app.css, or pointing at the selected value drops its
+     accent fill. */
+  .replicates li.selected button.btn,
+  .replicates li.selected button.btn:hover {
     border-color: var(--accent-emphasis);
     background: var(--accent-subtle);
   }
@@ -1055,19 +1050,12 @@
   .cmp-head .muted {
     font-size: 11px;
   }
+  /* Smaller than `.btn-compact`: these sit inline in a sentence rather than
+     in a toolbar. Used nowhere else, so the size stays here. */
   .unpin,
   .cmp-prev {
-    font: inherit;
     font-size: 11px;
     padding: 1px 6px;
-    border: 1px solid var(--border-default);
-    border-radius: 6px;
-    background: var(--bg-canvas);
-    cursor: pointer;
-  }
-  .unpin:hover,
-  .cmp-prev:hover {
-    background: var(--bg-hover);
   }
   .cmp-kind {
     margin: 0 0 6px;

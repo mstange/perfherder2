@@ -204,7 +204,7 @@
 <aside class="series-list">
   <header>
     <h2>Series</h2>
-    <button type="button" class="primary" onclick={() => app.setPickerOpen(true)}>
+    <button type="button" class="btn btn-primary" onclick={() => app.setPickerOpen(true)}>
       Add series…
     </button>
   </header>
@@ -311,7 +311,7 @@
           >
           <button
             type="button"
-            class="icon up"
+            class="btn icon up"
             title="Move up"
             aria-label="Move series up"
             disabled={i === 0}
@@ -319,7 +319,7 @@
           >
           <button
             type="button"
-            class="icon down"
+            class="btn icon down"
             title="Move down"
             aria-label="Move series down"
             disabled={i === app.series.length - 1}
@@ -327,7 +327,7 @@
           >
           <button
             type="button"
-            class="icon remove"
+            class="btn icon remove"
             title="Remove series"
             aria-label="Remove series"
             onclick={() => app.removeSeries(entry.ref)}>×</button
@@ -339,7 +339,7 @@
 
   {#if app.series.length > 0}
     <footer>
-      <button type="button" onclick={() => app.clearSeries()}>Remove all</button>
+      <button type="button" class="btn" onclick={() => app.clearSeries()}>Remove all</button>
     </footer>
   {/if}
 </aside>
@@ -548,29 +548,7 @@
     padding: 8px 12px;
     border-top: 1px solid var(--border-default);
   }
-  button {
-    font: inherit;
-    padding: 4px 10px;
-    border: 1px solid var(--border-default);
-    border-radius: 6px;
-    background: var(--bg-canvas);
-    cursor: pointer;
-  }
-  button:hover:not(:disabled) {
-    background: var(--bg-hover);
-  }
-  button:disabled {
-    opacity: 0.4;
-    cursor: default;
-  }
-  button.primary {
-    background: var(--accent-emphasis);
-    border-color: var(--accent-emphasis);
-    color: var(--fg-on-emphasis);
-  }
-  button.primary:hover {
-    background: var(--accent-emphasis-hover);
-  }
+  /* Chrome comes from `.btn` in app.css; only the square-icon size is local. */
   button.icon {
     padding: 0;
     width: 20px;

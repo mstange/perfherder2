@@ -197,7 +197,7 @@
       </p>
     </div>
     {#if onclose}
-      <button type="button" class="close" onclick={onclose} aria-label="Close">×</button>
+      <button type="button" class="btn close" onclick={onclose} aria-label="Close">×</button>
     {/if}
   </header>
 
@@ -267,12 +267,13 @@
     </span>
     <button
       type="button"
+      class="btn"
       onclick={() => picker.clearPicked()}
       disabled={picker.picked.size === 0}>Clear</button
     >
     <button
       type="button"
-      class="primary"
+      class="btn btn-confirm"
       onclick={addPicked}
       disabled={picker.picked.size === 0}>Add {picker.picked.size}</button
     >
@@ -601,6 +602,7 @@
     margin: 0 0 4px;
     font-size: 20px;
   }
+  /* Square, and sized rather than padded; the rest comes from `.btn`. */
   .close {
     flex: none;
     width: 28px;
@@ -608,13 +610,6 @@
     padding: 0;
     font-size: 18px;
     line-height: 1;
-    border: 1px solid var(--border-default);
-    border-radius: 6px;
-    background: var(--bg-canvas);
-    cursor: pointer;
-  }
-  .close:hover {
-    background: var(--bg-hover);
   }
   .hint {
     margin: 0;
@@ -731,33 +726,6 @@
   .loading-note {
     color: var(--fg-muted);
     font-style: italic;
-  }
-  button {
-    padding: 4px 12px;
-    font: inherit;
-    background: var(--bg-canvas);
-    border: 1px solid var(--border-default);
-    border-radius: 6px;
-    cursor: pointer;
-  }
-  button:disabled {
-    color: var(--fg-subtle);
-    background: var(--bg-subtle);
-    border-color: var(--border-default);
-    cursor: not-allowed;
-  }
-  button.primary {
-    background: var(--success-emphasis);
-    color: var(--fg-on-emphasis);
-    border-color: var(--success-emphasis);
-  }
-  button.primary:hover:not(:disabled) {
-    background: var(--success-emphasis-hover);
-  }
-  button.primary:disabled {
-    background: var(--success-emphasis-disabled);
-    color: var(--success-fg-on-emphasis-disabled);
-    border-color: var(--success-emphasis-disabled);
   }
   /* The one scroller in the dialog: it absorbs all the leftover height
      (`flex: 1`) rather than sizing to its (possibly 25k-row) content. The
