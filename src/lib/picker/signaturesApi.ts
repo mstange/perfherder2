@@ -7,7 +7,7 @@
 // over graphApi.ts and alerts.ts over alertsApi.ts.
 
 import * as v from 'valibot';
-import { API_BASE as BASE, fetchJson } from './http';
+import { API_BASE as BASE, fetchJson } from '../shared/http';
 
 // ---- Schemas -------------------------------------------------------------
 // Types are inferred from these, never written twice. `v.object` ignores keys

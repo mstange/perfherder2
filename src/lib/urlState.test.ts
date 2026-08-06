@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MEAN_REPLICATE } from './graphData';
+import { MEAN_REPLICATE } from './graphs/graphData';
 import {
   EMPTY_PICKER_VIEW,
   EMPTY_VIEW_STATE,

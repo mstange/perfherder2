@@ -4,12 +4,12 @@
   // table, and mounting it lazily keeps its multi-megabyte signature fetch off
   // the critical path for someone opening a shared graph link.
 
-  import AddSeriesPicker from './lib/AddSeriesPicker.svelte';
-  import DetailsPane from './lib/DetailsPane.svelte';
-  import GraphPane from './lib/GraphPane.svelte';
-  import SeriesList from './lib/SeriesList.svelte';
-  import { AppState } from './lib/appState.svelte';
-  import type { Series } from './lib/series';
+  import AddSeriesPicker from './lib/picker/AddSeriesPicker.svelte';
+  import DetailsPane from './lib/graphs/DetailsPane.svelte';
+  import GraphPane from './lib/graphs/GraphPane.svelte';
+  import SeriesList from './lib/graphs/SeriesList.svelte';
+  import { AppState } from './lib/graphs/appState.svelte';
+  import type { Series } from './lib/picker/series';
 
   const app = new AppState(location.search);
 

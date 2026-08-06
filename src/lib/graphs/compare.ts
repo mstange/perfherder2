@@ -29,7 +29,7 @@ import {
   perfCompareUrl,
   pushLogRangeUrl,
   type RepoLinkInfo,
-} from './links';
+} from '../shared/links';
 import {
   changeDirection,
   mannWhitneyU,
@@ -38,7 +38,7 @@ import {
   type ChangeDirection,
   type MannWhitneyResult,
   type PoolSummary,
-} from './stats';
+} from '../shared/stats';
 
 // One clicked point, with as much of its series as a comparison needs. Built
 // from an `AppState.Selection` — kept structural rather than importing that type

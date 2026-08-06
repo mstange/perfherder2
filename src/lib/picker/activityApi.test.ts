@@ -4,7 +4,7 @@
 // docs/design.md "Validating API responses".
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { SchemaError } from './http';
+import { SchemaError } from '../shared/http';
 import { activityDataUrl, fetchActivityData } from './activityApi';
 
 afterEach(() => {

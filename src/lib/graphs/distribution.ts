@@ -7,7 +7,7 @@
 // job (see docs/comparison.md). This module only knows it has one or two lists
 // of numbers to describe on a shared axis.
 
-import { jitterAt, makeScale, padDomain, type Range, type Scale } from './chart';
+import { jitterAt, makeScale, padDomain, type Range, type Scale } from '../shared/chart';
 import {
   computeModeInfo,
   EMPTY_MODE_INFO,
@@ -17,7 +17,7 @@ import {
   silvermanBandwidth,
   type ModeInfo,
 } from './kde';
-import { summarize, type PoolSummary } from './stats';
+import { summarize, type PoolSummary } from '../shared/stats';
 
 // Grid resolution for every curve. 256 is enough to place a mode to within a
 // pixel at pane width, and — unlike PerfCompare's 1024 — doesn't need to be a

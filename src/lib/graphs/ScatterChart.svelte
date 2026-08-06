@@ -7,10 +7,10 @@
   // pointer events only — the arithmetic is in chart.ts, the drawing in
   // chartDraw.ts.
 
-  import { hitTestAll, makeGeometry, makeJitterScale, type Padding, type Range } from './chart';
+  import { hitTestAll, makeGeometry, makeJitterScale, type Padding, type Range } from '../shared/chart';
   import { drawBrush, drawChart, drawHighlights, type Highlight } from './chartDraw';
   import type { SeriesEntry } from './appState.svelte';
-  import { theme } from './theme.svelte';
+  import { theme } from '../shared/theme.svelte';
 
   type Span = { start: number; end: number };
 

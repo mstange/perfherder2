@@ -6,9 +6,9 @@
   import type { Highlight } from './chartDraw';
   import { jitterForSelection } from './graphData';
   import ScatterChart, { type ChartHit } from './ScatterChart.svelte';
-  import ThemeToggle from './ThemeToggle.svelte';
-  import type { SelectedPoint } from './urlState';
-  import { describeSpan, matchingPreset, RANGE_PRESETS } from './timeRange';
+  import ThemeToggle from '../shared/ThemeToggle.svelte';
+  import type { SelectedPoint } from '../urlState';
+  import { describeSpan, matchingPreset, RANGE_PRESETS } from '../shared/timeRange';
 
   type Props = { app: AppState };
   let { app }: Props = $props();

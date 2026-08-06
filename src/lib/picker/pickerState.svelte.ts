@@ -37,7 +37,7 @@ import {
   type SortColumn,
   type SortState,
 } from './filter';
-import type { PickerViewState } from './urlState';
+import type { PickerViewState } from '../urlState';
 
 export type ExpansionOverride = 'user-open' | 'user-closed';
 

@@ -25,7 +25,7 @@ import {
   unionRange,
   valueTicks,
 } from './chart';
-import type { SeriesPoint } from './graphData';
+import type { SeriesPoint } from '../graphs/graphData';
 
 const DAY = 86400000;
 const HOUR = 3600000;

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { buildOptionMap, type OptionCollection, type RawSignature } from './signaturesApi';
 import { toSeries } from './series';
-import { seriesKey } from './graphData';
+import { seriesKey } from '../graphs/graphData';
 
 const frameworks = new Map<number, string>([
   [1, 'talos'],

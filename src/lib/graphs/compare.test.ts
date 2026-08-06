@@ -8,7 +8,7 @@ import {
   type CompareSide,
 } from './compare';
 import { MEAN_REPLICATE, type PushGroup, type Run, type SeriesMeta } from './graphData';
-import type { RepoLinkInfo } from './links';
+import type { RepoLinkInfo } from '../shared/links';
 
 const DAY = 86400000;
 

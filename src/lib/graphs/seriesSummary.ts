@@ -7,7 +7,7 @@
 // every series shares into a single header and leaves each card with nothing
 // but its own distinguishing attributes.
 
-import type { FilterChip, FilterField } from './filter';
+import type { FilterChip, FilterField } from '../picker/filter';
 import type { SeriesMeta, SeriesRef } from './graphData';
 
 // The displayable attributes of one series, flattened.

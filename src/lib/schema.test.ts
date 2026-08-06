@@ -23,8 +23,8 @@
 
 import { describe, expect, it } from 'vitest';
 import * as v from 'valibot';
-import { FrameworkSchema, OptionCollectionSchema, SignatureMapSchema } from './signaturesApi';
-import { JobSchema, PushSchema, RawSummarySchema, RepositoryInfoSchema } from './graphApi';
+import { FrameworkSchema, OptionCollectionSchema, SignatureMapSchema } from './picker/signaturesApi';
+import { JobSchema, PushSchema, RawSummarySchema, RepositoryInfoSchema } from './graphs/graphApi';
 import frameworks from './fixtures/frameworks.json';
 import job from './fixtures/job.json';
 import optionCollections from './fixtures/option-collections.json';

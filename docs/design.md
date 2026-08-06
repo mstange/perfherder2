@@ -17,13 +17,49 @@ architecture breaks.**
 
 ## Architecture
 
-- [src/lib/http.ts](../src/lib/http.ts) — the only place that calls `fetch`.
+### Layout
+
+```
+src/lib/
+  shared/   http, links, chart, stats, theme(+.svelte, ThemeToggle), timeRange
+  picker/   the Add-series panel: signaturesApi, series, pickerOptions, filter,
+            activity(+Api), pickerState.svelte, AddSeriesPicker, FilterInput
+  graphs/   the graphs view and its two side panes: graphApi, graphData,
+            alerts(+Api), appState.svelte, chartDraw, ScatterChart, GraphPane,
+            SeriesList, seriesSummary, reorder, and the details pane's
+            compare, distribution(+Draw), kde, DistributionChart, DetailsPane
+  urlState.ts   the whole app's URL schema — it names picker state and graph
+                state alike, so it sits above both rather than inside either
+  schema.test.ts + fixtures/   recorded payloads for both halves
+```
+
+Two things this layout is claiming, both of which were checked against the
+import graph rather than assumed:
+
+- **Dependencies run feature → shared, and `graphs` → `picker` but never
+  back.** The only two edges into the picker are `appState` and
+  `seriesSummary` reaching for `filter.ts`, which is the panel prefill (see
+  "Opening the picker prefills its filter"). There is exactly one edge the
+  wrong way: `shared/chart.ts` imports the `SeriesPoint` *type* from
+  `graphs/graphData.ts`, because some of its helpers plot graph points while
+  the rest (formatting, `padDomain`, `Range`) are generic and the details
+  pane's distributions use them. Type-only, so nothing pulls at runtime. If
+  it ever grows, the fix is to split the graph-point helpers out of chart.ts,
+  not to move chart.ts into `graphs/`.
+- **The details pane is part of the graphs view, not a third feature.** It
+  was tried as its own folder and produced a cycle in both directions —
+  `appState` builds the comparison, and `DetailsPane`/`compare` read
+  `graphData` and `alerts`. Two halves of one view, so one folder.
+
+### The modules worth knowing about
+
+- [src/lib/shared/http.ts](../src/lib/shared/http.ts) — the only place that calls `fetch`.
   Validates every response against a valibot schema; see "Validating API
   responses" below. `HttpError` and `SchemaError` both keep their messages
   short enough for an error banner.
-- [src/lib/signaturesApi.ts](../src/lib/signaturesApi.ts) — schemas +
+- [src/lib/picker/signaturesApi.ts](../src/lib/picker/signaturesApi.ts) — schemas +
   inferred types and the network calls for the signature endpoints.
-- [src/lib/series.ts](../src/lib/series.ts) — **pure logic**. `Series`, the
+- [src/lib/picker/series.ts](../src/lib/picker/series.ts) — **pure logic**. `Series`, the
   row the picker renders, and `toSeries` (raw signature → enriched `Series`).
   Framework map + option-collection map are fetched once and passed in.
   `toSeries` bakes `Series.key` (`${repo}|${id}`) and `Series.parentKey` in at
@@ -33,35 +69,35 @@ architecture breaks.**
   graphApi/graphData, alertsApi/alerts and activityApi/activity: the
   projection is the part worth testing from a fixture, and it shouldn't drag
   a fetch client into the import graph of everything that names a `Series`.)
-- [src/lib/pickerOptions.ts](../src/lib/pickerOptions.ts) — the repo and
+- [src/lib/picker/pickerOptions.ts](../src/lib/picker/pickerOptions.ts) — the repo and
   time-range choices the panel offers. Neither is discovered from the API;
   both mirror Perfherder's own Graphs view.
-- [src/lib/reorder.ts](../src/lib/reorder.ts) — **pure logic**. Drag
+- [src/lib/graphs/reorder.ts](../src/lib/graphs/reorder.ts) — **pure logic**. Drag
   geometry for the series list: drop index, per-card offsets, auto-scroll
   ramp. Unit-tested.
-- [src/lib/seriesSummary.ts](../src/lib/seriesSummary.ts) — **pure logic**.
+- [src/lib/graphs/seriesSummary.ts](../src/lib/graphs/seriesSummary.ts) — **pure logic**.
   Splits a list of series into the attributes they all share and the ones
   that distinguish each, and names the page from the shared half; see "The
   series list shows differences, not descriptions" below. Unit-tested.
-- [src/lib/theme.ts](../src/lib/theme.ts) — **pure logic**. The theme
+- [src/lib/shared/theme.ts](../src/lib/shared/theme.ts) — **pure logic**. The theme
   vocabulary, the preference→theme resolution rule, and the canvas palette
   that can't live in CSS; see "Theming" below.
-  [theme.svelte.ts](../src/lib/theme.svelte.ts) is the reactive singleton
+  [theme.svelte.ts](../src/lib/shared/theme.svelte.ts) is the reactive singleton
   around it.
-- [src/lib/filter.ts](../src/lib/filter.ts) — **pure logic**. Filter
+- [src/lib/picker/filter.ts](../src/lib/picker/filter.ts) — **pure logic**. Filter
   model (chips + free text), `matchesRow`, sort comparator, cache-key +
   fallback picker, child grouping. Unit-tested.
-- [src/lib/pickerState.svelte.ts](../src/lib/pickerState.svelte.ts) — the
+- [src/lib/picker/pickerState.svelte.ts](../src/lib/picker/pickerState.svelte.ts) — the
   reactive core of the picker: a `PickerState` class holding every
   `$state` cell, the `$derived` graph, the `$effect` that triggers
   fetches, and the mutation methods. No template code lives here, so
   every seam is exercisable without a DOM.
-- [src/lib/FilterInput.svelte](../src/lib/FilterInput.svelte) — the chip +
+- [src/lib/picker/FilterInput.svelte](../src/lib/picker/FilterInput.svelte) — the chip +
   text input widget. Owns its in-progress text value; publishes committed
   chips + residual text upward via `onchange`. **That local copy is the
   only piece of filter state not rendered straight from the prop, and it
   has bitten us twice** — see "The one component that owns state" below.
-- [src/lib/AddSeriesPicker.svelte](../src/lib/AddSeriesPicker.svelte) —
+- [src/lib/picker/AddSeriesPicker.svelte](../src/lib/picker/AddSeriesPicker.svelte) —
   a thin renderer over `PickerState`. Instantiates the class and wires
   DOM events to its methods; adds no reactive state of its own.
 - [src/App.svelte](../src/App.svelte) — thin host.
@@ -117,7 +153,7 @@ gets much slower or larger, revisit this trade-off.**
 The cache is keyed by the tuple that identifies a distinct API response.
 Toggling "Match inside subtests" naively switches the lookup key and would
 blank the list until the fatter response arrives. Fix, in
-[filter.ts::pickCachedForRepo](../src/lib/filter.ts): **prefer the
+[filter.ts::pickCachedForRepo](../src/lib/picker/filter.ts): **prefer the
 subtests=1 cache if loaded; fall back to subtests=0.** This is safe because
 a subtests=1 fetch is a strict superset of subtests=0 — the top-level rows
 are identical in both. Do not break this invariant without also revisiting
@@ -126,12 +162,12 @@ the disclosure UX.
 ### Row identity: `Series.key`, composed at construction
 
 `Series.key` = `${repository}|${id}`, populated in
-[series.ts::toSeries](../src/lib/series.ts). It's used anywhere a row needs
+[series.ts::toSeries](../src/lib/picker/series.ts). It's used anywhere a row needs
 stable per-row identity across the union of caches — expansion state,
 parent-child grouping, master-checkbox scope, and the `#each` key in
-[AddSeriesPicker.svelte](../src/lib/AddSeriesPicker.svelte)'s virtual
+[AddSeriesPicker.svelte](../src/lib/picker/AddSeriesPicker.svelte)'s virtual
 scroller. Subtest rows also carry `Series.parentKey` (their parent's
-`key`), so [filter.ts::groupChildrenByParent](../src/lib/filter.ts) can
+`key`), so [filter.ts::groupChildrenByParent](../src/lib/picker/filter.ts) can
 bucket children without repeating the compound-key recipe.
 
 **Signature-hash aliasing (two failure modes we've been burned by).**
@@ -153,7 +189,7 @@ to key rows by `${repository}|${signatureHash}`, and both of these bit us:
 Fix: **key by the API's row `id`**, which is per-signature and globally
 unique in the treeherder DB. `parentKey` can no longer be constructed
 from the raw `parent_signature` (also a hash — same aliasing) — the
-[toSeries](../src/lib/series.ts) pass builds a lookup from
+[toSeries](../src/lib/picker/series.ts) pass builds a lookup from
 `(hash, application) → parentId` and stores `parentKey =
 ${repo}|${parentId}` on each child. The assumption is that a child
 inherits its parent's `application`, which holds in every sample we've
@@ -177,7 +213,7 @@ on AND the filter is active, a parent qualifies if it OR any of its
 children match. Parents that only match via a child are auto-expanded,
 and under any expanded parent only the matched children are rendered
 (see `PickerState.childrenForParent` /
-[filter.ts::matchParentWithChildren](../src/lib/filter.ts)).
+[filter.ts::matchParentWithChildren](../src/lib/picker/filter.ts)).
 
 Whether we actually *fetch* the fatter subtests=1 payload is a
 different, derived question. `PickerState.needSubtestsFetch` returns
@@ -201,7 +237,7 @@ flag only means "the filter does not descend."
 dead end by expanding a parent, then clicking a badge on a subtest row
 (a `test:<name>` badge in particular). To keep this natural action from
 hitting a wall, the badge snippet in
-[AddSeriesPicker.svelte](../src/lib/AddSeriesPicker.svelte) passes
+[AddSeriesPicker.svelte](../src/lib/picker/AddSeriesPicker.svelte) passes
 `fromSubtest: true` to `toggleFilterChip` when the click originated on
 a subtest row, and `PickerState.toggleFilterChip` auto-enables
 `matchSubtests` in that case. It's a one-way nudge — we only flip on
@@ -271,7 +307,7 @@ still filtered":
   in the box next to the chip it had just become. `reconcile` now pushes
   the residue into the element when the two disagree.
 
-Hence [FilterInput.test.svelte.ts](../src/lib/FilterInput.test.svelte.ts):
+Hence [FilterInput.test.svelte.ts](../src/lib/picker/FilterInput.test.svelte.ts):
 the one **committed component test**, mounting the real thing under
 happy-dom with `mount` + `flushSync`. This is not the puppeteer situation
 below — no browser, no download — and no other kind of test can see this
@@ -300,10 +336,10 @@ across autoland and mozilla-central. Spelling each card out in full made
 four cards that were textually 95% identical, and finding the one word
 that differed meant diffing long strings by eye.
 
-So [SeriesList.svelte](../src/lib/SeriesList.svelte) hoists everything the
+So [SeriesList.svelte](../src/lib/graphs/SeriesList.svelte) hoists everything the
 series have in common into one header ("All series share …") and leaves
 each card with only its own attributes. The split is
-[seriesSummary.ts::splitCommonAttrs](../src/lib/seriesSummary.ts).
+[seriesSummary.ts::splitCommonAttrs](../src/lib/graphs/seriesSummary.ts).
 
 **The header has two modes**, because with one series there is nothing to
 intersect. `AttrSplit.mode` says which, and the heading follows it:
@@ -337,7 +373,7 @@ higher is better`.
   Nothing is printed for a fact that isn't unanimous — no "mixed units"
   string, since the y-axis already says that.
 - **The direction has no other unconditional home**, which is why this is
-  worth the line. [DetailsPane](../src/lib/DetailsPane.svelte) states it only
+  worth the line. [DetailsPane](../src/lib/graphs/DetailsPane.svelte) states it only
   for a *selected* point, and the graph's y-axis only ever shows the unit —
   so before this, loading a graph and just looking at it told you nothing
   about which way was good.
@@ -388,7 +424,7 @@ That includes `application`, which is not part of the server-composed
 missing from that pane for exactly that reason.
 
 **`document.title` reuses the same intersection**
-([`documentTitle`](../src/lib/seriesSummary.ts), rendered by a
+([`documentTitle`](../src/lib/graphs/seriesSummary.ts), rendered by a
 `<svelte:head>` in App.svelte). It used to be a static
 "Perfherder Graphs — Add Series" in index.html, which named a dialog that
 is closed almost all the time. Naming a graph by what its series *share*
@@ -425,8 +461,8 @@ text stays selectable, and touch/pen work, which HTML5 drag never did on
 mobile.
 
 The mechanism, split between
-[reorder.ts](../src/lib/reorder.ts) (all the arithmetic, unit-tested) and
-[SeriesList.svelte](../src/lib/SeriesList.svelte) (measure, listen, apply):
+[reorder.ts](../src/lib/graphs/reorder.ts) (all the arithmetic, unit-tested) and
+[SeriesList.svelte](../src/lib/graphs/SeriesList.svelte) (measure, listen, apply):
 
 - **No app state changes until the pointer is released.** During the drag
   the lifted card gets a `translateY` under the pointer and the cards
@@ -588,8 +624,8 @@ over a faint blue row tint.
   that have no checkbox (it would report "7 selected" and add four
   no-ops).
 - The lookup only works because `Series.key` (built in
-  [series.ts::toSeries](../src/lib/series.ts)) and
-  [graphData.ts::seriesKey](../src/lib/graphData.ts) compose the same
+  [series.ts::toSeries](../src/lib/picker/series.ts)) and
+  [graphData.ts::seriesKey](../src/lib/graphs/graphData.ts) compose the same
   `${repo}|${signature id}` string from two different modules. Drift
   there would silently un-mark every row, so series.test.ts pins it.
 - The prop is **synced, not seeded**: nothing can change the plotted set
@@ -614,8 +650,8 @@ defeat the point: the hard part is *scanning* a list, which you can't do one
 row at a time.
 
 Three quirks of that endpoint, all recorded in
-[activityApi.ts](../src/lib/activityApi.ts) and
-[activity.ts](../src/lib/activity.ts):
+[activityApi.ts](../src/lib/picker/activityApi.ts) and
+[activity.ts](../src/lib/picker/activity.ts):
 
 - **The response is keyed by `signature_hash`, not by id**, and the hash
   aliases within a repo (see "Row identity" above), so one bucket can hold
@@ -664,7 +700,7 @@ Light and dark, defaulting to the OS. The three moving parts:
   from.
 - **`<html data-theme>` carries a *resolved* theme** — `light` or `dark`,
   never `system`. The OS query is answered in JS
-  ([theme.svelte.ts](../src/lib/theme.svelte.ts)), not by a
+  ([theme.svelte.ts](../src/lib/shared/theme.svelte.ts)), not by a
   `prefers-color-scheme` media query in the stylesheet. That's the load-bearing
   decision: a media query would be a second, independent answer to "which theme
   is it", and forcing a theme would then have to out-specify it in every block.
@@ -677,7 +713,7 @@ Light and dark, defaulting to the OS. The three moving parts:
 **The control has three preferences but two states.** `system` is not a third
 *appearance* — at any moment it looks exactly like light or exactly like dark, so
 a three-segment control spends a third of itself distinguishing two things that
-are on screen identical. [ThemeToggle.svelte](../src/lib/ThemeToggle.svelte) is
+are on screen identical. [ThemeToggle.svelte](../src/lib/shared/ThemeToggle.svelte) is
 one `role="switch"` button showing the **resolved** theme, and the preference is
 inferred from the destination by `nextThemePreference`: an override is stored only
 when it actually overrides, so light → dark → light lands back on `system` rather
@@ -696,10 +732,10 @@ UA would decide for itself and a forced theme would only half-apply.
 **Two things can't be a custom property, and both are on the graphs.**
 
 - *Canvas colors.* There's no element for a canvas's pixels to inherit from.
-  [theme.ts](../src/lib/theme.ts) exports `CHART_PALETTES` and the draw calls
+  [theme.ts](../src/lib/shared/theme.ts) exports `CHART_PALETTES` and the draw calls
   take a `palette` argument, which also keeps
-  [chartDraw.ts](../src/lib/chartDraw.ts) and
-  [distributionDraw.ts](../src/lib/distributionDraw.ts) functions of their
+  [chartDraw.ts](../src/lib/graphs/chartDraw.ts) and
+  [distributionDraw.ts](../src/lib/graphs/distributionDraw.ts) functions of their
   arguments. The alternative — `getComputedStyle` inside the draw code — would
   make them depend on the DOM *and* on the attribute having already been
   applied. Those seven values are the only colors in the app that exist twice;
@@ -707,7 +743,7 @@ UA would decide for itself and a forced theme would only half-apply.
 - *Series colors.* Half of treeherder's palette is unusable on a dark plot:
   blue-bell, purple and dark-puce all land under 2:1 against the canvas, which
   is a series you cannot find. `SERIES_COLORS_DARK` in
-  [chart.ts](../src/lib/chart.ts) is the same six hues in the same order,
+  [chart.ts](../src/lib/shared/chart.ts) is the same six hues in the same order,
   lightened past 4.5:1 (pinned in `theme.test.ts`), so **the theme picks the
   palette but never the position** — flipping it recolors each series in place
   instead of reshuffling the graph. Cerulean and orange were already light
@@ -718,7 +754,7 @@ UA would decide for itself and a forced theme would only half-apply.
 `chart.test.ts` and anything else that doesn't know about themes keeps getting
 treeherder's six.
 
-**The theme is a singleton, not a prop.** [theme.svelte.ts](../src/lib/theme.svelte.ts)
+**The theme is a singleton, not a prop.** [theme.svelte.ts](../src/lib/shared/theme.svelte.ts)
 exports one `ThemeController` instance, read by `AppState` (for series colors)
 and by the two chart components (for the canvas palette). Those have no props
 relationship, and threading it down would mean five components forwarding a
@@ -763,7 +799,7 @@ Two things to know before changing it:
 - **A component rule that has to beat `.btn:hover` needs `.btn` in its own
   selector.** `.btn:hover:not(:disabled)` is (0,3,0); a plain
   `.replicates li.selected button` is (0,2,2) and loses. The selected
-  replicate chip in [DetailsPane](../src/lib/DetailsPane.svelte) names
+  replicate chip in [DetailsPane](../src/lib/graphs/DetailsPane.svelte) names
   `button.btn` for that reason. (Svelte's scoping class covers this for most
   component selectors — but not for one that was already only two classes
   deep.)
@@ -855,7 +891,7 @@ reason.
 Broad filters can match 25k parents; expanding one parent adds ~200
 subtests. Rendering all of that into the DOM tanks scroll perf.
 
-[AddSeriesPicker.svelte](../src/lib/AddSeriesPicker.svelte) flattens
+[AddSeriesPicker.svelte](../src/lib/picker/AddSeriesPicker.svelte) flattens
 `filteredParents` (plus each expanded parent's children or its
 loading/empty note) into a single `flatRows` array, then renders only the
 window `[startIndex, endIndex)` — driven by the `.table-wrap` scroller's
@@ -878,7 +914,7 @@ padding-block: 0; vertical-align: middle`. That means:
   vertical drift as you scroll.
 
 If you need to change the row height, update the `ROW_HEIGHT` constant in
-[AddSeriesPicker.svelte](../src/lib/AddSeriesPicker.svelte); the CSS
+[AddSeriesPicker.svelte](../src/lib/picker/AddSeriesPicker.svelte); the CSS
 follows automatically.
 
 Column widths are also pinned. A `<colgroup>` above the `<thead>` gives
@@ -899,7 +935,7 @@ variable literally named `state` and fails at runtime with
 ### Validating API responses
 
 Every response is checked against a [valibot](https://valibot.dev) schema in
-[http.ts](../src/lib/http.ts) before the app sees it, and **every API type is
+[http.ts](../src/lib/shared/http.ts) before the app sees it, and **every API type is
 inferred from its schema** (`v.InferOutput`) rather than written twice. That
 inference is the main point: a hand-written type is an unverified assertion,
 and ours were wrong — `RawDatum.job_id` claimed `number` while a third of
@@ -1063,6 +1099,24 @@ these strings for display — you'll get bitten by edge cases.**
   file, but Svelte 5 reactive tracking across component boundaries can
   make snappy interactions surprisingly re-render-heavy. Only pull this
   trigger if we hit perf issues, and profile before/after.
+- **Splitting DetailsPane.svelte was looked at and declined.** It is the
+  largest file in the app (~1200 lines: ~600 of template, ~430 of CSS), and
+  its `<section>` boundaries look like ready-made components — the comparison
+  card alone is ~200 lines of markup and ~160 of CSS.
+
+  What stops it is the CSS. The pane's sections share one typographic
+  vocabulary — `h3`, `.value` and its `.unit`/`.muted` spans, `.muted`,
+  `.mono`, `dl`/`dt`/`dd` — and Svelte scopes styles per component, so every
+  extracted child has to restate the ~29 lines of it that it uses. Trading
+  one long file for three copies of a shared vocabulary is the same mistake
+  as the five copied button blocks, in the other direction, and this pane
+  redraws on every hover.
+
+  If it does get split, do the enabling step first: give those shared text
+  styles one home the way `.btn` got one — either as `.detail-*` classes in
+  app.css, or as a stylesheet both ends import. Extract the comparison card
+  first; it is the biggest section and the least entangled, since it already
+  overrides `dl`/`dt`/`dd` with its own compact variant.
 
 ### Documentation upkeep
 

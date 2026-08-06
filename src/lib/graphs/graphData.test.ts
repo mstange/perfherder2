@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { JITTER_GAP_FRACTION } from './chart';
+import { JITTER_GAP_FRACTION } from '../shared/chart';
 import type { RawDatum, RawSummary } from './graphApi';
 import { parseApiDate } from './graphApi';
 import {

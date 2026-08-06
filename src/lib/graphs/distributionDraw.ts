@@ -2,14 +2,14 @@
 // chartDraw.ts: every coordinate comes from a DistributionLayout, and nothing
 // here computes its own geometry.
 
-import { formatTickValue, valueTicks } from './chart';
+import { formatTickValue, valueTicks } from '../shared/chart';
 import type {
   DistributionLayout,
   DistributionPlot,
   DistributionSeries,
   StripRow,
 } from './distribution';
-import type { ChartPalette } from './theme';
+import type { ChartPalette } from '../shared/theme';
 
 const FONT = '10px system-ui, sans-serif';
 // One line of FONT, for stacking and clamping mode labels.

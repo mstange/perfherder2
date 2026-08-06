@@ -16,7 +16,7 @@ import { type Series } from './series';
 import { DEFAULT_REPOS, PINNED_REPOS } from './pickerOptions';
 import type { FilterChip } from './filter';
 import { ACTIVITY_DEBOUNCE_MS, PickerState } from './pickerState.svelte';
-import { EMPTY_PICKER_VIEW, type PickerViewState } from './urlState';
+import { EMPTY_PICKER_VIEW, type PickerViewState } from '../urlState';
 
 let fetchMock: ReturnType<typeof vi.fn>;
 // The signatures payload each repo fetch answers with; tests that care about

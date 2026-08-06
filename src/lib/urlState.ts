@@ -9,7 +9,7 @@
 // relative "last N days". See docs/graphs.md — a relative range lets the
 // linked-to data point drift out of view as time passes.
 
-import { TIME_RANGES } from './pickerOptions';
+import { TIME_RANGES } from './picker/pickerOptions';
 import {
   parseChip,
   SORT_COLUMNS,
@@ -17,8 +17,8 @@ import {
   type FilterChip,
   type SortColumn,
   type SortState,
-} from './filter';
-import { MEAN_REPLICATE, type SeriesRef } from './graphData';
+} from './picker/filter';
+import { MEAN_REPLICATE, type SeriesRef } from './graphs/graphData';
 
 export type SelectedPoint = {
   repository: string;

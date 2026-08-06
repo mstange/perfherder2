@@ -8,10 +8,10 @@
   // split between the two is deliberate — see docs/comparison.md, "Mode detail
   // goes below the chart, not on it".
 
-  import { formatValue } from './chart';
+  import { formatValue } from '../shared/chart';
   import { distributionHeight, distributionLayout, type DistributionPlot } from './distribution';
   import { drawDistribution } from './distributionDraw';
-  import { theme } from './theme.svelte';
+  import { theme } from '../shared/theme.svelte';
 
   type Props = {
     plot: DistributionPlot;

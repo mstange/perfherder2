@@ -44,18 +44,18 @@ import {
   unionRange,
   type Range,
   type SeriesSymbol,
-} from './chart';
+} from '../shared/chart';
 import { buildComparison, type CompareSide, type Comparison } from './compare';
 import { MIN_CURVE_VALUES, stableScales, type StableScales } from './distribution';
-import { EMPTY_FILTER, isFilterActive, sameFilter, type Filter } from './filter';
+import { EMPTY_FILTER, isFilterActive, sameFilter, type Filter } from '../picker/filter';
 import {
   attrsForEntry,
   commonAttrs,
   commonFilterChips,
   documentTitle,
 } from './seriesSummary';
-import { theme } from './theme.svelte';
-import { clampSpan, defaultSpan, presetSpan, roundSpan, type Span } from './timeRange';
+import { theme } from '../shared/theme.svelte';
+import { clampSpan, defaultSpan, presetSpan, roundSpan, type Span } from '../shared/timeRange';
 import {
   EMPTY_PICKER_VIEW,
   parseViewState,
@@ -64,7 +64,7 @@ import {
   type SelectedPoint,
   type SeriesEntryState,
   type ViewState,
-} from './urlState';
+} from '../urlState';
 
 // One plotted series: its identity, its color, and whatever we know about it.
 export type SeriesEntry = {

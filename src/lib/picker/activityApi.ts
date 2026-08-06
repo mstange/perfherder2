@@ -14,7 +14,7 @@
 // logic: it returns exactly what the endpoint sent.
 
 import * as v from 'valibot';
-import { API_BASE, fetchJson } from './http';
+import { API_BASE, fetchJson } from '../shared/http';
 
 // One datum: one run of one signature on one push.
 //

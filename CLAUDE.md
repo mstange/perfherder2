@@ -11,7 +11,7 @@ non-trivial change should be checked against that document.
 
 - **VCS is jj.** Commit with `jj commit -m "…"`, one logical change per
   commit. Descriptive first-line summary, blank line, then rationale.
-- **Pure logic goes in `src/lib/filter.ts` (or a similar module) and gets
+- **Pure logic goes in `src/lib/picker/filter.ts` (or a similar module) and gets
   a unit test in `filter.test.ts`.** Do not add business logic to
   `.svelte` files if it can live in a testable pure function.
 - **Run `npm run check` and `npm test` before commits.** Both must be

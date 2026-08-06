@@ -27,7 +27,7 @@
 // carrying its whole alert list.
 
 import * as v from 'valibot';
-import { API_BASE, fetchJson } from './http';
+import { API_BASE, fetchJson } from '../shared/http';
 
 // One signature's change on one push. Nullability from treeherder's
 // `PerformanceAlert` model rather than from a sample:

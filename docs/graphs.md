@@ -298,39 +298,39 @@ Recovery is the explicit Retry button.
 
 ## Code map
 
-- [graphApi.ts](../src/lib/graphApi.ts) — the three endpoints, plus
+- [graphApi.ts](../src/lib/graphs/graphApi.ts) — the three endpoints, plus
   `/repository/` for hg-vs-git link shapes. Network and the valibot schemas
   that every response is validated against; the `Raw*`, `Push` and `Job`
   types are inferred from those schemas. See design.md, "Validating API
   responses" — including why nullability is transcribed from treeherder's
   serializers rather than from sampled payloads.
-- [graphData.ts](../src/lib/graphData.ts) — **pure**. Flat rows →
+- [graphData.ts](../src/lib/graphs/graphData.ts) — **pure**. Flat rows →
   push/run/replicate, plus the flat arrays the renderer walks — both of them,
   see "Replicates" above.
-- [chart.ts](../src/lib/chart.ts) — **pure**. Scales, domains, ticks,
+- [chart.ts](../src/lib/shared/chart.ts) — **pure**. Scales, domains, ticks,
   formatting, plot geometry, hit-testing, palette, and the jitter both charts
   use (see "Dots are translucent, and jittered sideways" below).
-- [chartDraw.ts](../src/lib/chartDraw.ts) — canvas painting. Imperative, but
+- [chartDraw.ts](../src/lib/graphs/chartDraw.ts) — canvas painting. Imperative, but
   takes all its coordinates from a `PlotGeometry`.
-- [alertsApi.ts](../src/lib/alertsApi.ts) — `/performance/alertsummary/`, and
-  the schemas for it. [alerts.ts](../src/lib/alerts.ts) — **pure**. Summaries →
+- [alertsApi.ts](../src/lib/graphs/alertsApi.ts) — `/performance/alertsummary/`, and
+  the schemas for it. [alerts.ts](../src/lib/graphs/alerts.ts) — **pure**. Summaries →
   the marks the graph draws and the facts the pane prints. See "Alerts" above.
-- [timeRange.ts](../src/lib/timeRange.ts) — **pure**. Presets ↔ absolute
+- [timeRange.ts](../src/lib/shared/timeRange.ts) — **pure**. Presets ↔ absolute
   bounds.
 - [urlState.ts](../src/lib/urlState.ts) — **pure**. Query string ↔ `ViewState`.
-- [appState.svelte.ts](../src/lib/appState.svelte.ts) — the reactive core.
-- [ScatterChart.svelte](../src/lib/ScatterChart.svelte) — one canvas component
+- [appState.svelte.ts](../src/lib/graphs/appState.svelte.ts) — the reactive core.
+- [ScatterChart.svelte](../src/lib/graphs/ScatterChart.svelte) — one canvas component
   serving both graphs, parameterized by `interaction: 'select' | 'brush'`.
-- [stats.ts](../src/lib/stats.ts), [kde.ts](../src/lib/kde.ts),
-  [distribution.ts](../src/lib/distribution.ts),
-  [distributionDraw.ts](../src/lib/distributionDraw.ts),
-  [compare.ts](../src/lib/compare.ts),
-  [DistributionChart.svelte](../src/lib/DistributionChart.svelte) — the
+- [stats.ts](../src/lib/shared/stats.ts), [kde.ts](../src/lib/graphs/kde.ts),
+  [distribution.ts](../src/lib/graphs/distribution.ts),
+  [distributionDraw.ts](../src/lib/graphs/distributionDraw.ts),
+  [compare.ts](../src/lib/graphs/compare.ts),
+  [DistributionChart.svelte](../src/lib/graphs/DistributionChart.svelte) — the
   details pane's distributions and comparison mode. All pure except the last
   two. See [comparison.md](comparison.md).
-- [SeriesList.svelte](../src/lib/SeriesList.svelte),
-  [GraphPane.svelte](../src/lib/GraphPane.svelte),
-  [DetailsPane.svelte](../src/lib/DetailsPane.svelte) — the three panes.
+- [SeriesList.svelte](../src/lib/graphs/SeriesList.svelte),
+  [GraphPane.svelte](../src/lib/graphs/GraphPane.svelte),
+  [DetailsPane.svelte](../src/lib/graphs/DetailsPane.svelte) — the three panes.
 
 **Do not put a `SeriesData` inside a `$state` object or array.** Svelte 5
 deep-proxies plain objects and arrays assigned to `$state`, and a proxied
@@ -362,7 +362,7 @@ is 60 dots on one x — a vertical line whose only legible feature is its extrem
 Two things fix that, and they cover different densities:
 
 - **`DOT_ALPHA = 0.5`, drawn in interleaved passes**
-  ([chartDraw.ts](../src/lib/chartDraw.ts)). One dot covers half the background,
+  ([chartDraw.ts](../src/lib/graphs/chartDraw.ts)). One dot covers half the background,
   two 75%, four 94%, so the bulk of a cloud is where the color saturates. It used
   to be 0.75, which is past the useful range: two dots already reached 94% and
   every cluster from two upwards looked identical. Not lower, because the palette's
@@ -389,11 +389,11 @@ Two things fix that, and they cover different densities:
   inside each other's noise. **One fill per dot is the simplification to make here**
   — exact rather than approximate, and no interleaving to explain — pending a
   measurement on GPU-backed canvas; see graphs-todo.md. The distribution strip
-  ([distributionDraw.ts](../src/lib/distributionDraw.ts)) had the identical bug and
+  ([distributionDraw.ts](../src/lib/graphs/distributionDraw.ts)) had the identical bug and
   carries the identical fix, where a pool of tens of values makes the question moot.
 - **Horizontal jitter**, sized in x units and applied in pixels, from a
   deterministic hash of `(datumId, replicateIndex)`. See "Jitter" in
-  [chart.ts](../src/lib/chart.ts) for the arithmetic; the decisions:
+  [chart.ts](../src/lib/shared/chart.ts) for the arithmetic; the decisions:
 
   - **The room is a property of the push, not of the chart.** CI landings come in
     bursts: measured on autoland over one day, the *median* gap between
@@ -490,7 +490,7 @@ Deliberate deviations:
 
 Both lists are lifted from treeherder's
 `ui/perfherder/perf-helpers/constants.js` (`graphColors`, `graphSymbols`), so
-the same series looks the same in both tools — [chart.ts](../src/lib/chart.ts)
+the same series looks the same in both tools — [chart.ts](../src/lib/shared/chart.ts)
 `SERIES_COLORS` / `SERIES_SYMBOLS`.
 
 **They are stored in the order treeherder hands them out, which is the reverse
@@ -520,7 +520,7 @@ in lockstep would make the seventh series identical to the first.
 (color, symbol) pair unique for 36 series and leaves the first six exactly as
 treeherder pairs them.
 
-Drawing details, in [chartDraw.ts](../src/lib/chartDraw.ts):
+Drawing details, in [chartDraw.ts](../src/lib/graphs/chartDraw.ts):
 
 - The three shapes are area-matched (`SQUARE_HALF_SIDE`,
   `DIAMOND_HALF_DIAGONAL`). A square of side 2r covers 4r² against a circle's

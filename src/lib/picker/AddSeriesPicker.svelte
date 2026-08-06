@@ -5,7 +5,7 @@
 import { TIME_RANGES } from './pickerOptions';
   import { type FilterField, type SortColumn } from './filter';
   import { PickerState } from './pickerState.svelte';
-  import { EMPTY_PICKER_VIEW, type PickerViewState } from './urlState';
+  import { EMPTY_PICKER_VIEW, type PickerViewState } from '../urlState';
   import FilterInput from './FilterInput.svelte';
 
   type Props = {

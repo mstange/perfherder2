@@ -13,7 +13,7 @@
     formatSignedValue,
     formatTimestamp,
     formatValue,
-  } from './chart';
+  } from '../shared/chart';
   import { comparisonLinks, type ComparisonSide } from './compare';
   import DistributionChart from './DistributionChart.svelte';
   import { buildDistribution } from './distribution';
@@ -35,8 +35,8 @@
     splitCommitMessage,
     taskUrl,
     type RepoLinkInfo,
-  } from './links';
-  import { SIGNIFICANCE_ALPHA } from './stats';
+  } from '../shared/links';
+  import { SIGNIFICANCE_ALPHA } from '../shared/stats';
 
   type Props = { app: AppState };
   let { app }: Props = $props();

@@ -9,7 +9,7 @@
 // treeherder's relative `interval`, and for the replicates quirk.
 
 import * as v from 'valibot';
-import { API_BASE, fetchJson } from './http';
+import { API_BASE, fetchJson } from '../shared/http';
 
 // ---- Schemas -------------------------------------------------------------
 // As in api.ts: types are inferred, `v.object` tolerates fields we don't

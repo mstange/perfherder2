@@ -17,9 +17,9 @@ import {
   type Range,
   type SeriesShape,
   type SeriesSymbol,
-} from './chart';
+} from '../shared/chart';
 import type { PushGroup, SeriesPoint } from './graphData';
-import type { ChartPalette } from './theme';
+import type { ChartPalette } from '../shared/theme';
 
 export type DrawSeries = {
   color: string;

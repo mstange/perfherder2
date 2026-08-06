@@ -4,7 +4,7 @@
 // tested. The Svelte components own pixels and drawing; this module owns the
 // arithmetic that decides where those pixels go.
 
-import type { SeriesPoint } from './graphData';
+import type { SeriesPoint } from '../graphs/graphData';
 import type { Theme } from './theme';
 
 // ---------------------------------------------------------------------------

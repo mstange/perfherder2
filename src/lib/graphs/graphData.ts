@@ -10,7 +10,7 @@
 // and precompute the flat arrays the renderer wants, so drawing never has to
 // walk a tree.
 
-import { JITTER_GAP_FRACTION, jitterAt } from './chart';
+import { JITTER_GAP_FRACTION, jitterAt } from '../shared/chart';
 import { parseApiDate, type RawSummary } from './graphApi';
 
 // One job's worth of values for one signature: a single performance datum
