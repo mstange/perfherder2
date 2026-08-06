@@ -239,10 +239,16 @@ button {
 
    Sizes: `.btn` is the default; `.btn-compact` is the toolbar size. Anything
    smaller is used in one place only and stays there, composed on top of `.btn`
-   so the chrome is still defined once. Two fills, deliberately distinct rather
-   than two classes both called `primary`: `.btn-primary` (accent) is the
+   so the chrome is still defined once. Three fills, deliberately distinct
+   rather than classes all called `primary`: `.btn-primary` (accent) is the
    action that takes you somewhere, `.btn-confirm` (success) is the one that
-   commits what you picked. */
+   commits what you picked, and `.btn-selected` (accent) is not an action at
+   all — it's the option in a group that is currently in effect.
+
+   Every filled variant needs its own `:hover`. `.btn:hover` sets `background`,
+   so a variant that sets only the idle fill keeps its text and border colors on
+   hover and loses the fill underneath them — which is how the range presets
+   came to render white-on-#f3f4f6 (1.07:1) while the pointer was on them. */
 .btn {
   font: inherit;
   padding: 4px 10px;
@@ -285,6 +291,16 @@ button {
   background: var(--success-emphasis-disabled);
   border-color: var(--success-emphasis-disabled);
   color: var(--success-fg-on-emphasis-disabled);
+}
+/* Same fill as `.btn-primary`, and it hovers the same way: pointing at the
+   option that is already in effect must not make it look deselected. */
+.btn-selected {
+  background: var(--accent-emphasis);
+  border-color: var(--accent-emphasis);
+  color: var(--fg-on-emphasis);
+}
+.btn-selected:hover:not(:disabled) {
+  background: var(--accent-emphasis-hover);
 }
 
 /* The UA's link colors do follow `color-scheme`, but to a purple-blue that

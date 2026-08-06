@@ -120,7 +120,8 @@
         <button
           type="button"
           class="btn btn-compact"
-          class:active={activePreset?.seconds === preset.seconds}
+          class:btn-selected={activePreset?.seconds === preset.seconds}
+          aria-pressed={activePreset?.seconds === preset.seconds}
           onclick={() => app.setRangePreset(preset.seconds)}
         >
           {preset.label}
@@ -323,12 +324,6 @@
   .error-list {
     min-width: 0;
     overflow-wrap: anywhere;
-  }
-  /* Chrome comes from `.btn` in app.css; only the pressed state is local. */
-  button.active {
-    background: var(--accent-emphasis);
-    border-color: var(--accent-emphasis);
-    color: var(--fg-on-emphasis);
   }
   .overview {
     height: 84px;
