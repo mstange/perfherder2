@@ -305,7 +305,7 @@
     color: var(--field-suite-fg);
   }
   .chip-value {
-    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-family: var(--font-mono);
     font-size: 12px;
   }
   .chip-remove {

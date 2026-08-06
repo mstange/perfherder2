@@ -493,7 +493,7 @@
     font-weight: 600;
   }
   .attr.repo {
-    font-family: ui-monospace, monospace;
+    font-family: var(--font-mono);
     font-size: 12px;
   }
   .sep {

@@ -198,6 +198,11 @@
   font: 14px/1.4 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   color: var(--fg-default);
   background: var(--bg-canvas);
+  /* Revisions, signature hashes, platform strings and measured values are all
+     set in this. It was spelled two different ways across six declarations —
+     identical on a Mac, where `ui-monospace` wins before the fallbacks are
+     reached, and not necessarily anywhere else. */
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
 html,

@@ -916,7 +916,7 @@
     color: var(--fg-muted);
   }
   .mono {
-    font-family: ui-monospace, monospace;
+    font-family: var(--font-mono);
     font-size: 12px;
   }
   .wrap {
@@ -1087,7 +1087,7 @@
   }
   kbd {
     font: inherit;
-    font-family: ui-monospace, monospace;
+    font-family: var(--font-mono);
     padding: 0 3px;
     border: 1px solid var(--border-default);
     border-radius: 3px;

@@ -1000,11 +1000,11 @@ import { TIME_RANGES } from './pickerOptions';
     background: var(--bg-canvas);
     border-color: var(--border-default);
     color: var(--fg-muted);
-    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-family: var(--font-mono);
   }
   .unit {
     color: var(--fg-muted);
-    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-family: var(--font-mono);
     font-size: 12px;
   }
   .activity {
