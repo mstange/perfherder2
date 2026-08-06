@@ -20,6 +20,7 @@ import {
   type RepositoryInfo,
 } from './graphApi';
 import { alertsByPush, alertsForSeries, type SeriesAlert } from './alerts';
+import type { RepoLinkInfo } from '../shared/links';
 import { fetchAlertSummaries } from './alertsApi';
 import {
   buildSeriesData,
@@ -181,6 +182,18 @@ export class AppState {
   // and so the selection effect doesn't retry a lookup that will keep failing.
   private jobLookupFailed = $state(new Set<string>());
   repoInfo = $state(new Map<string, RepositoryInfo>());
+
+  // What the link builders need to know about a repository: whether it's hg or
+  // git, and where its browser lives. Null until `loadRepositories` lands, and
+  // for anything not in the response — every caller falls back to a
+  // treeherder-only link in that case rather than guessing a URL.
+  //
+  // Here rather than in shared/links.ts because it's a lookup into app state;
+  // links.ts stays a set of pure builders that take the answer.
+  repoLinkFor(repository: string): RepoLinkInfo | null {
+    const info = this.repoInfo.get(repository);
+    return info ? { name: info.name, dvcs_type: info.dvcs_type, url: info.url } : null;
+  }
 
   // ---- Derived ----------------------------------------------------------
   series = $derived.by((): SeriesEntry[] =>

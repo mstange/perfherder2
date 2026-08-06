@@ -23,6 +23,14 @@ export function jobsUrl(repo: string, revision: string, jobId?: number | null): 
   return `${TREEHERDER_ORIGIN}/jobs?${params}`;
 }
 
+// How a revision is written when it's shown rather than followed. Twelve
+// characters is what treeherder, hg.mozilla.org and the pushlog all use, and
+// it's what makes two revisions distinguishable at a glance without taking a
+// line to itself.
+export function shortRevision(revision: string): string {
+  return revision.slice(0, 12);
+}
+
 // A single revision in the upstream repository browser.
 export function revisionUrl(repo: RepoLinkInfo, revision: string): string {
   return repo.dvcs_type === 'git'

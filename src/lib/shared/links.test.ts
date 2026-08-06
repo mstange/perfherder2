@@ -6,6 +6,7 @@ import {
   perfCompareUrl,
   pushLogRangeUrl,
   revisionUrl,
+  shortRevision,
   splitCommitMessage,
   type RepoLinkInfo,
 } from './links';
@@ -46,6 +47,16 @@ describe('revisionUrl', () => {
   it('uses /rev/ for hg and /commit/ for git', () => {
     expect(revisionUrl(hg, 'abc')).toBe('https://hg.mozilla.org/integration/autoland/rev/abc');
     expect(revisionUrl(git, 'abc')).toBe('https://github.com/mozilla-firefox/firefox/commit/abc');
+  });
+});
+
+describe('shortRevision', () => {
+  it('takes the first twelve characters', () => {
+    expect(shortRevision('a6c7c8e7c433f0e1d2b3a4958677')).toBe('a6c7c8e7c433');
+  });
+
+  it('leaves a revision already that short alone', () => {
+    expect(shortRevision('abc123')).toBe('abc123');
   });
 });
 

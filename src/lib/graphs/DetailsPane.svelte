@@ -5,6 +5,7 @@
   // would put the twenty-commit pushlog first. See graphs.md, "The details
   // pane, top to bottom".
 
+  import './detailsPane.css';
   import { alertStatusLabel, summaryStatusLabel } from './alerts';
   import type { AppState } from './appState.svelte';
   import {
@@ -32,9 +33,9 @@
     jobsUrl,
     pushLogRangeUrl,
     revisionUrl,
+    shortRevision,
     splitCommitMessage,
     taskUrl,
-    type RepoLinkInfo,
   } from '../shared/links';
   import { SIGNIFICANCE_ALPHA } from '../shared/stats';
 
@@ -52,12 +53,7 @@
   const sel = $derived(app.selection);
   const repo = $derived(sel?.entry.ref.repository ?? '');
 
-  function linkInfoFor(repository: string): RepoLinkInfo | null {
-    const info = app.repoInfo.get(repository);
-    return info ? { name: info.name, dvcs_type: info.dvcs_type, url: info.url } : null;
-  }
-
-  const repoLink = $derived(linkInfoFor(repo));
+  const repoLink = $derived(app.repoLinkFor(repo));
 
   // Every value the build recorded, grouped by job. More than one group means
   // the push was retriggered.
@@ -141,7 +137,7 @@
   const otherRole = $derived(app.comparisonSource === 'hover' ? 'hovering' : 'pinned');
 
   const cmpLinks = $derived(
-    cmp ? comparisonLinks(cmp, linkInfoFor(cmp.base.ref.repository)) : null,
+    cmp ? comparisonLinks(cmp, app.repoLinkFor(cmp.base.ref.repository)) : null,
   );
 
   // What actually tells the two sides apart, and so what each side's line
@@ -171,10 +167,6 @@
         ]
       : [],
   );
-
-  function shortRev(rev: string): string {
-    return rev.slice(0, 12);
-  }
 
   function jobDuration(startS: number | null, endS: number | null): string {
     if (!startS || !endS || endS < startS) return '';
@@ -355,16 +347,16 @@
                   </div>
                   <div class="side-detail muted">
                     {#if sideDetail === 'revision'}
-                      {@const link = linkInfoFor(row.side.ref.repository)}
+                      {@const link = app.repoLinkFor(row.side.ref.repository)}
                       {#if link}
                         <a
                           href={revisionUrl(link, row.side.push.revision)}
                           target="_blank"
                           rel="noopener"
-                          class="mono">{shortRev(row.side.push.revision)}</a
+                          class="mono">{shortRevision(row.side.push.revision)}</a
                         >
                       {:else}
-                        <span class="mono">{shortRev(row.side.push.revision)}</span>
+                        <span class="mono">{shortRevision(row.side.push.revision)}</span>
                       {/if}
                       {formatTimestamp(row.side.push.x)}
                     {:else if sideDetail === 'job' && row.side.run.jobId !== null}
@@ -729,10 +721,10 @@
                 href={revisionUrl(repoLink, sel.push.revision)}
                 target="_blank"
                 rel="noopener"
-                class="mono">{shortRev(sel.push.revision)}</a
+                class="mono">{shortRevision(sel.push.revision)}</a
               >
             {:else}
-              <span class="mono">{shortRev(sel.push.revision)}</span>
+              <span class="mono">{shortRevision(sel.push.revision)}</span>
             {/if}
           </dd>
           {#if app.selectedPush}
@@ -767,10 +759,10 @@
                       href={revisionUrl(repoLink, rev.revision)}
                       target="_blank"
                       rel="noopener"
-                      class="mono">{shortRev(rev.revision)}</a
+                      class="mono">{shortRevision(rev.revision)}</a
                     >
                   {:else}
-                    <span class="mono">{shortRev(rev.revision)}</span>
+                    <span class="mono">{shortRevision(rev.revision)}</span>
                   {/if}
                   {#each bugsInComment(parts.summary) as bug (bug)}
                     <a href={bugUrl(bug)} target="_blank" rel="noopener">bug {bug}</a>
@@ -835,9 +827,6 @@
     overflow-y: auto;
     padding: 10px 12px 24px;
   }
-  section {
-    margin-bottom: 14px;
-  }
   section.series {
     display: grid;
     grid-template-columns: 10px 1fr;
@@ -869,55 +858,13 @@
     font-weight: 600;
     overflow-wrap: anywhere;
   }
-  h3 {
-    margin: 0 0 4px;
-    font-size: 11px;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    color: var(--fg-muted);
-  }
   h4 {
     margin: 10px 0 4px;
     font-size: 12px;
     color: var(--fg-muted);
   }
-  .value {
-    margin: 0 0 6px;
-    font-size: 18px;
-    font-weight: 600;
-    font-variant-numeric: tabular-nums;
-  }
-  .value .unit {
-    font-size: 13px;
-    font-weight: 400;
-    color: var(--fg-muted);
-  }
-  .value .muted {
-    font-size: 12px;
-    font-weight: 400;
-  }
-  dl {
-    display: grid;
-    grid-template-columns: max-content 1fr;
-    gap: 2px 8px;
-    margin: 0;
-  }
-  dt {
-    color: var(--fg-muted);
-  }
-  dd {
-    margin: 0;
-    overflow-wrap: anywhere;
-  }
   dd.bad {
     color: var(--danger-fg);
-  }
-  .muted {
-    color: var(--fg-muted);
-  }
-  .mono {
-    font-family: var(--font-mono);
-    font-size: 12px;
   }
   .wrap {
     overflow-wrap: anywhere;

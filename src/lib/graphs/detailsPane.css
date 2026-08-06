@@ -1,0 +1,68 @@
+/* The details pane's shared text vocabulary.
+   ------------------------------------------
+   The pane is more than one component — DetailsPane.svelte plus the sections
+   it delegates to — and these are the rules every section reads from: the
+   heading, the headline value, the definition lists, and the two text
+   modifiers. Svelte scopes styles per component, so without one home here
+   each extracted section would have to restate the handful of them it uses,
+   and the pane's typography would drift the way the buttons did.
+
+   Global rather than scoped, and every selector is under `.details`, which is
+   the pane's own root: these must not reach the series list or the picker,
+   which have their own (deliberately different) type scale.
+
+   Anything used by exactly one section stays in that section's own `<style>`.
+   The test for moving a rule here is "does a second section read it", not "is
+   it generic-looking". */
+
+.details section {
+  margin-bottom: 14px;
+}
+
+.details h3 {
+  margin: 0 0 4px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--fg-muted);
+}
+
+/* The one number a section leads with — the selected value, the comparison's
+   delta, the alert's magnitude. */
+.details .value {
+  margin: 0 0 6px;
+  font-size: 18px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.details .value .unit {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--fg-muted);
+}
+.details .value .muted {
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.details dl {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 2px 8px;
+  margin: 0;
+}
+.details dt {
+  color: var(--fg-muted);
+}
+.details dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.details .muted {
+  color: var(--fg-muted);
+}
+.details .mono {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
