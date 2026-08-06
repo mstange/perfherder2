@@ -18,9 +18,16 @@ non-trivial change should be checked against that document.
   clean. `npm run build` must also succeed. These are the three steps
   `.github/workflows/ci.yml` runs, so a green local run means a green CI
   run.
-- **No committed browser tests.** During development, spawn puppeteer for
-  smoke tests, then uninstall it before committing so `package.json`
-  stays lean. See docs/design.md for the pattern.
+- **No committed browser tests.** Smoke-test in a browser from
+  `tools/visual/`, which is gitignored and carries **its own** puppeteer
+  install. Write a `.mjs` there, run it against `npm run dev` with
+  `node tools/visual/whatever.mjs`, delete it or leave it. Leave the
+  install alone either way — being gitignored, it is meant to persist
+  between sessions (`npm i puppeteer --prefix tools/visual` if it's ever
+  missing). Never install puppeteer into the app's `package.json`, not
+  even temporarily: it pulls a ~200 MB Chromium CI has no use for, and
+  the install/uninstall cycle rewrites the root lockfile. See
+  docs/design.md, "Measuring".
 - **Layout stability matters.** New UI must not shift when data loads or
   when the user first interacts with it. Budget space for loading and
   empty states from the start.
