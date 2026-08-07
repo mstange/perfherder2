@@ -1048,6 +1048,73 @@ table instead of growing the dialog. There is deliberately no fallback
 scroller for extremely short viewports; below roughly 450px of height the
 table shrinks toward zero rows rather than the dialog overflowing.
 
+### A hovered cell pours its content out
+
+The series table is `table-layout: fixed`, so a cell that doesn't fit is
+simply cut off — most visibly in Options, where a row can carry six badges
+in a column sized for four, and in Platform, where
+`windows11-64-24h2-hw-ref-shippable` loses its tail. Hovering the cell's
+content lifts the clip and the content spills over its neighbours.
+
+Three decisions in that, all of them load-bearing:
+
+**The hover target is an inline `.cell-flow` wrapper, not the cell.** In a
+fixed-width column most rows leave the tail of the cell blank, and pouring
+content out because the pointer crossed empty space is noise. The wrapper is
+exactly as wide as the content and covers the gaps *between* badges, which
+nothing else does — the badges are separate inline boxes with text nodes
+between them, so without a wrapper the gaps are dead space in the middle of
+the target. The clip lives on the cell but the intent is expressed by the
+content, hence `td:has(.cell-flow:hover)`: an element cannot escape an
+ancestor's `overflow: hidden` on its own.
+
+**The backing is the row's own colour, and nothing else.** Badges are opaque
+pills, but the 4px gaps between them are not, and through them the next
+cell's text shows in the middle of the spill. So the wrapper paints a
+background — and it gets the right one **by inheritance, not by lookup**:
+`tbody td` is `background-color: inherit`, so a cell picks up whatever the
+row is painted, and `.cell-flow` is `background-color: inherit`, so the
+wrapper picks it up from the cell. Row states painted on the cell rather
+than the row (`.plotted`, `.subtest-row`) override the cell's `inherit` and
+are inherited from just the same.
+
+The first attempt was a `--row-bg` custom property declared beside every
+`background` in the file, which is worse in two ways worth remembering.
+It's a second source of truth maintained by hand — add a row state, forget
+the mirror, get the wrong colour. And **custom properties resolve by
+proximity, not specificity**: the base `--row-bg` was declared on `tbody
+td`, which, being nearer to the wrapper than `tbody tr:hover`, beat it
+outright, so every plain hovered row backed its spill in canvas white
+against a grey row. Inheriting the real property has no second value to
+sync and no levels to get wrong.
+
+What it deliberately does *not* have is a shadow or a border. That's what
+lets the backing be unconditional: painting the row's colour over the row's
+colour is invisible, so on the large majority of cells — the ones that fit
+and have nothing to pour — hovering still changes nothing on screen. A
+first cut had a small shadow, and the cost was exactly that: it fired on
+every hovered cell and read as a popover opening over cells with nothing to
+show. Suppressing it only for cells that overflow would mean measuring every
+cell in JS on rows being virtualized past at speed. An invisible-when-unneeded
+backing gets the same result for free.
+
+The spill also needs `position: relative; z-index` — cell backgrounds all
+paint before any cell's inline content, so an unpositioned spill would clear
+the neighbour's background and still land under its badges.
+
+**The table is an `overflow: clip` container.** Without it the spill counts
+toward `.table-wrap`'s scrollable width and flashes a horizontal scrollbar —
+which on a platform with classic scrollbars also takes ~15px of height off
+the list and re-flows the virtualized rows, i.e. exactly the layout shift
+the section above forbids. Measured: a long spill took the scroller from
+1254px to 1926px, and `overflow: clip` on the table put it back. `clip`
+rather than `hidden` because `clip` doesn't create a scroll container, so
+the horizontal scrolling the table's `min-width: 64em` exists to provide
+still works. Both Chrome and Firefox honour `clip` on a table box and keep
+the sticky header sticking; the cost is that a spill wider than the
+remaining table is cut off at the table's edge instead of the cell's, which
+is still strictly more than was visible before.
+
 ### Whitespace between adjacent badges (Svelte gotcha)
 
 Svelte's compiler strips whitespace between adjacent template elements. A

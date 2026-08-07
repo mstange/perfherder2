@@ -500,24 +500,38 @@ import { TIME_RANGES } from './pickerOptions';
                 {/if}
               </td>
               <td>
-                {@render badge('suite', row.suite, 'badge-suite')}
-                {#if row.test}
-                  {@render badge('test', row.test, 'badge-test')}
-                {/if}
+                <span class="cell-flow">
+                  {@render badge('suite', row.suite, 'badge-suite')}
+                  {#if row.test}
+                    {@render badge('test', row.test, 'badge-test')}
+                  {/if}
+                </span>
               </td>
-              <td>{@render badge('repo', row.repository, 'badge-repo')}</td>
-              <td>{@render badge('platform', row.platform, 'badge-platform')}</td>
+              <td>
+                <span class="cell-flow">
+                  {@render badge('repo', row.repository, 'badge-repo')}
+                </span>
+              </td>
+              <td>
+                <span class="cell-flow">
+                  {@render badge('platform', row.platform, 'badge-platform')}
+                </span>
+              </td>
               <td>
                 {#if row.application}
-                  {@render badge('application', row.application, 'badge-app')}
+                  <span class="cell-flow">
+                    {@render badge('application', row.application, 'badge-app')}
+                  </span>
                 {/if}
               </td>
               <td>
-                {#each row.options as o}
-                  {@render badge('option', o, 'badge-option')}{' '}
-                {/each}
+                <span class="cell-flow">
+                  {#each row.options as o}
+                    {@render badge('option', o, 'badge-option')}{' '}
+                  {/each}
+                </span>
               </td>
-              <td class="unit">{row.measurementUnit}</td>
+              <td class="unit"><span class="cell-flow">{row.measurementUnit}</span></td>
               {@render activityCell(row)}
             </tr>
           {:else if item.kind === 'child'}
@@ -529,23 +543,35 @@ import { TIME_RANGES } from './pickerOptions';
               {@render pickCell(child, false)}
               <td class="col-disclose"></td>
               <td class="subtest-cell">
-                {@render badge('test', child.test || child.suite, 'badge-test', true)}
+                <span class="cell-flow">
+                  {@render badge('test', child.test || child.suite, 'badge-test', true)}
+                </span>
               </td>
-              <td>{@render badge('repo', child.repository, 'badge-repo', true)}</td>
               <td>
-                {@render badge('platform', child.platform, 'badge-platform', true)}
+                <span class="cell-flow">
+                  {@render badge('repo', child.repository, 'badge-repo', true)}
+                </span>
+              </td>
+              <td>
+                <span class="cell-flow">
+                  {@render badge('platform', child.platform, 'badge-platform', true)}
+                </span>
               </td>
               <td>
                 {#if child.application}
-                  {@render badge('application', child.application, 'badge-app', true)}
+                  <span class="cell-flow">
+                    {@render badge('application', child.application, 'badge-app', true)}
+                  </span>
                 {/if}
               </td>
               <td>
-                {#each child.options as o}
-                  {@render badge('option', o, 'badge-option', true)}{' '}
-                {/each}
+                <span class="cell-flow">
+                  {#each child.options as o}
+                    {@render badge('option', o, 'badge-option', true)}{' '}
+                  {/each}
+                </span>
               </td>
-              <td class="unit">{child.measurementUnit}</td>
+              <td class="unit"><span class="cell-flow">{child.measurementUnit}</span></td>
               {@render activityCell(child)}
             </tr>
           {:else}
@@ -771,6 +797,17 @@ import { TIME_RANGES } from './pickerOptions';
        this the wrapper (overflow: auto) shows a horizontal scrollbar. */
     min-width: 64em;
     border-collapse: collapse;
+    /* Bounds how far a cell may pour its content out (see `.cell-flow`): at
+       the table's own edge, not the scroller's. Without this, a spill past
+       the last column counts toward `.table-wrap`'s scrollable width and
+       flashes a horizontal scrollbar on hover — which on a platform with
+       classic scrollbars also takes a strip of height off the list and
+       re-flows the virtualized rows. `clip` rather than `hidden` precisely
+       because it does *not* make this a scroll container: `hidden` would
+       swallow the wheel events and the horizontal scrolling the `min-width`
+       above exists to provide. Verified in both Chrome and Firefox — `clip`
+       on a table box is honoured, and the sticky header still sticks. */
+    overflow: clip;
     font-size: 13px;
   }
   /* Fixed layout: only the widths on these <col> elements determine the
@@ -862,9 +899,26 @@ import { TIME_RANGES } from './pickerOptions';
     border-bottom: 1px solid var(--border-muted);
     /* With table-layout: fixed, cells have a definite width, so we must
        clip. Without this, an over-wide badge (e.g. a long platform name)
-       would visually overflow into the next column. */
+       would visually overflow into the next column. Lifted on hover; see
+       `.cell-flow`. */
     overflow: hidden;
     white-space: nowrap;
+    /* Not cosmetic: this is what lets `.cell-flow` back its spill in the
+       row's colour (see below). Most row states — plain, and plain hovered —
+       are painted on the `<tr>`, leaving the cell transparent, so a cell that
+       inherits instead ends up holding the same colour as a *value* that its
+       own children can inherit in turn. The states that are painted on the
+       cell (`.plotted`, `.subtest-row`) override this and are inherited from
+       just the same.
+
+       The alternative was a `--row-bg` custom property declared beside every
+       `background` in this file, and it was worse twice over: it's a second
+       source of truth that has to be kept in step by hand, and custom
+       properties resolve by proximity rather than specificity, so the base
+       declaration sitting on `tbody td` quietly beat `tbody tr:hover` and
+       backed every hovered row in canvas white. Inheriting the real property
+       can't drift and has no levels to get wrong. */
+    background-color: inherit;
   }
   tbody tr:hover {
     background: var(--bg-subtle);
@@ -962,6 +1016,68 @@ import { TIME_RANGES } from './pickerOptions';
     color: var(--fg-muted);
     font-style: italic;
     background: var(--bg-nested);
+  }
+  /* An inline box around a cell's whole content run. Two jobs:
+
+     1. It is the hover target that lifts the cell's clip, so a row whose
+        options (or 40-character platform name) don't fit can be read
+        without widening the column or opening anything. Hovering the cell
+        would be easier, but a fixed-width column is mostly empty space in
+        most rows, and pouring content out because the pointer crossed the
+        blank tail of a cell is noise. The wrapper is exactly as wide as the
+        content, and it spans the gaps *between* badges — which nothing else
+        does, the badges being separate inline boxes with text nodes between
+        them — so the target is "the content", gaps included, and not "the
+        cell".
+     2. When lifted it carries the row's own background under the spilled
+        part, so it covers the neighbouring cells rather than colliding with
+        their text.
+
+     The backing is `background-color: inherit`, which lands on the row's
+     colour by construction — the cell inherits it from the row (see
+     `tbody td`) and the wrapper inherits it from the cell — so there is
+     nothing to keep in sync and no state, hovered or plotted or nested, that
+     can be missed.
+
+     It is that colour and nothing else: no shadow, no border, nothing that
+     says "popover". That is what lets it be unconditional. On the large
+     majority of cells, which fit and have nothing to pour, painting the
+     row's colour over the row's colour is invisible, so nothing has to know
+     whether a given cell actually overflows — which would mean measuring
+     every cell in JS on rows being virtualized past at speed. An earlier
+     version carried a shadow, and the cost of that was exactly this: it
+     fired on every hovered cell and read as a popover opening over cells
+     that had nothing to show.
+
+     Geometry is identical hovered and not: the padding and the negative
+     margin cancelling it are unconditional, so only paint changes and no
+     badge moves under the pointer. The padding is what keeps the spill from
+     ending flush against the last badge, where the neighbour's text would
+     resume with no gap. */
+  .cell-flow {
+    display: inline-block;
+    vertical-align: middle;
+    padding: 0 6px;
+    margin: 0 -6px;
+    border-radius: 4px;
+    background-color: inherit;
+  }
+  /* `:has()` because the clip lives on the cell but the intent is expressed
+     by the content: there's no way for the wrapper to escape an ancestor's
+     `overflow: hidden` on its own. */
+  tbody td:has(.cell-flow:hover) {
+    overflow: visible;
+  }
+  /* `position` + `z-index` are load-bearing, not polish. Cell backgrounds all
+     paint before any cell's inline content, so an unpositioned spill would
+     clear the neighbour's background but still end up *under* its badges and
+     text. Positioning lifts the wrapper into the positioned layer, above
+     both. Above the sticky header's `z-index: 1` too, which is harmless: the
+     wrapper only positions itself while hovered, and it can't be hovered
+     while the header covers it. */
+  tbody td:has(.cell-flow:hover) .cell-flow {
+    position: relative;
+    z-index: 2;
   }
   /* Badges are now buttons — same visual as before, but the "+" / "×"
      affordance appears on hover, and always when the chip is active. */
