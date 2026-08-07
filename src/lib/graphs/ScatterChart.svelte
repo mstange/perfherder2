@@ -387,9 +387,6 @@
       }
       return;
     }
-    // A drag is about the window, not about whatever dot it passes over.
-    hoveredAlert = null;
-    reportHover(null);
     dragMoved = true;
     const value = geom.xScale.toValue(localX(e));
     if (drag.kind === 'move') {
@@ -399,6 +396,17 @@
       pending = { start, end: start + drag.width };
     } else {
       pending = spanFrom(drag.anchor, value);
+    }
+    // A drag is about the window, not about whatever dot it passes over — but
+    // only once it *is* a drag. A hand twitches a pixel between button-down and
+    // button-up, and clearing on the first move made the marker under the
+    // pointer shrink back to its resting size mid-click and then grow again as
+    // the selection landed. `spanFrom` already draws that line at 4px, which is
+    // the same line `onPointerUp` uses to tell a click from a zoom; below it
+    // this is still a click, and the highlight has to sit still.
+    if (pending) {
+      hoveredAlert = null;
+      reportHover(null);
     }
     if (interaction === 'brush') onbrush?.(pending, true);
   }
