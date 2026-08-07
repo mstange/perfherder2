@@ -605,33 +605,78 @@ The prefill goes through the normal `pickerView` state, so it lands in the
 URL (`pc=` / `pr=` params) like anything else the panel shows and a shared
 link reopens on the same rows.
 
-### Rows already on the graph show their swatch, not a checkbox
+### The row's pick control is a button with a verb, not a checkbox
+
+Each row carries one control in the `Add` column, in one of three states:
+`+ Add`, `✓ Added` (staged, accent-filled, click to undo), or a series
+swatch plus `Remove` for a row already on the graph.
+
+It used to be a checkbox. User testing found people didn't recognise it
+as "the way to get this series onto the graph" and reached instead for
+the disclosure caret — the only control on the row that looked like it
+led somewhere — then stalled among the subtests, unsure which one to
+pick. Three things caused that, and the fix addresses each:
+
+- **A checked checkbox is a promise, not an action.** Nothing visible
+  happened on click except a faint row tint and a counter in the status
+  row, far away. Nowhere on the row was there a verb. Now there is one.
+- **The caret out-competed it.** Two small controls side by side, one of
+  them a filled glyph implying direction. The caret now carries its
+  subtest count (`▶ 28`), which turns it from an entry point into a fact
+  about the row, and expanding a parent inserts a note row saying the
+  parent *is* the overall score — the question "which subtest do I pick?"
+  answered where it gets asked.
+- **The outcome was invisible.** The picker covers the graph and the
+  series list (`main` is `inert`), so nothing ever confirmed that picking
+  and plotting were the same act. Not yet fixed; see the note on
+  immediate-commit below.
+
+Details that are load-bearing:
+
+- **Both button states occupy one fixed box** (`.pick` is `width: 100%`
+  in a fixed-width column, and `.pick-cue` reserves a constant width for
+  `+` vs `✓`). Three labels of different lengths in one column would
+  otherwise give it a ragged edge that moves as you click.
+- **The master checkbox left the column header**, which now says `Add`.
+  A checkbox at the head of a column of Add buttons re-teaches the exact
+  control we just replaced. Bulk selection is a `Select all` /
+  `Deselect all` button in the status row, next to `Clear` — its inverse.
+  It loses the checkbox's indeterminate state; the adjacent
+  "*n* selected" carries that.
+- **Remove acts immediately; Add still stages** behind the footer button.
+  The asymmetry is deliberate and temporary. A removal has nowhere to
+  stage *to* — a row with a pending Remove would have to render as
+  neither on nor off the graph — and turning the panel into an
+  apply-a-set editor would make `Clear` mean "wipe the graph" and
+  select-all mean "plot 25,000 series". The intended end state is the
+  other direction: adding becomes immediate too, the footer becomes
+  `Done`, and the panel stops covering the series list so the result is
+  visible. That needs `syncUrl('push')` in `AppState.addSeries` to
+  coalesce first, or eight clicks become eight Back presses.
+- **Removing leaves the panel open.** The graph behind it is covered, so
+  closing on remove would read as the dialog crashing.
+
+### Rows already on the graph show their swatch
 
 A direct consequence of the prefill: the list you land on contains the
 series you already have. `AppState.plottedColors` (`Series.key` → the
 color it's drawn in) reaches `PickerState.plotted`, and those rows render
-the same colored swatch the series list uses in place of their checkbox,
-over a faint blue row tint.
+the same colored swatch the series list uses, over a faint blue row tint.
 
 - **A swatch, not a disabled checked checkbox.** It says "this is the
   purple line on your graph" rather than just "no". The shared vocabulary
   with the series list is the point.
-- **The dialog stays one-directional: it adds.** Unchecking-to-remove
-  would give one checkbox two opposite meanings, and turning the whole
-  thing into an apply-a-set editor would make "Clear" mean "wipe the
-  graph" and select-all mean "plot 25,000 series". Removal stays in the
-  series list, where the × already is.
 - `pickableRows` excludes plotted rows, so select-all doesn't count rows
-  that have no checkbox (it would report "7 selected" and add four
+  whose control is `Remove` (it would report "7 selected" and add four
   no-ops).
 - The lookup only works because `Series.key` (built in
   [series.ts::toSeries](../src/lib/picker/series.ts)) and
   [graphData.ts::seriesKey](../src/lib/graphs/graphData.ts) compose the same
   `${repo}|${signature id}` string from two different modules. Drift
   there would silently un-mark every row, so series.test.ts pins it.
-- The prop is **synced, not seeded**: nothing can change the plotted set
-  while the panel is open today (adding closes it), but stale marks would
-  be a lie about the graph rather than a cosmetic issue.
+- The prop is **synced, not seeded**, and now has to be: `Remove` changes
+  the plotted set with the panel still open, so a seeded copy would leave
+  the row claiming to be on a graph it had just left.
 
 ### Run activity is fetched for the visible window only
 

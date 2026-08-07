@@ -10,6 +10,9 @@ import { TIME_RANGES } from './pickerOptions';
 
   type Props = {
     onadd?: (series: Series[]) => void;
+    // Takes a row that's already on the graph back off it. Unlike `onadd` this
+    // is not staged behind the footer button — see the `pickCell` comment.
+    onremove?: (series: Series) => void;
     // Set when the picker is shown as an overlay: adds a close button and
     // makes Escape dismiss it.
     onclose?: () => void;
@@ -24,7 +27,7 @@ import { TIME_RANGES } from './pickerOptions';
     plotted?: ReadonlyMap<string, string>;
     onviewchange?: (view: PickerViewState) => void;
   };
-  let { onadd, onclose, initialView, plotted, onviewchange }: Props = $props();
+  let { onadd, onremove, onclose, initialView, plotted, onviewchange }: Props = $props();
 
   // All shared UI state lives on PickerState. This component is a thin
   // renderer over it. See pickerState.svelte.ts. Named `picker` (not
@@ -96,6 +99,15 @@ import { TIME_RANGES } from './pickerOptions';
       } else if (children.length === 0) {
         rows.push({ kind: 'note', message: 'No subtests match the current filter.' });
       } else {
+        // Says out loud what the tree only implies. Users who expanded a
+        // parent tended to assume the subtests were the real, chartable data
+        // and the parent was just a folder — then stalled, because no single
+        // subtest is the obvious answer to "I want this benchmark". The
+        // parent is a signature in its own right; this is where to say so.
+        rows.push({
+          kind: 'note',
+          message: 'The row above is the overall score — these are its individual subtests.',
+        });
         for (const child of picker.sortedChildren(children)) {
           rows.push({ kind: 'child', row: child });
         }
@@ -266,6 +278,18 @@ import { TIME_RANGES } from './pickerOptions';
     <span class="picked-count" class:muted={picker.picked.size === 0}>
       {picker.picked.size} selected
     </span>
+    <!-- `min-width` because the label swaps between two lengths and this row
+         must not re-flow under the cursor as the last row gets selected. -->
+    <button
+      type="button"
+      class="btn select-all"
+      onclick={() => picker.toggleSelectAll()}
+      disabled={picker.pickableRows.length === 0}
+      title="{picker.allPickablePicked
+        ? 'Deselect'
+        : 'Select'} all {picker.pickableRows.length.toLocaleString()} rows the filter matches"
+      >{picker.allPickablePicked ? 'Deselect all' : 'Select all'}</button
+    >
     <button
       type="button"
       class="btn"
@@ -334,21 +358,11 @@ import { TIME_RANGES } from './pickerOptions';
         {/snippet}
 
         <tr>
-          <th class="col-check">
-            <input
-              type="checkbox"
-              checked={picker.allPickablePicked}
-              indeterminate={picker.somePickablePicked && !picker.allPickablePicked}
-              disabled={picker.pickableRows.length === 0}
-              onchange={() => picker.toggleSelectAll()}
-              aria-label={picker.allPickablePicked
-                ? 'Deselect all shown rows'
-                : 'Select all shown rows'}
-              title={picker.allPickablePicked
-                ? 'Deselect all shown rows'
-                : 'Select all shown rows'}
-            />
-          </th>
+          <!-- A word, not the master checkbox that used to live here. A
+               checkbox at the head of a column of Add buttons re-teaches the
+               control we just replaced; bulk selection moved to the status
+               row, next to Clear, which is its inverse. -->
+          <th class="col-check">Add</th>
           <th class="col-disclose"></th>
           {@render sortHeader('Suite / Test', 'suite')}
           {@render sortHeader('Repo', 'repo')}
@@ -386,32 +400,49 @@ import { TIME_RANGES } from './pickerOptions';
           </button>
         {/snippet}
 
-        <!-- The pick control for one row. A row that's already on the graph
-             shows its series swatch instead of a checkbox: adding it again
-             would be a no-op, and the swatch is the same mark the series list
-             uses, so the two read as the same thing. -->
+        <!-- The pick control for one row. A button with a verb on it, not a
+             checkbox: user testing found people didn't recognise the checkbox
+             as "the way to get this series", and reached for the disclosure
+             caret instead — the only control on the row that looked like it
+             led somewhere. See docs/design.md, "The row's pick control".
+             A row already on the graph carries its series swatch — the same
+             mark the series list uses — and offers Remove.
+             Remove acts immediately while Add stages behind the footer button.
+             That asymmetry is deliberate but temporary: it exists because
+             removal has nowhere to stage *to*, and it disappears when adding
+             becomes immediate too. -->
         {#snippet pickCell(row: Series, disabled: boolean)}
           {@const color = picker.plotted.get(row.key)}
+          {@const picked = picker.picked.has(row.id)}
           <td class="col-check">
             {#if color}
-              <span
-                class="plotted-swatch"
+              <button
+                type="button"
+                class="btn btn-compact pick pick-plotted"
                 style:--series-color={color}
-                role="img"
-                title="Already on the graph"
-                aria-label="Already on the graph"
-              ></span>
+                title="Remove from the graph"
+                onclick={() => onremove?.(row)}
+              >
+                <span class="pick-swatch" aria-hidden="true"></span>
+                <span>Remove</span>
+              </button>
             {:else}
-              <input
-                type="checkbox"
-                checked={picker.picked.has(row.id)}
+              <button
+                type="button"
+                class="btn btn-compact pick"
+                class:btn-selected={picked}
                 {disabled}
+                aria-pressed={picked}
                 title={disabled
                   ? 'This row is shown because a subtest matched. Widen the filter to pick it.'
-                  : undefined}
-                onchange={(e) =>
-                  picker.togglePick(row, (e.currentTarget as HTMLInputElement).checked)}
-              />
+                  : picked
+                    ? 'Added — click to undo'
+                    : undefined}
+                onclick={() => picker.togglePick(row, !picked)}
+              >
+                <span class="pick-cue" aria-hidden="true">{picked ? '✓' : '+'}</span>
+                <span>{picked ? 'Added' : 'Add'}</span>
+              </button>
             {/if}
           </td>
         {/snippet}
@@ -472,13 +503,25 @@ import { TIME_RANGES } from './pickerOptions';
               {@render pickCell(row, disabled)}
               <td class="col-disclose">
                 {#if row.hasSubtests}
+                  <!-- The count is what turns this from "the way in" into a
+                       fact about the row. It's only known once the subtests=1
+                       payload has landed, so it appears late — the column is
+                       wide enough for it from the start either way. The
+                       rotation is on the caret span, not the button, or the
+                       count would spin with it. -->
+                  {@const subtestCount = picker.childrenByParent.get(parentKey)?.length ?? 0}
                   <button
                     type="button"
                     class="disclose"
-                    class:disclose-open={isExpanded}
+                    aria-expanded={isExpanded}
                     aria-label={isExpanded ? 'Collapse subtests' : 'Expand subtests'}
                     onclick={() => picker.toggleExpanded(parentKey)}
-                  >▶</button>
+                  >
+                    <span class="disclose-caret" class:disclose-open={isExpanded}>▶</span>
+                    {#if subtestCount > 0}
+                      <span class="disclose-count">{subtestCount}</span>
+                    {/if}
+                  </button>
                 {/if}
               </td>
               <td>
@@ -720,6 +763,11 @@ import { TIME_RANGES } from './pickerOptions';
     min-width: 9ch;
     display: inline-block;
   }
+  /* Wide enough for "Deselect all", so swapping to the shorter "Select all"
+     doesn't drag Clear and Add left under the pointer. */
+  .select-all {
+    min-width: 12ch;
+  }
   .muted {
     color: var(--fg-muted);
     font-weight: 400;
@@ -753,13 +801,13 @@ import { TIME_RANGES } from './pickerOptions';
      column widths — content in the currently rendered virtual window
      can't push columns around during scrolling. Percentages divide the
      table's actual width; the two narrow columns are pinned in px. */
-  col.col-check-w    { width: 32px; }
-  col.col-disclose-w { width: 24px; }
+  col.col-check-w    { width: 92px; }
+  col.col-disclose-w { width: 48px; }
   col.col-suite-w    { width: 22%; }
   col.col-app-w      { width: 8%; }
   col.col-repo-w     { width: 8%; }
-  col.col-platform-w { width: 16%; }
-  col.col-options-w  { width: 22%; }
+  col.col-platform-w { width: 15%; }
+  col.col-options-w  { width: 20%; }
   col.col-unit-w     { width: 6%; }
   /* Fixed rather than a percentage: the count and the strip are both a known
      number of pixels wide, so this column has an actual right answer and no
@@ -861,56 +909,83 @@ import { TIME_RANGES } from './pickerOptions';
     pointer-events: none;
     opacity: 0.55;
   }
-  tbody tr.row-disabled .col-check input {
+  tbody tr.row-disabled .pick:disabled {
     cursor: not-allowed;
   }
   /* Already on the graph. Styled on the cells, not the row, so it also beats
-     `.subtest-row td`'s own background. A plotted row can't be selected — it
-     has no checkbox — so this never competes with `.selected`. */
+     `.subtest-row td`'s own background. A plotted row can't be picked — its
+     control is Remove — so this never competes with `.selected`. */
   tbody tr.plotted td {
     background: var(--accent-tint);
   }
   tbody tr.plotted:hover td {
     background: var(--accent-tint-hover);
   }
-  .plotted-swatch {
-    display: inline-block;
-    width: 10px;
-    height: 10px;
-    /* Sits where the checkbox it replaces sits, so the column doesn't look
-       ragged in a list that mixes the two. A checkbox is 13px wide with a 4px
-       left margin from the UA stylesheet; this centers on the same point. */
-    margin: 0 5.5px;
+  /* Both pick buttons are sized identically and stretched to fill the cell:
+     Add, Added and Remove have different label widths, and a column of
+     buttons whose left and right edges disagree row to row reads as damage.
+     One fixed box means the labels change but nothing moves. */
+  .pick {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    width: 100%;
+    font-size: 12px;
+    line-height: 1.4;
+  }
+  .pick-cue {
+    /* Reserved width so "+" and "✓" — different glyph widths — don't shift
+       the label sideways when the row is picked. */
+    width: 9px;
+    text-align: center;
+    opacity: 0.8;
+  }
+  .pick-swatch {
+    width: 9px;
+    height: 9px;
+    flex: none;
     border: 1px solid var(--series-color);
     border-radius: 3px;
     background: var(--series-color);
   }
   .col-check {
-    width: 32px;
+    /* Tighter than the 8px the other cells get: the button inside brings its
+       own padding, and the column is paying for a word now. */
+    padding: 0 6px;
   }
   .col-disclose {
-    width: 24px;
     padding: 0;
     text-align: center;
   }
   .disclose {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
     padding: 0;
-    width: 20px;
     height: 20px;
     line-height: 1;
+    font: inherit;
     font-size: 10px;
     color: var(--fg-muted);
     background: transparent;
     border: none;
     cursor: pointer;
-    transition: transform 0.12s ease;
     user-select: none;
   }
   .disclose:hover {
     color: var(--fg-default);
   }
+  .disclose-caret {
+    transition: transform 0.12s ease;
+  }
   .disclose-open {
     transform: rotate(90deg);
+  }
+  .disclose-count {
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
   }
   .subtest-row td {
     background: var(--bg-nested);

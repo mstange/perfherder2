@@ -24,6 +24,20 @@
     app.setPickerOpen(false);
   }
 
+  // Takes effect straight away and leaves the panel open — unlike adding,
+  // which stages behind the picker's footer button. There is nowhere to stage
+  // a removal to: a row whose Remove is pending would have to render as
+  // neither on nor off the graph. Leaving the panel open matters because the
+  // graph behind it is covered, so closing on remove would look like the
+  // dialog had crashed rather than like something had been taken off.
+  function handleRemove(series: Series) {
+    app.removeSeries({
+      repository: series.repository,
+      signatureId: series.id,
+      frameworkId: series.frameworkId,
+    });
+  }
+
   // Send focus back where it came from when the panel closes, so dismissing
   // it doesn't dump the user at the top of the document.
   //
@@ -77,6 +91,7 @@
     <div class="overlay-panel" role="dialog" aria-modal="true" aria-label="Add series">
       <AddSeriesPicker
         onadd={handleAdd}
+        onremove={handleRemove}
         onclose={() => app.setPickerOpen(false)}
         initialView={app.pickerView}
         plotted={app.plottedColors}
