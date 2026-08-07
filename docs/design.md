@@ -838,6 +838,42 @@ Several places take care to not shift the list under the user's cursor:
 occupy the same space as the "loaded" state.** This is the single biggest
 polish issue in dashboards, and we've paid the tax already.
 
+**Prefer stacking the states to measuring them.** Every reserve above is a
+number somebody measured once, which makes it a fact about a screenshot: reword
+the label, change a font, resize the pane, and it is quietly wrong, with nothing
+failing to say so — an overflowing `min-height` just reflows again, which looks
+exactly like the bug the reserve was added to prevent. Where the alternatives
+are cheap to render, put them all in one grid cell instead and let the browser
+take the maximum:
+
+```css
+.slot { display: grid; }
+.slot > * { grid-area: 1 / 1; min-width: 0; }
+.slot > [data-sizer] { visibility: hidden; }
+```
+
+The details pane's comparison block does this for both of its slots
+(ComparisonSection, `.cmp-lede` and `.cmp-chart`), and carries no pixel value
+for either. Three things to know before reaching for it:
+
+- **Every sizer must be independent of the thing you are stabilising
+  against.** A slot that must not move while the pointer moves can only stack
+  states whose height the pointer cannot change. Where a state's content
+  genuinely arrives with the interaction — a hovered comparison's labels — bound
+  it instead, by making its height content-independent (`nowrap` plus a clipped
+  label), and stack a placeholder for the bounded shape.
+- **`min-width: 0` on the items is load-bearing.** An `auto` grid track is
+  floored by its items' min-content width, so a single `nowrap` descendant sizes
+  the track to its full unwrapped length — overflowing the pane sideways *and*
+  re-wrapping every other stacked state against the wider track, which makes the
+  stack measure the wrong thing. Same family as the `min-height: 0` flex chain
+  below.
+- **`visibility: hidden` is the right hiding.** It keeps the box in layout,
+  which is the point, and still takes the element out of the tab order and the
+  accessibility tree — verified with a real accessibility snapshot, since a
+  hidden sizer duplicating a live button would otherwise be a nasty little
+  regression.
+
 ### An empty list has four reasons, and says which
 
 `PickerState.listStatus` names them, because three of them render as the

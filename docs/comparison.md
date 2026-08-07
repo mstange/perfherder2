@@ -325,10 +325,14 @@ Layout, top to bottom, in one canvas:
   pool on screen has one (`distributionHeight`'s `reserveBand`, from
   `selectionChart`). A series whose pushes straddle `MIN_CURVE_VALUES` — most with
   enough replicates for a curve, one with three — otherwise grew and shrank by 73px
-  as the pointer moved between them. This half *does* scan the zoom window, since
-  what matters is whether a pool the pointer can reach has a curve. Where none can
-  (every awsy signature) nothing is reserved, so those charts stay 61px rather than
-  carrying a permanently empty band.
+  as the pointer moved between them. This half *does* scan the zoom window, and
+  every **visible series** in it rather than the selected one alone: the pointer
+  lands on whatever dot is under it, so an awsy series plotted beside a talos one
+  can be handed a curve by a hover onto its neighbour. Where nothing reachable can
+  draw one (an awsy signature on its own) nothing is reserved, so those charts stay
+  61px rather than carrying a permanently empty band — and since the pane now sizes
+  the whole slot from this flag, a wrong `false` is a 73px jump rather than
+  something a generous fixed reserve absorbs.
 - **Overlapping dots darken.** The strip's dots are translucent and drawn in
   interleaved paths so that several values landing on the same spot accumulate;
   see graphs.md, "Dots are translucent, and jittered sideways", for why one
