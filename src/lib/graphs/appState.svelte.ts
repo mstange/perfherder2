@@ -830,15 +830,51 @@ export class AppState {
     this.syncUrl('push');
   }
 
-  // `mode` is 'replace' for keyboard stepping: holding an arrow key fires at
-  // the key-repeat rate, and a history entry per repeat would bury whatever
-  // the user actually wants to go back to.
-  selectPoint(sel: SelectedPoint | null, mode: 'push' | 'replace' = 'push'): void {
+  // A deliberate pick: a click on a dot, or on a value in the details pane.
+  // The arrow keys go through `stepSelection` instead, and the difference
+  // between the two is the swap below.
+  selectPoint(sel: SelectedPoint | null): void {
+    // Picking the *pinned* point means "look at that end now", not "throw the
+    // pair away", so the two ends trade places. The card doesn't move: base and
+    // next are ordered by time, not by which end is selected
+    // (compare.ts::sideOrder), so all that changes is the two role labels and
+    // the single-point sections below, which follow the click.
+    //
+    // Without the swap, selection and pin coincide, `comparison` goes null and
+    // the pane falls through to `comparisonMarkedHere` — "marked for
+    // comparison, now move to another point". That is the keyboard path's
+    // middle step, and it's the right thing to say to someone who just pressed
+    // `c`; said to someone who built a comparison with the mouse and then
+    // clicked one of its two ends, it reads as a nag to do the thing they had
+    // already done, and it eats the comparison to say it.
+    if (
+      sel &&
+      this.selectedPoint &&
+      this.comparedPoint &&
+      samePoint(sel, this.comparedPoint) &&
+      !samePoint(sel, this.selectedPoint)
+    ) {
+      this.comparedPoint = this.selectedPoint;
+    }
     this.selectedPoint = sel;
     // Nothing left to compare against. A pin that coincides with the selection
     // is deliberately *not* dropped — see `comparisonMarkedHere`.
     if (!sel) this.comparedPoint = null;
-    this.syncUrl(mode);
+    this.syncUrl('push');
+  }
+
+  // The arrow keys walking the selection, which deliberately does *not* swap:
+  // the pin is an anchor the user set with `c` and then walked away from, so
+  // stepping back onto it has to leave it where it is. Swapping here would drag
+  // the anchor along behind the selection — walk right and back and the mark has
+  // moved a point, walk again and it has moved another.
+  //
+  // 'replace' rather than 'push' because holding an arrow key fires at the
+  // key-repeat rate, and a history entry per repeat would bury whatever the user
+  // actually wants to go back to.
+  private stepSelection(sel: SelectedPoint): void {
+    this.selectedPoint = sel;
+    this.syncUrl('replace');
   }
 
   // Shift-click, or `c` on the focused graph. Pins the other end of a
@@ -1008,22 +1044,19 @@ export class AppState {
     const i = runs.indexOf(sel.run);
     if (i === -1) return;
     const next = runs[clampIndex(i + delta, runs.length)];
-    this.selectPoint(
-      {
-        repository: sel.entry.ref.repository,
-        signatureId: sel.entry.ref.signatureId,
-        datumId: next.datumId,
-        // Keep the replicate slot where possible, so walking a series compares
-        // like with like instead of jumping around inside each run. A mean
-        // selection stays a mean selection — MEAN_REPLICATE is below every
-        // real index, so the clamp leaves it alone.
-        replicateIndex:
-          sel.replicateIndex === MEAN_REPLICATE
-            ? MEAN_REPLICATE
-            : Math.min(sel.replicateIndex, next.values.length - 1),
-      },
-      'replace',
-    );
+    this.stepSelection({
+      repository: sel.entry.ref.repository,
+      signatureId: sel.entry.ref.signatureId,
+      datumId: next.datumId,
+      // Keep the replicate slot where possible, so walking a series compares
+      // like with like instead of jumping around inside each run. A mean
+      // selection stays a mean selection — MEAN_REPLICATE is below every
+      // real index, so the clamp leaves it alone.
+      replicateIndex:
+        sel.replicateIndex === MEAN_REPLICATE
+          ? MEAN_REPLICATE
+          : Math.min(sel.replicateIndex, next.values.length - 1),
+    });
   }
 
   stepReplicate(delta: number): void {
@@ -1035,20 +1068,17 @@ export class AppState {
     // With replicates hidden there is nothing to walk: every run is one dot,
     // and stepping would park the selection ring on a value that isn't drawn.
     if (!this.showReplicates) return;
-    this.selectPoint(
-      {
-        repository: sel.entry.ref.repository,
-        signatureId: sel.entry.ref.signatureId,
-        datumId: sel.run.datumId,
-        // A mean selection has no slot to step from; enter the list at its
-        // first replicate rather than jumping to the last one for a -1 delta.
-        replicateIndex:
-          sel.replicateIndex === MEAN_REPLICATE
-            ? 0
-            : clampIndex(sel.replicateIndex + delta, sel.run.values.length),
-      },
-      'replace',
-    );
+    this.stepSelection({
+      repository: sel.entry.ref.repository,
+      signatureId: sel.entry.ref.signatureId,
+      datumId: sel.run.datumId,
+      // A mean selection has no slot to step from; enter the list at its
+      // first replicate rather than jumping to the last one for a -1 delta.
+      replicateIndex:
+        sel.replicateIndex === MEAN_REPLICATE
+          ? 0
+          : clampIndex(sel.replicateIndex + delta, sel.run.values.length),
+    });
   }
 
   private selectFirstPoint(): void {

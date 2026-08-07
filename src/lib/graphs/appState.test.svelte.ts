@@ -594,13 +594,64 @@ describe('AppState comparison', () => {
       }));
   });
 
-  it('keeps the pin when the selection lands back on it, and says so', () =>
+  it('keeps the pin when the arrow keys step back onto it, and says so', () =>
+    withApp('?series=autoland,1,1&sel=autoland,1,10,0&cmp=autoland,1,11,0', async (app) => {
+      await settle();
+      app.stepRun(1);
+      expect(app.selectedPoint?.datumId).toBe(11);
+      // Silently dropping the pin here would make walking left and then right
+      // throw away a mark the user set deliberately. Moving it would be worse:
+      // the pin is an anchor, and an anchor that follows the selection around
+      // is not one.
+      expect(app.comparedPoint?.datumId).toBe(11);
+      expect(app.comparisonMarkedHere).toBe(true);
+      expect(app.comparison).toBeNull();
+      // And walking away again compares against the anchor, not against the
+      // point we just came from.
+      app.stepRun(-1);
+      expect(app.comparedPoint?.datumId).toBe(11);
+      expect(app.comparison?.kind).toBe('push');
+    }));
+
+  // Clicking one of the two ends is "look at that end now", not "throw the
+  // comparison away" — which is what it used to be, landing in the keyboard
+  // path's "marked, now move to another point" and telling a user who had just
+  // built a comparison to go build one.
+  it('swaps the two ends when the pinned point is clicked', () =>
     withApp(withBoth, async (app) => {
       await settle();
+      const wasSelected = app.selectedPoint;
+      const before = app.comparison;
       app.selectPoint({ repository: 'autoland', signatureId: 1, datumId: 11, replicateIndex: 0 });
-      // Silently dropping the pin here would make walking left and then right
-      // throw away a mark the user set deliberately.
-      expect(app.comparedPoint).not.toBeNull();
+
+      expect(app.selectedPoint?.datumId).toBe(11);
+      expect(app.comparedPoint).toEqual(wasSelected);
+      expect(app.comparisonMarkedHere).toBe(false);
+      // The card doesn't move: sides are ordered by time, not by which end is
+      // selected, so only the role labels trade places.
+      expect(app.comparison?.base.values).toEqual(before?.base.values);
+      expect(app.comparison?.next.values).toEqual(before?.next.values);
+      expect(app.comparison?.medianDelta).toBe(before?.medianDelta);
+      // `swapped` is what the pane reads to label each side.
+      expect(app.comparison?.swapped).toBe(!before?.swapped);
+    }));
+
+  it('leaves the pin alone when the selected point itself is clicked', () =>
+    withApp(withBoth, async (app) => {
+      await settle();
+      const pin = app.comparedPoint;
+      app.selectPoint(app.selectedPoint);
+      expect(app.comparedPoint).toEqual(pin);
+      expect(app.comparison?.kind).toBe('push');
+    }));
+
+  // Marked-here is its own state, not half a comparison: clicking the point
+  // that is both ends has nothing to swap.
+  it('stays marked when the marked point is clicked', () =>
+    withApp('?series=autoland,1,1&sel=autoland,1,10,1', async (app) => {
+      await settle();
+      app.comparePoint(app.selectedPoint);
+      app.selectPoint(app.selectedPoint);
       expect(app.comparisonMarkedHere).toBe(true);
       expect(app.comparison).toBeNull();
     }));
