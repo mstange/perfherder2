@@ -263,11 +263,28 @@ Users of this tool don't. The framework name is:
 `(field, value)` equality; each free-text token is a substring match against
 `row.searchText`. Rules:
 
-- Chips of the **same field OR** together (`repo:autoland repo:mozilla-central`
-  is a whitelist).
-- Chips of **different fields AND** together.
+- **Every chip ANDs**, including two chips of the same field.
 - Free-text tokens are all ANDed on top.
 - Empty filter = wildcard.
+
+**Same-field chips AND, which is not the faceted-search convention.** The usual
+rule — OR within a facet, AND across facets — exists for facets whose values
+are mutually exclusive, where AND would only ever produce the empty set. Only
+one of our fields isn't like that: a row's `options` is a *list*, so
+`option:opt option:etw-profile` has a perfectly good AND reading ("has both"),
+and under OR it *widened* the result set. Adding a chip that returns more rows
+than you started with is indefensible in a control whose entire job is
+narrowing, and it was a live bug: `commonFilterChips` seeds one `option:` chip
+per option the plotted series share, so a filter meant to say "these rows'
+siblings" said "anything sharing any one of these options".
+
+Applying AND to the mutually-exclusive fields too, rather than special-casing
+`option`, keeps one rule the user can hold in their head. The cost is that
+typing `repo:autoland repo:mozilla-central` matches nothing instead of acting
+as a whitelist — acceptable, because it isn't reachable by clicking: badges
+only exist on rows currently on screen, and a row that failed `repo:autoland`
+is not on screen to offer its `mozilla-central` badge. Multi-select over a
+single-valued field would need a real control, not two chips.
 
 Chip values are stored **lowercase** so equality is stable regardless of
 how a badge happened to be cased. Only known field names (`suite`, `test`,

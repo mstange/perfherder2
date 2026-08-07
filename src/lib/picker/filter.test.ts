@@ -138,7 +138,25 @@ describe('matchesRow (structured filter)', () => {
     expect(matchesRow(s({ application: 'chrome' }), filter)).toBe(false);
   });
 
-  it('ORs within a single chip field (multiple repo chips)', () => {
+  it('ANDs two chips of the same multi-valued field (option)', () => {
+    const filter: Filter = {
+      chips: [
+        { field: 'option', value: 'opt' },
+        { field: 'option', value: 'fission' },
+      ],
+      text: '',
+    };
+    expect(matchesRow(s({ options: ['opt', 'fission'] }), filter)).toBe(true);
+    // Half the options isn't enough — this is the case that used to widen the
+    // result set instead of narrowing it.
+    expect(matchesRow(s({ options: ['opt'] }), filter)).toBe(false);
+    expect(matchesRow(s({ options: ['fission'] }), filter)).toBe(false);
+  });
+
+  it('ANDs two chips of the same single-valued field into no matches', () => {
+    // Unreachable by clicking badges (a row that failed `repo:autoland` is
+    // never on screen to offer a second repo badge), but typeable, and the
+    // empty result is the honest answer to what was typed.
     const filter: Filter = {
       chips: [
         { field: 'repo', value: 'autoland' },
@@ -146,9 +164,8 @@ describe('matchesRow (structured filter)', () => {
       ],
       text: '',
     };
-    expect(matchesRow(s({ repository: 'autoland' }), filter)).toBe(true);
-    expect(matchesRow(s({ repository: 'mozilla-central' }), filter)).toBe(true);
-    expect(matchesRow(s({ repository: 'try' }), filter)).toBe(false);
+    expect(matchesRow(s({ repository: 'autoland' }), filter)).toBe(false);
+    expect(matchesRow(s({ repository: 'mozilla-central' }), filter)).toBe(false);
   });
 
   it('applies free text tokens as substring AND-matches', () => {

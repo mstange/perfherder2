@@ -8,8 +8,8 @@ import type { Series } from './series';
 //
 // The user's filter is a mix of typed chips (exact per-field matches like
 // `repo:autoland`) and free-text tokens (substring matches against the row's
-// prebuilt searchText). Chips of the same field OR together; different fields
-// AND together; every free-text token must match somewhere in searchText.
+// prebuilt searchText). Every chip must match and every free-text token must
+// appear in searchText — one flat AND, no per-field special case.
 
 export const FILTER_FIELDS = [
   'suite',
@@ -141,22 +141,11 @@ export function matchParentWithChildren(
 }
 
 export function matchesRow(row: Series, filter: Filter): boolean {
-  // Chips of the same field OR together; different fields AND together.
-  const chipsByField = new Map<FilterField, FilterChip[]>();
+  // Every chip narrows, including two chips of the same field. See the
+  // "Filter model" section of docs/design.md for why that's AND and not the
+  // usual faceted-search OR.
   for (const c of filter.chips) {
-    const arr = chipsByField.get(c.field);
-    if (arr) arr.push(c);
-    else chipsByField.set(c.field, [c]);
-  }
-  for (const chips of chipsByField.values()) {
-    let anyMatched = false;
-    for (const c of chips) {
-      if (chipMatchesRow(row, c)) {
-        anyMatched = true;
-        break;
-      }
-    }
-    if (!anyMatched) return false;
+    if (!chipMatchesRow(row, c)) return false;
   }
   // All free-text tokens must match the row's precomputed haystack.
   for (const tok of tokenizeFilter(filter.text)) {
