@@ -272,6 +272,12 @@ export const DENSITY_HEIGHT = 68;
 export const BAND_GAP = 5;
 export const STRIP_ROW_HEIGHT = 20;
 
+// The most strip rows this chart is ever asked for: a comparison has a base and
+// a next, and there is no third side. Named because the details pane reserves
+// the height of the two-row form before it knows whether a hover will produce
+// one — see ComparisonSection, `.cmp-chart`.
+export const MAX_DISTRIBUTION_SIDES = 2;
+
 // The chart is as tall as its content needs and no taller: a pool too small for a
 // density loses the band entirely.
 //

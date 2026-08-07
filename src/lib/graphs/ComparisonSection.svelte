@@ -17,21 +17,23 @@
   //   `.cmp-lede`  — the headline, or the hint, or "marked".
   //   `.cmp-chart` — the distribution. **Always.**
   //
-  // The lede reserves itself: every state is rendered on every paint, the
-  // inactive ones stacked in the same grid cell and hidden, so the slot is as
-  // tall as its tallest state without anyone having measured one. That works
-  // because all four states are hover-independent — see `.cmp-lede` in the
-  // styles below.
+  // **Both slots reserve themselves, and neither has a pixel value written
+  // down.** Each renders its alternatives on every paint, stacked in the same
+  // grid cell and hidden, so the slot is as tall as the tallest thing that can
+  // appear in it — measured by the browser, on the spot, rather than by someone
+  // with a screenshot. The two `.cmp-*` rules in the styles below are the whole
+  // mechanism; what makes it sound in each case is that every stacked state is
+  // *hover-independent*, since a sizer the pointer can change reserves nothing.
   //
   // The chart is the whole point of the second slot. There is only ever one
   // distribution on screen, but it used to be drawn by two components in two
   // *places* — this one for a comparison, DetailsPane for the push on its own —
   // each suppressing the other, so swapping between them moved 154px of pane.
   // One chart in one place instead: one strip row for this push, two when
-  // comparing, which `distributionHeight` puts 20px apart. Reserving the taller
-  // costs 20px and buys a chart that never moves and never blinks out — and
-  // seeing the distributions while sweeping the pointer is the point of hovering
-  // at all.
+  // comparing, which `distributionHeight` puts `STRIP_ROW_HEIGHT` apart.
+  // Reserving the taller buys a chart that never moves and never blinks out —
+  // and seeing the distributions while sweeping the pointer is the point of
+  // hovering at all.
   //
   // Only a *pinned* comparison gets the rest: the stats table, the side list and
   // the links, below the chart. Pinning is a deliberate act and may reasonably
@@ -52,7 +54,7 @@
     type ComparisonSide,
   } from './compare';
   import DistributionChart from './DistributionChart.svelte';
-  import { buildDistribution } from './distribution';
+  import { buildDistribution, MAX_DISTRIBUTION_SIDES } from './distribution';
   import {
     indexInPushValues,
     pushValues,
@@ -70,25 +72,17 @@
   const pinned = $derived(app.comparisonSource === 'pinned');
   const sel = $derived(app.selection);
 
-  // The one chart. Two rows when there is a comparison to draw, otherwise the
-  // selected push on its own — the same plot DetailsPane used to render further
-  // down the pane, moved here so that gaining and losing the second row is the
-  // only thing that ever changes about it.
+  const scales = $derived(app.selectionChart?.scales ?? null);
+  const reserveBand = $derived(app.selectionChart?.reserveBand ?? false);
+
+  // The selected push on its own — the same plot DetailsPane used to render
+  // further down the pane, moved here so that gaining and losing the second row
+  // is the only thing that ever changes about the chart.
   //
-  // Both branches pass `app.selectionChart.scales`, so a value sits at the same
-  // x whichever is showing and the second row appears without sliding the first.
-  const plot = $derived.by(() => {
-    if (cmp && hasDistribution(cmp)) {
-      return buildDistribution(
-        [cmp.base, cmp.next].map((side) => ({
-          label: side.label,
-          color: side.color,
-          values: side.values,
-          markedIndex: side.markedIndex,
-        })),
-        app.selectionChart?.scales ?? null,
-      );
-    }
+  // Derived whether or not it is the one being shown, because it reads only the
+  // selection: that makes it hover-independent, which is what lets it double as
+  // the sizer holding the slot open when a comparison takes the chart over.
+  const restingPlot = $derived.by(() => {
     // Every value the series recorded on this push, retriggers included: the
     // question is "how noisy is this measurement on this build". Below two
     // values there is nothing a strip can say that the headline hasn't — that
@@ -112,12 +106,49 @@
             sel.push.runs.length > 1 ? runRangeInPushValues(sel.push, sel.run.datumId) : null,
         },
       ],
-      app.selectionChart?.scales ?? null,
+      scales,
     );
   });
 
-  const plotUnit = $derived(
-    (cmp ? cmp.unit : sel?.entry.meta?.measurementUnit) ?? '',
+  // The two-row form. Both plots pass `app.selectionChart.scales`, so a value
+  // sits at the same x whichever is showing and the second row appears without
+  // sliding the first.
+  const comparisonPlot = $derived(
+    cmp && hasDistribution(cmp)
+      ? buildDistribution(
+          [cmp.base, cmp.next].map((side) => ({
+            label: side.label,
+            color: side.color,
+            values: side.values,
+            markedIndex: side.markedIndex,
+          })),
+          scales,
+        )
+      : null,
+  );
+
+  // The one chart. A replicate comparison has no distribution of its own, so it
+  // falls back to the selected push rather than blanking the slot.
+  const plot = $derived(comparisonPlot ?? restingPlot);
+
+  const restingUnit = $derived(sel?.entry.meta?.measurementUnit ?? '');
+  const plotUnit = $derived((cmp ? cmp.unit : sel?.entry.meta?.measurementUnit) ?? '');
+
+  // A comparison that hasn't happened, drawn to no one: two sides with no
+  // values, which is all the chart needs to lay out the taller form. Used only
+  // for its height — see `.cmp-chart`. Two empty pools mean no curve, so the
+  // density band comes from `reserveBand`, which is the pane's precomputed
+  // answer to "could a pool the pointer can reach have one".
+  const reservePlot = $derived(
+    buildDistribution(
+      Array.from({ length: MAX_DISTRIBUTION_SIDES }, () => ({
+        label: '—',
+        color: 'transparent',
+        values: [],
+        markedIndex: -1,
+      })),
+      scales,
+    ),
   );
 
   // `swapped` means the baseline is the shift-clicked (or hovered) point, so the
@@ -261,16 +292,23 @@
     </div>
   </div>
 
-  <!-- Always rendered, and always the height of the two-row form. This is the
-       slot that used to blink between here and "Values on this push". -->
+  <!-- Always rendered, and always the height of the tallest form a hover can
+       produce. This is the slot that used to blink between here and "Values on
+       this push". The two sizers are the same component drawn to no one, so
+       there is no skeleton to keep in step with the real thing. -->
   <div class="cmp-chart">
+    <div data-sizer>
+      <DistributionChart plot={reservePlot} {reserveBand} legendDetail={false} />
+    </div>
+    {#if restingPlot}
+      <div data-sizer>
+        <DistributionChart plot={restingPlot} unit={restingUnit} {reserveBand} legendDetail />
+      </div>
+    {/if}
     {#if plot}
-      <DistributionChart
-        {plot}
-        unit={plotUnit}
-        reserveBand={app.selectionChart?.reserveBand ?? false}
-        legendDetail={pinned || !cmp}
-      />
+      <div>
+        <DistributionChart {plot} unit={plotUnit} {reserveBand} legendDetail={pinned || !cmp} />
+      </div>
     {/if}
   </div>
 
@@ -454,14 +492,41 @@
   .cmp-lede > [data-sizer] {
     visibility: hidden;
   }
-  /* Still a measured literal, unlike the lede above: the chart while hovering
-     is a 134px canvas (`distributionHeight` for two strip rows over a density
-     band) plus two legend heads and the gap between them. One side is 148px, so
-     this leaves 23px of slack under the chart when nothing is compared — which
-     is what a comparison adds. Pinning is deliberately outside the budget:
-     it may rearrange the pane, hovering may not. */
+  /* The chart slot reserves itself the same way, but it cannot stack every
+     state: the tall one is a comparison, whose pools arrive with the hover it
+     is supposed to be reserving for. So it stacks two *bounds*, both drawn by
+     the real component rather than by a skeleton that could drift from it:
+
+       `reservePlot`  two sides with no values — the two-row form, whose legend
+                      rows are content-independent because `.key-head` is one
+                      clipped line. This is the bound a hover can reach.
+       `restingPlot`  the selected push on its own, exactly, since it reads only
+                      the selection. Rendered with `legendDetail` on because
+                      that is what the resting state shows, whatever the live
+                      chart happens to be showing right now.
+
+     The slot is the taller of the two, and both are hover-independent, so the
+     slot is. No number is written down anywhere: the canvas heights come from
+     `distributionHeight` and the legend heights from the legend.
+
+     It replaces `min-height: 171px`, which was the two-row form measured once
+     at the pane's 320px. It also self-corrects where the literal could not —
+     `reserveBand` false (an awsy series, which never draws a curve) drops 73px
+     of band from the reserve instead of spending it on a state the pointer
+     cannot reach.
+
+     Pinning is deliberately outside the budget: it may rearrange the pane,
+     hovering may not. */
   .cmp-chart {
-    min-height: 171px;
+    display: grid;
+    padding-top: 6px;
+  }
+  .cmp-chart > * {
+    grid-area: 1 / 1;
+    min-width: 0;
+  }
+  .cmp-chart > [data-sizer] {
+    visibility: hidden;
   }
   .cmp-head {
     display: flex;

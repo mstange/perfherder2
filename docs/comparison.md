@@ -133,21 +133,37 @@ own undo, and it leaves the selection behind — dropping that too would be two
 undos for one shift-click.
 
 **The pane does not move while the pointer does.** The comparison block is two
-slots with reserved heights — 89px for the headline (or the hint, or "marked")
-and 171px for the chart — so crossing a dot changes what is *in* them and
-nothing below. It was 419px of movement before: the full card is 508px against
-the 89px hint it replaced, and the chart it drew was a second copy of one
-DetailsPane was drawing 250px lower, so the two swapping places moved another
-154px the other way.
+slots that hold their height — the headline (or the hint, or "marked") and,
+under it, the chart — so crossing a dot changes what is *in* them and nothing
+below. It was 419px of movement before: the full card is 508px against the 89px
+hint it replaced, and the chart it drew was a second copy of one DetailsPane was
+drawing 250px lower, so the two swapping places moved another 154px the other
+way.
 
 Now there is one chart in one place, with a second strip row when there is
 something to compare. The reserve is what a comparison *adds* to the single-push
 form: one strip row, plus the second legend head. **The hover preview drops the
 spread/cv line from each legend row** (`legendDetail`) — it is the expensive
-half, and losing it takes the reserve from 203px to 171px and the slack under
-the single-push chart from 55px to 25px, while the rows stay labelled with their
-`n` and median. Reserving a blank legend row instead would read worse than the
-gap it filled.
+half, and losing it takes most of the slack out from under the single-push
+chart, while the rows stay labelled with their `n` and median. Reserving a blank
+legend row instead would read worse than the gap it filled.
+
+**Neither slot has a height written down.** Both stack their alternatives in one
+grid cell with `visibility: hidden` and let the browser take the maximum, so the
+reserve is a fact about the states rather than about a screenshot: reword the
+hint and it follows, drop the previous-push button and it tightens, change
+`STRIP_ROW_HEIGHT` and it tracks. What makes that sound is that every stacked
+sizer is **hover-independent** — the lede's four states are fixed wording plus
+functions of the selection, and the chart stacks the resting plot (which reads
+only the selection) against a two-sided plot with no values in it, drawn by the
+real component so no skeleton can drift from it.
+
+The one thing that cannot be stacked is the *hovered* comparison itself, whose
+pools arrive with the hover being reserved for. That is bounded instead: the
+legend's head row is `nowrap` with a clipped label, which makes a row's height
+independent of what is in it. Before that, a cross-series hover — where the
+labels are two platform strings — wrapped both rows and moved the pane 36px,
+which the literal reserve had no way to notice.
 
 Only pinning grows the block, by adding the spread/cv lines back along with the
 stats, the sides and the links below the chart; pinning is deliberate and may

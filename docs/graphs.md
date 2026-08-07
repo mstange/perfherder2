@@ -38,13 +38,14 @@ which would put the twenty-commit pushlog above the value you asked about.
    deliberately shows only what distinguishes one card from the next (design.md,
    "The series list shows differences, not descriptions"), so this is the one
    place that answers "which series is this, exactly?".
-2. **The comparison block** — two reserved slots that are always there, so the
-   pane cannot move while the pointer sweeps the graph. A headline slot (the
-   delta when two points are on screen, otherwise the hint or "marked"), and
-   under it **the distribution chart**: one strip row for the selected push, a
-   second when there is something to compare it with. A pinned comparison adds
-   its stats, sides and links below the chart. See
-   [comparison.md](comparison.md).
+2. **The comparison block** — two slots that hold their height, so the pane
+   cannot move while the pointer sweeps the graph. A headline slot (the delta
+   when two points are on screen, otherwise the hint or "marked"), and under it
+   **the distribution chart**: one strip row for the selected push, a second
+   when there is something to compare it with. Each slot sizes itself by
+   stacking its own states hidden underneath the live one, so neither carries a
+   pixel value. A pinned comparison adds its stats, sides and links below the
+   chart. See [comparison.md](comparison.md).
 3. **The value** — the clicked replicate and its rank, or the run's mean.
 4. **Values on this push** — every value the build recorded as a clickable chip,
    grouped by the job that produced it. The chart for this pool is the one in

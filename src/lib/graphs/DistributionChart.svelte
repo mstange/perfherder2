@@ -24,9 +24,8 @@
     // The *second* line of each legend row — the spread and cv, or the mode
     // breakdown. Off for the hover preview. The labels and `n · med` stay, so
     // the rows are still named; only the detail goes, and it is the expensive
-    // half: two of these lines are 35px, which is most of what the pane has to
-    // reserve for a comparison that may never be pinned. See ComparisonSection,
-    // `.cmp-chart`, for the arithmetic that reserve comes out of.
+    // half: it is most of what the pane would otherwise have to reserve for a
+    // comparison that may never be pinned. See ComparisonSection, `.cmp-chart`.
     legendDetail?: boolean;
   };
   let { plot, unit = '', reserveBand = false, legendDetail = true }: Props = $props();
@@ -173,9 +172,9 @@
 </div>
 
 <style>
-  .distribution {
-    margin: 6px 0 0;
-  }
+  /* No top margin: the space above the chart belongs to the slot that reserves
+     it (`.cmp-chart`), so that the sizers stacked in that slot don't each need
+     a copy of the number. */
   .canvas-wrap {
     position: relative;
     width: 100%;
