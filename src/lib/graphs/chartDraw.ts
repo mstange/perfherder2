@@ -23,7 +23,10 @@ import {
   ALERT_TRIANGLE_HALF,
   ALERT_TRIANGLE_HEIGHT,
   alertRowTop,
+  CHANGE_BAR_HEIGHT,
+  changeBarTop,
   type AlertSlot,
+  type ChangeSlot,
 } from './annotations';
 import type { PushGroup, SeriesPoint } from './graphData';
 import type { ChartPalette } from '../shared/theme';
@@ -44,10 +47,11 @@ export type DrawOptions = {
   xDomain: Range;
   yDomain: Range;
   series: DrawSeries[];
-  // Alert triangles, already projected into pixels and packed into rows by
-  // annotations.ts. Passed in rather than derived here because the hit test has
-  // to read the very same array — see that module.
+  // Alert triangles and detected-change bars, already projected into pixels and
+  // packed into rows by annotations.ts. Passed in rather than derived here
+  // because the hit test has to read the very same array — see that module.
   alertSlots?: readonly AlertSlot[];
+  changeSlots?: readonly ChangeSlot[];
   dotRadius: number;
   // The detail graph joins the per-push means; the overview deliberately
   // doesn't (task requirement) — at overview density the lines are just noise.
@@ -136,8 +140,9 @@ export function drawChart(ctx: CanvasRenderingContext2D, o: DrawOptions): void {
     for (const s of o.series) drawPushLine(ctx, o, s);
   }
   for (const s of o.series) drawDots(ctx, o, s);
-  // Over the dots: an alert marks a build, so it has to be findable without
+  // Over the dots: a mark is about a build, so it has to be findable without
   // first finding the build's cloud.
+  drawChangeBars(ctx, o);
   drawAlerts(ctx, o);
   ctx.restore();
   if (o.showAxes) drawAxisLabels(ctx, o, vTicks, tTicks);
@@ -305,6 +310,56 @@ function alertTrianglePath(
   ctx.closePath();
 }
 
+// Detected-change bars: a step this app found itself, drawn along the plot's
+// floor over the pushes the test compared. See changes.ts for what one is and
+// annotations.ts for why they live inside the plot rather than under it.
+//
+// Same color vocabulary as the alert triangles — red for a regression, green
+// for an improvement — because they are the same *kind* of statement about the
+// same graph, and one of them being somebody else's verdict doesn't change how
+// a reader should decode the colors. What tells them apart is the shape: a
+// triangle marks a build, a bar covers a range of them.
+//
+// The bar is translucent, so a cluster of dots on the plot floor stays visible
+// through it, and the step's own column is a solid notch rising clear of the
+// bar. Without the notch a wide bar says "somewhere in here", which is a worse
+// answer than the data supports.
+//
+// **The notch carries the series color; the bar does not.** The first version
+// outlined the bar in it, the way the alert triangles are outlined, and on a
+// 5px-tall bar that put two of its five rows of pixels — plus both ends — in a
+// color that answers the *less* important question. Screenshotted over two real
+// series, every bar read as "the cyan one" or "the dark blue one" and not one
+// of them read as red or green. So the two facts swapped places: direction gets
+// the area, identity gets the notch, which is 2px of saturated color in the one
+// spot the eye is aimed at anyway.
+const CHANGE_BAR_ALPHA = 0.55;
+const CHANGE_NOTCH_RISE = 4;
+const CHANGE_NOTCH_WIDTH = 2;
+
+function drawChangeBars(ctx: CanvasRenderingContext2D, o: DrawOptions): void {
+  const slots = o.changeSlots;
+  if (!slots?.length) return;
+  const { geom } = o;
+  for (const slot of slots) {
+    const color = slot.isRegression ? o.palette.alertRegression : o.palette.alertImprovement;
+    const top = changeBarTop(geom, slot.row);
+
+    ctx.fillStyle = color;
+    ctx.globalAlpha = CHANGE_BAR_ALPHA;
+    ctx.fillRect(slot.x0, top, slot.x1 - slot.x0, CHANGE_BAR_HEIGHT);
+    ctx.globalAlpha = 1;
+
+    ctx.fillStyle = o.series[slot.seriesIndex]?.color ?? color;
+    ctx.fillRect(
+      Math.round(slot.changeX) - CHANGE_NOTCH_WIDTH / 2,
+      top - CHANGE_NOTCH_RISE,
+      CHANGE_NOTCH_WIDTH,
+      CHANGE_BAR_HEIGHT + CHANGE_NOTCH_RISE,
+    );
+  }
+}
+
 // The marker under the pointer, or the one whose alert the pane is describing,
 // repainted on the *overlay*.
 //
@@ -365,6 +420,74 @@ export function drawAlertHighlight(
   ctx.strokeStyle = seriesColor;
   ctx.lineWidth = 1;
   ctx.stroke();
+  ctx.restore();
+}
+
+// The same two states for a change bar, and the same two channels carrying
+// them: it grows, and its guide becomes a line you can follow.
+//
+// The guide is the whole reason the resting bar can be as quiet as it is. A bar
+// hugging the floor of the plot is a long way from the dots it is about, and
+// running a full-height line up the step's column on hover is what connects the
+// two — the same trick the alert markers use, and for the same reason.
+const CHANGE_HIGHLIGHT_GROW = 2;
+const CHANGE_HIGHLIGHT_ALPHA = 0.85;
+const CHANGE_HIGHLIGHT_GUIDE_ALPHA = 0.4;
+
+export function drawChangeHighlight(
+  ctx: CanvasRenderingContext2D,
+  geom: PlotGeometry,
+  slot: ChangeSlot,
+  seriesColor: string,
+  palette: ChartPalette,
+  kind: 'hovered' | 'selected',
+): void {
+  const color = slot.isRegression ? palette.alertRegression : palette.alertImprovement;
+  // Grown downward as well as up, so the enlarged bar covers the resting one
+  // that is still painted on the data layer underneath it.
+  const top = changeBarTop(geom, slot.row) - CHANGE_HIGHLIGHT_GROW;
+  const height = CHANGE_BAR_HEIGHT + CHANGE_HIGHLIGHT_GROW * 2;
+  const width = slot.x1 - slot.x0;
+  const notchX = Math.round(slot.changeX);
+
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.globalAlpha = CHANGE_HIGHLIGHT_GUIDE_ALPHA;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(notchX + 0.5, geom.y0);
+  ctx.lineTo(notchX + 0.5, geom.y1);
+  ctx.stroke();
+  ctx.globalAlpha = 1;
+
+  ctx.globalAlpha = CHANGE_HIGHLIGHT_ALPHA;
+  ctx.fillStyle = color;
+  ctx.fillRect(slot.x0, top, width, height);
+  ctx.globalAlpha = 1;
+
+  // The notch survives the highlight, in the series color, so an enlarged bar
+  // still says which line it belongs to and where the step is.
+  ctx.fillStyle = seriesColor;
+  ctx.fillRect(
+    notchX - CHANGE_NOTCH_WIDTH / 2,
+    top - CHANGE_NOTCH_RISE,
+    CHANGE_NOTCH_WIDTH,
+    height + CHANGE_NOTCH_RISE,
+  );
+
+  // A ring only for the selected bar, the same one a selected marker and a
+  // selected dot wear — with two bars enlarged at once, only one of them is
+  // what the pane is describing.
+  if (kind === 'selected') {
+    ctx.strokeStyle = palette.ring;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(
+      Math.round(slot.x0) + 1,
+      Math.round(top) + 1,
+      Math.max(1, Math.round(width) - 2),
+      height - 2,
+    );
+  }
   ctx.restore();
 }
 

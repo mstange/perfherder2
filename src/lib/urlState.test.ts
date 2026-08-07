@@ -277,6 +277,16 @@ describe('serializeViewState', () => {
     expect(parseViewState('?reps=0').showReplicates).toBe(false);
   });
 
+  it('writes the change-detection flag only when it is off', () => {
+    expect(serializeViewState(state({ changeDetection: true }))).toBe('');
+    expect(serializeViewState(state({ changeDetection: false }))).toBe('cd=0');
+    expect(parseViewState('').changeDetection).toBe(true);
+    expect(parseViewState('?cd=0').changeDetection).toBe(false);
+    // Anything that isn't an explicit "0" means on, the same rule as `reps`, so
+    // a hand-written link can't accidentally turn it off.
+    expect(parseViewState('?cd=false').changeDetection).toBe(true);
+  });
+
   it('round-trips free text containing spaces', () => {
     const s = open({ filter: { chips: [], text: 'a b  c' } });
     expect(parseViewState(`?${serializeViewState(s)}`).picker.filter.text).toBe('a b  c');

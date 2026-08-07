@@ -5,7 +5,11 @@
   import type { AppState, Selection } from './appState.svelte';
   import { hoverRingKind, type Highlight } from './chartDraw';
   import { jitterForSelection } from './graphData';
-  import ScatterChart, { type ChartAlertHit, type ChartHit } from './ScatterChart.svelte';
+  import ScatterChart, {
+    type ChartAlertHit,
+    type ChartChangeHit,
+    type ChartHit,
+  } from './ScatterChart.svelte';
   import type { SelectedPoint } from '../urlState';
   import { describeSpan, matchingPreset, RANGE_PRESETS } from '../shared/timeRange';
 
@@ -102,6 +106,18 @@
     return { seriesIndex, alertIndex };
   });
 
+  // Same rule, one layer simpler: the pane's Detected-change card is keyed on
+  // the selected push, so the marked bar is the one that card is about.
+  const selectedChange = $derived.by((): ChartChangeHit | null => {
+    const sel = app.selection;
+    const change = app.selectedChange;
+    if (!sel || !change) return null;
+    const seriesIndex = app.visibleSeries.indexOf(sel.entry);
+    const changeIndex = sel.entry.changes.indexOf(change);
+    if (seriesIndex < 0 || changeIndex < 0) return null;
+    return { seriesIndex, changeIndex };
+  });
+
   const unitLabel = $derived.by(() => {
     const units = new Set(
       app.visibleSeries.map((s) => s.meta?.measurementUnit).filter((u): u is string => !!u),
@@ -136,6 +152,12 @@
     const entry = app.visibleSeries[hit.seriesIndex];
     const alert = entry?.alerts[hit.alertIndex];
     if (entry && alert) app.selectAlert(entry.ref, alert);
+  }
+
+  function onChangeSelect(hit: ChartChangeHit): void {
+    const entry = app.visibleSeries[hit.seriesIndex];
+    const change = entry?.changes[hit.changeIndex];
+    if (entry && change) app.selectChange(entry.ref, change);
   }
 
   function onDetailSelect(hit: ChartHit | null, modifiers: { shift: boolean }): void {
@@ -192,14 +214,29 @@
     <!-- A drawing switch, not a fetch switch: replicates are always fetched,
          so this is instant and the details pane keeps listing them either
          way. -->
-    <label class="draw-replicates" title="Draw every replicate, or one dot per run at its mean">
-      <input
-        type="checkbox"
-        checked={app.showReplicates}
-        onchange={(e) => app.setShowReplicates(e.currentTarget.checked)}
-      />
-      Replicates
-    </label>
+    <div class="draw-options">
+      <label class="draw-option" title="Draw every replicate, or one dot per run at its mean">
+        <input
+          type="checkbox"
+          checked={app.showReplicates}
+          onchange={(e) => app.setShowReplicates(e.currentTarget.checked)}
+        />
+        Replicates
+      </label>
+      <!-- Steps this app found for itself, as opposed to the alert markers,
+           which are perfherder's. See changes.ts. -->
+      <label
+        class="draw-option"
+        title="Mark steps detected in the data itself — not perfherder's alerts"
+      >
+        <input
+          type="checkbox"
+          checked={app.changeDetection}
+          onchange={(e) => app.setChangeDetection(e.currentTarget.checked)}
+        />
+        Detected changes
+      </label>
+    </div>
     <div class="zoom-state">
       <!-- The loading slot is always present so the header doesn't reflow
            when a fetch starts or finishes. -->
@@ -258,11 +295,14 @@
       showLines={true}
       showAxes={true}
       showAlerts={true}
+      showChanges={app.changeDetection}
       interaction="select"
       {highlights}
       {selectedAlert}
+      {selectedChange}
       onselect={onDetailSelect}
       onalertselect={onAlertSelect}
+      onchangeselect={onChangeSelect}
       onhover={(hit, modifiers) => {
         shiftHeld = modifiers.shift;
         app.setHoveredPoint(pointFor(hit));
@@ -273,7 +313,7 @@
       onkeycompare={() => app.comparePoint(app.selectedPoint)}
       onkeyalert={(delta) => app.stepAlert(delta)}
       onkeyprevious={() => app.compareWithPreviousPush()}
-      ariaLabel="Detail graph; click a point to inspect it, shift-click a second to compare, click an alert marker to compare the alerted push with the one before it, P to compare with the previous push, A and shift-A to step between alerts, or use the arrow keys and C to mark a point for comparison"
+      ariaLabel="Detail graph; click a point to inspect it, shift-click a second to compare, click an alert marker or a detected-change bar to compare the two pushes it spans, P to compare with the previous push, A and shift-A to step between alerts, or use the arrow keys and C to mark a point for comparison"
     />
     {#if app.series.length === 0}
       <p class="overlay-note">Add a series to see data.</p>
@@ -329,18 +369,24 @@
   .label {
     color: var(--fg-muted);
   }
-  /* Named for the control, not the data: DetailsPane's chip list of replicate
+  /* Named for the controls, not the data: DetailsPane's chip list of replicate
      values is also `.replicates`, and while Svelte scopes both, a
      `document.querySelectorAll('.replicates')` in a throwaway measurement
      script silently measured this checkbox instead. */
-  .draw-replicates {
+  .draw-options {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 12px;
+  }
+  .draw-option {
     display: flex;
     align-items: center;
     gap: 5px;
     white-space: nowrap;
     cursor: pointer;
   }
-  .draw-replicates input {
+  .draw-option input {
     margin: 0;
     cursor: pointer;
   }

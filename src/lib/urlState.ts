@@ -80,6 +80,10 @@ export type ViewState = {
   // Two-valued, not three: unlike the picker's fields there is no caller with
   // no opinion, so an absent param simply means the default (on).
   showReplicates: boolean;
+  // Whether the graph draws the steps this app detects for itself. Two-valued
+  // like `showReplicates`, and on by default for the reasons recorded on
+  // `AppState.changeDetection`.
+  changeDetection: boolean;
   pickerOpen: boolean;
   picker: PickerViewState;
 };
@@ -91,6 +95,7 @@ export const EMPTY_VIEW_STATE: ViewState = {
   selected: null,
   compared: null,
   showReplicates: true,
+  changeDetection: true,
   pickerOpen: false,
   picker: EMPTY_PICKER_VIEW,
 };
@@ -230,6 +235,7 @@ export function parseViewState(search: string): ViewState {
     selected: parseSelected(p.get('sel')),
     compared: parseSelected(p.get('cmp')),
     showReplicates: p.get('reps') !== '0',
+    changeDetection: p.get('cd') !== '0',
     pickerOpen: p.get('picker') === '1',
     picker: {
       filter: {
@@ -269,6 +275,7 @@ export function serializeViewState(state: ViewState): string {
   if (state.selected && state.compared) p.set('cmp', serializePoint(state.compared));
   // Only written when off, so the common case keeps links short.
   if (!state.showReplicates) p.set('reps', '0');
+  if (!state.changeDetection) p.set('cd', '0');
   // The panel's state only means anything while it's open — carrying it in the
   // URL of a closed panel would be noise in every shared graph link.
   if (state.pickerOpen) {

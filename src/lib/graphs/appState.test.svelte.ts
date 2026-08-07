@@ -61,6 +61,7 @@ function entry(s: RawSummary, showReplicates = true): SeriesEntry {
     loading: false,
     error: null,
     alerts: [],
+    changes: [],
   };
 }
 
@@ -72,6 +73,24 @@ const SAMPLE = summary(1, [
   datum({ id: 11, value: 200, push_id: 2, push_timestamp: '2026-07-22T06:00:00' }),
   datum({ id: 11, value: 210, push_id: 2, push_timestamp: '2026-07-22T06:00:00' }),
 ]);
+
+// A series long enough for change detection to have anything to say: 30 pushes
+// at 100 then 30 at 130, one run of one value each. Signature 2, so a test can
+// ask for it instead of SAMPLE.
+const STEP = summary(
+  2,
+  Array.from({ length: 60 }, (_, i) =>
+    datum({
+      id: 100 + i,
+      // Alternating by a hair rather than flat: a pool with no variance at all
+      // gives the rank-sum test nothing to work with, which is a property of
+      // the fixture and not of the detector.
+      value: (i < 30 ? 100 : 130) + (i % 2),
+      push_id: 100 + i,
+      push_timestamp: `2026-06-${String(1 + Math.floor(i / 2)).padStart(2, '0')}T0${i % 2}:00:00`,
+    }),
+  ),
+);
 
 // Detail payloads have to be schema-valid now, not just truthy: the fetch
 // layer validates every response (see http.ts), so `{}` would be rejected the
@@ -157,7 +176,10 @@ let fetchMock: ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
   fetchMock = vi.fn(async (url: string) => {
-    if (url.includes('/performance/summary/')) return json([SAMPLE]);
+    // Signature 2 is the long stepped series; everything else gets SAMPLE.
+    if (url.includes('/performance/summary/')) {
+      return json([url.includes('signature=2&') ? STEP : SAMPLE]);
+    }
     if (url.includes('/performance/alertsummary/')) return json(alertPage([]));
     if (url.includes('/repository/')) return json([]);
     if (url.includes('/push/')) return json(push());
@@ -1032,6 +1054,84 @@ describe('AppState alerts', () => {
       expect(fetchMock.mock.calls.length).toBeGreaterThanOrEqual(before);
     });
   });
+});
+
+// The wiring around changes.ts: when the detection runs, what hides it, and
+// what a click on a bar does. The detection itself is changes.test.ts's.
+describe('AppState detected changes', () => {
+  it('runs over a loaded series and finds its step', () =>
+    withApp('?series=autoland,2,1', async (app) => {
+      await settle();
+      const changes = app.series[0].changes;
+      expect(changes).toHaveLength(1);
+      // STEP goes from ~100 to ~130 at push 130, and lower is better.
+      expect(changes[0].afterPushId).toBe(130);
+      expect(changes[0].relativeChange).toBeCloseTo(0.2985, 3);
+      expect(changes[0].isRegression).toBe(true);
+    }));
+
+  it('says nothing about a series with two pushes', () =>
+    withApp('?series=autoland,1,1', async (app) => {
+      await settle();
+      expect(app.series[0].changes).toEqual([]);
+    }));
+
+  it('hides them while the switch is off, and brings them back', () =>
+    withApp('?series=autoland,2,1', async (app) => {
+      await settle();
+      expect(app.series[0].changes).toHaveLength(1);
+      app.setChangeDetection(false);
+      expect(app.series[0].changes).toEqual([]);
+      // Back without a second pass over the data: the cache is kept, only the
+      // reading of it is switched off.
+      app.setChangeDetection(true);
+      expect(app.series[0].changes).toHaveLength(1);
+    }));
+
+  it('does not run at all while the switch is off', () =>
+    withApp('?series=autoland,2,1&cd=0', async (app) => {
+      await settle();
+      expect(app.changeDetection).toBe(false);
+      expect(app.series[0].changes).toEqual([]);
+    }));
+
+  it('clicking a bar selects the push after the step and pins the one before', () =>
+    withApp('?series=autoland,2,1', async (app) => {
+      await settle();
+      const entry = app.series[0];
+      app.selectChange(entry.ref, entry.changes[0]);
+      await settle();
+      expect(app.selection?.push.pushId).toBe(130);
+      expect(app.comparedSelection?.push.pushId).toBe(129);
+      // Both ends are the run's mean, as with an alert: the finding is about
+      // the build, not about one of its values.
+      expect(app.selectedPoint?.replicateIndex).toBe(MEAN_REPLICATE);
+      expect(app.comparedPoint?.replicateIndex).toBe(MEAN_REPLICATE);
+      // …and the pane's card is keyed on the push that click selected.
+      expect(app.selectedChange).toBe(entry.changes[0]);
+    }));
+
+  it('has no card on a build the detection said nothing about', () =>
+    withApp('?series=autoland,2,1', async (app) => {
+      await settle();
+      const entry = app.series[0];
+      // The push *before* the step carries the change's other end, not the
+      // change itself.
+      app.selectChange(entry.ref, entry.changes[0]);
+      await settle();
+      app.selectPoint(app.comparedPoint);
+      await settle();
+      expect(app.selection?.push.pushId).toBe(129);
+      expect(app.selectedChange).toBeNull();
+    }));
+
+  it('drops the cache with the series data it was computed from', () =>
+    withApp('?series=autoland,2,1', async (app) => {
+      await settle();
+      expect(app.series[0].changes).toHaveLength(1);
+      app.removeSeries(app.series[0].ref);
+      expect(app.series).toEqual([]);
+    }));
 });
 
 // Treeherder expires job rows long before the performance data that points at

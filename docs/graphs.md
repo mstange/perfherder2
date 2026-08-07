@@ -357,9 +357,7 @@ hold a year of pushes.
 `ALERT_MAX_ROWS`, past which they double up again, because twelve alerts in one
 week should not turn the top of the plot into a wall of triangles. Nudging them
 sideways was the alternative and it lies about which column a marker means;
-stacking doesn't. `packRows` is deliberately generic over spans rather than
-written for triangles: anything else the graph grows in its margins has the
-same problem. Two alerts fourteen hours apart (speedometer3's 2026-06-02
+stacking doesn't. Two alerts fourteen hours apart (speedometer3's 2026-06-02
 regression and improvement, about 5px at a 90-day range against an 8px triangle)
 used to draw as one blob, and `hitTestAlerts` could tell them apart only by
 whichever column was nearer — so one of the two was effectively unreachable.
@@ -435,6 +433,152 @@ count; nothing else of theirs is drawn either.
 stopping at the ends rather than wrapping: an alert list is short and unevenly
 spaced, so jumping from December's back to January's reads as a bug.
 
+### Detected changes
+
+Perfherder's alerts are somebody else's verdict, and they exist only where
+somebody else's threshold fired. This is the second opinion, computed from the
+data already on screen: `changes.ts` segments each series and marks the steps it
+can confirm, drawn as bars along the plot's floor.
+
+**The gap it fills is a real one, with a case number.** graphs-todo.md records
+it under "Common alerts": plotting idb-open-many-seq `open_duration` on macOS
+(signature 5350956) over a year shows nothing at all, while its Windows
+counterpart carries alert #51136 for the very same push. The change hit both —
+macOS moved +2.0% against Windows' +9.9% — and only one of them crossed the
+alerting threshold. The macOS graph is not quiet; it is unannotated. The idea
+and the two-stage shape are perf.webkit.org's ("Segmentation with Welch's t-test
+change detection", `public/v3/pages/chart-pane.js`); the deviations are below.
+
+#### The unit of analysis is the push mean
+
+This app has something perf.webkit.org doesn't: tens of replicates per build. It
+is tempting to feed them all in, and it would be wrong. Replicates within one
+build share a machine, a binary and a moment, so their spread is far tighter
+than the build-to-build spread a regression has to be seen against — pooled, a
+rank-sum test over 20 replicates a side calls *every* adjacent pair of pushes
+significantly different, and the whole graph turns into bars. Textbook
+pseudo-replication. So the values are `PushGroup.mean`, one per build: the same
+number the connecting line joins. The replicates still earn their keep, by
+making each of those means precise.
+
+#### Two stages
+
+1. **Segment.** Find the boundaries that minimise a penalised cost — segment
+   cost is `len · log(variance)`, penalty is Birgé and Massart's, the whole
+   thing scored by the Schwarz criterion. `segmentValues`. This decides *where*
+   a step might be, and nothing else; it does not test anything.
+2. **Confirm.** For each interior boundary, a two-sided Mann-Whitney U over the
+   push means either side. `confirmChange`. Boundaries that don't survive are
+   dropped, which is what keeps a segmentation that liked an outlier from
+   reaching the graph.
+
+Every constant is in [changes.ts](../src/lib/graphs/changes.ts) with its reason;
+the four worth knowing here:
+
+- **A fixed window of 24 pushes a side**, clipped to the neighbouring
+  boundaries. 24 is `PERFHERDER_ALERTS_MAX_BACK_WINDOW`, matched deliberately:
+  perfherder's alert quotes means over 12–24 pushes back against 12 forward, and
+  both cards can be in the details pane at once, so the two "before → after"
+  pairs should be on the same scale. Where they differ it should be because the
+  analyses disagree, not because one averaged ten times as much data.
+- **Six pushes a side, minimum.** A rank statistic on small pools has a floor on
+  the p-value it can reach *however cleanly* the groups separate: 0.030 at 4v4,
+  0.012 at 5v5. Below six a side the answer would come from arithmetic rather
+  than from evidence.
+- **α = 0.01, not the 0.05 the comparison card uses.** Multiple comparisons: the
+  card asks one question about two builds the user picked, this asks one per
+  candidate boundary on every plotted series, unprompted. At 0.05 that is on the
+  order of one manufactured bar per series per range, which for something drawn
+  by default is the difference between a second opinion and a nuisance.
+- **0.5% minimum change.** With enough pushes the test will certify a 0.05%
+  drift, which is true and useless. Far below perfherder's 2% alerting
+  threshold, deliberately — a threshold near theirs would rebuild the blind spot
+  this exists to cover.
+
+#### Deviations from perf.webkit.org
+
+- **Mann-Whitney U over push means, not Welch's t.** Non-parametric, robust to
+  the outlier pushes CI data is full of, and — the deciding reason — it is the
+  same test the comparison card reports, so a bar and the card a click on it
+  produces can't contradict each other about whether two things differ.
+- **A fixed window rather than one grown until significant.** perf.webkit.org
+  expands outward from ±2 until its t-test fires and reports that window, which
+  is optional stopping: the p-value isn't the false-positive rate it looks like,
+  and the means come from the smallest sample that happened to clear the bar
+  rather than the best one available. What that costs us is perf.webkit.org's
+  incidental reading of "how much data it took to see this" — the bar's extent
+  here is the evidence, not a measure of confidence.
+- **Minimum segment length 2.** perf.webkit.org allows length-1 segments and
+  special-cases their cost to zero; here a single value has no sample variance,
+  so it would score at the variance floor, which is an unbounded discount one
+  outlier could buy out of nothing.
+- **The DP runs once, layer by layer.** perf.webkit.org re-runs its whole
+  dynamic program for each candidate segment count, which is O(n²k²);
+  evaluating the criterion off each layer of one run is O(n²k) for the same
+  answer.
+- **Grid edges are discarded, not kept as candidates.** Rediscovered the hard
+  way — see GRID_SIZE. Keeping them manufactured a −1.0% "change" at p = 0.028
+  out of the noise on a synthetic series, every 500 pushes, guaranteed.
+
+#### How it's drawn, and what a click does
+
+- **Bars along the plot's floor, inside the plot rather than in a reserved band
+  under it.** perf.webkit.org shrinks its chart by the height of its annotation
+  rows. Here the row count is a function of the *zoom* — two bars overlap at a
+  year and don't at a week — so a reserved band would resize the plot mid-drag,
+  against the layout-stability rule in design.md and in the place the user is
+  watching most closely. As an overlay the row count costs nothing, at the price
+  of covering a few pixels of the lowest dots. Rows stack upward and share
+  `packRows` with the alert markers.
+- **Direction gets the area, series identity gets the notch.** Red for a
+  regression, green for an improvement — the same vocabulary as the alert
+  triangles, because they are the same kind of statement and only the shape
+  should distinguish them. The first version also outlined each bar in the
+  series color the way a triangle is outlined; on a 5px-tall bar that put two of
+  its five rows of pixels in a color answering the *less* important question,
+  and screenshotted over two real series every bar read as "the cyan one" and
+  not one of them read as green. So the two swapped: the fill carries direction,
+  and the 2px notch marking the step carries the series color.
+- **The notch is there because a wide bar over-claims.** The bar spans the
+  pushes the test compared; the step itself happened between two of them, and
+  the notch says which two.
+- **Hover grows the bar and runs a full-height guide up its column.** A bar
+  hugging the floor is a long way from the dots it is about; the guide is what
+  connects them, and keeping it to the hover is what lets the resting bar stay
+  quiet. Same device the alert markers use.
+- **A click sets up both ends of a comparison**, exactly as an alert marker
+  does — the push after the step selected, the one before it pinned, one history
+  entry (`AppState.selectPushPair`, shared by both). So a bar goes from "there
+  is a step here" to the comparison card's replicate distributions and rank-sum
+  test in one gesture.
+- **The pane's Detected-change card will print a different percentage from the
+  comparison card below it, and both are right** — the same relationship the
+  Alert card has with the comparison, one step milder. The card is a difference
+  of means over up to 24 pushes a side; the comparison is these two builds. Each
+  says which it is.
+
+#### On by default
+
+`changeDetection` starts on, which departs from how this app usually treats
+interpretation. The justification for building it is the gap where perfherder is
+silent, and a feature that only helps the people who find a checkbox does not
+close that gap. The bars earn the default by being quiet — a 5px strip along the
+floor — and by never claiming to be a verdict: the word is "detected" wherever
+they are described, and the pane's card says outright that no alert may exist
+for what it found. `cd=0` in the URL turns them off.
+
+#### Cost
+
+Cached per `(series, range)` alongside the series data and pruned with it, filled
+by an effect rather than derived, because `series` recomputes for reasons that
+have nothing to do with the data — a theme flip, a replicate toggle — and the
+segmentation is an O(n²) dynamic program. Measured (node, so ratios rather than
+absolutes): 3 ms at 340 pushes, 10 ms at 900, 21 ms at 2000. The inner loop is
+bounded by `GRID_SIZE`, so a long range costs a multiple of one grid rather than
+its square, and eight series over a year is a fraction of one fetch. Turning the
+switch off hides the bars without dropping the cache; turning it back on doesn't
+pay again.
+
 ### Caching and failure
 
 Series data is cached under `(repo, signature, rangeStart, rangeEnd)` — the
@@ -468,10 +612,12 @@ Recovery is the explicit Retry button.
 - [alertsApi.ts](../src/lib/graphs/alertsApi.ts) — `/performance/alertsummary/`, and
   the schemas for it. [alerts.ts](../src/lib/graphs/alerts.ts) — **pure**. Summaries →
   the marks the graph draws and the facts the pane prints. See "Alerts" above.
+- [changes.ts](../src/lib/graphs/changes.ts) — **pure**. Segmentation and the
+  confirmation test; a series' pushes → the steps in it. See "Detected changes".
 - [annotations.ts](../src/lib/graphs/annotations.ts) — **pure**. The marks in the
-  plot's margins: row packing, pixel layout and hit tests for the alert
-  triangles. The layout is computed once by ScatterChart and read by the draw
-  call, the overlay and the hit test alike.
+  plot's margins: row packing, pixel layout and hit tests for both the alert
+  triangles and the change bars. Both of its layouts are computed once by
+  ScatterChart and read by the draw call, the overlay and the hit test alike.
 - [timeRange.ts](../src/lib/shared/timeRange.ts) — **pure**. Presets ↔ absolute
   bounds.
 - [urlState.ts](../src/lib/urlState.ts) — **pure**. Query string ↔ `ViewState`.
@@ -753,6 +899,7 @@ The whole view is in the query string:
 | `sel` | Selected point, `<repo>,<signatureId>,<datumId>,<replicateIndex>`. A `replicateIndex` of `-1` (`MEAN_REPLICATE`) means the run's *mean* rather than one of its replicates — what a click selects while `reps=0` |
 | `cmp` | Pinned comparison point, same shape as `sel`; set by shift-clicking a dot. Only written alongside a `sel`, since a comparison needs two ends. See [comparison.md](comparison.md) |
 | `reps` | `0` to draw one dot per run at its mean instead of every replicate. Omitted when on, which is the default |
+| `cd` | `0` to stop drawing the steps this app detects for itself. Omitted when on, which is the default — see "Detected changes" |
 | `picker` | `1` when the Add-series panel is open |
 | `pf` | Picker filter free text |
 | `pc` | Picker filter chips, `field:value` repeated |

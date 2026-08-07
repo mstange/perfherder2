@@ -6,15 +6,22 @@ import {
   ALERT_MAX_ROWS,
   ALERT_ROW_HEIGHT,
   alertRowTop,
+  changeBarBand,
+  changeBarTop,
+  CHANGE_BAR_HEIGHT,
+  CHANGE_BAR_HIT_SLOP,
+  CHANGE_BAR_MIN_WIDTH,
   hitTestAlertSlots,
+  hitTestChangeBars,
   layoutAlertMarkers,
+  layoutChangeBars,
   packRows,
 } from './annotations';
 
 // 100 time units across 100px of plot, offset so x0 isn't 0 — a bug that
 // forgets the left padding still passes when the plot starts at the origin.
 const xScale = makeScale(0, 100, 20, 120);
-const geom = { x0: 20, x1: 120, y0: 8 };
+const geom = { x0: 20, x1: 120, y0: 8, y1: 200 };
 
 describe('packRows', () => {
   const rows = (spans: [number, number][], gap = 1, maxRows = 3) =>
@@ -186,5 +193,102 @@ describe('hitTestAlertSlots', () => {
     ];
     const slots = layoutAlertMarkers(many, xScale, geom);
     expect(Math.max(...slots.map((s) => s.row))).toBeLessThan(ALERT_MAX_ROWS);
+  });
+});
+
+describe('layoutChangeBars', () => {
+  const bar = (x0: number, x1: number, changeX = (x0 + x1) / 2, isRegression = true) => ({
+    x0,
+    x1,
+    changeX,
+    isRegression,
+  });
+
+  it('projects a bar onto the pushes it spans', () => {
+    const slots = layoutChangeBars([{ changes: [bar(20, 70, 40)] }], xScale, geom);
+    expect(slots).toHaveLength(1);
+    expect(slots[0]).toMatchObject({ x0: 40, x1: 90, changeX: 60, row: 0 });
+  });
+
+  it('widens a bar that would be too thin to see', () => {
+    // A change over 48 pushes is a few pixels wide at a year's zoom, and a bar
+    // you can't see is a finding you don't get.
+    const slots = layoutChangeBars([{ changes: [bar(50, 51)] }], xScale, geom);
+    expect(slots[0].x1 - slots[0].x0).toBe(CHANGE_BAR_MIN_WIDTH);
+  });
+
+  it('clips to the plot rather than dropping, unlike a marker', () => {
+    // A bar is a range: one that starts before the window still has something
+    // true to say inside it.
+    const slots = layoutChangeBars([{ changes: [bar(-50, 50, 0)] }], xScale, geom);
+    expect(slots[0].x0).toBe(geom.x0);
+    expect(slots[0].x1).toBe(70);
+    // …and the notch is clamped into the visible part rather than drawn off it.
+    expect(slots[0].changeX).toBe(geom.x0);
+  });
+
+  it('drops a bar that does not reach the window at all', () => {
+    expect(layoutChangeBars([{ changes: [bar(-80, -50)] }], xScale, geom)).toEqual([]);
+    expect(layoutChangeBars([{ changes: [bar(150, 180)] }], xScale, geom)).toEqual([]);
+  });
+
+  it('stacks overlapping bars', () => {
+    const slots = layoutChangeBars(
+      [{ changes: [bar(0, 40), bar(30, 70), bar(80, 95)] }],
+      xScale,
+      geom,
+    );
+    expect(slots.map((s) => s.row)).toEqual([0, 1, 0]);
+  });
+});
+
+describe('hitTestChangeBars', () => {
+  const slots = layoutChangeBars(
+    [{ changes: [{ x0: 20, x1: 40, changeX: 30, isRegression: true }] }],
+    xScale,
+    geom,
+  );
+  const inside = changeBarTop(geom, 0) + 2;
+
+  it('answers anywhere along the bar', () => {
+    expect(hitTestChangeBars(slots, geom, 45, inside)).toEqual({
+      seriesIndex: 0,
+      changeIndex: 0,
+    });
+    expect(hitTestChangeBars(slots, geom, 60 - 1, inside)).not.toBeNull();
+  });
+
+  it('reaches CHANGE_BAR_HIT_SLOP past each end and no further', () => {
+    expect(hitTestChangeBars(slots, geom, 60 + CHANGE_BAR_HIT_SLOP, inside)).not.toBeNull();
+    expect(hitTestChangeBars(slots, geom, 60 + CHANGE_BAR_HIT_SLOP + 1, inside)).toBeNull();
+  });
+
+  it('only answers inside its own row band', () => {
+    const band = changeBarBand(geom, 0);
+    expect(hitTestChangeBars(slots, geom, 45, band.top)).not.toBeNull();
+    expect(hitTestChangeBars(slots, geom, 45, band.top - 1)).toBeNull();
+    expect(hitTestChangeBars(slots, geom, 45, band.bottom)).not.toBeNull();
+    expect(hitTestChangeBars(slots, geom, 45, band.bottom + 1)).toBeNull();
+    // The band must not reach up into the dots — a bar sits well below them.
+    expect(band.top).toBeGreaterThan(geom.y1 - CHANGE_BAR_HEIGHT - 8);
+  });
+
+  it('separates two stacked bars by row', () => {
+    const stacked = layoutChangeBars(
+      [
+        {
+          changes: [
+            { x0: 0, x1: 40, changeX: 20, isRegression: true },
+            { x0: 30, x1: 70, changeX: 50, isRegression: false },
+          ],
+        },
+      ],
+      xScale,
+      geom,
+    );
+    const at = (row: number) => changeBarTop(geom, row) + 2;
+    // 55px is inside both bars horizontally; only the row tells them apart.
+    expect(hitTestChangeBars(stacked, geom, 55, at(0))?.changeIndex).toBe(0);
+    expect(hitTestChangeBars(stacked, geom, 55, at(1))?.changeIndex).toBe(1);
   });
 });

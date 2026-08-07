@@ -8,7 +8,12 @@
   import './detailsPane.css';
   import { alertStatusLabel, summaryStatusLabel } from './alerts';
   import type { AppState } from './appState.svelte';
-  import { formatTimestamp, formatValue } from '../shared/chart';
+  import {
+    formatPValue,
+    formatSignedPercent,
+    formatTimestamp,
+    formatValue,
+  } from '../shared/chart';
   import ComparisonSection from './ComparisonSection.svelte';
   import {
     indexInPushValues,
@@ -59,6 +64,7 @@
   const meanSelected = $derived(sel?.replicateIndex === MEAN_REPLICATE);
 
   const alert = $derived(app.selectedAlert);
+  const change = $derived(app.selectedChange);
 
   // Only whether there is a spread worth listing. The chart built from this pool
   // lives in ComparisonSection now, as the one-row form of the one chart the
@@ -195,6 +201,46 @@
               </dd>
             {/if}
           </dl>
+        </section>
+      {/if}
+
+      <!-- This app's own reading of the same build, when it found a step there.
+           Below the Alert card because perfherder's verdict is the one a
+           sheriff came for and is the only one with a bug number attached, and
+           above the single-point sections for the reason the Alert card is:
+           it's a statement about two stretches of the graph rather than about
+           the dot. Most of the time only one of the two cards exists — that is
+           rather the point of having this one. -->
+      {#if change}
+        <section class="change-card">
+          <div class="cmp-head"><h3>Detected change</h3></div>
+          <p class="value">
+            {formatSignedPercent(change.relativeChange)}
+            <span class="verdict {change.isRegression ? 'regression' : 'improvement'}">
+              {change.isRegression ? 'regression' : 'improvement'}
+            </span>
+          </p>
+          <p class="cmp-sub muted">
+            {formatValue(change.beforeValue)} → {formatValue(change.afterValue)}
+            {#if sel.entry.meta?.measurementUnit}{' '}{sel.entry.meta.measurementUnit}{/if}
+            <!-- Spelled out for the same reason the Alert card spells out its
+                 window: the comparison card below quotes these two builds and
+                 will print a different number, and a reader who took both for
+                 two-push figures would think one of them was wrong. -->
+            means over {change.beforeCount} pushes before against {change.afterCount} after
+          </p>
+          <dl>
+            <dt title="Two-sided Mann-Whitney U over the two windows of push means">
+              Mann-Whitney p
+            </dt>
+            <dd>{formatPValue(change.pValue)}</dd>
+            <dt title="Cliff's delta, interpreted with the Romano thresholds">Effect</dt>
+            <dd>{change.effectSize}</dd>
+          </dl>
+          <p class="cmp-sub muted">
+            Found in the data by this app, not by perfherder — there may be no
+            alert for it.
+          </p>
         </section>
       {/if}
 
@@ -717,6 +763,23 @@
   section.alert-card dl {
     grid-template-columns: 6.5em minmax(0, 1fr);
     font-size: 11px;
+  }
+  /* The same card, in the app's own voice: a plain border rather than the
+     alert card's attention color, because this is something the pane computed
+     and not a finding a sheriff has looked at. The two can be on screen
+     together and the difference has to survive that. */
+  section.change-card {
+    padding: 8px 10px 10px;
+    border: 1px solid var(--border-default);
+    border-radius: 6px;
+    background: var(--bg-canvas);
+  }
+  section.change-card dl {
+    grid-template-columns: 9em minmax(0, 1fr);
+    font-size: 11px;
+  }
+  section.change-card .cmp-sub:last-child {
+    margin-top: 6px;
   }
   .commits {
     list-style: none;

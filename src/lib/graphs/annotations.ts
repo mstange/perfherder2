@@ -1,12 +1,12 @@
-// The marks in the margins of the detail plot. Today that is perfherder's alert
-// triangles along the top; anything else the graph grows in its margins belongs
-// here too.
+// The marks in the margins of the detail plot: perfherder's alert triangles
+// along the top, detected-change bars along the floor.
 //
-// **Pure.** Two things live here:
+// **Pure.** Two things live here because both of them need it:
 //
 // - **Rows.** Two marks on nearby pushes used to be drawn on top of each other.
 //   Nudging them sideways would lie about which column they mark, so they stack
-//   instead — which is the fix graphs-todo.md nominated. The packing is
+//   instead — which is the fix graphs-todo.md nominated for the alert markers,
+//   and the only sane way to draw range bars that overlap at all. The packing is
 //   perf.webkit.org's (`time-series-chart.js::_layoutAnnotationBars`).
 // - **One layout, read twice.** The draw loop and the hit test must agree to the
 //   pixel or the graph answers clicks somewhere other than where it drew — the
@@ -182,4 +182,142 @@ export function hitTestAlertSlots(
     bestDistance = d;
   }
   return best ? { seriesIndex: best.seriesIndex, alertIndex: best.alertIndex } : null;
+}
+
+// ---------------------------------------------------------------------------
+// Detected-change bars
+// ---------------------------------------------------------------------------
+//
+// A step this app found itself (changes.ts), drawn as a bar spanning the pushes
+// the test compared.
+//
+// **Inside the plot, hugging the floor, rather than in a reserved band below
+// it.** perf.webkit.org shrinks its chart by the height of its annotation rows;
+// here the row count is a function of the *zoom* (two bars overlap at a year
+// and don't at a week), so a reserved band would resize the plot mid-drag —
+// against the layout-stability rule in design.md, and in the one place the user
+// is watching most closely. Drawn as an overlay the row count costs nothing,
+// at the price of covering a few pixels of the lowest dots.
+
+export const CHANGE_BAR_HEIGHT = 5;
+export const CHANGE_BAR_GAP = 2;
+// Air between the lowest bar and the plot's bottom edge.
+export const CHANGE_BAR_FLOOR = 2;
+export const CHANGE_BAR_MAX_ROWS = 3;
+// A change over 48 pushes is only a few pixels wide at a year's zoom, and a bar
+// you can't see is a finding you don't get. Widened about its centre.
+export const CHANGE_BAR_MIN_WIDTH = 8;
+// Padding on the click target. Horizontally it can be generous, since a short
+// bar is the case it exists for. Vertically it cannot: rows are 7px apart, and
+// a band that reached into the row above would undo the stacking exactly where
+// the stacking is what made two bars separately clickable. Row 0 gets the strip
+// of dead plot floor below it as a bonus, which is the row that exists in every
+// case worth optimizing for.
+export const CHANGE_BAR_HIT_SLOP = 3;
+export const CHANGE_BAR_HIT_PAD = 1;
+
+// Rows stack *upward* from the floor, so row 0 is always in the same place
+// whatever else is on screen.
+export function changeBarTop(geom: { y1: number }, row: number): number {
+  return (
+    geom.y1 - CHANGE_BAR_FLOOR - CHANGE_BAR_HEIGHT - row * (CHANGE_BAR_HEIGHT + CHANGE_BAR_GAP)
+  );
+}
+
+export function changeBarBand(
+  geom: { y1: number },
+  row: number,
+): { top: number; bottom: number } {
+  const top = changeBarTop(geom, row);
+  return {
+    top: top - CHANGE_BAR_HIT_PAD,
+    bottom: top + CHANGE_BAR_HEIGHT + (row === 0 ? CHANGE_BAR_FLOOR : CHANGE_BAR_HIT_PAD),
+  };
+}
+
+export type ChangeSlot = {
+  seriesIndex: number;
+  changeIndex: number;
+  // Pixels, clipped to the plot.
+  x0: number;
+  x1: number;
+  // Where the step itself sits, clamped into [x0, x1]. The bar is the evidence;
+  // this is the column the evidence is about.
+  changeX: number;
+  row: number;
+  isRegression: boolean;
+};
+
+type ChangeInput = {
+  changes?: readonly { x0: number; x1: number; changeX: number; isRegression: boolean }[];
+};
+
+// Every visible change bar, placed. Clipped rather than dropped when it runs
+// off the edge — unlike an alert marker, a bar is a *range*, and one that
+// starts before the window still has something true to say inside it. Dropped
+// only when it doesn't reach the window at all.
+export function layoutChangeBars(
+  list: readonly ChangeInput[],
+  xScale: Scale,
+  geom: { x0: number; x1: number },
+): ChangeSlot[] {
+  const slots: ChangeSlot[] = [];
+  for (let s = 0; s < list.length; s++) {
+    const changes = list[s].changes;
+    if (!changes) continue;
+    for (let c = 0; c < changes.length; c++) {
+      const change = changes[c];
+      let x0 = xScale.toPixel(change.x0);
+      let x1 = xScale.toPixel(change.x1);
+      if (x1 < geom.x0 || x0 > geom.x1) continue;
+      if (x1 - x0 < CHANGE_BAR_MIN_WIDTH) {
+        const centre = (x0 + x1) / 2;
+        x0 = centre - CHANGE_BAR_MIN_WIDTH / 2;
+        x1 = centre + CHANGE_BAR_MIN_WIDTH / 2;
+      }
+      x0 = Math.max(geom.x0, x0);
+      x1 = Math.min(geom.x1, x1);
+      slots.push({
+        seriesIndex: s,
+        changeIndex: c,
+        x0,
+        x1,
+        changeX: Math.min(x1, Math.max(x0, xScale.toPixel(change.changeX))),
+        row: 0,
+        isRegression: change.isRegression,
+      });
+    }
+  }
+  slots.sort((a, b) => a.x0 - b.x0);
+  const rows = packRows(
+    slots.map((slot) => ({ start: slot.x0, end: slot.x1 })),
+    CHANGE_BAR_GAP,
+    CHANGE_BAR_MAX_ROWS,
+  );
+  for (let i = 0; i < slots.length; i++) slots[i].row = rows[i];
+  return slots;
+}
+
+export type ChangeHit = { seriesIndex: number; changeIndex: number };
+
+// The bar under the cursor, or null. Nearest by horizontal distance to the bar
+// itself (zero anywhere inside it), which only decides anything in the doubled
+// -up case, since bars on one row never overlap.
+export function hitTestChangeBars(
+  slots: readonly ChangeSlot[],
+  geom: { y1: number },
+  px: number,
+  py: number,
+): ChangeHit | null {
+  let best: ChangeSlot | null = null;
+  let bestDistance = Infinity;
+  for (const slot of slots) {
+    const band = changeBarBand(geom, slot.row);
+    if (py < band.top || py > band.bottom) continue;
+    const d = Math.max(0, slot.x0 - px, px - slot.x1);
+    if (d > CHANGE_BAR_HIT_SLOP || d >= bestDistance) continue;
+    best = slot;
+    bestDistance = d;
+  }
+  return best ? { seriesIndex: best.seriesIndex, changeIndex: best.changeIndex } : null;
 }

@@ -361,6 +361,14 @@
                 · {entry.alerts.length} alert{entry.alerts.length === 1 ? '' : 's'}
               </span>
             {/if}
+            {#if entry.changes.length > 0}
+              <!-- Same job for the bars, and deliberately worded differently:
+                   "alert" is perfherder's noun and this isn't one. Quieter than
+                   the alert count, since it is this app's own reading. -->
+              <span class="changes" title="Steps detected in this series in this range">
+                · {entry.changes.length} change{entry.changes.length === 1 ? '' : 's'}
+              </span>
+            {/if}
           </div>
         </div>
         <div class="actions">

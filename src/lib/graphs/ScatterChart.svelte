@@ -8,10 +8,16 @@
   // chartDraw.ts.
 
   import { hitTestAll, makeGeometry, makeJitterScale, type Padding, type Range } from '../shared/chart';
-  import { hitTestAlertSlots, layoutAlertMarkers } from './annotations';
+  import {
+    hitTestAlertSlots,
+    hitTestChangeBars,
+    layoutAlertMarkers,
+    layoutChangeBars,
+  } from './annotations';
   import {
     drawAlertHighlight,
     drawBrush,
+    drawChangeHighlight,
     drawChart,
     drawHighlights,
     type Highlight,
@@ -28,6 +34,8 @@
   // Which alert marker, as indices into `series` and that series' `alerts`.
   export type ChartAlertHit = { seriesIndex: number; alertIndex: number };
 
+  // Which detected-change bar, likewise into `series` and its `changes`.
+  export type ChartChangeHit = { seriesIndex: number; changeIndex: number };
 
   type Props = {
     series: SeriesEntry[];
@@ -40,6 +48,9 @@
     // may hold a year of pushes, where a row of triangles would be most of what
     // the map shows.
     showAlerts?: boolean;
+    // Detected-change bars, on the detail graph only and for the same reason:
+    // a bar hugging the floor of an 84px overview would be most of the map.
+    showChanges?: boolean;
     // Shared across both graphs so their plot areas line up.
     pad?: Padding;
     // Selection, pinned comparison and hover, in data coordinates. An array
@@ -52,6 +63,9 @@
     // holds no selection, and only the caller can say which of its markers the
     // details pane is currently describing.
     selectedAlert?: ChartAlertHit | null;
+    // The bar for the change the details pane is describing, if any. Same
+    // arrangement as `selectedAlert`.
+    selectedChange?: ChartChangeHit | null;
     // 'select': click picks a point, drag zooms into a time span.
     // 'brush':  drag defines the zoom window shown by the other graph.
     interaction: 'select' | 'brush';
@@ -65,6 +79,9 @@
     // point: the caller resolves it to a push and to the alert's own "before",
     // which this component knows nothing about.
     onalertselect?: (hit: ChartAlertHit) => void;
+    // A detected-change bar was clicked. Like `onalertselect`, this resolves to
+    // a pair of pushes rather than to a point, which only the caller can do.
+    onchangeselect?: (hit: ChartChangeHit) => void;
     // The point under the pointer, or null when there isn't one. Fires only on
     // change, so a mousemove inside one dot doesn't re-report it.
     //
@@ -97,13 +114,16 @@
     showLines = false,
     showAxes = true,
     showAlerts = false,
+    showChanges = false,
     pad = { left: 56, right: 12, top: 8, bottom: 20 },
     highlights = [],
     selectedAlert = null,
+    selectedChange = null,
     interaction,
     brush = null,
     onselect,
     onalertselect,
+    onchangeselect,
     onhover,
     onbrush,
     onkeymove,
@@ -146,10 +166,11 @@
   // True while the cursor is over a hittable dot or alert marker, so the cursor
   // can say so.
   let hovering = $state(false);
-  // The marker under the pointer. Chart-local because it changes nothing
+  // The marker or bar under the pointer. Chart-local because it changes nothing
   // outside the chart — unlike a hovered *dot*, which previews a comparison in
   // the details pane and therefore belongs to AppState.
   let hoveredAlert = $state<ChartAlertHit | null>(null);
+  let hoveredChange = $state<ChartChangeHit | null>(null);
 
   const geom = $derived(makeGeometry(width, height, pad, xDomain, yDomain));
   const effectiveBrush = $derived(pending ?? brush);
@@ -161,6 +182,9 @@
   // applied to the dots.
   const alertSlots = $derived(
     showAlerts ? layoutAlertMarkers(series, geom.xScale, geom) : [],
+  );
+  const changeSlots = $derived(
+    showChanges ? layoutChangeBars(series, geom.xScale, geom) : [],
   );
 
   // Turns each dot's stored room into a pixel offset. One object for the whole
@@ -213,6 +237,7 @@
         pushes: s.data.pushes,
       })),
       alertSlots,
+      changeSlots,
       dotRadius,
       showLines,
       showAxes,
@@ -253,11 +278,13 @@
     // strip the very thing that says it is selected.
     drawMarkerHighlight(ctx, hoveredAlert, 'hovered');
     drawMarkerHighlight(ctx, selectedAlert, 'selected');
+    drawBarHighlight(ctx, hoveredChange, 'hovered');
+    drawBarHighlight(ctx, selectedChange, 'selected');
   });
 
-  // Both lookups can miss — a repaint can land between the pointer moving and
-  // the series list changing under it, and a slot disappears entirely once its
-  // marker scrolls out of the zoomed window — and a miss just means no
+  // All four lookups can miss — a repaint can land between the pointer moving
+  // and the series list changing under it, and a slot disappears entirely once
+  // its mark scrolls out of the zoomed window — and a miss just means no
   // highlight until the next pointer event.
   function drawMarkerHighlight(
     ctx: CanvasRenderingContext2D,
@@ -271,6 +298,21 @@
     const entry = series[hit.seriesIndex];
     if (slot && entry) {
       drawAlertHighlight(ctx, geom, slot, entry.color, theme.chartPalette, kind);
+    }
+  }
+
+  function drawBarHighlight(
+    ctx: CanvasRenderingContext2D,
+    hit: ChartChangeHit | null,
+    kind: 'hovered' | 'selected',
+  ): void {
+    if (!hit) return;
+    const slot = changeSlots.find(
+      (s) => s.seriesIndex === hit.seriesIndex && s.changeIndex === hit.changeIndex,
+    );
+    const entry = series[hit.seriesIndex];
+    if (slot && entry) {
+      drawChangeHighlight(ctx, geom, slot, entry.color, theme.chartPalette, kind);
     }
   }
 
@@ -341,13 +383,20 @@
     );
   }
 
-  // Markers win over dots inside their band. They're a much smaller, more
-  // deliberate target than a cloud of replicates, and the band is a strip at
-  // the top of the plot where — with the y domain padded — there is rarely a
-  // dot to steal. Aiming at a triangle and getting a dot would be the more
-  // annoying failure of the two.
+  // Marks win over dots inside their bands. They're much smaller, more
+  // deliberate targets than a cloud of replicates, and both bands are narrow
+  // strips at the very top and the very bottom of the plot where — with the y
+  // domain padded — there is rarely a dot to steal. Aiming at a triangle or a
+  // bar and getting a dot would be the more annoying failure of the two.
+  //
+  // The two bands can't both answer: one is 16px from the top, the other about
+  // 25px from the floor.
   function alertHitAt(px: number, py: number): ChartAlertHit | null {
     return hitTestAlertSlots(alertSlots, geom, px, py);
+  }
+
+  function changeHitAt(px: number, py: number): ChartChangeHit | null {
+    return hitTestChangeBars(changeSlots, geom, px, py);
   }
 
   function sameAlert(a: ChartAlertHit | null, b: ChartAlertHit | null): boolean {
@@ -355,6 +404,10 @@
     return a.seriesIndex === b.seriesIndex && a.alertIndex === b.alertIndex;
   }
 
+  function sameChange(a: ChartChangeHit | null, b: ChartChangeHit | null): boolean {
+    if (!a || !b) return a === b;
+    return a.seriesIndex === b.seriesIndex && a.changeIndex === b.changeIndex;
+  }
 
   // The last hit handed to `onhover`, so a mousemove that stays inside one dot
   // doesn't re-report it. Without this the parent's derived comparison — a KDE
@@ -377,12 +430,14 @@
         const px = localX(e);
         const py = localY(e);
         const alert = alertHitAt(px, py);
+        const change = alert ? null : changeHitAt(px, py);
         if (!sameAlert(alert, hoveredAlert)) hoveredAlert = alert;
-        // Over a marker the pointer is not over a dot, whatever the dots think:
+        if (!sameChange(change, hoveredChange)) hoveredChange = change;
+        // Over a mark the pointer is not over a dot, whatever the dots think:
         // reporting both would light up a comparison preview in the pane at the
-        // same time as the marker offers a different one.
-        const hit = alert ? null : hitAt(px, py);
-        hovering = alert !== null || hit !== null;
+        // same time as the mark offers a different one.
+        const hit = alert || change ? null : hitAt(px, py);
+        hovering = alert !== null || change !== null || hit !== null;
         reportHover(hit, e.shiftKey);
       }
       return;
@@ -406,6 +461,7 @@
     // this is still a click, and the highlight has to sit still.
     if (pending) {
       hoveredAlert = null;
+      hoveredChange = null;
       reportHover(null);
     }
     if (interaction === 'brush') onbrush?.(pending, true);
@@ -435,6 +491,11 @@
         onalertselect?.(alert);
         return;
       }
+      const change = changeHitAt(px, py);
+      if (change) {
+        onchangeselect?.(change);
+        return;
+      }
       const hit = hitAt(px, py);
       onselect?.(hit ? { seriesIndex: hit.seriesIndex, pointIndex: hit.pointIndex } : null, {
         shift: e.shiftKey,
@@ -452,11 +513,13 @@
     drag = null;
     pending = null;
     hoveredAlert = null;
+    hoveredChange = null;
   }
 
   function onPointerLeave(): void {
     hovering = false;
     hoveredAlert = null;
+    hoveredChange = null;
     // The preview belongs to the pointer being over a dot; leaving the graph
     // ends it, or the pane keeps showing a comparison with nothing on screen to
     // explain where it came from.

@@ -20,6 +20,7 @@ import {
   type RepositoryInfo,
 } from './graphApi';
 import { alertsByPush, alertsForSeries, type SeriesAlert } from './alerts';
+import { detectChanges, type DetectedChange } from './changes';
 import { profileLinks, type ProfileLink } from './artifacts';
 import { fetchTaskArtifactNames } from './artifactsApi';
 import type { RepoLinkInfo } from '../shared/links';
@@ -94,11 +95,16 @@ export type SeriesEntry = {
   // range. Empty until they land, which is deliberate: they're a second fetch,
   // and the graph must not wait for them to draw its dots.
   alerts: readonly SeriesAlert[];
+  // Steps this app found in the data itself (changes.ts). Empty while
+  // `changeDetection` is off, and empty until the detection has run — which is
+  // one frame behind the dots, not a fetch.
+  changes: readonly DetectedChange[];
 };
 
 // Shared so that every un-fetched series' `alerts` is the same array, and a
 // `$derived` recomputation doesn't look like a change to anything downstream.
 const EMPTY_ALERTS: readonly SeriesAlert[] = [];
+const EMPTY_CHANGES: readonly DetectedChange[] = [];
 
 // Everything the details pane needs about the current selection.
 export type Selection = {
@@ -149,6 +155,17 @@ export class AppState {
   // instant and the details pane can still list a run's individual
   // replicates either way.
   showReplicates = $state(true);
+  // Draw the steps this app detects in each series (changes.ts).
+  //
+  // **On by default**, which is a deliberate departure from how this app treats
+  // most interpretation. The justification for building it at all is the gap
+  // where perfherder's alerts are silent — a change that never crossed
+  // somebody's threshold, on a platform nobody set one for — and a feature that
+  // only helps the people who find a checkbox does not close that gap. The bars
+  // are quiet enough to earn the default: a 5px strip along the plot floor, in
+  // the same red/green vocabulary the alert markers already use, labelled
+  // "detected" everywhere it is described so it never claims to be a verdict.
+  changeDetection = $state(true);
   pickerOpen = $state(false);
   // The Add-series panel's own state. One object rather than five fields: it
   // arrives from the URL as a unit, the panel reports it back as a unit, and
@@ -176,6 +193,15 @@ export class AppState {
   // nothing and look identical either way.
   private alertCache = $state(new Map<string, SeriesAlert[]>());
   private alertRequests = new Set<string>();
+
+  // Detected changes per series, keyed and pruned the same way. Cached rather
+  // than derived because the segmentation is an O(n²) dynamic program and
+  // `series` recomputes for reasons that have nothing to do with the data —
+  // a theme flip, a replicate toggle — which would re-run it every time.
+  //
+  // Never cleared when `changeDetection` goes off, only hidden: turning the
+  // switch back on should not pay for the work again.
+  private changeCache = $state(new Map<string, DetectedChange[]>());
 
   pushCache = $state(new Map<string, Push>());
   jobCache = $state(new Map<string, Job>());
@@ -224,6 +250,9 @@ export class AppState {
         loading: this.loadingKeys.has(key),
         error: this.errorsByKey.get(key) ?? null,
         alerts: this.alertCache.get(key) ?? EMPTY_ALERTS,
+        changes: this.changeDetection
+          ? (this.changeCache.get(key) ?? EMPTY_CHANGES)
+          : EMPTY_CHANGES,
       };
     }),
   );
@@ -473,6 +502,16 @@ export class AppState {
     return alertsByPush(sel.entry.alerts).get(sel.push.pushId) ?? null;
   });
 
+  // The step this app detected at the selected build, if there is one. Keyed on
+  // the push *after* the change, which is the one a bar's click selects and the
+  // one the change is attributed to — the same convention as an alert, which
+  // belongs to the push it was raised on rather than to the one before it.
+  selectedChange = $derived.by((): DetectedChange | null => {
+    const sel = this.selection;
+    if (!sel) return null;
+    return sel.entry.changes.find((c) => c.afterPushId === sel.push.pushId) ?? null;
+  });
+
   // The push immediately before the selected one in the same series — the
   // details pane's "Since previous" pushlog link needs it, to name the range
   // that landed in between.
@@ -515,6 +554,36 @@ export class AppState {
         if (entry.loading || entry.error || entry.data.pushes.length === 0) continue;
         void this.loadAlerts(entry.ref, dataKey(entry.ref, this.range), entry.data);
       }
+    });
+
+    // Detect changes in every loaded series we haven't run over yet.
+    //
+    // Reads `seriesCache` rather than `series`, so it doesn't wake for a theme
+    // change or a replicate toggle. It still writes a cell it reads
+    // (`changeCache`), so Svelte runs it once more to settle; the second pass
+    // finds every key present and does nothing.
+    //
+    // Synchronous, and cheap enough to be. Measured (node, so ratios rather
+    // than absolutes): 3 ms at 340 pushes, 10 ms at 900, 21 ms at 2000 — the
+    // O(n²) inner loop is bounded by GRID_SIZE, so a long range costs a
+    // multiple of one grid rather than its square. Eight series at a year is
+    // therefore a fraction of one fetch, and it runs after the dots are up.
+    $effect(() => {
+      if (!this.changeDetection) return;
+      const span = this.range;
+      const cache = this.seriesCache;
+      const found: [string, DetectedChange[]][] = [];
+      for (const ref of this.seriesRefs) {
+        const key = dataKey(ref, span);
+        if (this.changeCache.has(key)) continue;
+        const loaded = cache.get(key);
+        if (!loaded || loaded.data.pushes.length === 0) continue;
+        found.push([key, detectChanges(loaded.data.pushes, loaded.meta.lowerIsBetter)]);
+      }
+      if (found.length === 0) return;
+      const next = new Map(this.changeCache);
+      for (const [key, changes] of found) next.set(key, changes);
+      this.changeCache = next;
     });
 
     // Fetch push + job detail for the selection, lazily.
@@ -705,6 +774,12 @@ export class AppState {
     for (const key of this.alertRequests) {
       if (!wanted.has(key)) this.alertRequests.delete(key);
     }
+
+    const changes = new Map<string, DetectedChange[]>();
+    for (const [key, value] of this.changeCache) {
+      if (wanted.has(key)) changes.set(key, value);
+    }
+    if (changes.size !== this.changeCache.size) this.changeCache = changes;
   }
 
   private async loadRepositories(): Promise<void> {
@@ -827,6 +902,12 @@ export class AppState {
     // mean selection with replicates drawn, and a replicate selection still
     // names a real value with them hidden. Coercing it either way would lose
     // the point the user was looking at for the sake of tidiness.
+    this.syncUrl('push');
+  }
+
+  setChangeDetection(on: boolean): void {
+    if (this.changeDetection === on) return;
+    this.changeDetection = on;
     this.syncUrl('push');
   }
 
@@ -957,24 +1038,44 @@ export class AppState {
   // the graph's neighbour would put a "before" value in the comparison card
   // that perfherder never used, directly under a card quoting the one it did.
   selectAlert(ref: SeriesRef, alert: SeriesAlert): void {
+    this.selectPushPair(ref, alert.pushId, alert.prevPushId);
+  }
+
+  // Clicking a detected-change bar, which is the same gesture as clicking an
+  // alert marker and does the same thing: the push after the step is selected
+  // and the one before it is pinned, so the comparison card spells out in
+  // replicates what the bar claims in two segment means.
+  //
+  // The two will not print the same percentage, and both are right — the same
+  // relationship the Alert card has with the comparison card, one step milder.
+  // A detected change is a difference of *means over up to 24 pushes a side*
+  // (changes.ts, WINDOW_PUSHES) while the comparison is these two builds, so a
+  // step buried in noisy data reads much larger between the two adjacent pushes
+  // that happen to straddle it than it does between the two levels. The
+  // Detected-change card says which it is.
+  selectChange(ref: SeriesRef, change: DetectedChange): void {
+    this.selectPushPair(ref, change.afterPushId, change.beforePushId);
+  }
+
+  // "Select this build, and pin the one it is being measured against" — one
+  // gesture, one history entry, both ends of a comparison.
+  //
+  // `againstPushId` may be outside the loaded range, or expired. The selection
+  // still happens and the comparison simply doesn't, which is better than
+  // pinning a substitute the finding never used.
+  //
+  // MEAN_REPLICATE on both ends: these findings are about builds, not about one
+  // of a build's twenty-five replicates. The comparison pools the whole push
+  // either way (compare.ts::poolFor), so this only decides which dot wears the
+  // ring — and the run's mean is where the connecting line already passes.
+  private selectPushPair(ref: SeriesRef, pushId: number, againstPushId: number): void {
     const entry = this.series.find(
       (s) => s.ref.repository === ref.repository && s.ref.signatureId === ref.signatureId,
     );
-    const push = entry?.data.pushById.get(alert.pushId);
-    if (!entry || !push) return;
-    const run = push.runs.at(-1);
-    if (!run) return;
+    const run = entry?.data.pushById.get(pushId)?.runs.at(-1);
+    if (!entry || !run) return;
+    const against = entry.data.pushById.get(againstPushId)?.runs.at(-1);
 
-    // The previous push may be outside the loaded range, or may have expired.
-    // Then the alert card still renders and the comparison card simply doesn't:
-    // better than pinning a substitute the alert didn't use.
-    const prevPush = entry.data.pushById.get(alert.prevPushId);
-    const prevRun = prevPush?.runs.at(-1);
-
-    // MEAN_REPLICATE on both ends: an alert is about the build, not about one
-    // of its twenty-five replicates. The comparison pools the whole push either
-    // way (compare.ts::poolFor), so this only decides which dot wears the ring
-    // — and the run's mean is where the connecting line already passes.
     const at = (datumId: number): SelectedPoint => ({
       repository: entry.ref.repository,
       signatureId: entry.ref.signatureId,
@@ -986,7 +1087,7 @@ export class AppState {
     // and comparePoint would push two history entries for one click, and the
     // back button would land on a half-built comparison nobody asked for.
     this.selectedPoint = at(run.datumId);
-    this.comparedPoint = prevRun ? at(prevRun.datumId) : null;
+    this.comparedPoint = against ? at(against.datumId) : null;
     this.syncUrl('push');
   }
 
@@ -1183,6 +1284,7 @@ export class AppState {
     selected: this.selectedPoint,
     compared: this.comparedPoint,
     showReplicates: this.showReplicates,
+    changeDetection: this.changeDetection,
     pickerOpen: this.pickerOpen,
     picker: this.pickerView,
   });
@@ -1211,6 +1313,7 @@ export class AppState {
       this.selectedPoint = state.selected;
       this.comparedPoint = state.compared;
       this.showReplicates = state.showReplicates;
+      this.changeDetection = state.changeDetection;
       this.pickerOpen = state.pickerOpen;
       this.pickerView = state.picker;
     } finally {

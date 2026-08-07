@@ -45,9 +45,15 @@ Living checklist. Update in the same commit as the work it describes.
   `distribution.ts`, `distributionDraw.ts`, `compare.ts`,
   `DistributionChart.svelte` (+ tests for all the pure halves). See
   [comparison.md](comparison.md)
+- Client-side change detection — `changes.ts` (+ tests): segmentation by the
+  Schwarz criterion, then a Mann-Whitney U over the push means either side of
+  each candidate. Drawn as bars along the plot floor, clicking one sets up the
+  comparison, and the details pane gets a Detected-change card. On by default,
+  `cd=0` to turn it off. See graphs.md, "Detected changes"
 - Marks in the plot's margins stack into rows instead of overlapping —
-  `annotations.ts` (+ tests). Closes the "markers don't dodge each other" item
-  that used to sit under "Alerts: the parts still missing"
+  `annotations.ts` (+ tests), shared by the change bars and the alert triangles.
+  Closes the alert-marker half of the item that used to be under "Alerts: the
+  parts still missing"
 
 ## Next
 
@@ -106,9 +112,9 @@ Living checklist. Update in the same commit as the work it describes.
   needs something we don't have:
   - *Creating and triaging* alerts from the graph — needs an authenticated
     session.
-  - *Common alerts — **decided against**, for now.* Treeherder also marks pushes
-    where some **other** series in the framework alerted. The case for it is
-    real: plotting idb-open-many-seq `open_duration` on macOS
+  - *Common alerts — **decided against**, and now largely moot.* Treeherder also
+    marks pushes where some **other** series in the framework alerted. The case
+    for it was real: plotting idb-open-many-seq `open_duration` on macOS
     (signature 5350956) over a year shows nothing, while its Windows counterpart
     (5350953) carries alert #51136 for the very same push — the change hit both
     platforms, but macOS moved +2.0% against Windows' +9.9% and never crossed
@@ -125,9 +131,40 @@ Living checklist. Update in the same commit as the work it describes.
     over a long range covers the last few weeks and silently misses the rest —
     a partial answer that looks like a complete one.
 
-    A marker here therefore keeps its narrow meaning: *perfherder alerted on
-    this series*. The cross-platform question is answered by plotting the
-    sibling platform, which is a thing you want on screen anyway.
+    A marker therefore keeps its narrow meaning: *perfherder alerted on this
+    series*. What has changed since is that the underlying question — "this
+    series moved here and nobody said so" — is now answered directly by the
+    detected-change bars, which cost one local dynamic program rather than 29 MB
+    and answer it for the series in front of you rather than for its siblings.
+    The +2.0% macOS step is exactly what they are tuned to keep.
+- **Detected changes: what's left.** The detector and its bars are done (see
+  graphs.md); four things it doesn't do.
+  - *No keyboard path.* Alerts have <kbd>A</kbd> / <kbd>shift-A</kbd> to step
+    between them; the bars are pointer-only. The same stepper over
+    `visibleChanges` would be a few lines, and the reason it isn't there yet is
+    that <kbd>A</kbd>'s meaning would have to widen to "next finding, of either
+    kind" or the two would need separate keys for what is one gesture to a user.
+  - *No label on the bar.* perf.webkit.org writes "Potential 3.24% regression"
+    into its annotation bar. Ours carries no text, so the percentage is only
+    reachable by clicking. Drawing it when it fits is easy; deciding what a bar
+    too narrow for it should do — nothing, an ellipsis, a wider bar — is the
+    part that needs a decision, and a bar that sometimes has a label reads as a
+    different kind of mark from one that never does.
+  - *False positives are bounded but not measured.* α = 0.01 and the 0.5% floor
+    were chosen from first principles and one synthetic sweep; nobody has gone
+    through a week of real graphs counting bars a human would disagree with.
+    That is the measurement that should decide whether the constants are right,
+    and it is the one thing that would justify moving the default.
+  - *Gradual drift is invisible by construction.* Segmentation looks for steps.
+    A series that slides 8% over three months has no step in it and gets no bar,
+    which is honest but is also the case a trend line would answer — see the
+    next item.
+- **Trend lines.** perf.webkit.org's chart offers simple, cumulative and
+  exponential moving averages alongside its segmentation, from one menu
+  (`chart-pane.js::ChartTrendLineTypes`). We took the segmentation and left
+  those. They are perhaps twenty lines each and would answer the drift case the
+  bars can't, at the cost of another control and another line on a plot that
+  already draws every replicate. Worth it only if the drift case comes up.
 - **Retrigger / delta-vs-previous readouts.** Treeherder's tooltip shows the
   delta from the previous data point and a retrigger count. We show the
   retrigger count, and hovering any dot gives the delta against the *selected*
