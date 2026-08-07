@@ -14,8 +14,14 @@
   // dots moved "Replicate" and everything under it by 419px, over and over,
   // which is what reading a graph looks like.
   //
-  //   `.cmp-lede`   89px — the headline, or the hint, or "marked".
-  //   `.cmp-chart` 134px — the distribution. **Always.**
+  //   `.cmp-lede`  — the headline, or the hint, or "marked".
+  //   `.cmp-chart` — the distribution. **Always.**
+  //
+  // The lede reserves itself: every state is rendered on every paint, the
+  // inactive ones stacked in the same grid cell and hidden, so the slot is as
+  // tall as its tallest state without anyone having measured one. That works
+  // because all four states are hover-independent — see `.cmp-lede` in the
+  // styles below.
   //
   // The chart is the whole point of the second slot. There is only ever one
   // distribution on screen, but it used to be drawn by two components in two
@@ -39,7 +45,12 @@
     formatTimestamp,
     formatValue,
   } from '../shared/chart';
-  import { comparisonLinks, hasDistribution, type ComparisonSide } from './compare';
+  import {
+    comparisonLinks,
+    hasDistribution,
+    type Comparison,
+    type ComparisonSide,
+  } from './compare';
   import DistributionChart from './DistributionChart.svelte';
   import { buildDistribution } from './distribution';
   import {
@@ -148,80 +159,106 @@
   );
 </script>
 
+<!-- Each state defined once, as a snippet, because the lede renders every one
+     of them on every paint: the live one, and the others stacked underneath it
+     with `visibility: hidden` purely for their height. See `.cmp-lede`. -->
+
+{#snippet headlineBody(c: Comparison | null)}
+  <div class="cmp-head">
+    <h3>Comparison</h3>
+    {#if c && pinned}
+      <button
+        type="button"
+        class="btn unpin"
+        title="Stop comparing"
+        onclick={() => app.clearComparison()}>Unpin</button
+      >
+    {:else}
+      <span class="muted">shift-click to pin</span>
+    {/if}
+  </div>
+  <p class="value">
+    {c ? formatSignedValue(c.medianDelta) : '0'}
+    {#if c?.unit}<span class="unit">{c.unit}</span>{/if}
+    {#if c && c.medianDeltaFraction !== null}
+      <span class="muted">({formatSignedPercent(c.medianDeltaFraction)})</span>
+    {/if}
+    {#if c && c.direction !== 'none'}
+      <span class="verdict {c.direction}">{c.direction}</span>
+    {/if}
+  </p>
+  <!-- Clipped to one line rather than wrapped. The labels are revisions and
+       platform strings, so their length is not ours to predict, and a line
+       that sometimes becomes two would put the jump straight back. The
+       comparison's own kind ("one series, two pushes") is dropped for the
+       same reason — it is a second variable-length line saying what the two
+       labels here already show. -->
+  <p class="cmp-sub muted one-line">
+    {#if c}{#if c.kind !== 'replicate'}median,{' '}{/if}{c.base.label} → {c.next
+        .label}{:else}&nbsp;{/if}
+  </p>
+{/snippet}
+
+<!-- The pin is on this very point, so there is nothing to compare yet.
+     That's the keyboard path's middle step, and it's also where arrowing
+     back onto a pinned point lands, so it has to say what to do next
+     rather than look like a comparison that failed. -->
+{#snippet markedBody()}
+  <p class="cmp-hint marked">
+    <span>Marked for comparison — now move to another point.</span>
+    <button type="button" class="btn unpin" onclick={() => app.clearComparison()}>
+      Unmark
+    </button>
+  </p>
+{/snippet}
+
+<!-- The affordance sits exactly where its result will appear, which is
+     the only place a user looking at one selected point would find it.
+     Nothing else on screen says the gesture exists.
+
+     The button leads, because "what changed here" is the question a
+     single selected point actually raises, and the answer is one click
+     rather than a hunt for a dot in the previous push's cloud. The
+     gestures below it reach every *other* pair. -->
+{#snippet hintBody()}
+  <div class="cmp-hint">
+    {#if app.previousPush}
+      <button
+        type="button"
+        class="btn cmp-prev"
+        title="Pin the push before this one as the comparison (P, with the graph focused)"
+        onclick={() => app.compareWithPreviousPush()}
+      >
+        Compare with the previous push
+      </button>
+    {/if}
+    <p class="muted">
+      Shift-click another point to compare it with this one, or press
+      <kbd>C</kbd> to mark this one and walk away with the arrow keys.
+    </p>
+  </div>
+{/snippet}
+
 <!-- One structure for every state, so only the *contents* of the two reserved
      slots change as the pointer moves. See the note at the top of this file. -->
 <section class="cmp-block" class:carded={!!cmp} class:preview={!!cmp && !pinned}>
   <div class="cmp-lede">
-    {#if cmp}
-      <div class="cmp-head">
-        <h3>Comparison</h3>
-        {#if pinned}
-          <button
-            type="button"
-            class="btn unpin"
-            title="Stop comparing"
-            onclick={() => app.clearComparison()}>Unpin</button
-          >
-        {:else}
-          <span class="muted">shift-click to pin</span>
-        {/if}
-      </div>
-      <p class="value">
-        {formatSignedValue(cmp.medianDelta)}
-        {#if cmp.unit}<span class="unit">{cmp.unit}</span>{/if}
-        {#if cmp.medianDeltaFraction !== null}
-          <span class="muted">({formatSignedPercent(cmp.medianDeltaFraction)})</span>
-        {/if}
-        {#if cmp.direction !== 'none'}
-          <span class="verdict {cmp.direction}">{cmp.direction}</span>
-        {/if}
-      </p>
-      <!-- Clipped to one line rather than wrapped. The labels are revisions and
-           platform strings, so their length is not ours to predict, and a line
-           that sometimes becomes two would put the jump straight back. The
-           comparison's own kind ("one series, two pushes") is dropped for the
-           same reason — it is a second variable-length line saying what the two
-           labels here already show. -->
-      <p class="cmp-sub muted one-line">
-        {#if cmp.kind !== 'replicate'}median,{' '}{/if}{cmp.base.label} → {cmp.next.label}
-      </p>
-    {:else if app.comparisonMarkedHere}
-      <!-- The pin is on this very point, so there is nothing to compare yet.
-           That's the keyboard path's middle step, and it's also where arrowing
-           back onto a pinned point lands, so it has to say what to do next
-           rather than look like a comparison that failed. -->
-      <p class="cmp-hint marked">
-        <span>Marked for comparison — now move to another point.</span>
-        <button type="button" class="btn unpin" onclick={() => app.clearComparison()}>
-          Unmark
-        </button>
-      </p>
-    {:else}
-      <!-- The affordance sits exactly where its result will appear, which is
-           the only place a user looking at one selected point would find it.
-           Nothing else on screen says the gesture exists.
+    <!-- The other three states, stacked in the same cell and hidden. They are
+         what makes the slot as tall as its tallest state without anyone having
+         measured one. -->
+    <div data-sizer>{@render hintBody()}</div>
+    <div data-sizer>{@render markedBody()}</div>
+    <div data-sizer>{@render headlineBody(null)}</div>
 
-           The button leads, because "what changed here" is the question a
-           single selected point actually raises, and the answer is one click
-           rather than a hunt for a dot in the previous push's cloud. The
-           gestures below it reach every *other* pair. -->
-      <div class="cmp-hint">
-        {#if app.previousPush}
-          <button
-            type="button"
-            class="btn cmp-prev"
-            title="Pin the push before this one as the comparison (P, with the graph focused)"
-            onclick={() => app.compareWithPreviousPush()}
-          >
-            Compare with the previous push
-          </button>
-        {/if}
-        <p class="muted">
-          Shift-click another point to compare it with this one, or press
-          <kbd>C</kbd> to mark this one and walk away with the arrow keys.
-        </p>
-      </div>
-    {/if}
+    <div>
+      {#if cmp}
+        {@render headlineBody(cmp)}
+      {:else if app.comparisonMarkedHere}
+        {@render markedBody()}
+      {:else}
+        {@render hintBody()}
+      {/if}
+    </div>
   </div>
 
   <!-- Always rendered, and always the height of the two-row form. This is the
@@ -386,29 +423,43 @@
     border-style: dashed;
     background: var(--bg-nested-quiet);
   }
-  /* The two reserved slots. Hard numbers because the states have nothing in
-     common to derive one from: each is the tallest of its alternatives,
-     measured at the pane's 320px. Same bargain as `.zoom-label`'s
-     `min-width: 23ch` in GraphPane, in the other axis — if the wording or the
-     chart's constants change, re-measure.
+  /* The lede reserves itself. Every state is rendered on every paint — the live
+     one, and the other three stacked in the same grid cell with
+     `visibility: hidden` — so the slot is as tall as its tallest state by
+     construction, and the number nobody has to write down is 89px.
 
-     89px is the hint, which is taller than the headline or the marked line.
+     What makes this sound rather than merely convenient: all four states are
+     *hover-independent*. Their wording is fixed, `previousPush` and
+     `comparisonMarkedHere` are functions of the selection, and the headline is
+     three fixed rows because `.cmp-sub` is `.one-line`. So nothing the pointer
+     does can change the height of the stack, which is the whole invariant.
 
-     171px is the chart while hovering: a 134px canvas (`distributionHeight` for
-     two strip rows over a density band) plus two legend heads and the gap
-     between them. One side is 146px — a 114px canvas and one 32px legend row,
-     head and detail — so the reserve leaves 25px of slack under the chart when
-     nothing is compared.
+     It also tracks changes the old literal couldn't: reword the hint and the
+     reserve follows, and a selection with no previous push (no button, so a
+     shorter hint) now reserves 64px rather than spending 89px on a state it
+     can't reach.
 
-     That slack is exactly what a comparison adds: one strip row (20px) and the
-     5px the second legend head costs over the detail line it replaces. It was
-     55px until the hover preview dropped the spread/cv line (`legendDetail`);
-     the alternative was reserving a blank legend row, which reads worse than a
-     gap. Pinned is 201px and deliberately outside this budget — pinning may
-     rearrange the pane, hovering may not. */
+     `min-width: 0` is load-bearing, not tidiness. An auto grid track is floored
+     by its items' min-content width, and the headline's `.cmp-sub` is
+     `nowrap` — without this the track sizes to the *unwrapped* label, 395px
+     against a 273px cell, which scrolls the pane sideways and re-wraps the hint
+     against the wider track, making the stack measure the wrong thing. */
   .cmp-lede {
-    min-height: 89px;
+    display: grid;
   }
+  .cmp-lede > * {
+    grid-area: 1 / 1;
+    min-width: 0;
+  }
+  .cmp-lede > [data-sizer] {
+    visibility: hidden;
+  }
+  /* Still a measured literal, unlike the lede above: the chart while hovering
+     is a 134px canvas (`distributionHeight` for two strip rows over a density
+     band) plus two legend heads and the gap between them. One side is 148px, so
+     this leaves 23px of slack under the chart when nothing is compared — which
+     is what a comparison adds. Pinning is deliberately outside the budget:
+     it may rearrange the pane, hovering may not. */
   .cmp-chart {
     min-height: 171px;
   }
