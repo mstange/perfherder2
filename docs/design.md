@@ -629,8 +629,8 @@ the subtests, unsure which one to pick. Three things caused that:
 
 The fix is one change with three parts. The button supplies the verb.
 Acting immediately means the verb is *true* — the row flips to `Remove`,
-the count moves, and the slice of series list visible in the overlay's
-margins grows a new entry — so the control teaches its own meaning
+the count moves, and the series list beside the panel grows a new entry
+(see the next section) — so the control teaches its own meaning
 instead of promising something that only happens later. And expanding a
 parent now inserts a note row saying the parent *is* the overall score,
 which answers "which subtest do I pick?" where the question gets asked.
@@ -643,9 +643,9 @@ Consequences worth knowing:
   why `AppState.removeSeries` takes an array like `addSeries` does —
   looping the single-ref form would charge 49 Back presses for one click.
 - **The footer commits nothing.** `Add n` became `Done`, which only
-  closes; Escape and the backdrop are no longer capable of throwing away
-  work the user thought they'd done. `Clear` (which cleared the staging
-  map) had nothing left to mean and is gone.
+  closes; Escape is no longer capable of throwing away work the user
+  thought they'd done. `Clear` (which cleared the staging map) had
+  nothing left to mean and is gone.
 - **The master checkbox left the column header**, which now says `Add`. A
   checkbox at the head of a column of Add buttons re-teaches the control
   we just replaced. It became the status row's one bulk button, which
@@ -668,9 +668,44 @@ Consequences worth knowing:
   common state where the subtest payload hasn't loaded and there is no
   count to show.
 
-Still open: the panel is a full-screen modal (`main` is `inert`), so the
-series list is only visible in the margins. Docking it beside the list
-rather than over it is the remaining piece.
+### The Add-series panel docks beside the series list
+
+The panel used to be a full-screen modal over an `inert` `<main>`. It now
+starts where the series list ends (`inset: 0 0 0 var(--sidebar-width)`),
+so the list stays lit, live and clickable the whole time the panel is
+open.
+
+This is the other half of making Add mean something. A control that acts
+immediately still needs somewhere for the user to *see* that it acted,
+and the series list is the honest place: it's where the series will be
+when the panel closes, it shows the color the row's swatch just took,
+and its `×` is the removal control the user is going to use anyway. A
+tray inside the panel would have been a second place to manage series
+that exists only inside a dialog.
+
+- **`--sidebar-width` lives in app.css**, because `main`'s grid and the
+  panel's `inset` are in two scoped stylesheets with no other way to
+  agree on the number. Drift would put the panel over the list.
+- **The two panes the panel covers are inert; the list is not.** They're
+  wrapped in a `display: contents` div carrying `inert` — `inert` is a
+  DOM-tree property and grid placement is a layout one, so the panes stay
+  direct grid children and the three-column layout is untouched. Without
+  this, Tab wanders into invisible controls behind the panel.
+- **No `aria-modal`, and no click-to-dismiss.** Neither is true any more:
+  with the list live beside it this is a non-modal dialog, and a stray
+  click near the panel's edge closing it would be a trap rather than an
+  escape hatch. `Done`, the close button and Escape are the ways out.
+- **The dim stays.** It's what says the graph behind is out of play while
+  the list beside it isn't.
+- **Left-aligned, still capped at 1400px.** On a display wide enough for
+  the cap to bite, the leftover is graph — dimmed, but visible, and
+  better company than empty backdrop.
+- The panel is ~280px narrower than it was. The table's `min-width: 64em`
+  and its wrapper's `overflow: auto` already handle that: at a 1152px
+  window the table fits exactly, and below that it scrolls horizontally
+  rather than the columns collapsing. No breakpoint that hands the
+  sidebar back — inert-ness would then have to depend on the viewport,
+  which CSS can't drive.
 
 ### Rows already on the graph show their swatch
 
@@ -966,7 +1001,8 @@ window for free.
 
 ### The Add-series dialog has exactly one scroller
 
-`.overlay` (fixed, `inset: 0`, 24px padding) stretches `.overlay-panel` to
+`.overlay` (fixed, `inset: 0 0 0 var(--sidebar-width)`, 16px padding)
+stretches `.overlay-panel` to
 the available height; the panel, `.picker` and `.table-wrap` then form a
 flex-column chain in which every element carries `min-height: 0` and the
 table wrapper carries `flex: 1`. The series table absorbs all leftover

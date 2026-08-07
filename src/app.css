@@ -203,6 +203,12 @@
      identical on a Mac, where `ui-monospace` wins before the fallbacks are
      reached, and not necessarily anywhere else. */
   --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  /* Not a color, but it belongs with them for the same reason: the Add-series
+     panel docks to the right of the series list, so this number is shared by
+     `main`'s grid and the panel's `inset` — in two different scoped
+     stylesheets, which have no other way to agree on it. Drift here would put
+     the panel over the list it is deliberately not covering. */
+  --sidebar-width: 280px;
 }
 
 html,
