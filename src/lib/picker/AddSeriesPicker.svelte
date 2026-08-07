@@ -1,6 +1,6 @@
 <script lang="ts">
   import { untrack } from 'svelte';
-  import { activityPath, activityTitle } from './activity';
+  import { activityPath, activityTitle, maxBinCount } from './activity';
   import { type Series } from './series';
 import { TIME_RANGES } from './pickerOptions';
   import { type FilterField, type SortColumn } from './filter';
@@ -190,6 +190,21 @@ import { TIME_RANGES } from './pickerOptions';
     );
   });
 
+  // One bar-height denominator for every strip on screen, so two rows'
+  // strips can be compared by eye — which per-row scaling made impossible
+  // (see `activityPath`). Deliberately scoped to the visible window rather
+  // than to all filtered rows: the scale then follows what the user can
+  // actually see, and it costs a pass over ~30 rows instead of ~25,000. The
+  // consequence is that scrolling and filtering rescale the strips, which is
+  // the price of the comparison being meaningful in the first place.
+  const activityScaleMax = $derived(
+    maxBinCount(
+      visibleWindow.map((item) =>
+        item.kind === 'note' ? null : picker.activityFor(item.row),
+      ),
+    ),
+  );
+
   function rowKey(item: FlatRow, index: number): string {
     if (item.kind === 'parent') return `p:${item.row.id}`;
     if (item.kind === 'child') return `c:${item.row.id}`;
@@ -367,7 +382,10 @@ import { TIME_RANGES } from './pickerOptions';
           <!-- Not a sortHeader, deliberately: sorting by run count would need
                counts for every one of the ~25k filtered rows, and we fetch
                only the ~29 on screen. See docs/design.md. -->
-          <th class="col-activity" title="Runs recorded in the selected time range">
+          <th
+            class="col-activity"
+            title="Runs recorded in the selected time range. Bar heights share one scale across the rows on screen, so a full-height bar means {activityScaleMax.toLocaleString()} runs in that bin."
+          >
             runs ({rangeLabel})
           </th>
         </tr>
@@ -463,7 +481,9 @@ import { TIME_RANGES } from './pickerOptions';
                 aria-hidden="true"
               >
                 {#if activity !== null && !('error' in activity)}
-                  <path d={activityPath(activity.counts, STRIP_W, STRIP_H)} />
+                  <path
+                    d={activityPath(activity.counts, STRIP_W, STRIP_H, activityScaleMax)}
+                  />
                 {/if}
               </svg>
             </span>

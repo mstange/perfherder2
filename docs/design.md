@@ -798,6 +798,25 @@ it would be the rightmost bar — the one that answers "is this running *now*"
 — covering half the time of its neighbours and reading as a decline that
 isn't there.
 
+**Bar heights share one scale across the visible window**, rather than each
+strip normalising to its own tallest bin. Per-row scaling meant a job running
+twice a day and a job running twice an hour both drew a full-height strip, so
+the strip could only be read for *when* a series ran, never *how much* — and
+comparing two rows, which is the entire reason they're in one flat list,
+silently compared nothing. `maxBinCount` over the visible window (overscan
+included) is the denominator, passed into `activityPath` as `scaleMax`; the
+column header's tooltip says what a full-height bar currently means, since
+otherwise the scale is invisible.
+
+The scale is the *visible* window and not the whole filtered set on purpose:
+we only have counts for what's on screen anyway (see above), and a pass over
+~30 rows per scroll tick is free where a pass over ~25k wouldn't be. The
+consequence is that scrolling and filtering rescale the strips — accepted,
+because a scale that follows what you can actually see is what makes the
+comparison mean anything. `activityPath` clamps bar height to the box for the
+one frame where a late-arriving row can exceed a scale computed before it
+landed.
+
 **The column is deliberately not sortable.** Sorting would need counts for
 every one of the ~25k filtered rows; we fetch only the ~29 on screen. If
 sorting turns out to be what's wanted, the shape of the fix is to fetch

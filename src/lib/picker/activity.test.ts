@@ -13,6 +13,7 @@ import {
   binCounts,
   binDuration,
   buildActivities,
+  maxBinCount,
   chunkIds,
 } from './activity';
 
@@ -188,25 +189,59 @@ describe('buildActivities', () => {
   });
 });
 
-describe('activityPath', () => {
-  it('is empty when nothing ran, so the cell renders no bars at all', () => {
-    expect(activityPath([0, 0, 0], 6, 4)).toBe('');
+describe('maxBinCount', () => {
+  it('is the tallest bin over every row, not the largest total', () => {
+    // Row two has the bigger total (7 vs 5) but the shorter peak.
+    expect(
+      maxBinCount([
+        { counts: [0, 5], total: 5, lastRunMs: 1 },
+        { counts: [4, 3], total: 7, lastRunMs: 1 },
+      ]),
+    ).toBe(5);
   });
 
-  it('emits one subpath per non-zero bin, scaled to the tallest', () => {
-    // width 6 / 3 bins => 2px per bin, 1px bar + 1px gap. The tallest bin
-    // gets the full height; bin 0 is skipped because it is zero.
-    expect(activityPath([0, 1, 2], 6, 4)).toBe('M2 2h1v2h-1z M4 0h1v4h-1z');
+  it('ignores rows that have not answered and rows that failed', () => {
+    expect(
+      maxBinCount([null, { error: 'boom' }, { counts: [2], total: 2, lastRunMs: 1 }]),
+    ).toBe(2);
+  });
+
+  it('is 0 when no row has an answer, which draws no bars anywhere', () => {
+    expect(maxBinCount([null, { error: 'boom' }])).toBe(0);
+    expect(maxBinCount([])).toBe(0);
+  });
+});
+
+describe('activityPath', () => {
+  it('is empty when nothing ran, so the cell renders no bars at all', () => {
+    expect(activityPath([0, 0, 0], 6, 4, 0)).toBe('');
+  });
+
+  it('emits one subpath per non-zero bin, scaled to scaleMax', () => {
+    // width 6 / 3 bins => 2px per bin, 1px bar + 1px gap. The bin that equals
+    // scaleMax gets the full height; bin 0 is skipped because it is zero.
+    expect(activityPath([0, 1, 2], 6, 4, 2)).toBe('M2 2h1v2h-1z M4 0h1v4h-1z');
+  });
+
+  it('draws short bars for a quiet row when a loud row sets the scale', () => {
+    // The same counts as above, but the tallest bin on screen is 10 rather
+    // than this row's own 2 — so nothing here reaches the top. This is the
+    // whole point of a shared scale.
+    expect(activityPath([0, 1, 2], 6, 10, 10)).toBe('M2 9h1v1h-1z M4 8h1v2h-1z');
   });
 
   it('gives a bin with any runs at least one pixel', () => {
     // 1 run against a 500-run neighbour rounds to 0px, which would say
     // "never ran" — the opposite of the truth.
-    expect(activityPath([1, 500], 4, 10)).toBe('M0 9h1v1h-1z M2 0h1v10h-1z');
+    expect(activityPath([1, 500], 4, 10, 500)).toBe('M0 9h1v1h-1z M2 0h1v10h-1z');
+  });
+
+  it('clamps to the box when a count exceeds a stale scaleMax', () => {
+    expect(activityPath([9], 2, 4, 3)).toBe('M0 0h1v4h-1z');
   });
 
   it('returns empty for no bins rather than dividing by zero', () => {
-    expect(activityPath([], 6, 4)).toBe('');
+    expect(activityPath([], 6, 4, 3)).toBe('');
   });
 });
 

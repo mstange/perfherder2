@@ -139,6 +139,20 @@ export function buildActivities(
   return out;
 }
 
+// The tallest bin across a set of rows — the denominator every visible strip
+// shares (see `activityPath`). Rows that haven't answered yet, and rows that
+// failed, contribute nothing rather than a zero.
+export function maxBinCount(activities: Iterable<Activity | null>): number {
+  let max = 0;
+  for (const activity of activities) {
+    if (activity === null || 'error' in activity) continue;
+    for (const n of activity.counts) {
+      if (n > max) max = n;
+    }
+  }
+  return max;
+}
+
 // One SVG path for the whole strip, rather than one <rect> per bar.
 //
 // A screenful is ~29 rows; at 24 bars each that would be ~700 elements
@@ -146,14 +160,24 @@ export function buildActivities(
 // <path> per row is one node, takes `fill: currentColor`, needs no
 // devicePixelRatio handling and no canvas lifecycle, and is testable as a
 // string.
+//
+// `scaleMax` is the height of a full-height bar, and it is the caller's
+// business rather than `Math.max(...counts)`, because per-row scaling made the
+// column lie: a job running twice a day and a job running twice an hour both
+// drew a full-height strip, so the only thing the strip could be read for was
+// *when* a series ran, never *how much* — and comparing two rows, which is the
+// whole reason they're in one list, silently compared nothing. One denominator
+// for every row on screen costs the caller a pass over the visible window and
+// makes bar height mean the same thing twice.
 export function activityPath(
   counts: readonly number[],
   width: number,
   height: number,
+  scaleMax: number,
 ): string {
   if (counts.length === 0) return '';
-  const max = Math.max(...counts);
-  if (max === 0) return '';
+  const max = scaleMax;
+  if (max <= 0) return '';
   const slot = width / counts.length;
   // One pixel of gap between bars, but never a zero-width bar.
   const barWidth = Math.max(1, Math.round(slot) - 1);
@@ -162,8 +186,11 @@ export function activityPath(
     const n = counts[i];
     if (n === 0) continue;
     // A bin with any runs at all gets at least 1px: 1 run beside a 500-run
-    // neighbour would otherwise round to nothing and claim it never ran.
-    const h = Math.max(1, Math.round((n / max) * height));
+    // neighbour would otherwise round to nothing and claim it never ran. The
+    // upper clamp matters now that `max` comes from outside: a row whose
+    // activity landed after the scale was computed can exceed it for one
+    // frame, and a bar taller than the box would draw outside the viewBox.
+    const h = Math.min(height, Math.max(1, Math.round((n / max) * height)));
     const x = Math.round(i * slot);
     parts.push(`M${x} ${height - h}h${barWidth}v${h}h-${barWidth}z`);
   }
