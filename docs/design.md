@@ -697,6 +697,17 @@ that exists only inside a dialog.
   escape hatch. `Done`, the close button and Escape are the ways out.
 - **The dim stays.** It's what says the graph behind is out of play while
   the list beside it isn't.
+- **The list's own "Add series…" button is disabled while the panel is
+  open**, and sheds `.btn-primary` for plain `.btn`. As a modal it was
+  unreachable; docked, it sat there offering hover feedback for a click
+  that did nothing. Disabled rather than a close toggle: this list is live
+  next to the panel, so someone reaching for "Add series…" *here* has
+  adding in mind, and a toggle would answer that by closing the panel.
+  Disabled can't misfire, and there are three exits already. Dropping
+  `.btn-primary` is both honest — the primary action is in the panel now —
+  and required: only outline buttons may use `.btn`'s fading disabled
+  state, since a translucent fill reads as a rendering glitch. Label and
+  padding are unchanged, so the header doesn't re-flow.
 - **Left-aligned, still capped at 1400px.** On a display wide enough for
   the cap to bite, the leftover is graph — dimmed, but visible, and
   better company than empty backdrop.

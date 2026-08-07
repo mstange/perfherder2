@@ -234,7 +234,26 @@
 <aside class="series-list">
   <header>
     <h2>Series</h2>
-    <button type="button" class="btn btn-primary" onclick={() => app.setPickerOpen(true)}>
+    <!-- Dead while the panel is open — the panel *is* the thing this opens,
+         and it's docked right beside this list rather than over it, so the
+         button used to sit there offering hover feedback for a no-op.
+
+         Disabled rather than turned into a close toggle: this list stays live
+         next to the panel, so someone reaching for "Add series…" here has
+         adding in mind, and a toggle would answer that by closing the panel —
+         the opposite of the intent. Done, the close button and Escape are
+         three exits already. It also sheds `.btn-primary`: the primary action
+         has moved into the panel, and only outline buttons may use `.btn`'s
+         fading disabled state (see app.css — a translucent fill reads as a
+         rendering glitch). The label and padding don't change, so the header
+         doesn't re-flow. -->
+    <button
+      type="button"
+      class="btn"
+      class:btn-primary={!app.pickerOpen}
+      disabled={app.pickerOpen}
+      onclick={() => app.setPickerOpen(true)}
+    >
       Add series…
     </button>
   </header>
