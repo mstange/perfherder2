@@ -13,29 +13,23 @@
 
   const app = new AppState(location.search);
 
+  // Both take effect immediately and leave the panel open. The picker used to
+  // stage adds and close on commit; it no longer stages anything, so there is
+  // nothing left for closing to mean. Each call is one `syncUrl('push')`, so
+  // Back undoes exactly one click — including a bulk one, which is why these
+  // hand the whole array down rather than looping.
+  const refFor = (s: Series) => ({
+    repository: s.repository,
+    signatureId: s.id,
+    frameworkId: s.frameworkId,
+  });
+
   function handleAdd(series: Series[]) {
-    app.addSeries(
-      series.map((s) => ({
-        repository: s.repository,
-        signatureId: s.id,
-        frameworkId: s.frameworkId,
-      })),
-    );
-    app.setPickerOpen(false);
+    app.addSeries(series.map(refFor));
   }
 
-  // Takes effect straight away and leaves the panel open — unlike adding,
-  // which stages behind the picker's footer button. There is nowhere to stage
-  // a removal to: a row whose Remove is pending would have to render as
-  // neither on nor off the graph. Leaving the panel open matters because the
-  // graph behind it is covered, so closing on remove would look like the
-  // dialog had crashed rather than like something had been taken off.
-  function handleRemove(series: Series) {
-    app.removeSeries({
-      repository: series.repository,
-      signatureId: series.id,
-      frameworkId: series.frameworkId,
-    });
+  function handleRemove(series: Series[]) {
+    app.removeSeries(series.map(refFor));
   }
 
   // Send focus back where it came from when the panel closes, so dismissing

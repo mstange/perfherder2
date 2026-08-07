@@ -746,16 +746,23 @@ export class AppState {
     this.syncUrl('push');
   }
 
-  removeSeries(ref: SeriesRef): void {
-    this.seriesRefs = this.seriesRefs.filter(
-      (s) => !(s.repository === ref.repository && s.signatureId === ref.signatureId),
+  // Takes one ref or many. Many, because the picker's "Remove all 49" is one
+  // user action and has to be one history entry — a loop over the single-ref
+  // form would cost 49 Back presses to undo.
+  removeSeries(refs: SeriesRef | SeriesRef[]): void {
+    const gone = new Set(
+      (Array.isArray(refs) ? refs : [refs]).map((r) => `${r.repository}|${r.signatureId}`),
     );
-    // A selection — or a comparison end — belonging to the removed series is now
+    if (gone.size === 0) return;
+    this.seriesRefs = this.seriesRefs.filter(
+      (s) => !gone.has(`${s.repository}|${s.signatureId}`),
+    );
+    // A selection — or a comparison end — belonging to a removed series is now
     // meaningless. `selection` would resolve to null anyway once its data is
     // pruned, but leaving the point in the URL means a Back to the range that
     // still has it would silently resurrect a selection on a series that's gone.
     const belongsToRemoved = (p: SelectedPoint | null) =>
-      !!p && p.repository === ref.repository && p.signatureId === ref.signatureId;
+      !!p && gone.has(`${p.repository}|${p.signatureId}`);
     if (belongsToRemoved(this.selectedPoint)) this.selectedPoint = null;
     if (belongsToRemoved(this.comparedPoint)) this.comparedPoint = null;
     this.pruneSeriesCache();

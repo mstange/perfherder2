@@ -316,6 +316,33 @@ describe('AppState series list', () => {
       app.removeSeries(ref(1));
       expect(app.selectedPoint?.signatureId).toBe(2);
     }));
+
+  // The picker's "Remove all n" hands down the whole array. One call, so one
+  // history entry — a loop over the single-ref form would cost n Back presses
+  // to undo what was one click.
+  it('removes many refs in one go', () =>
+    withApp('?series=autoland,1,1&series=autoland,2,1&series=autoland,3,1', (app) => {
+      const pushes = history.length;
+      app.removeSeries([ref(1), ref(3)]);
+      expect(app.series.map((s) => s.ref.signatureId)).toEqual([2]);
+      expect(history.length).toBe(pushes + 1);
+    }));
+
+  it('drops a selection belonging to any of a batch of removed series', () =>
+    withApp('?series=autoland,1,1&series=autoland,2,1&sel=autoland,2,10,0', (app) => {
+      app.removeSeries([ref(1), ref(2)]);
+      expect(app.selectedPoint).toBeNull();
+    }));
+
+  // Guards the early return: an empty array must not push a history entry for
+  // a removal that removed nothing.
+  it('does nothing for an empty batch', () =>
+    withApp('?series=autoland,1,1', (app) => {
+      const pushes = history.length;
+      app.removeSeries([]);
+      expect(app.series).toHaveLength(1);
+      expect(history.length).toBe(pushes);
+    }));
 });
 
 describe('AppState visibility', () => {

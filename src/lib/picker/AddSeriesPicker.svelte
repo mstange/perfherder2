@@ -10,9 +10,10 @@ import { TIME_RANGES } from './pickerOptions';
 
   type Props = {
     onadd?: (series: Series[]) => void;
-    // Takes a row that's already on the graph back off it. Unlike `onadd` this
-    // is not staged behind the footer button — see the `pickCell` comment.
-    onremove?: (series: Series) => void;
+    // Takes rows that are on the graph back off it. The mirror of `onadd`;
+    // both take an array so the bulk button can go through the same path as a
+    // single row's button, and so one bulk action is one history entry.
+    onremove?: (series: Series[]) => void;
     // Set when the picker is shown as an overlay: adds a close button and
     // makes Escape dismiss it.
     onclose?: () => void;
@@ -49,16 +50,19 @@ import { TIME_RANGES } from './pickerOptions';
     onviewchange?.(picker.view);
   });
 
-  // Synced rather than seeded once. Today the panel closes as soon as anything
-  // is added, so the set can't change under us — but if it ever stays open,
-  // stale marks would be a silent lie about what's on the graph.
+  // Synced rather than seeded once, and it has to be: every Add and Remove
+  // changes this set with the panel still open, and a seeded copy would leave
+  // rows claiming to be on a graph they'd just left. It's also the whole
+  // feedback loop — a row's button flips to Remove because the round trip
+  // through AppState comes back through here.
   $effect(() => {
     picker.plotted = plotted ?? new Map();
   });
 
-  function addPicked() {
-    onadd?.(picker.pickedSeries());
-  }
+  // Read three times by the status row's bulk button. Here rather than an
+  // `{@const}` in the markup: that tag has to be the immediate child of a
+  // block, and the button sits in a plain <div>.
+  const bulk = $derived(picker.bulkAction);
 
   // ---- Virtual scrolling ------------------------------------------------
   // Broad filters can produce 25k rows; even one expanded parent adds a few
@@ -265,9 +269,11 @@ import { TIME_RANGES } from './pickerOptions';
     </div>
   </section>
 
-  <!-- The action buttons stay mounted even when nothing is selected so the
-       status row's height never changes. Disabled state is the visual
-       signal that no rows are picked. -->
+  <!-- Both buttons stay mounted even when they have nothing to act on, so the
+       status row's height never changes. Disabled is the visual signal.
+       Nothing here commits anything any more — rows land on the graph as they
+       are clicked — so the primary button just leaves, and Escape or the
+       backdrop no longer throw away work the user thought they had done. -->
   <div class="status">
     <span>
       {picker.filteredParents.length.toLocaleString()} matching / {picker.combined.filter(
@@ -275,33 +281,21 @@ import { TIME_RANGES } from './pickerOptions';
       ).length.toLocaleString()} total
     </span>
     {#if picker.anyLoading}<span class="loading-note">Loading…</span>{/if}
-    <span class="picked-count" class:muted={picker.picked.size === 0}>
-      {picker.picked.size} selected
+    <span class="plotted-count" class:muted={picker.plotted.size === 0}>
+      {picker.plotted.size} on the graph
     </span>
-    <!-- `min-width` because the label swaps between two lengths and this row
-         must not re-flow under the cursor as the last row gets selected. -->
+    <!-- Right-aligned, and the count is in the label rather than a tooltip:
+         "Add all 24,913" has to be able to talk the user out of it. Growing
+         the label eats the gap to its left instead of shoving Done sideways. -->
     <button
       type="button"
-      class="btn select-all"
-      onclick={() => picker.toggleSelectAll()}
-      disabled={picker.pickableRows.length === 0}
-      title="{picker.allPickablePicked
-        ? 'Deselect'
-        : 'Select'} all {picker.pickableRows.length.toLocaleString()} rows the filter matches"
-      >{picker.allPickablePicked ? 'Deselect all' : 'Select all'}</button
+      class="btn bulk"
+      disabled={bulk.rows.length === 0}
+      onclick={() => (bulk.kind === 'add' ? onadd?.(bulk.rows) : onremove?.(bulk.rows))}
+      >{bulk.kind === 'add' ? 'Add all' : 'Remove all'}
+      {bulk.rows.length.toLocaleString()}</button
     >
-    <button
-      type="button"
-      class="btn"
-      onclick={() => picker.clearPicked()}
-      disabled={picker.picked.size === 0}>Clear</button
-    >
-    <button
-      type="button"
-      class="btn btn-confirm"
-      onclick={addPicked}
-      disabled={picker.picked.size === 0}>Add {picker.picked.size}</button
-    >
+    <button type="button" class="btn btn-primary" onclick={() => onclose?.()}>Done</button>
   </div>
 
   {#if picker.errors.length > 0}
@@ -400,28 +394,25 @@ import { TIME_RANGES } from './pickerOptions';
           </button>
         {/snippet}
 
-        <!-- The pick control for one row. A button with a verb on it, not a
-             checkbox: user testing found people didn't recognise the checkbox
-             as "the way to get this series", and reached for the disclosure
-             caret instead — the only control on the row that looked like it
-             led somewhere. See docs/design.md, "The row's pick control".
-             A row already on the graph carries its series swatch — the same
-             mark the series list uses — and offers Remove.
-             Remove acts immediately while Add stages behind the footer button.
-             That asymmetry is deliberate but temporary: it exists because
-             removal has nowhere to stage *to*, and it disappears when adding
-             becomes immediate too. -->
+        <!-- The pick control for one row: a button with a verb on it, not a
+             checkbox, and it acts on the graph immediately rather than staging
+             behind a footer button. User testing found people didn't recognise
+             the checkbox as "the way to get this series", and reached for the
+             disclosure caret instead — the only control on the row that looked
+             like it led somewhere. See docs/design.md, "The row's pick
+             control". Two buttons rather than one that flips label, because
+             Add and Remove are not two states of one toggle: each row is only
+             ever offered whichever one applies to it. -->
         {#snippet pickCell(row: Series, disabled: boolean)}
           {@const color = picker.plotted.get(row.key)}
-          {@const picked = picker.picked.has(row.id)}
           <td class="col-check">
             {#if color}
               <button
                 type="button"
-                class="btn btn-compact pick pick-plotted"
+                class="btn btn-compact pick"
                 style:--series-color={color}
-                title="Remove from the graph"
-                onclick={() => onremove?.(row)}
+                title="Take this series off the graph"
+                onclick={() => onremove?.([row])}
               >
                 <span class="pick-swatch" aria-hidden="true"></span>
                 <span>Remove</span>
@@ -430,18 +421,14 @@ import { TIME_RANGES } from './pickerOptions';
               <button
                 type="button"
                 class="btn btn-compact pick"
-                class:btn-selected={picked}
                 {disabled}
-                aria-pressed={picked}
                 title={disabled
-                  ? 'This row is shown because a subtest matched. Widen the filter to pick it.'
-                  : picked
-                    ? 'Added — click to undo'
-                    : undefined}
-                onclick={() => picker.togglePick(row, !picked)}
+                  ? 'This row is shown because a subtest matched. Widen the filter to add it.'
+                  : 'Put this series on the graph'}
+                onclick={() => onadd?.([row])}
               >
-                <span class="pick-cue" aria-hidden="true">{picked ? '✓' : '+'}</span>
-                <span>{picked ? 'Added' : 'Add'}</span>
+                <span class="pick-cue" aria-hidden="true">+</span>
+                <span>Add</span>
               </button>
             {/if}
           </td>
@@ -495,7 +482,6 @@ import { TIME_RANGES } from './pickerOptions';
             {@const isExpanded = picker.isRowExpanded(parentKey)}
             {@const disabled = picker.isRowDisabled(row)}
             <tr
-              class:selected={!disabled && picker.picked.has(row.id)}
               class:row-disabled={disabled}
               class:plotted={picker.plotted.has(parentKey)}
               aria-disabled={disabled}
@@ -503,25 +489,14 @@ import { TIME_RANGES } from './pickerOptions';
               {@render pickCell(row, disabled)}
               <td class="col-disclose">
                 {#if row.hasSubtests}
-                  <!-- The count is what turns this from "the way in" into a
-                       fact about the row. It's only known once the subtests=1
-                       payload has landed, so it appears late — the column is
-                       wide enough for it from the start either way. The
-                       rotation is on the caret span, not the button, or the
-                       count would spin with it. -->
-                  {@const subtestCount = picker.childrenByParent.get(parentKey)?.length ?? 0}
                   <button
                     type="button"
                     class="disclose"
+                    class:disclose-open={isExpanded}
                     aria-expanded={isExpanded}
                     aria-label={isExpanded ? 'Collapse subtests' : 'Expand subtests'}
                     onclick={() => picker.toggleExpanded(parentKey)}
-                  >
-                    <span class="disclose-caret" class:disclose-open={isExpanded}>▶</span>
-                    {#if subtestCount > 0}
-                      <span class="disclose-count">{subtestCount}</span>
-                    {/if}
-                  </button>
+                  >▶</button>
                 {/if}
               </td>
               <td>
@@ -549,7 +524,6 @@ import { TIME_RANGES } from './pickerOptions';
             {@const child = item.row}
             <tr
               class="subtest-row"
-              class:selected={picker.picked.has(child.id)}
               class:plotted={picker.plotted.has(child.key)}
             >
               {@render pickCell(child, false)}
@@ -758,15 +732,17 @@ import { TIME_RANGES } from './pickerOptions';
     gap: 12px;
     padding: 6px 4px;
   }
-  .picked-count {
+  .plotted-count {
     font-weight: 600;
-    min-width: 9ch;
+    min-width: 14ch;
     display: inline-block;
   }
-  /* Wide enough for "Deselect all", so swapping to the shorter "Select all"
-     doesn't drag Clear and Add left under the pointer. */
-  .select-all {
-    min-width: 12ch;
+  /* Pushed right, away from the counts on the left, so a longer label grows
+     into the gap rather than moving Done. The `min-width` covers the usual
+     case outright: only five-figure counts exceed it. */
+  .bulk {
+    margin-left: auto;
+    min-width: 13ch;
   }
   .muted {
     color: var(--fg-muted);
@@ -802,12 +778,12 @@ import { TIME_RANGES } from './pickerOptions';
      can't push columns around during scrolling. Percentages divide the
      table's actual width; the two narrow columns are pinned in px. */
   col.col-check-w    { width: 92px; }
-  col.col-disclose-w { width: 48px; }
+  col.col-disclose-w { width: 24px; }
   col.col-suite-w    { width: 22%; }
   col.col-app-w      { width: 8%; }
   col.col-repo-w     { width: 8%; }
-  col.col-platform-w { width: 15%; }
-  col.col-options-w  { width: 20%; }
+  col.col-platform-w { width: 16%; }
+  col.col-options-w  { width: 21%; }
   col.col-unit-w     { width: 6%; }
   /* Fixed rather than a percentage: the count and the strip are both a known
      number of pixels wide, so this column has an actual right answer and no
@@ -893,12 +869,6 @@ import { TIME_RANGES } from './pickerOptions';
   tbody tr:hover {
     background: var(--bg-subtle);
   }
-  tbody tr.selected {
-    background: var(--attention-subtle);
-  }
-  tbody tr.selected:hover {
-    background: var(--attention-subtle-hover);
-  }
   /* Parent rows shown only because a subtest matched. The disclosure caret
      stays live (users need it to collapse the tree), everything else looks
      and behaves inert. */
@@ -913,8 +883,8 @@ import { TIME_RANGES } from './pickerOptions';
     cursor: not-allowed;
   }
   /* Already on the graph. Styled on the cells, not the row, so it also beats
-     `.subtest-row td`'s own background. A plotted row can't be picked — its
-     control is Remove — so this never competes with `.selected`. */
+     `.subtest-row td`'s own background. The only row highlight there is now:
+     with no staged selection, plotted is the one state a row can be in. */
   tbody tr.plotted td {
     background: var(--accent-tint);
   }
@@ -935,8 +905,8 @@ import { TIME_RANGES } from './pickerOptions';
     line-height: 1.4;
   }
   .pick-cue {
-    /* Reserved width so "+" and "✓" — different glyph widths — don't shift
-       the label sideways when the row is picked. */
+    /* Same reserved width as `.pick-swatch`, so "+ Add" and the swatched
+       "Remove" put their labels on the same baseline grid down the column. */
     width: 9px;
     text-align: center;
     opacity: 0.8;
@@ -955,46 +925,34 @@ import { TIME_RANGES } from './pickerOptions';
     padding: 0 6px;
   }
   .col-disclose {
+    width: 24px;
     padding: 0;
     text-align: center;
   }
   .disclose {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 3px;
     padding: 0;
+    width: 20px;
     height: 20px;
     line-height: 1;
-    font: inherit;
     font-size: 10px;
     color: var(--fg-muted);
     background: transparent;
     border: none;
     cursor: pointer;
+    transition: transform 0.12s ease;
     user-select: none;
   }
   .disclose:hover {
     color: var(--fg-default);
   }
-  .disclose-caret {
-    transition: transform 0.12s ease;
-  }
   .disclose-open {
     transform: rotate(90deg);
-  }
-  .disclose-count {
-    font-size: 11px;
-    font-variant-numeric: tabular-nums;
   }
   .subtest-row td {
     background: var(--bg-nested);
   }
   .subtest-row:hover td {
     background: var(--bg-nested-hover);
-  }
-  .subtest-row.selected td {
-    background: var(--attention-subtle);
   }
   .subtest-cell {
     padding-left: 24px !important;

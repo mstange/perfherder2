@@ -104,12 +104,15 @@ export class PickerState {
   private activityControllers = new Set<AbortController>();
 
   // ---- Selection --------------------------------------------------------
-  picked = $state(new Map<number, Series>());
-  // Rows that are already on the graph, `Series.key` → the color they're drawn
-  // in. Kept in sync by AddSeriesPicker from AppState.plottedColors. These
-  // rows carry their swatch and a Remove button instead of an Add one: adding
-  // them again is a no-op, and the series list — the other place removal lives
-  // — is behind the overlay and out of reach while the panel is open.
+  // There is none, deliberately. Add puts a row on the graph immediately, so
+  // the only "is this series in?" state is `plotted` below — which the app
+  // owns, not the picker. The staged `picked` map this replaced was the root
+  // of a usability problem; see docs/design.md, "The row's pick control".
+  //
+  // Rows already on the graph, `Series.key` → the color they're drawn in.
+  // Kept in sync by AddSeriesPicker from AppState.plottedColors, and it has
+  // to be synced rather than seeded: it changes under us on every Add and
+  // Remove now.
   plotted = $state<ReadonlyMap<string, string>>(new Map());
 
   // ---- Metadata (framework + option-collection maps) --------------------
@@ -195,33 +198,32 @@ export class PickerState {
     return 'no-matches';
   });
 
-  // Master checkbox scope: every row the current filter+expansion would
-  // render *and* the user can actually pick. Virtual scrolling means most of
-  // these aren't in the DOM at any given moment, but they are all "shown to
-  // the user" as they scroll — so select-all covers everything the filter
-  // has surfaced. Parents that only survived because a child matched
-  // (`autoExpanded`) are excluded: their checkboxes are disabled in the
-  // template, so select-all mustn't try to include them either.
-  // Rows already on the graph are excluded too: their control is Remove, not
-  // Add, so select-all must not silently count them as picked.
-  pickableRows = $derived.by(() => {
+  // Bulk-action scope: every row the current filter+expansion would render
+  // and the user could act on. Virtual scrolling means most of these aren't
+  // in the DOM at any given moment, but they are all "shown to the user" as
+  // they scroll — so a bulk action covers everything the filter has surfaced.
+  // Parents that only survived because a child matched (`autoExpanded`) are
+  // excluded: their Add button is disabled in the template, so a bulk add
+  // mustn't reach them either.
+  private shownRows = $derived.by(() => {
     const rows: Series[] = [];
     for (const p of this.filteredParents) {
-      if (!this.autoExpanded.has(p.key) && !this.plotted.has(p.key)) rows.push(p);
-      if (this.isRowExpanded(p.key)) {
-        for (const c of this.childrenForParent(p)) {
-          if (!this.plotted.has(c.key)) rows.push(c);
-        }
-      }
+      if (!this.autoExpanded.has(p.key)) rows.push(p);
+      if (this.isRowExpanded(p.key)) rows.push(...this.childrenForParent(p));
     }
     return rows;
   });
-  allPickablePicked = $derived(
-    this.pickableRows.length > 0 &&
-      this.pickableRows.every((r) => this.picked.has(r.id)),
-  );
-  somePickablePicked = $derived(
-    this.pickableRows.some((r) => this.picked.has(r.id)),
+  addableRows = $derived(this.shownRows.filter((r) => !this.plotted.has(r.key)));
+  removableRows = $derived(this.shownRows.filter((r) => this.plotted.has(r.key)));
+
+  // One button, two directions: it offers Add until everything the filter
+  // shows is on the graph, then flips to Remove. Same toggle the master
+  // checkbox used to be — retargeted from a staged selection to the graph
+  // itself, which is now the only thing there is to be in or out of.
+  bulkAction = $derived.by((): { kind: 'add' | 'remove'; rows: Series[] } =>
+    this.addableRows.length > 0
+      ? { kind: 'add', rows: this.addableRows }
+      : { kind: 'remove', rows: this.removableRows },
   );
 
   // True when this row is shown but not directly pickable — a parent that
@@ -488,13 +490,6 @@ export class PickerState {
     this.selectedRepos = next;
   }
 
-  togglePick(row: Series, on: boolean): void {
-    const next = new Map(this.picked);
-    if (on) next.set(row.id, row);
-    else next.delete(row.id);
-    this.picked = next;
-  }
-
   // Flip whichever state the row is currently showing. A single override
   // map handles all four combinations of (auto expanded, user override):
   // the resolved state comes from `isRowExpanded`, and the new override
@@ -508,14 +503,6 @@ export class PickerState {
     const next = new Map(this.userExpansion);
     next.set(key, nextState);
     this.userExpansion = next;
-  }
-
-  clearPicked(): void {
-    this.picked = new Map();
-  }
-
-  pickedSeries(): Series[] {
-    return [...this.picked.values()];
   }
 
   // Toggle a chip for a badge click. Values are normalized to lowercase so
@@ -544,16 +531,6 @@ export class PickerState {
     if (added && opts?.fromSubtest && !this.matchSubtests) {
       this.matchSubtests = true;
     }
-  }
-
-  toggleSelectAll(): void {
-    const next = new Map(this.picked);
-    if (this.allPickablePicked) {
-      for (const r of this.pickableRows) next.delete(r.id);
-    } else {
-      for (const r of this.pickableRows) next.set(r.id, r);
-    }
-    this.picked = next;
   }
 
   // ---- Read-only lookups for the repo-chip row --------------------------

@@ -344,7 +344,7 @@ describe('PickerState.listStatus', () => {
 });
 
 describe('PickerState.plotted', () => {
-  it('leaves rows already on the graph out of the pickable set', () => {
+  it('splits the shown rows by whether they are on the graph', () => {
     signatures = { '1': signature(1), '2': signature(2) };
     return withPicker(
       (p) => {
@@ -354,12 +354,49 @@ describe('PickerState.plotted', () => {
       async (p) => {
         await settle();
         expect(p.filteredParents.map((r) => r.id)).toEqual([1, 2]);
-        // Row 1 is on the graph and renders a swatch instead of a checkbox, so
-        // select-all must not count it as something it can pick.
-        expect(p.pickableRows.map((r) => r.id)).toEqual([2]);
-        p.toggleSelectAll();
-        expect([...p.picked.keys()]).toEqual([2]);
-        expect(p.allPickablePicked).toBe(true);
+        // Row 1 is on the graph, so it offers Remove, not Add — "Add all"
+        // must not count it (it would say 2 and add one no-op).
+        expect(p.addableRows.map((r) => r.id)).toEqual([2]);
+        expect(p.removableRows.map((r) => r.id)).toEqual([1]);
+      },
+    );
+  });
+
+  it('flips the bulk action to Remove once everything shown is plotted', () => {
+    signatures = { '1': signature(1), '2': signature(2) };
+    return withPicker(
+      (p) => {
+        p.seed(view({ repos: ['autoland'] }));
+        p.plotted = new Map([['autoland|1', '#0969da']]);
+      },
+      async (p) => {
+        await settle();
+        // One row still addable: the button offers to add that one, not to
+        // remove the other.
+        expect(p.bulkAction).toEqual({ kind: 'add', rows: [expect.objectContaining({ id: 2 })] });
+        p.plotted = new Map([
+          ['autoland|1', '#0969da'],
+          ['autoland|2', '#1a7f37'],
+        ]);
+        expect(p.bulkAction.kind).toBe('remove');
+        expect(p.bulkAction.rows.map((r) => r.id)).toEqual([1, 2]);
+      },
+    );
+  });
+
+  it('has an empty bulk action when the filter matches nothing', () => {
+    signatures = { '1': signature(1) };
+    return withPicker(
+      (p) => {
+        p.seed(view({ repos: ['autoland'], filter: { chips: [], text: 'nothing-matches' } }));
+      },
+      async (p) => {
+        await settle();
+        // Both sides empty. `bulkAction` falls through to 'remove' with no
+        // rows, which the template renders as a disabled button rather than
+        // an enabled "Remove all 0".
+        expect(p.addableRows).toEqual([]);
+        expect(p.bulkAction.rows).toEqual([]);
       },
     );
   });

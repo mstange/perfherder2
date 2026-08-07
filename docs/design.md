@@ -165,7 +165,7 @@ the disclosure UX.
 `Series.key` = `${repository}|${id}`, populated in
 [series.ts::toSeries](../src/lib/picker/series.ts). It's used anywhere a row needs
 stable per-row identity across the union of caches — expansion state,
-parent-child grouping, master-checkbox scope, and the `#each` key in
+parent-child grouping, bulk-action scope, and the `#each` key in
 [AddSeriesPicker.svelte](../src/lib/picker/AddSeriesPicker.svelte)'s virtual
 scroller. Subtest rows also carry `Series.parentKey` (their parent's
 `key`), so [filter.ts::groupChildrenByParent](../src/lib/picker/filter.ts) can
@@ -605,56 +605,72 @@ The prefill goes through the normal `pickerView` state, so it lands in the
 URL (`pc=` / `pr=` params) like anything else the panel shows and a shared
 link reopens on the same rows.
 
-### The row's pick control is a button with a verb, not a checkbox
+### The row's pick control: a verb, and it acts immediately
 
-Each row carries one control in the `Add` column, in one of three states:
-`+ Add`, `✓ Added` (staged, accent-filled, click to undo), or a series
-swatch plus `Remove` for a row already on the graph.
+Each row carries one button in the `Add` column — `+ Add`, or a series
+swatch plus `Remove` if it's already plotted — and clicking it changes
+the graph there and then. There is no staged selection and no commit
+step. `PickerState` has no `picked` map; the only "is this series in?"
+state is `plotted`, which the app owns and syncs down.
 
-It used to be a checkbox. User testing found people didn't recognise it
-as "the way to get this series onto the graph" and reached instead for
-the disclosure caret — the only control on the row that looked like it
-led somewhere — then stalled among the subtests, unsure which one to
-pick. Three things caused that, and the fix addresses each:
+It used to be a checkbox plus an `Add n` footer button. User testing
+found people didn't recognise the checkbox as "the way to get this series
+onto the graph" and reached instead for the disclosure caret — the only
+control on the row that looked like it led somewhere — then stalled among
+the subtests, unsure which one to pick. Three things caused that:
 
 - **A checked checkbox is a promise, not an action.** Nothing visible
   happened on click except a faint row tint and a counter in the status
-  row, far away. Nowhere on the row was there a verb. Now there is one.
+  row, far away. Nowhere on the row was there a verb.
 - **The caret out-competed it.** Two small controls side by side, one of
-  them a filled glyph implying direction. The caret now carries its
-  subtest count (`▶ 28`), which turns it from an entry point into a fact
-  about the row, and expanding a parent inserts a note row saying the
-  parent *is* the overall score — the question "which subtest do I pick?"
-  answered where it gets asked.
-- **The outcome was invisible.** The picker covers the graph and the
-  series list (`main` is `inert`), so nothing ever confirmed that picking
-  and plotting were the same act. Not yet fixed; see the note on
-  immediate-commit below.
+  them a filled glyph implying direction.
+- **The outcome was invisible.** The panel covers the graph, so nothing
+  confirmed that picking and plotting were the same act.
 
-Details that are load-bearing:
+The fix is one change with three parts. The button supplies the verb.
+Acting immediately means the verb is *true* — the row flips to `Remove`,
+the count moves, and the slice of series list visible in the overlay's
+margins grows a new entry — so the control teaches its own meaning
+instead of promising something that only happens later. And expanding a
+parent now inserts a note row saying the parent *is* the overall score,
+which answers "which subtest do I pick?" where the question gets asked.
 
-- **Both button states occupy one fixed box** (`.pick` is `width: 100%`
-  in a fixed-width column, and `.pick-cue` reserves a constant width for
-  `+` vs `✓`). Three labels of different lengths in one column would
-  otherwise give it a ragged edge that moves as you click.
-- **The master checkbox left the column header**, which now says `Add`.
-  A checkbox at the head of a column of Add buttons re-teaches the exact
-  control we just replaced. Bulk selection is a `Select all` /
-  `Deselect all` button in the status row, next to `Clear` — its inverse.
-  It loses the checkbox's indeterminate state; the adjacent
-  "*n* selected" carries that.
-- **Remove acts immediately; Add still stages** behind the footer button.
-  The asymmetry is deliberate and temporary. A removal has nowhere to
-  stage *to* — a row with a pending Remove would have to render as
-  neither on nor off the graph — and turning the panel into an
-  apply-a-set editor would make `Clear` mean "wipe the graph" and
-  select-all mean "plot 25,000 series". The intended end state is the
-  other direction: adding becomes immediate too, the footer becomes
-  `Done`, and the panel stops covering the series list so the result is
-  visible. That needs `syncUrl('push')` in `AppState.addSeries` to
-  coalesce first, or eight clicks become eight Back presses.
-- **Removing leaves the panel open.** The graph behind it is covered, so
-  closing on remove would read as the dialog crashing.
+Consequences worth knowing:
+
+- **Every add and every remove is its own `syncUrl('push')`.** Deliberate,
+  not an oversight: with no commit step, Back *is* the undo, and one
+  click should cost one Back. A bulk action is one push, though, which is
+  why `AppState.removeSeries` takes an array like `addSeries` does —
+  looping the single-ref form would charge 49 Back presses for one click.
+- **The footer commits nothing.** `Add n` became `Done`, which only
+  closes; Escape and the backdrop are no longer capable of throwing away
+  work the user thought they'd done. `Clear` (which cleared the staging
+  map) had nothing left to mean and is gone.
+- **The master checkbox left the column header**, which now says `Add`. A
+  checkbox at the head of a column of Add buttons re-teaches the control
+  we just replaced. It became the status row's one bulk button, which
+  offers `Add all n` until everything the filter shows is plotted and then
+  flips to `Remove all n` — the same toggle it always was, retargeted from
+  a staged selection to the graph. `PickerState.bulkAction` decides which.
+  The count is in the label rather than a tooltip because `Add all 24,913`
+  has to be able to talk the user out of it.
+- **Both buttons occupy one fixed box** (`.pick` is `width: 100%` in a
+  fixed-width column; `.pick-cue` and `.pick-swatch` reserve the same
+  9px). Labels of different lengths in one column would otherwise give it
+  an edge that moves as you click. Same reason the bulk button is
+  right-aligned with a `min-width`: a growing count eats the gap to its
+  left instead of shoving `Done` sideways.
+- **`plotted` must stay synced, not seeded.** It changes under the panel
+  on every click now.
+- **Rejected: the caret carrying its subtest count** (`▶ 28`), tried as a
+  way to make it read as a fact rather than an entry point. It earned too
+  little to justify the wider column, which left a visible gap in the
+  common state where the subtest payload hasn't loaded and there is no
+  count to show.
+
+Still open: the panel is a full-screen modal (`main` is `inert`), so the
+series list is only visible in the margins. Docking it beside the list
+rather than over it is the remaining piece.
 
 ### Rows already on the graph show their swatch
 
@@ -666,9 +682,11 @@ the same colored swatch the series list uses, over a faint blue row tint.
 - **A swatch, not a disabled checked checkbox.** It says "this is the
   purple line on your graph" rather than just "no". The shared vocabulary
   with the series list is the point.
-- `pickableRows` excludes plotted rows, so select-all doesn't count rows
-  whose control is `Remove` (it would report "7 selected" and add four
-  no-ops).
+- `addableRows` excludes plotted rows, so the bulk button doesn't count
+  rows whose control is `Remove` (it would offer "Add all 7" and then add
+  four no-ops). `removableRows` is the complement, and both are scoped to
+  what the filter shows — `Remove all n` takes off the rows in front of
+  you, not the whole graph.
 - The lookup only works because `Series.key` (built in
   [series.ts::toSeries](../src/lib/picker/series.ts)) and
   [graphData.ts::seriesKey](../src/lib/graphs/graphData.ts) compose the same
@@ -870,10 +888,13 @@ Several places take care to not shift the list under the user's cursor:
 
 - Repo chips: the count slot has `min-width: 4.5em` so toggling the
   checkbox — or seeing "loading…" become "7,680" — doesn't reflow the row.
-- Action buttons: Clear/Add stay mounted (disabled when nothing is picked)
-  so the very first checkbox click doesn't push the table down 30px.
-- `picked-count` has `min-width: 9ch` so "0 selected" → "12 selected"
-  doesn't nudge the buttons horizontally.
+- Status-row buttons stay mounted (disabled when they have nothing to act
+  on) so the first click doesn't push the table down 30px.
+- `plotted-count` has `min-width: 14ch` so "0 on the graph" → "12 on the
+  graph" doesn't nudge anything, and the bulk button is right-aligned with
+  a `min-width` so its count can grow without moving `Done`.
+- The row's Add and Remove buttons share one fixed box, so a column of
+  them has a straight edge that doesn't move as rows are clicked.
 
 - The list itself fills with placeholder rows while it loads, one
   `--row-height` each (see below), rather than showing one line of centered
