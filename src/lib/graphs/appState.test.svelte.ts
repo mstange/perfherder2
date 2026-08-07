@@ -1482,6 +1482,52 @@ describe('AppState selectionChart', () => {
       expect(app.selectionChart!.reserveBand).toBe(true);
     });
   });
+
+  it('reserves it for a curve in another visible series', async () => {
+    // The pointer can land on any drawn dot, and comparing across two series is
+    // an ordinary thing to want, so a series that never draws a curve of its own
+    // still has to reserve the band when it is plotted next to one that does.
+    // Scanning only the selected series' pushes missed this.
+    const flat = summary(1, [
+      datum({ id: 10, value: 100, push_id: 1, push_timestamp: '2026-07-21T06:00:00' }),
+      datum({ id: 11, value: 101, push_id: 2, push_timestamp: '2026-07-22T06:00:00' }),
+    ]);
+    const curvy = summary(2, [
+      ...[200, 205, 210, 215].map((value) =>
+        datum({ id: 20, value, push_id: 1, push_timestamp: '2026-07-21T06:00:00' }),
+      ),
+    ]);
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.includes('/performance/summary/')) {
+        return json([url.includes('signature=2') ? curvy : flat]);
+      }
+      if (url.includes('/repository/')) return json([]);
+      if (url.includes('/push/')) return json(push());
+      if (url.includes('/jobs/')) return json(job());
+      return json({});
+    });
+
+    // Alone, the flat series reserves nothing: a permanently empty band is 73px
+    // of labelled nothing.
+    await withApp('?series=autoland,1,1&sel=autoland,1,10,0', async (app) => {
+      await settle();
+      expect(app.selectionChart!.reserveBand).toBe(false);
+    });
+
+    await withApp('?series=autoland,1,1&series=autoland,2,1&sel=autoland,1,10,0', async (app) => {
+      await settle();
+      expect(app.selectionChart!.reserveBand).toBe(true);
+    });
+
+    // Hidden series can't be hovered, so they don't get a say.
+    await withApp(
+      '?series=autoland,1,1&series=autoland,2,1,0&sel=autoland,1,10,0',
+      async (app) => {
+        await settle();
+        expect(app.selectionChart!.reserveBand).toBe(false);
+      },
+    );
+  });
 });
 
 describe('AppState page title', () => {

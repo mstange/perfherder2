@@ -354,14 +354,23 @@ export class AppState {
   // them, so the window is scanned for whether any pool the pointer can reach has a
   // curve at all. Where none can (every awsy signature), nothing is reserved and
   // the chart stays compact.
+  //
+  // "Any pool the pointer can reach" means every *visible* series, not just the
+  // selected one. A hover lands on whatever dot is under the pointer, and a
+  // comparison across two series is an ordinary thing to want — so an awsy
+  // selection plotted beside a talos series can be handed a curve by a hover, and
+  // a band scanned only over the selection's own pushes would not have reserved
+  // for it. Since ComparisonSection reserves the chart's height from this, an
+  // answer of false has to mean nobody can produce one.
   selectionChart = $derived.by((): { scales: StableScales; reserveBand: boolean } | null => {
     const sel = this.selection;
     if (!sel) return null;
     const pool = pushValues(sel.push);
     const span = this.detailSpan;
     let reserveBand = pool.length >= MIN_CURVE_VALUES;
-    if (!reserveBand) {
-      for (const push of sel.entry.data.pushes) {
+    for (const entry of this.visibleSeries) {
+      if (reserveBand) break;
+      for (const push of entry.data.pushes) {
         if (push.x < span.start || push.x > span.end) continue;
         let values = 0;
         for (const run of push.runs) values += run.values.length;
