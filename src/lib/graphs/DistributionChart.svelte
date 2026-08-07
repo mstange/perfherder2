@@ -133,7 +133,9 @@
         ></span>
         <div class="key-body">
           <div class="key-head">
-            <span class="key-label">{side.label}</span>
+            <!-- `title` because the label is clipped rather than wrapped, and a
+                 platform string runs well past the room this row has. -->
+            <span class="key-label" title={side.label}>{side.label}</span>
             {#if side.summary}
               <span class="key-stats">
                 n={side.summary.count} · med {withUnit(side.summary.median)}
@@ -194,9 +196,13 @@
     gap: 3px;
     font-size: 11px;
   }
+  /* `minmax(0, 1fr)`, not `1fr`: a `1fr` track's automatic minimum is its
+     min-content width, and `.key-label` below is a single unbreakable line, so
+     a platform string would push the row wider than the pane instead of being
+     clipped by it. */
   .legend li {
     display: grid;
-    grid-template-columns: 16px 1fr;
+    grid-template-columns: 16px minmax(0, 1fr);
     gap: 5px;
     align-items: start;
   }
@@ -217,25 +223,49 @@
   .key-body {
     min-width: 0;
   }
+  /* One line, never two. A wrapped head row is 18px taller, and the details
+     pane reserves this chart's height so that hovering can't move the sections
+     below it — see ComparisonSection, `.cmp-chart`. The labels here are
+     revisions and platform strings, so their length is not ours to predict,
+     which is the same reason `.cmp-sub` next door is `.one-line`. Wrapping put
+     a cross-series hover 36px over its reserve.
+
+     Clipping the label is what pays for it: `.key-stats` is the half that must
+     stay whole (a truncated median says nothing), the label survives as a
+     prefix, and the pinned card lists both sides in full below the chart. */
   .key-head {
     display: flex;
-    flex-wrap: wrap;
-    gap: 2px 6px;
+    flex-wrap: nowrap;
+    gap: 6px;
     justify-content: space-between;
   }
   .key-label {
     font-weight: 600;
-    overflow-wrap: anywhere;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   .key-stats {
+    flex: none;
     color: var(--fg-muted);
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
   }
+  /* Two lines at most, for the same reason the head row is one. This line does
+     wrap — a three-mode breakdown genuinely needs two lines, and 16px of it is
+     inside the reserve — but a five-mode pool would take a third and put the
+     resting state over the top of it. The canvas letters the modes anyway, so
+     a clamped tail loses a repeat rather than the fact. */
   .key-detail {
     color: var(--fg-muted);
     font-variant-numeric: tabular-nums;
     overflow-wrap: anywhere;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    overflow: hidden;
   }
   .mode b {
     font-weight: 600;
