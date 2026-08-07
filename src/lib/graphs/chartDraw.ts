@@ -6,9 +6,6 @@
 // coordinates.
 
 import {
-  ALERT_MARKER_TOP,
-  ALERT_TRIANGLE_HALF,
-  ALERT_TRIANGLE_HEIGHT,
   formatTickValue,
   jitterOffsetPx,
   lowerBound,
@@ -21,6 +18,13 @@ import {
   type SeriesShape,
   type SeriesSymbol,
 } from '../shared/chart';
+import {
+  ALERT_MARKER_TOP,
+  ALERT_TRIANGLE_HALF,
+  ALERT_TRIANGLE_HEIGHT,
+  alertRowTop,
+  type AlertSlot,
+} from './annotations';
 import type { PushGroup, SeriesPoint } from './graphData';
 import type { ChartPalette } from '../shared/theme';
 
@@ -33,19 +37,17 @@ export type DrawSeries = {
   // The connecting line goes through the per-push means whichever point set is
   // being drawn, so it needs the pushes regardless.
   pushes: PushGroup[];
-  // Pushes where perfherder raised an alert for this series. Only the x and the
-  // direction, because that is all a marker says; everything else about the
-  // alert is the details pane's business (see alerts.ts).
-  alerts?: readonly AlertMark[];
 };
-
-export type AlertMark = { x: number; isRegression: boolean };
 
 export type DrawOptions = {
   geom: PlotGeometry;
   xDomain: Range;
   yDomain: Range;
   series: DrawSeries[];
+  // Alert triangles, already projected into pixels and packed into rows by
+  // annotations.ts. Passed in rather than derived here because the hit test has
+  // to read the very same array — see that module.
+  alertSlots?: readonly AlertSlot[];
   dotRadius: number;
   // The detail graph joins the per-push means; the overview deliberately
   // doesn't (task requirement) — at overview density the lines are just noise.
@@ -136,7 +138,7 @@ export function drawChart(ctx: CanvasRenderingContext2D, o: DrawOptions): void {
   for (const s of o.series) drawDots(ctx, o, s);
   // Over the dots: an alert marks a build, so it has to be findable without
   // first finding the build's cloud.
-  for (const s of o.series) drawAlerts(ctx, o, s);
+  drawAlerts(ctx, o);
   ctx.restore();
   if (o.showAxes) drawAxisLabels(ctx, o, vTicks, tTicks);
 }
@@ -247,62 +249,58 @@ function drawPushLine(ctx: CanvasRenderingContext2D, o: DrawOptions, s: DrawSeri
 // up or down" (which lower-is-better makes ambiguous) but the same up-is-good
 // convention the verdict badges use.
 //
-// The dimensions are chart.ts's, because the hit test needs the same numbers.
+// The dimensions, and which row each marker is on, are annotations.ts's,
+// because the hit test needs the same numbers.
 const ALERT_GUIDE_ALPHA = 0.22;
 
-function drawAlerts(ctx: CanvasRenderingContext2D, o: DrawOptions, s: DrawSeries): void {
-  if (!s.alerts?.length) return;
+function drawAlerts(ctx: CanvasRenderingContext2D, o: DrawOptions): void {
+  const slots = o.alertSlots;
+  if (!slots?.length) return;
   const { geom } = o;
-  for (const alert of s.alerts) {
-    const x = Math.round(geom.xScale.toPixel(alert.x)) + 0.5;
-    // Off-screen after a zoom: the marker would otherwise pile up against the
-    // clip edge and imply an alert at the window's boundary. `hitTestAlerts`
-    // drops the same ones, so nothing invisible is clickable.
-    if (x < geom.x0 || x > geom.x1) continue;
-    const color = alert.isRegression ? o.palette.alertRegression : o.palette.alertImprovement;
+  for (const slot of slots) {
+    const color = slot.isRegression ? o.palette.alertRegression : o.palette.alertImprovement;
 
     ctx.strokeStyle = color;
     ctx.globalAlpha = ALERT_GUIDE_ALPHA;
     ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.moveTo(x, geom.y0);
-    ctx.lineTo(x, geom.y1);
+    ctx.moveTo(slot.x, geom.y0);
+    ctx.lineTo(slot.x, geom.y1);
     ctx.stroke();
     ctx.globalAlpha = 1;
 
-    alertTrianglePath(ctx, geom, x, alert.isRegression, 1);
+    alertTrianglePath(ctx, geom, slot, 1);
     ctx.fillStyle = color;
     ctx.fill();
     // The series' own color, so a graph with two alerting series says which is
     // which without a legend.
-    ctx.strokeStyle = s.color;
+    ctx.strokeStyle = o.series[slot.seriesIndex]?.color ?? color;
     ctx.lineWidth = 1;
     ctx.stroke();
   }
 }
 
-// `scale` grows the triangle about its top edge, so a scaled one covers the
-// unscaled one exactly — which is what lets the hover highlight be painted on
-// the overlay layer without erasing the marker underneath it.
+// `scale` grows the triangle about its row's top edge, so a scaled one covers
+// the unscaled one exactly — which is what lets the hover highlight be painted
+// on the overlay layer without erasing the marker underneath it.
 function alertTrianglePath(
   ctx: CanvasRenderingContext2D,
   geom: PlotGeometry,
-  x: number,
-  isRegression: boolean,
+  slot: AlertSlot,
   scale: number,
 ): void {
-  const top = geom.y0 + ALERT_MARKER_TOP;
+  const top = alertRowTop(geom, slot.row);
   const half = ALERT_TRIANGLE_HALF * scale;
   const height = ALERT_TRIANGLE_HEIGHT * scale;
   ctx.beginPath();
-  if (isRegression) {
-    ctx.moveTo(x, top + height);
-    ctx.lineTo(x - half, top);
-    ctx.lineTo(x + half, top);
+  if (slot.isRegression) {
+    ctx.moveTo(slot.x, top + height);
+    ctx.lineTo(slot.x - half, top);
+    ctx.lineTo(slot.x + half, top);
   } else {
-    ctx.moveTo(x, top);
-    ctx.lineTo(x - half, top + height);
-    ctx.lineTo(x + half, top + height);
+    ctx.moveTo(slot.x, top);
+    ctx.lineTo(slot.x - half, top + height);
+    ctx.lineTo(slot.x + half, top + height);
   }
   ctx.closePath();
 }
@@ -338,26 +336,24 @@ const ALERT_RING_WIDTH = 3;
 export function drawAlertHighlight(
   ctx: CanvasRenderingContext2D,
   geom: PlotGeometry,
-  mark: AlertMark,
+  slot: AlertSlot,
   seriesColor: string,
   palette: ChartPalette,
   kind: 'hovered' | 'selected',
 ): void {
-  const x = Math.round(geom.xScale.toPixel(mark.x)) + 0.5;
-  if (x < geom.x0 || x > geom.x1) return;
-  const color = mark.isRegression ? palette.alertRegression : palette.alertImprovement;
+  const color = slot.isRegression ? palette.alertRegression : palette.alertImprovement;
 
   ctx.save();
   ctx.strokeStyle = color;
   ctx.globalAlpha = ALERT_HIGHLIGHT_GUIDE_ALPHA;
   ctx.lineWidth = 1;
   ctx.beginPath();
-  ctx.moveTo(x, geom.y0);
-  ctx.lineTo(x, geom.y1);
+  ctx.moveTo(slot.x, geom.y0);
+  ctx.lineTo(slot.x, geom.y1);
   ctx.stroke();
   ctx.globalAlpha = 1;
 
-  alertTrianglePath(ctx, geom, x, mark.isRegression, ALERT_HIGHLIGHT_SCALE);
+  alertTrianglePath(ctx, geom, slot, ALERT_HIGHLIGHT_SCALE);
   if (kind === 'selected') {
     ctx.strokeStyle = palette.ring;
     ctx.lineWidth = ALERT_RING_WIDTH;

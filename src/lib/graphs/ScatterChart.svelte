@@ -7,14 +7,8 @@
   // pointer events only — the arithmetic is in chart.ts, the drawing in
   // chartDraw.ts.
 
-  import {
-    hitTestAll,
-    hitTestAlerts,
-    makeGeometry,
-    makeJitterScale,
-    type Padding,
-    type Range,
-  } from '../shared/chart';
+  import { hitTestAll, makeGeometry, makeJitterScale, type Padding, type Range } from '../shared/chart';
+  import { hitTestAlertSlots, layoutAlertMarkers } from './annotations';
   import {
     drawAlertHighlight,
     drawBrush,
@@ -33,6 +27,7 @@
 
   // Which alert marker, as indices into `series` and that series' `alerts`.
   export type ChartAlertHit = { seriesIndex: number; alertIndex: number };
+
 
   type Props = {
     series: SeriesEntry[];
@@ -159,6 +154,15 @@
   const geom = $derived(makeGeometry(width, height, pad, xDomain, yDomain));
   const effectiveBrush = $derived(pending ?? brush);
 
+  // Where the marks in the margins go, computed once and read three times: by
+  // the data layer that paints them, by the overlay that highlights one, and by
+  // the hit test. Deriving it here rather than inside each is what guarantees
+  // they agree — see annotations.ts, and `jitterOffsetPx` for the same rule
+  // applied to the dots.
+  const alertSlots = $derived(
+    showAlerts ? layoutAlertMarkers(series, geom.xScale, geom) : [],
+  );
+
   // Turns each dot's stored room into a pixel offset. One object for the whole
   // chart, derived rather than recomputed per draw: the dots, the selection rings
   // and the hit test all have to agree on it, and the overlay layer repaints on
@@ -207,8 +211,8 @@
         symbol: s.symbol,
         points: s.plot.points,
         pushes: s.data.pushes,
-        alerts: showAlerts ? s.alerts : undefined,
       })),
+      alertSlots,
       dotRadius,
       showLines,
       showAxes,
@@ -252,18 +256,21 @@
   });
 
   // Both lookups can miss — a repaint can land between the pointer moving and
-  // the series list changing under it — and a miss just means no highlight
-  // until the next pointer event.
+  // the series list changing under it, and a slot disappears entirely once its
+  // marker scrolls out of the zoomed window — and a miss just means no
+  // highlight until the next pointer event.
   function drawMarkerHighlight(
     ctx: CanvasRenderingContext2D,
     hit: ChartAlertHit | null,
     kind: 'hovered' | 'selected',
   ): void {
     if (!hit) return;
+    const slot = alertSlots.find(
+      (s) => s.seriesIndex === hit.seriesIndex && s.alertIndex === hit.alertIndex,
+    );
     const entry = series[hit.seriesIndex];
-    const mark = entry?.alerts[hit.alertIndex];
-    if (entry && mark) {
-      drawAlertHighlight(ctx, geom, mark, entry.color, theme.chartPalette, kind);
+    if (slot && entry) {
+      drawAlertHighlight(ctx, geom, slot, entry.color, theme.chartPalette, kind);
     }
   }
 
@@ -335,26 +342,19 @@
   }
 
   // Markers win over dots inside their band. They're a much smaller, more
-  // deliberate target than a cloud of replicates, and the band is a 16px strip
-  // at the top of the plot where — with the y domain padded — there is rarely a
+  // deliberate target than a cloud of replicates, and the band is a strip at
+  // the top of the plot where — with the y domain padded — there is rarely a
   // dot to steal. Aiming at a triangle and getting a dot would be the more
   // annoying failure of the two.
   function alertHitAt(px: number, py: number): ChartAlertHit | null {
-    if (!showAlerts) return null;
-    const hit = hitTestAlerts(
-      series.map((s) => ({ alerts: s.alerts })),
-      geom.xScale,
-      geom,
-      px,
-      py,
-    );
-    return hit ? { seriesIndex: hit.seriesIndex, alertIndex: hit.alertIndex } : null;
+    return hitTestAlertSlots(alertSlots, geom, px, py);
   }
 
   function sameAlert(a: ChartAlertHit | null, b: ChartAlertHit | null): boolean {
     if (!a || !b) return a === b;
     return a.seriesIndex === b.seriesIndex && a.alertIndex === b.alertIndex;
   }
+
 
   // The last hit handed to `onhover`, so a mousemove that stays inside one dot
   // doesn't re-report it. Without this the parent's derived comparison — a KDE

@@ -45,6 +45,9 @@ Living checklist. Update in the same commit as the work it describes.
   `distribution.ts`, `distributionDraw.ts`, `compare.ts`,
   `DistributionChart.svelte` (+ tests for all the pure halves). See
   [comparison.md](comparison.md)
+- Marks in the plot's margins stack into rows instead of overlapping —
+  `annotations.ts` (+ tests). Closes the "markers don't dodge each other" item
+  that used to sit under "Alerts: the parts still missing"
 
 ## Next
 
@@ -105,8 +108,8 @@ Living checklist. Update in the same commit as the work it describes.
     session.
   - *Common alerts — **decided against**, for now.* Treeherder also marks pushes
     where some **other** series in the framework alerted. The case for it is
-    real: plotting idb-open-many-seq `open_duration` on macOS (signature
-    5350956) over a year shows nothing, while its Windows counterpart
+    real: plotting idb-open-many-seq `open_duration` on macOS
+    (signature 5350956) over a year shows nothing, while its Windows counterpart
     (5350953) carries alert #51136 for the very same push — the change hit both
     platforms, but macOS moved +2.0% against Windows' +9.9% and never crossed
     the threshold, so only Windows has an alert of its own.
@@ -125,16 +128,6 @@ Living checklist. Update in the same commit as the work it describes.
     A marker here therefore keeps its narrow meaning: *perfherder alerted on
     this series*. The cross-platform question is answered by plotting the
     sibling platform, which is a thing you want on screen anyway.
-  - *Markers don't dodge each other.* Two alerts on nearby pushes overlap into
-    one blob: seen on speedometer3 (signature 5352597), whose 2026-06-02
-    regression and improvement are 14 hours apart — about 5px at a 90-day range
-    against an 8px triangle, so red and green land on top of each other.
-    Nudging collided markers sideways would lie about which column they mark;
-    stacking them vertically wouldn't, and is the thing to try.
-
-    Now that the triangles are click targets this is worth more than it was:
-    `hitTestAlerts` resolves the ambiguity by nearest column, so the two *are*
-    separately clickable, but you can't see which one you're about to get.
 - **Retrigger / delta-vs-previous readouts.** Treeherder's tooltip shows the
   delta from the previous data point and a retrigger count. We show the
   retrigger count, and hovering any dot gives the delta against the *selected*

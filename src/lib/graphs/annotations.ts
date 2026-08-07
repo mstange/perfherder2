@@ -1,0 +1,185 @@
+// The marks in the margins of the detail plot. Today that is perfherder's alert
+// triangles along the top; anything else the graph grows in its margins belongs
+// here too.
+//
+// **Pure.** Two things live here:
+//
+// - **Rows.** Two marks on nearby pushes used to be drawn on top of each other.
+//   Nudging them sideways would lie about which column they mark, so they stack
+//   instead — which is the fix graphs-todo.md nominated. The packing is
+//   perf.webkit.org's (`time-series-chart.js::_layoutAnnotationBars`).
+// - **One layout, read twice.** The draw loop and the hit test must agree to the
+//   pixel or the graph answers clicks somewhere other than where it drew — the
+//   same discipline as `jitterOffsetPx`, and it matters more here, because rows
+//   are the whole reason two overlapping marks are separately clickable. So the
+//   caller computes a layout once and hands the *same array* to both.
+
+import type { Scale } from '../shared/chart';
+
+// ---------------------------------------------------------------------------
+// Row packing
+// ---------------------------------------------------------------------------
+
+export type Span = { start: number; end: number };
+
+// Assign each span the first row it fits in, given `gap` pixels of clearance
+// between neighbours. Returns one row index per input span, in input order.
+//
+// **`spans` must be sorted by `start`** — greedy packing is only optimal (in
+// rows used) on sorted input, and both callers sort by pixel x anyway.
+//
+// Past `maxRows` the packing gives up and doubles a span onto whichever row has
+// the most space left. That is a deliberate ceiling rather than an unbounded
+// stack: twelve alerts in one week should not turn the top of the plot into a
+// wall of triangles, and the overlap it falls back to is exactly the behaviour
+// every mark had before rows existed.
+export function packRows(
+  spans: readonly Span[],
+  gap: number,
+  maxRows: number,
+): number[] {
+  const rowEnds: number[] = [];
+  const rows = new Array<number>(spans.length);
+  for (let i = 0; i < spans.length; i++) {
+    const span = spans[i];
+    let row = rowEnds.findIndex((end) => end + gap <= span.start);
+    if (row === -1) {
+      if (rowEnds.length < maxRows) {
+        row = rowEnds.length;
+        rowEnds.push(-Infinity);
+      } else {
+        let widest = 0;
+        for (let r = 1; r < rowEnds.length; r++) {
+          if (rowEnds[r] < rowEnds[widest]) widest = r;
+        }
+        row = widest;
+      }
+    }
+    rowEnds[row] = Math.max(rowEnds[row], span.end);
+    rows[i] = row;
+  }
+  return rows;
+}
+
+// ---------------------------------------------------------------------------
+// Alert markers
+// ---------------------------------------------------------------------------
+//
+// A triangle hanging from the top of the plot, over a faint full-height guide.
+// See chartDraw.ts for why an alert is marked by its pixel column rather than
+// by its dot.
+
+export const ALERT_TRIANGLE_HALF = 4;
+export const ALERT_TRIANGLE_HEIGHT = 7;
+// The first row's top edge, as an offset from the plot's top.
+export const ALERT_MARKER_TOP = 1;
+// Pitch between rows. Two pixels of air under a 7px triangle is enough to read
+// two of them as stacked rather than as one tall shape.
+export const ALERT_ROW_HEIGHT = ALERT_TRIANGLE_HEIGHT + 2;
+// Beyond three the markers eat the top of the plot; see `packRows`.
+export const ALERT_MAX_ROWS = 3;
+
+// The click target is deliberately larger than the ink. The triangle is 8x7,
+// which is under the ~24px a pointer can be aimed at reliably; these widen it
+// without drawing anything, the way a small icon button gets padding.
+export const ALERT_HIT_HALF_WIDTH = 6;
+// Applies to the *last* row only. Rows above it get `ALERT_ROW_HEIGHT`, since
+// their generous band would otherwise swallow the row below and undo the whole
+// point of stacking. With one row — much the commonest case — this is the only
+// band there is, and it is unchanged from before rows existed.
+export const ALERT_HIT_HEIGHT = 16;
+
+export function alertRowTop(geom: { y0: number }, row: number): number {
+  return geom.y0 + ALERT_MARKER_TOP + row * ALERT_ROW_HEIGHT;
+}
+
+export type AlertSlot = {
+  seriesIndex: number;
+  alertIndex: number;
+  // Pixel x, rounded the way a 1px line wants to be so the marker and its guide
+  // land on the same column.
+  x: number;
+  row: number;
+  isRegression: boolean;
+};
+
+type AlertInput = { alerts?: readonly { x: number; isRegression: boolean }[] };
+
+// Every visible alert marker, placed. Markers of *all* series are packed
+// together — two series alerting on nearby pushes overlap on screen exactly as
+// two alerts of one series would.
+//
+// Markers outside the plot are dropped here rather than clipped, so a zoom
+// can't leave one piled against the edge implying an alert at the window's
+// boundary — and so nothing invisible stays clickable.
+export function layoutAlertMarkers(
+  list: readonly AlertInput[],
+  xScale: Scale,
+  geom: { x0: number; x1: number },
+): AlertSlot[] {
+  const slots: AlertSlot[] = [];
+  for (let s = 0; s < list.length; s++) {
+    const alerts = list[s].alerts;
+    if (!alerts) continue;
+    for (let a = 0; a < alerts.length; a++) {
+      const x = Math.round(xScale.toPixel(alerts[a].x)) + 0.5;
+      if (x < geom.x0 || x > geom.x1) continue;
+      slots.push({
+        seriesIndex: s,
+        alertIndex: a,
+        x,
+        row: 0,
+        isRegression: alerts[a].isRegression,
+      });
+    }
+  }
+  slots.sort((a, b) => a.x - b.x);
+  const rows = packRows(
+    slots.map((slot) => ({
+      start: slot.x - ALERT_TRIANGLE_HALF,
+      end: slot.x + ALERT_TRIANGLE_HALF,
+    })),
+    1,
+    ALERT_MAX_ROWS,
+  );
+  for (let i = 0; i < slots.length; i++) slots[i].row = rows[i];
+  return slots;
+}
+
+export type AlertHit = { seriesIndex: number; alertIndex: number };
+
+// The marker under the cursor, or null.
+//
+// Rows are what makes this useful: two alerts 5px apart (seen on speedometer3,
+// whose 2026-06-02 regression and improvement are 14 hours apart) are now on
+// separate rows, so pointing at the one you want is a matter of aiming at its
+// row rather than of guessing which side of an overlap wins.
+//
+// Within a row it is still nearest-column, which keeps the doubled-up case
+// (`packRows` past ALERT_MAX_ROWS) answerable at all.
+//
+// A linear scan: a series has tens of alerts over a year, against the tens of
+// thousands of dots that made `hitTestSeries` binary-search.
+export function hitTestAlertSlots(
+  slots: readonly AlertSlot[],
+  geom: { y0: number },
+  px: number,
+  py: number,
+): AlertHit | null {
+  if (slots.length === 0) return null;
+  let lastRow = 0;
+  for (const slot of slots) if (slot.row > lastRow) lastRow = slot.row;
+
+  let best: AlertSlot | null = null;
+  let bestDistance = Infinity;
+  for (const slot of slots) {
+    const top = alertRowTop(geom, slot.row) - 1;
+    const bottom = top + (slot.row === lastRow ? ALERT_HIT_HEIGHT : ALERT_ROW_HEIGHT);
+    if (py < top || py > bottom) continue;
+    const d = Math.abs(slot.x - px);
+    if (d > ALERT_HIT_HALF_WIDTH || d >= bestDistance) continue;
+    best = slot;
+    bestDistance = d;
+  }
+  return best ? { seriesIndex: best.seriesIndex, alertIndex: best.alertIndex } : null;
+}

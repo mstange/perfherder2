@@ -352,6 +352,28 @@ outlined in the series color — over a faint full-height guide. Light enough th
 it doesn't need a toggle. Detail graph only: the overview is 100px tall and may
 hold a year of pushes.
 
+**Markers that collide stack into rows** rather than overlapping, packed by
+[annotations.ts::layoutAlertMarkers](../src/lib/graphs/annotations.ts) — up to
+`ALERT_MAX_ROWS`, past which they double up again, because twelve alerts in one
+week should not turn the top of the plot into a wall of triangles. Nudging them
+sideways was the alternative and it lies about which column a marker means;
+stacking doesn't. `packRows` is deliberately generic over spans rather than
+written for triangles: anything else the graph grows in its margins has the
+same problem. Two alerts fourteen hours apart (speedometer3's 2026-06-02
+regression and improvement, about 5px at a 90-day range against an 8px triangle)
+used to draw as one blob, and `hitTestAlerts` could tell them apart only by
+whichever column was nearer — so one of the two was effectively unreachable.
+Now the row answers, and each has a hit band that stops where the next row
+begins. The single-row case, which is nearly all of them, keeps the 16px band
+it had.
+
+**One layout, read three times.** `layoutAlertMarkers` runs once in
+[ScatterChart](../src/lib/graphs/ScatterChart.svelte) and the same array goes to
+the draw call, the overlay's highlight and the hit test. Same rule as
+`jitterOffsetPx`, and it bites harder here: rows are the entire reason two
+overlapping markers are separately clickable, so a draw loop and a hit test that
+packed independently would answer clicks on the wrong triangle.
+
 The details pane's Alert card carries the rest — percentage, the two values,
 both statuses, perfherder's t-value, the bug, and a link to the summary. It sits
 with the comparison card, above the single-point sections, because it is a
@@ -446,6 +468,10 @@ Recovery is the explicit Retry button.
 - [alertsApi.ts](../src/lib/graphs/alertsApi.ts) — `/performance/alertsummary/`, and
   the schemas for it. [alerts.ts](../src/lib/graphs/alerts.ts) — **pure**. Summaries →
   the marks the graph draws and the facts the pane prints. See "Alerts" above.
+- [annotations.ts](../src/lib/graphs/annotations.ts) — **pure**. The marks in the
+  plot's margins: row packing, pixel layout and hit tests for the alert
+  triangles. The layout is computed once by ScatterChart and read by the draw
+  call, the overlay and the hit test alike.
 - [timeRange.ts](../src/lib/shared/timeRange.ts) — **pure**. Presets ↔ absolute
   bounds.
 - [urlState.ts](../src/lib/urlState.ts) — **pure**. Query string ↔ `ViewState`.
