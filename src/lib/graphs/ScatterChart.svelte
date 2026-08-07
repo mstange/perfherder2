@@ -15,7 +15,13 @@
     type Padding,
     type Range,
   } from '../shared/chart';
-  import { drawAlertHover, drawBrush, drawChart, drawHighlights, type Highlight } from './chartDraw';
+  import {
+    drawAlertHighlight,
+    drawBrush,
+    drawChart,
+    drawHighlights,
+    type Highlight,
+  } from './chartDraw';
   import type { SeriesEntry } from './appState.svelte';
   import { theme } from '../shared/theme.svelte';
 
@@ -46,6 +52,11 @@
     // the chart doesn't care which is which — chartDraw's `kind` decides how
     // each is painted.
     highlights?: Highlight[];
+    // The marker whose alert the selection is on, if any. Passed in rather than
+    // worked out here for the same reason the point highlights are: the chart
+    // holds no selection, and only the caller can say which of its markers the
+    // details pane is currently describing.
+    selectedAlert?: ChartAlertHit | null;
     // 'select': click picks a point, drag zooms into a time span.
     // 'brush':  drag defines the zoom window shown by the other graph.
     interaction: 'select' | 'brush';
@@ -93,6 +104,7 @@
     showAlerts = false,
     pad = { left: 56, right: 12, top: 8, bottom: 20 },
     highlights = [],
+    selectedAlert = null,
     interaction,
     brush = null,
     onselect,
@@ -228,18 +240,32 @@
     if (highlights.length > 0) {
       drawHighlights(ctx, geom, highlights, dotRadius, theme.chartPalette, jitter);
     }
-    // Last, so it sits over the rings: the marker is what the next click acts
-    // on, and the rings describe what is already selected.
+    // Last, so they sit over the rings: a marker is what the next click acts
+    // on, and the rings describe what previous ones did.
     //
-    // Both lookups can miss — a repaint can land between the pointer moving and
-    // the series list changing under it — and a miss just means no highlight
-    // until the next pointer event.
-    if (hoveredAlert) {
-      const entry = series[hoveredAlert.seriesIndex];
-      const mark = entry?.alerts[hoveredAlert.alertIndex];
-      if (entry && mark) drawAlertHover(ctx, geom, mark, entry.color, theme.chartPalette);
-    }
+    // Hovered first and selected second, because the only way two highlighted
+    // markers overlap is when they are the same one — and then the selected
+    // ring has to be what's left on top, or hovering the selected marker would
+    // strip the very thing that says it is selected.
+    drawMarkerHighlight(ctx, hoveredAlert, 'hovered');
+    drawMarkerHighlight(ctx, selectedAlert, 'selected');
   });
+
+  // Both lookups can miss — a repaint can land between the pointer moving and
+  // the series list changing under it — and a miss just means no highlight
+  // until the next pointer event.
+  function drawMarkerHighlight(
+    ctx: CanvasRenderingContext2D,
+    hit: ChartAlertHit | null,
+    kind: 'hovered' | 'selected',
+  ): void {
+    if (!hit) return;
+    const entry = series[hit.seriesIndex];
+    const mark = entry?.alerts[hit.alertIndex];
+    if (entry && mark) {
+      drawAlertHighlight(ctx, geom, mark, entry.color, theme.chartPalette, kind);
+    }
+  }
 
   function localX(e: PointerEvent): number {
     const rect = wrapper!.getBoundingClientRect();

@@ -395,6 +395,20 @@ The hover highlight — a triangle 1.4× larger, and the guide from a hint to a
 line you can follow — is painted on the **overlay** canvas, not by repainting
 the markers. The markers ride the data layer with 100k+ dots on it; redrawing
 that on every mousemove across a triangle would undo the two-layer split.
+
+**A selected marker keeps that growth, and adds the ring a selected dot wears.**
+Without it the click didn't stick: the triangle sprang back to its resting size
+the moment the pointer left, and the only thing left saying that this alert was
+the one being looked at was the pane, three hundred pixels away. The growth is
+what makes the click land; `palette.ring` around it is what tells the selected
+marker from a merely hovered one, since hovering a *second* marker enlarges that
+one too. The rule is the pane's — the alert on the *selected push*, i.e. exactly
+what the Alert card is describing — and deliberately not "both of the alert's
+pushes are still pinned": shift-clicking a third dot moves the comparison
+without changing what the card says, and the marker following that would take
+the mark off the push the pane is still talking about. Hidden series don't
+count; nothing else of theirs is drawn either.
+
 <kbd>A</kbd> and <kbd>shift-A</kbd> step between alerts without a pointer,
 stopping at the ends rather than wrapping: an alert list is short and unevenly
 spaced, so jumping from December's back to January's reads as a bug.

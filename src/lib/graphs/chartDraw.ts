@@ -307,7 +307,8 @@ function alertTrianglePath(
   ctx.closePath();
 }
 
-// The marker under the pointer, repainted on the *overlay*.
+// The marker under the pointer, or the one whose alert the pane is describing,
+// repainted on the *overlay*.
 //
 // Not a flag on DrawSeries: the markers ride the data layer, which holds 100k+
 // dots and is only repainted when the data or the domains change. Redrawing it
@@ -320,15 +321,27 @@ function alertTrianglePath(
 // and the guide goes from a hint to a line you can actually follow down to the
 // column it marks. The alpha composites over the guide already on the data
 // layer rather than replacing it.
-const ALERT_HOVER_SCALE = 1.4;
-const ALERT_HOVER_GUIDE_ALPHA = 0.4;
+//
+// A *selected* marker gets the same growth, so that clicking one leaves it
+// looking the way it did under the pointer instead of springing back to its
+// resting size — the click has to look like it stuck. On top of that it wears
+// `palette.ring`, the same outline a selected dot wears, which is what tells it
+// apart from a marker that is merely hovered: with two markers enlarged at once
+// only one of them is what the pane is describing.
+const ALERT_HIGHLIGHT_SCALE = 1.4;
+const ALERT_HIGHLIGHT_GUIDE_ALPHA = 0.4;
+// Stroked *before* the fill, so only its outer half survives and the triangle
+// keeps its own colors. Round joins because a mitred 3px stroke grows spikes
+// off the triangle's corners.
+const ALERT_RING_WIDTH = 3;
 
-export function drawAlertHover(
+export function drawAlertHighlight(
   ctx: CanvasRenderingContext2D,
   geom: PlotGeometry,
   mark: AlertMark,
   seriesColor: string,
   palette: ChartPalette,
+  kind: 'hovered' | 'selected',
 ): void {
   const x = Math.round(geom.xScale.toPixel(mark.x)) + 0.5;
   if (x < geom.x0 || x > geom.x1) return;
@@ -336,7 +349,7 @@ export function drawAlertHover(
 
   ctx.save();
   ctx.strokeStyle = color;
-  ctx.globalAlpha = ALERT_HOVER_GUIDE_ALPHA;
+  ctx.globalAlpha = ALERT_HIGHLIGHT_GUIDE_ALPHA;
   ctx.lineWidth = 1;
   ctx.beginPath();
   ctx.moveTo(x, geom.y0);
@@ -344,7 +357,13 @@ export function drawAlertHover(
   ctx.stroke();
   ctx.globalAlpha = 1;
 
-  alertTrianglePath(ctx, geom, x, mark.isRegression, ALERT_HOVER_SCALE);
+  alertTrianglePath(ctx, geom, x, mark.isRegression, ALERT_HIGHLIGHT_SCALE);
+  if (kind === 'selected') {
+    ctx.strokeStyle = palette.ring;
+    ctx.lineWidth = ALERT_RING_WIDTH;
+    ctx.lineJoin = 'round';
+    ctx.stroke();
+  }
   ctx.fillStyle = color;
   ctx.fill();
   ctx.strokeStyle = seriesColor;

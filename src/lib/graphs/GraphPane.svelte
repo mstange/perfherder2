@@ -81,6 +81,27 @@
     return out;
   });
 
+  // Which marker to draw as selected. The rule is the details pane's: the alert
+  // on the selected push, i.e. exactly the one the pane's Alert card is
+  // describing, so the graph and the pane can't disagree about which alert is
+  // being looked at. Not "the alert whose two pushes are still both pinned" —
+  // shift-clicking a third dot moves the comparison without changing what the
+  // Alert card says, and the marker following that would take the mark off the
+  // push the pane is still talking about.
+  //
+  // Indices into what the chart was given, the same discipline as `pointFor`: a
+  // hidden series isn't in `visibleSeries`, so its selected marker resolves to
+  // nothing, which is right — nothing of that series is drawn.
+  const selectedAlert = $derived.by((): ChartAlertHit | null => {
+    const sel = app.selection;
+    const alert = app.selectedAlert;
+    if (!sel || !alert) return null;
+    const seriesIndex = app.visibleSeries.indexOf(sel.entry);
+    const alertIndex = sel.entry.alerts.indexOf(alert);
+    if (seriesIndex < 0 || alertIndex < 0) return null;
+    return { seriesIndex, alertIndex };
+  });
+
   const unitLabel = $derived.by(() => {
     const units = new Set(
       app.visibleSeries.map((s) => s.meta?.measurementUnit).filter((u): u is string => !!u),
@@ -239,6 +260,7 @@
       showAlerts={true}
       interaction="select"
       {highlights}
+      {selectedAlert}
       onselect={onDetailSelect}
       onalertselect={onAlertSelect}
       onhover={(hit, modifiers) => {
