@@ -659,12 +659,14 @@ Drawing details, in [chartDraw.ts](../src/lib/graphs/chartDraw.ts):
   overview's 1.25px symbols would close up into solid dots.
 
 **The series list and details pane carry the shape too**, because a legend
-that showed only half of the encoding would make the shapes unreadable. There,
-shape is the identity and *fill means visible* (see `.swatch.off`) — so the
-swatch deliberately doesn't mirror the symbol's own filled/hollow state, which
-would collide with the visibility toggle. The picker's "already plotted"
-swatch stays a plain square: it answers "do you already have this one", and
-the graph isn't on screen to compare against.
+that showed only half of the encoding would make the shapes unreadable. The
+swatch is identity and nothing else — colour plus shape, in both panes, always
+filled. It does *not* mirror the symbol's own filled/hollow state, which would
+be the sixth series' hollow diamond drawn hollow twice and the fifth's filled
+diamond drawn filled, telling the reader nothing they can act on while costing
+the swatch its contrast at 12px. The picker's "already plotted" swatch stays a
+plain square: it answers "do you already have this one", and the graph isn't
+on screen to compare against.
 
 **Hiding a series** keeps it in the list, in the URL, and in its color slot —
 only the drawing stops. Everything downstream of `AppState.visibleSeries`
@@ -672,6 +674,32 @@ only the drawing stops. Everything downstream of `AppState.visibleSeries`
 the visible subset, so a hidden series can't influence the plot. A selection
 belonging to a hidden series survives; the details pane says why it isn't on
 screen and offers to unhide.
+
+**The control is an eye button under the swatch**, in the card's left column.
+It used to *be* the swatch, hollow when hidden, on the reasoning that the
+swatch is what ties a card to the graph — but a 12px coloured square with no
+icon and no border isn't a thing anyone tries clicking, so the feature existed
+without being findable, and the fill was then carrying identity and state at
+once. Splitting them gives each element one meaning: the swatch says which
+series, the eye says whether it's drawn.
+
+- **Left column, not the action cluster.** "Is this one on?" is asked of the
+  swatch, so the answer belongs beside it, away from the reorder/remove
+  operations. It's also the placement that costs nothing: the swatch and the
+  eye stacked come to 37px against the 2×2 action grid's 38px, so the card
+  height is unchanged, where a fifth button on the right would have forced a
+  third row onto every card in the list.
+- **Hidden drops the pupil and draws the slash**, rather than slashing the
+  whole eye. At 12px a line crossing both lid and pupil is three strokes
+  meeting in the middle, and the casing that makes a slashed eye legible at
+  24px — a second stroke in the background colour beneath the slash — can't be
+  used on a `.btn`, whose fill changes on hover.
+- **No `aria-pressed`.** The label already carries the state ("Hide this
+  series" / "Show this series"); a pressed state on top of that announces the
+  opposite thing twice.
+- The hidden card dims its swatch along with its text, so "off" is still
+  legible while scanning eight cards — but as opacity, which is a state that
+  can be layered over the identity rather than a competing encoding of it.
 
 ## URL state
 

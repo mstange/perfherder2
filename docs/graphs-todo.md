@@ -27,7 +27,7 @@ Living checklist. Update in the same commit as the work it describes.
 - Modal behaviour for the picker overlay (inert background, backdrop click,
   focus restore)
 - Unit tests for the reactive state (see docs/design.md → Testing)
-- Per-series visibility (click the swatch), carried in the URL
+- Per-series visibility (the eye button on each card), carried in the URL
 - Drag-to-reorder in the series list, with the ↑/↓ buttons as the
   keyboard-reachable equivalent
 - Run activity in the picker — a per-row run count and density strip over the

@@ -198,6 +198,35 @@
       >·</span
     >{' '}{/if}{part}{' '}{/each}{/snippet}
 
+<!-- The show/hide control's glyph. Hidden drops the pupil rather than drawing
+     the slash on top of it: at 12px a line crossing both the lid and the pupil
+     is three strokes meeting in the middle and reads as a smudge, and the
+     casing trick that makes a slashed eye work at 24px (a second stroke in the
+     background color under the slash) can't be used here — `.btn` changes its
+     fill on hover, so the casing would only match half the time. Outline plus
+     slash is unambiguous with nothing to keep in step. -->
+{#snippet eyeIcon(hidden: boolean)}
+  <svg
+    viewBox="0 0 16 16"
+    width="12"
+    height="12"
+    fill="none"
+    stroke="currentColor"
+    stroke-width="1.3"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    aria-hidden="true"
+  >
+    <path d="M1.5 8C1.5 8 4.4 4 8 4s6.5 4 6.5 4-2.9 4-6.5 4S1.5 8 1.5 8Z" />
+    {#if hidden}
+      <!-- Top-left to bottom-right, the direction every "no" sign runs. -->
+      <path d="M2.75 2.75 13.25 13.25" />
+    {:else}
+      <circle cx="8" cy="8" r="1.75" />
+    {/if}
+  </svg>
+{/snippet}
+
 <!-- Declarative, so there's no listener lifecycle to get wrong; the handler is
      a no-op unless a drag is in flight. -->
 <svelte:window onkeydown={(e) => e.key === 'Escape' && cancelDrag()} />
@@ -245,25 +274,39 @@
         role="listitem"
         animate:flip={{ duration: FLIP_MS }}
       >
-        <!-- The swatch doubles as the show/hide control: it's the thing that
-             ties the card to the graph, so it's where you look to ask "is
-             this one on?".
-             It carries the series' dot *shape* as well as its color, because
-             the graph now distinguishes series by both and a legend that only
-             showed half of that would make the shapes unreadable. The shape is
-             the identity; the fill still means "being drawn" (see `.off`), so
-             this deliberately doesn't mirror the symbol's own fill/outline —
-             that would collide with the visibility state. -->
-        <button
-          type="button"
-          class="swatch {entry.symbol.shape}"
-          class:off={!entry.visible}
-          style:--series-color={entry.color}
-          aria-pressed={entry.visible}
-          title={entry.visible ? 'Hide this series' : 'Show this series'}
-          aria-label={entry.visible ? 'Hide this series' : 'Show this series'}
-          onclick={() => app.toggleSeriesVisibility(entry.ref)}
-        ></button>
+        <!-- The graph-identity column: which line this is, and whether it is
+             being drawn. Both belong on the left edge, next to each other and
+             away from the list operations on the right — the question "is this
+             one on?" is asked of the swatch, so the answer has to be beside it.
+             It also costs nothing: the swatch and the eye stacked are shorter
+             than the 2×2 action block, so the card doesn't grow, which a fifth
+             button over there would have made it do. -->
+        <div class="legend">
+          <!-- Identity only, and not a button. It carries the series' dot
+               *shape* as well as its color, because the graph distinguishes
+               series by both and a legend showing half of that would make the
+               shapes unreadable. It used to double as the show/hide toggle,
+               with a hollow fill for "hidden" — but a 12px square is not a
+               control anyone finds, and the fill then meant something other
+               than the symbol's own filled/hollow state. One meaning each: the
+               swatch says which series, the eye says whether it's drawn. -->
+          <span
+            class="swatch {entry.symbol.shape}"
+            style:--series-color={entry.color}
+            aria-hidden="true"
+          ></span>
+          <!-- The label carries the state, so there's no `aria-pressed`: a
+               button announcing "Hide this series, not pressed" says the
+               opposite thing twice. -->
+          <button
+            type="button"
+            class="btn icon eye"
+            title={entry.visible ? 'Hide this series' : 'Show this series'}
+            aria-label={entry.visible ? 'Hide this series' : 'Show this series'}
+            onclick={() => app.toggleSeriesVisibility(entry.ref)}
+            >{@render eyeIcon(!entry.visible)}</button
+          >
+        </div>
         <div class="text">
           <div class="attrs" title={fullText(attrs[i])}>
             {#if own && !isEmptyAttrs(own)}
@@ -418,7 +461,8 @@
   }
   .card {
     display: grid;
-    grid-template-columns: 12px 1fr auto;
+    /* The first track holds the eye button, which is the widest thing in it. */
+    grid-template-columns: 20px 1fr auto;
     gap: 8px;
     align-items: start;
     padding: 8px;
@@ -426,14 +470,19 @@
     border: 1px solid var(--border-default);
     border-radius: 6px;
   }
+  .legend {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 5px;
+  }
   .swatch {
     width: 12px;
     height: 12px;
+    /* Centred on the first line of the card's text, not on the top of it. */
     margin-top: 2px;
-    padding: 0;
     border: 1px solid var(--series-color);
     background: var(--series-color);
-    cursor: pointer;
   }
   .swatch.circle {
     border-radius: 50%;
@@ -447,16 +496,14 @@
        12px square on the diagonal would be 17px across. */
     width: 9px;
     height: 9px;
-    margin: 3px 1px 0;
+    margin: 3px 0 0;
     border-radius: 1px;
     transform: rotate(45deg);
   }
-  .swatch.off {
-    /* Hollow, not grey: the color still identifies the series, the fill says
-       whether it's being drawn. */
-    background: transparent;
-  }
-  .card.hidden-series .text {
+  /* The swatch dims with the text rather than going hollow, so its fill is
+     free to mean nothing but "this series". */
+  .card.hidden-series .text,
+  .card.hidden-series .swatch {
     opacity: 0.55;
   }
   /* The card under the pointer. No transition — it tracks the pointer 1:1, and
@@ -577,6 +624,16 @@
     height: 18px;
     line-height: 1;
     font-size: 12px;
+  }
+  /* An `<svg>` is inline, so it sits on the text baseline and leaves descender
+     space under itself; the grid centres it in the button instead. */
+  button.eye {
+    display: grid;
+    place-items: center;
+    color: var(--fg-muted);
+  }
+  button.eye:hover:not(:disabled) {
+    color: inherit;
   }
   button.remove:hover:not(:disabled) {
     background: var(--danger-subtle);
