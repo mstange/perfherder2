@@ -451,15 +451,30 @@ change detection", `public/v3/pages/chart-pane.js`); the deviations are below.
 
 #### The unit of analysis is the push mean
 
-This app has something perf.webkit.org doesn't: tens of replicates per build. It
-is tempting to feed them all in, and it would be wrong. Replicates within one
-build share a machine, a binary and a moment, so their spread is far tighter
-than the build-to-build spread a regression has to be seen against — pooled, a
+This app has something perf.webkit.org doesn't: tens of replicates per run, and
+often several runs per push. It is tempting to feed them all in, and it would be
+wrong — but the two levels are not dependent in the same way.
+
+Replicates within one run share everything: a machine, a binary, a moment. They
+are repeated measurements of one number, and pooling them is flagrant — a
 rank-sum test over 20 replicates a side calls *every* adjacent pair of pushes
-significantly different, and the whole graph turns into bars. Textbook
-pseudo-replication. So the values are `PushGroup.mean`, one per build: the same
-number the connecting line joins. The replicates still earn their keep, by
-making each of those means precise.
+significantly different, and the whole graph turns into bars.
+
+Runs of one push are the interesting case, because they need not share a machine,
+so machine-to-machine variation is something they *do* sample. What every run of a
+push shares is the binary and the moment, and that is where most of the noise
+lives: over the 65-push plateau before the 2026-07-23 step on autoland signature
+299010, two runs of the same push differ with a robust sd of 0.039 ms while push
+means at the same level differ with 0.056 ms, which nets out to three quarters of
+the variance being build-and-moment — PGO layout luck, infra weather — and no
+number of retriggers on one push reaches it. Pooling run values would contribute
+k values per push but only one draw of the term that dominates: the clustered-data
+trap, milder than the replicate version and the same mistake.
+
+So the values are `PushGroup.mean`, one per push: the same number the connecting
+line joins. What the runs and replicates earn is the precision of that one value —
+and a single bad run can still drag it (see `relocateBoundary`), which argues for
+summarising a push more robustly rather than for unpooling.
 
 #### Three stages
 

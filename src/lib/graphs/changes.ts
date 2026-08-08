@@ -26,23 +26,44 @@
 // is the Schwarz-criterion segmentation with the Birgé–Massart penalty. The
 // deviations are listed under "Deviations from perf.webkit.org" below. The third
 // stage — re-estimating the confirmed boundary's index with a rank statistic,
-// see `relocate` — is not theirs, and exists because a single bad job can walk
-// the segmentation's boundary several pushes off the step it found.
+// see `relocateBoundary` — is not theirs, and exists because a single bad run can
+// walk the segmentation's boundary several pushes off the step it found.
 //
-// ## The unit of analysis is the push mean, not the replicate
+// ## The unit of analysis is the push mean, not the run and not the replicate
 //
 // This app has something perf.webkit.org doesn't: tens of replicate values per
-// build. It is tempting to feed them all in, and it would be wrong. Replicates
-// within one build share a machine, a binary and a moment; their spread is much
-// tighter than the build-to-build spread that a regression has to be seen
-// against. Pooled, a rank-sum test over 20 replicates a side finds *every* pair
-// of adjacent pushes "significantly different" — the textbook
-// pseudo-replication trap, and it would paint the whole graph.
+// run, and often several runs per push. It is tempting to feed them all in, and
+// it would be wrong — but the two levels are not dependent in the same way, and
+// the imprecise version of this argument names the wrong confound.
 //
-// So the values here are `PushGroup.mean`, one per build: the same number the
-// connecting line joins. The replicates still earn their keep — they are what
-// makes each of those means precise — but they are not independent samples of
-// the thing being tested.
+// Replicates within one run share everything: a machine, a binary, a moment.
+// They are repeated measurements of one number, and pooling them is flagrant —
+// a rank-sum test over 20 replicates a side calls *every* adjacent pair of pushes
+// different and paints the whole graph.
+//
+// Runs of one push are the interesting case, because they need not share a
+// machine, so machine-to-machine variation is something they *do* sample. What
+// every run of a push shares is the binary and the moment — and that is where
+// most of the noise lives. Measured over the 65-push plateau before the
+// 2026-07-23 step on autoland signature 299010, with robust spreads so that the
+// outlier pushes don't set the scale: two runs of the same push differ with an sd
+// of 0.039 ms, while push means sitting at the same level differ with an sd of
+// 0.056 ms. Netting the run noise out of the second leaves three quarters of the
+// variance as build-and-moment — PGO layout luck, infra weather, whatever the
+// machines were doing that hour — and no number of retriggers on one push reaches
+// it. (Two runs a push is the median here, so this is a two-sample estimate of
+// the run term; it is a scale, not a precise decomposition.)
+//
+// Pooling run values would therefore contribute k values per push but only one
+// draw of the term that dominates. That is the clustered-data trap: the effective
+// n is the push count, and a test told otherwise reports a p-value it hasn't
+// earned. Milder than the replicate version, and the same mistake.
+//
+// So the values here are `PushGroup.mean`, one per push: the same number the
+// connecting line joins. What the runs and replicates earn is the precision of
+// that one value — and, as `relocateBoundary` records, a single bad run can still
+// drag it, which is an argument for summarising a push more robustly, not for
+// unpooling.
 
 import type { PushGroup } from './graphData';
 import {
