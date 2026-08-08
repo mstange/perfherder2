@@ -1,5 +1,5 @@
 {
- "note": "Push means for one real series, recorded because no hand-written fixture reproduces what makes it hard: 752 pushes whose level wanders over 65-68 while one push in six is measured several times less precisely, so a locally obvious step is invisible at grid scale. See changes.test.ts and PENALTY_C.",
+ "note": "Push means for one real series, recorded because no hand-written fixture reproduces what makes it hard: 752 pushes whose level wanders over 65-68 while one push in six is measured several times less precisely, so a step that is 6 sigma against its own neighbourhood is invisible against the spread of the series. Perfherder alerted on it (alert 243130, push 1966248 = index 445) and this app did not, until candidate cuts started being proposed against a local scale. See changes.test.ts and candidateBoundaries.",
  "repository": "autoland",
  "signature": 5352791,
  "name": "speedometer3 TodoMVC-jQuery/total opt fission webrender",

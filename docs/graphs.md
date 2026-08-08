@@ -478,57 +478,69 @@ summarising a push more robustly rather than for unpooling.
 
 #### Three stages
 
-1. **Segment.** Find the boundaries that minimise a penalised cost — segment
-   cost is `len · log(variance)`, penalty is Birgé and Massart's, the whole
-   thing scored by the Schwarz criterion. `segmentValues`. This decides *where*
-   a step might be, and nothing else; it does not test anything.
-2. **Confirm.** For each interior boundary, a two-sided Mann-Whitney U over the
-   push means either side. `confirmChange`. Boundaries that don't survive are
-   dropped, which is what keeps a segmentation that liked an outlier from
-   reaching the graph.
-3. **Relocate.** Re-estimate the confirmed boundary's index as the cut through
-   its own window with the largest Cliff's delta. `relocateBoundary`. Not
-   perf.webkit.org's, and the reason it exists is below.
+1. **Propose.** Binary segmentation: split the series at its sharpest CUSUM
+   contrast, recurse into both halves, stop when a stretch is too short to test or
+   its sharpest split isn't sharp enough. `candidateBoundaries`. This decides
+   *where* a step might be and tests nothing; it is cheap and parametric, and each
+   stretch is scored against a noise scale estimated inside that stretch.
+2. **Confirm.** Greedy forward selection. Gate every candidate with a two-sided
+   Mann-Whitney U over the push means either side, accept the strongest, make its
+   index a wall that no later pool may cross, and go round again until nothing new
+   clears α. `detectChanges` and `gateChange`.
+3. **Locate.** Re-estimate the accepted index as the cut through its window with
+   the largest Cliff's delta. `relocateBoundary`. A proposed cut is a mean-based
+   statistic and one bad run walks it.
 
-Two candidates can then describe one step — their windows overlap, so the same
-cut can be the best answer for both — so a confirmed change also has to win its
-neighbourhood: strongest evidence first, and one is dropped when an accepted
-change is within six pushes of it *in the same direction*. Direction is in the
-rule so that a regression and its backout a few pushes later stay two changes.
+**Only an accepted change is a wall**, and that is what makes the second stage a
+loop rather than a pass. Three things follow from it:
+
+- An outlier the proposal stage fences off can't silence the real step beside it.
+  It used to: with candidate boundaries as walls, a bad push four pushes from a step
+  left both of them with too small a pool to test, so a step with thirty clean
+  pushes either side went unmarked because something twitched four pushes earlier.
+  A candidate no test has confirmed now has no standing to stop another being
+  tested.
+- A regression and its backout can confirm each other. Each dilutes the other while
+  both are unconfirmed, and accepting either one makes the other visible, so
+  re-gating every round is what finds the pair.
+- One step can't be marked twice, without a rule about it. Once a change is
+  accepted, a candidate within six pushes of it has no pool on that side.
+
+Accepted changes are then re-described against the final walls, so a change
+accepted early doesn't report means that reach across a step found later.
 
 Every constant is in [changes.ts](../src/lib/graphs/changes.ts) with its reason;
 the five worth knowing here:
 
-- **The Birgé–Massart penalty constant is 2, not the 2.5 its authors suggest.**
-  Measured, on the case that forced it: autoland signature 5352791 steps from 66.2
-  to 67.4 and stays there, 6σ against its own neighbourhood, and at 2.5 the
-  segmentation covered everything past push 290 with one segment so the
-  confirmation stage never saw the boundary. Nothing appears on flat noise at 2 —
-  the confirmation stage is what holds precision, so loosening the segmentation
-  buys recall rather than false bars. Below 2 it starts costing: a denser
-  segmentation puts more walls in `windowLimits` and starves real changes of their
-  pools.
+- **A CUSUM threshold of 3.5 for proposing a cut**, which is √(2 log n) at n = 500:
+  the point where the sharpest split in a few hundred pushes stops being what noise
+  ordinarily produces. It is not a verdict, so what it really controls is how many
+  candidates the α downstream has to cover — the two were measured together, and the
+  table is at the constant. At 3.5 nothing is drawn on 40 synthetic flat series; at
+  3 two bars are, in exchange for two of perfherder's alerts that cancel each other
+  out.
 
-- **A fixed window of 24 pushes a side**, clipped to the neighbouring boundaries
-  — except that a boundary closer than six pushes is not a wall, because a
-  segment that short can never have a boundary of its own confirmed and so should
-  not get to veto its neighbour's (`windowLimits`; an outlier fenced off four
-  pushes short of a real step used to leave both candidates with too small a pool
-  to test, and the step went unmarked). 24 is
-  `PERFHERDER_ALERTS_MAX_BACK_WINDOW`, matched deliberately:
+- **A fixed window of 24 pushes a side**, clipped to the walls and to the stretch
+  the candidate was proposed in. 24 is `PERFHERDER_ALERTS_MAX_BACK_WINDOW`, matched
+  deliberately:
   perfherder's alert quotes means over 12–24 pushes back against 12 forward, and
   both cards can be in the details pane at once, so the two "before → after"
   pairs should be on the same scale. Where they differ it should be because the
   analyses disagree, not because one averaged ten times as much data.
-- **Six pushes a side, minimum.** A rank statistic on small pools has a floor on
-  the p-value it can reach *however cleanly* the groups separate: 0.030 at 4v4,
-  0.012 at 5v5. Below six a side the answer would come from arithmetic rather
-  than from evidence.
+- **Six pushes a side, minimum — to propose and to gate.** A rank statistic on
+  *balanced* pools this small has a floor on the p-value it can reach however
+  cleanly they separate: 0.030 at 4v4, 0.012 at 5v5. Where the mark finally goes is
+  bounded by `canReachAlpha` instead, which asks the same question of the actual pool
+  sizes: 4v10 clears α, and holding the estimate to six would leave a step near the
+  edge of the range marked on the wrong push with a diluted delta. One knock-on: a
+  step is reported five pushes after it happens rather than six, since the gate's
+  pool may straddle it and the estimate then slides onto it.
 - **α = 0.01, not the 0.05 the comparison card uses.** Multiple comparisons: the
   card asks one question about two builds the user picked, this asks one per
-  candidate boundary on every plotted series, unprompted. At 0.05 that is on the
-  order of one manufactured bar per series per range, which for something drawn
-  by default is the difference between a second opinion and a nuisance.
+  candidate on every plotted series, unprompted, and the greedy loop asks again each
+  round. At 0.05 that is on the order of one manufactured bar per series per range,
+  which for something drawn by default is the difference between a second opinion
+  and a nuisance. The CUSUM threshold is the other half of the same budget.
 - **0.5% minimum change.** With enough pushes the test will certify a 0.05%
   drift, which is true and useless. Far below perfherder's 2% alerting
   threshold, deliberately — a threshold near theirs would rebuild the blind spot
@@ -547,20 +559,23 @@ the five worth knowing here:
   rather than the best one available. What that costs us is perf.webkit.org's
   incidental reading of "how much data it took to see this" — the bar's extent
   here is the evidence, not a measure of confidence.
-- **Minimum segment length 2.** perf.webkit.org allows length-1 segments and
-  special-cases their cost to zero; here a single value has no sample variance,
-  so it would score at the variance floor, which is an unbounded discount one
-  outlier could buy out of nothing.
-- **The DP runs once, layer by layer.** perf.webkit.org re-runs its whole
-  dynamic program for each candidate segment count, which is O(n²k²);
-  evaluating the criterion off each layer of one run is O(n²k) for the same
-  answer.
-- **A looser penalty than theirs**, 2 against 2.5 — see the constant above, and
-  "Only a confirmed change should be a wall" plus the entry after it in
-  graphs-todo.md for why 2 rather than lower.
-- **Grid edges are discarded, not kept as candidates.** Rediscovered the hard
-  way — see GRID_SIZE. Keeping them manufactured a −1.0% "change" at p = 0.028
-  out of the noise on a synthetic series, every 500 pushes, guaranteed.
+- **No cut closer than six pushes to the end of its stretch.** perf.webkit.org
+  allows length-1 segments and special-cases their cost to zero. Here the proposal
+  stage refuses to offer what the confirmation stage could not test, which also
+  means an outlier is never fenced off into a segment of its own — the failure mode
+  that used to need a rejection rule downstream.
+- **Binary segmentation against a local scale, not a penalised dynamic program.**
+  Theirs picks one segment count for a whole grid by a Schwarz criterion, so its
+  sensitivity comes from that grid's total spread — and a series whose noise varies
+  fourfold across it cannot be served by one number. That is not a tuning problem:
+  on autoland signature 5352791 a 6σ step sat inside a single segment covering 460
+  pushes, and no setting of the penalty constant both found it and stayed quiet on
+  noise. Splitting recursively and scoring each stretch against a scale estimated
+  inside it finds the step at any threshold that keeps flat noise clean. It is also
+  O(n·k) rather than O(n²k), which retired the grid, its size constant, the
+  segment-count ceiling and the variance floor: 8.9 ms at 2000 pushes against 33.
+- **Greedy confirmation with growing walls, not one pass in boundary order.** See
+  "Three stages" above for the three defects this fixes, all of which were live.
 - **A confirmed boundary's index is re-estimated with a rank statistic.** One bad
   job can walk the segmentation's boundary several pushes off the step it found,
   and the confirmation stage cannot see it happen: a ±24-push window straddles
@@ -635,14 +650,15 @@ for what it found. `cd=0` in the URL turns them off.
 #### Cost
 
 Cached per `(series, range)` alongside the series data and pruned with it, filled
-by an effect rather than derived, because `series` recomputes for reasons that
-have nothing to do with the data — a theme flip, a replicate toggle — and the
-segmentation is an O(n²) dynamic program. Measured (node, so ratios rather than
-absolutes): 3 ms at 340 pushes, 10 ms at 900, 21 ms at 2000. The inner loop is
-bounded by `GRID_SIZE`, so a long range costs a multiple of one grid rather than
-its square, and eight series over a year is a fraction of one fetch. Turning the
-switch off hides the bars without dropping the cache; turning it back on doesn't
-pay again.
+by an effect rather than derived, because `series` recomputes for reasons that have
+nothing to do with the data — a theme flip, a replicate toggle. Measured (node, so
+ratios rather than absolutes): 1.3 ms at 400 pushes, 3.7 ms at 900, 8.9 ms at 2000,
+and 6 ms for the 752-push fixture, which is the shape that costs most — 32
+candidates, so 32 rounds of gates. The dynamic program this replaced was 4.4 / 12.4
+/ 33 ms on the same machine and 17 ms on that fixture, so the cache now buys much
+less than it did; it stays because the reasons for it were never mainly about the
+segmentation's cost. Turning the switch off hides the bars without dropping the
+cache; turning it back on doesn't pay again.
 
 ### Caching and failure
 

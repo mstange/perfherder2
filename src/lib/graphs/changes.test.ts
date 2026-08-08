@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { detectChanges, relocateBoundary, segmentValues } from './changes';
+import { candidateBoundaries, detectChanges, relocateBoundary } from './changes';
 import type { PushGroup } from './graphData';
 import wandering from '../fixtures/push-means-wandering.json';
 
@@ -30,58 +30,71 @@ function step(before: number, after: number, each = 20, amplitude = 1): number[]
   return [...noisy(before, each, amplitude), ...noisy(after, each, amplitude)];
 }
 
-describe('segmentValues', () => {
-  it('leaves a series with no step in one segment', () => {
-    expect(segmentValues(noisy(100, 40, 2))).toEqual([0, 40]);
+describe('candidateBoundaries', () => {
+  const cuts = (values: readonly number[]) => candidateBoundaries(values).map((c) => c.cut);
+
+  it('proposes nothing in a series with no step', () => {
+    expect(cuts(noisy(100, 40, 2))).toEqual([]);
   });
 
-  it('finds a clean step', () => {
-    expect(segmentValues(step(100, 110))).toEqual([0, 20, 40]);
+  it('proposes a clean step', () => {
+    expect(cuts(step(100, 110))).toEqual([20]);
   });
 
-  it('finds two steps', () => {
+  it('proposes both of two steps', () => {
     const values = [...noisy(100, 20, 1), ...noisy(115, 20, 1), ...noisy(103, 20, 1)];
-    expect(segmentValues(values)).toEqual([0, 20, 40, 60]);
+    expect(cuts(values)).toEqual([20, 40]);
   });
 
-  it('never emits a segment of one point', () => {
-    // MIN_SEGMENT is 2 because a single value has no sample variance, so it
-    // scores at the floor and buys an unbounded discount — one outlier could
-    // otherwise pay for a segment of its own out of nothing.
-    //
-    // It does *not* stop an outlier from being segmented off into a short
-    // segment, and this fixture is one that is: what stops that reaching the
-    // graph is the confirmation stage, which is asserted under `detectChanges`.
-    const values = noisy(100, 21, 1);
-    values[10] = 200;
-    const boundaries = segmentValues(values);
-    for (let i = 1; i < boundaries.length; i++) {
-      expect(boundaries[i] - boundaries[i - 1]).toBeGreaterThanOrEqual(2);
-    }
+  it('proposes a small step standing next to a large one', () => {
+    // What the dynamic program this replaced could not do, and the whole reason
+    // for the recursion: the 30% step sets the scale for the series, and beside it
+    // the 0.8% step is nothing. Scored inside its own half, once the big move has
+    // been split off, it is obvious.
+    const values = [...noisy(100, 40, 0.3), ...noisy(130, 40, 0.3), ...noisy(131, 40, 0.3)];
+    expect(cuts(values)).toEqual([40, 80]);
+  });
+
+  it('scores each stretch against its own noise', () => {
+    // Same 2% step twice, once in a quiet stretch and once in a loud one. Both are
+    // proposed, and a scale taken over the whole series would have found neither
+    // the quiet one (drowned) nor stopped at the loud one (over-split).
+    const values = [
+      ...noisy(100, 30, 0.2),
+      ...noisy(102, 30, 0.2),
+      ...noisy(102, 30, 2),
+      ...noisy(104, 30, 2),
+    ];
+    const found = cuts(values);
+    expect(found).toContain(30);
+    expect(found.some((c) => Math.abs(c - 90) <= 2)).toBe(true);
   });
 
   it('is stable against a large offset', () => {
-    // `Σx² − (Σx)²/n` on uncentred values this size loses every significant
-    // digit of a variance of 1, which used to make the costs noise.
     const values = step(1_000_000, 1_000_100);
-    expect(segmentValues(values)).toEqual([0, 20, 40]);
+    expect(cuts(values)).toEqual([20]);
   });
 
-  it('returns one segment for a series too short to split', () => {
-    expect(segmentValues([])).toEqual([0, 0]);
-    expect(segmentValues([1, 2, 3])).toEqual([0, 3]);
+  it('proposes nothing for a series too short to test', () => {
+    expect(cuts([])).toEqual([]);
+    expect(cuts([1, 2, 3])).toEqual([]);
+    // Eleven is one short of two testable pools.
+    expect(cuts([...noisy(100, 5, 0.1), ...noisy(130, 6, 0.1)])).toEqual([]);
   });
 
-  it('always returns strictly increasing boundaries from 0 to n', () => {
-    // Gridding appends the grid edge as a candidate; a bug there would produce
-    // a duplicate or an out-of-order boundary that nothing else would catch.
+  it('proposes ascending, unique cuts, none within six of an end', () => {
     const values = [...noisy(100, 300, 3), ...noisy(120, 300, 3)];
-    const boundaries = segmentValues(values, 250);
-    expect(boundaries[0]).toBe(0);
-    expect(boundaries.at(-1)).toBe(600);
-    for (let i = 1; i < boundaries.length; i++) {
-      expect(boundaries[i]).toBeGreaterThan(boundaries[i - 1]);
+    const found = cuts(values);
+    expect(found).toEqual([...found].sort((a, b) => a - b));
+    expect(new Set(found).size).toBe(found.length);
+    for (const cut of found) {
+      expect(cut).toBeGreaterThanOrEqual(6);
+      expect(cut).toBeLessThanOrEqual(values.length - 6);
     }
+  });
+
+  it('does not recurse forever on a flat series', () => {
+    expect(cuts(new Array(100).fill(7))).toEqual([]);
   });
 });
 
@@ -112,12 +125,15 @@ describe('relocateBoundary', () => {
     expect(relocateBoundary(clean, 0, 48, 24)).toBe(24);
   });
 
-  it('never lands within six pushes of the window edge', () => {
-    // The same floor the test itself observes: an estimate resting on fewer
-    // pushes than MIN_WINDOW_PUSHES would be one the confirmation stage would
-    // have refused to make, and the notch has to stay inside its own bar.
-    const late = [...noisy(100, 45, 0.5), ...noisy(130, 3, 0.5)];
-    expect(relocateBoundary(late, 0, 48, 24)).toBeLessThanOrEqual(42);
+  it('lands only where the rank test could clear α', () => {
+    // Looser than the gate's six a side, because the proposal stage cannot put a
+    // cut closer than that to the end of a stretch and the step sometimes is. Three
+    // pushes is where the arithmetic stops: 3 against 45 can reach p = 0.004 and 2
+    // against 46 cannot reach α however cleanly it separates, so a step at 45 is
+    // found exactly and one at 47 is reported as far out as the test can support.
+    expect(relocateBoundary([...noisy(100, 45, 0.5), ...noisy(130, 3, 0.5)], 0, 48, 24)).toBe(45);
+    expect(relocateBoundary([...noisy(100, 47, 0.5), ...noisy(130, 1, 0.5)], 0, 48, 24)).toBe(45);
+    expect(relocateBoundary([...noisy(100, 3, 0.5), ...noisy(130, 45, 0.5)], 0, 48, 24)).toBe(3);
   });
 });
 
@@ -185,10 +201,10 @@ describe('detectChanges', () => {
     // its immediate neighbour left both of them with four or five pushes on one
     // side — under MIN_WINDOW_PUSHES, so neither could be tested at all, and a
     // step with thirty clean pushes either side of it went unmarked because
-    // something twitched four pushes earlier. See `windowLimits`.
+    // something twitched four pushes earlier. See `wallsAround`.
     const values = [...noisy(100, 45, 0.5), ...noisy(96, 30, 0.5)];
     values[40] = 92.5;
-    expect(segmentValues(values)).toEqual([0, 40, 45, 75]);
+    expect(candidateBoundaries(values).map((c) => c.cut)).toContain(45);
 
     const found = detectChanges(pushesOf(values), true);
     expect(found).toHaveLength(1);
@@ -232,22 +248,55 @@ describe('detectChanges', () => {
     expect(found[0].relativeChange).toBeCloseTo(0.02, 3);
   });
 
-  it('needs six pushes either side before it will say anything', () => {
-    // Not a limitation to hide: a rank statistic on small pools has a floor on
-    // the p-value it can reach however cleanly they separate, and below six a
-    // side that floor is above CHANGE_ALPHA. A verdict there would come from
-    // arithmetic rather than from evidence. These two fixtures are perfectly
-    // separated, so only the pool sizes decide.
-    const short = [...noisy(100, 5, 0.5), ...noisy(130, 10, 0.5)];
-    expect(detectChanges(pushesOf(short), true)).toEqual([]);
-    const enough = [...noisy(100, 6, 0.5), ...noisy(130, 10, 0.5)];
-    expect(detectChanges(pushesOf(enough), true)).toHaveLength(1);
+  it('says nothing when no split could clear α', () => {
+    // Not a limitation to hide: a rank statistic on small pools has a floor on the
+    // p-value it can reach however cleanly they separate, so a verdict there would
+    // come from arithmetic rather than from evidence. These fixtures are perfectly
+    // separated, so only the pool sizes decide — three pushes before the step is not
+    // enough for any split of them, and neither is three after.
+    expect(detectChanges(pushesOf([...noisy(100, 3, 0.5), ...noisy(130, 20, 0.5)]), true)).toEqual(
+      [],
+    );
+    expect(detectChanges(pushesOf([...noisy(100, 30, 0.5), ...noisy(130, 3, 0.5)]), true)).toEqual(
+      [],
+    );
   });
 
-  it('does not manufacture a change at a grid edge', () => {
-    // It did, before grid edges stopped being candidates: on this shape the
-    // edge at 500 produced a fourth "change" of −1.0% at p = 0.028 out of the
-    // noise between two real steps. See GRID_SIZE.
+  it('puts a step near the start of the range on the right push', () => {
+    // The proposal stage cannot offer a cut closer than six pushes to the start of
+    // the series, so the gate runs on pools that straddle this step — and if the
+    // estimate were held to the same floor, the mark would sit two pushes late with a
+    // delta diluted by the two post-step values on the wrong side of it, and a click
+    // would pin two pushes that are both after the step. See `relocateBoundary`,
+    // "any split the test could reach α at".
+    const found = detectChanges(pushesOf([...noisy(100, 5, 0.5), ...noisy(130, 10, 0.5)]), true);
+    expect(found).toHaveLength(1);
+    expect(found[0].index).toBe(5);
+    expect(found[0].relativeChange).toBeCloseTo(0.3, 2);
+    expect(found[0].beforePushId).toBe(1004);
+    expect(found[0].afterPushId).toBe(1005);
+    expect(found[0].pValue).toBeLessThan(0.01);
+  });
+
+  it('needs five pushes after a change before it will say anything', () => {
+    // The last cut the proposal stage can offer is six from the end, so the gate here
+    // runs on an after-pool of one pre-step push and five post-step ones — and when
+    // that fires, the estimate slides onto the step itself. Five is therefore the
+    // latency floor for a clean step, and it holds at 2% as firmly as at 30%: the
+    // gate's own six-a-side requirement is what sets it, not the size of the step.
+    const values = (after: number) => [...noisy(100, 30, 0.5), ...noisy(104, after, 0.5)];
+    expect(detectChanges(pushesOf(values(4)), true)).toEqual([]);
+    const found = detectChanges(pushesOf(values(5)), true);
+    expect(found).toHaveLength(1);
+    expect(found[0].index).toBe(30);
+    expect(found[0].afterCount).toBe(5);
+  });
+
+  it('finds every step in a long series and invents none between them', () => {
+    // Four levels 5% apart over 900 pushes. Under the dynamic program this shape
+    // was where a grid edge every 500 pushes manufactured a −1.0% "change" at
+    // p = 0.028 out of the noise; there are no grids now, and the recursion has to
+    // find the third step inside a stretch bounded by the first two.
     let level = 100;
     const values: number[] = [];
     for (let i = 0; i < 4; i++) {
@@ -270,12 +319,13 @@ describe('detectChanges', () => {
   });
 
   it('finds the step in a series whose level wanders around it', () => {
-    // Real data, because no synthetic fixture reproduces what makes this hard:
-    // the step is 6σ against its own neighbourhood and nothing at all against the
-    // spread of the 500-push grid the segmentation scores as a whole. See
-    // PENALTY_C — this is the case that moved it off 2.5, where the segmentation
-    // covered everything past push 290 with a single segment and the confirmation
-    // stage was never offered the boundary.
+    // Real data, because no synthetic fixture reproduces what makes this hard: the
+    // step is 6σ against its own neighbourhood and nothing at all against the spread
+    // of the whole series, one push in six being measured several times less
+    // precisely than the rest. A dynamic program scoring 500 pushes as one unit
+    // covered everything past push 290 with a single segment, so the confirmation
+    // stage was never offered the boundary and perfherder's alert #243130 stood
+    // unanswered. See `candidateBoundaries`.
     const found = detectChanges(pushesOf(wandering.means), wandering.lowerIsBetter);
     const step = found.find((c) => Math.abs(c.index - wandering.alertedStepIndex) <= 2);
     expect(step).toBeDefined();

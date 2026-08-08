@@ -564,10 +564,10 @@ export class AppState {
     // finds every key present and does nothing.
     //
     // Synchronous, and cheap enough to be. Measured (node, so ratios rather
-    // than absolutes): 3 ms at 340 pushes, 10 ms at 900, 21 ms at 2000 — the
-    // O(n²) inner loop is bounded by GRID_SIZE, so a long range costs a
-    // multiple of one grid rather than its square. Eight series at a year is
-    // therefore a fraction of one fetch, and it runs after the dots are up.
+    // than absolutes): 1.3 ms at 400 pushes, 3.7 ms at 900, 8.9 ms at 2000 —
+    // the proposal stage is O(n) per level of recursion rather than a quadratic
+    // dynamic program (changes.ts, "Three stages"). Eight series at a year is
+    // therefore a small fraction of one fetch, and it runs after the dots are up.
     $effect(() => {
       if (!this.changeDetection) return;
       const span = this.range;

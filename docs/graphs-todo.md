@@ -45,15 +45,24 @@ Living checklist. Update in the same commit as the work it describes.
   `distribution.ts`, `distributionDraw.ts`, `compare.ts`,
   `DistributionChart.svelte` (+ tests for all the pure halves). See
   [comparison.md](comparison.md)
-- Client-side change detection — `changes.ts` (+ tests): segmentation by the
-  Schwarz criterion, then a Mann-Whitney U over the push means either side of
-  each candidate. Drawn as bars along the plot floor, clicking one sets up the
-  comparison, and the details pane gets a Detected-change card. On by default,
-  `cd=0` to turn it off. See graphs.md, "Detected changes"
+- Client-side change detection — `changes.ts` (+ tests). Drawn as bars along the
+  plot floor, clicking one sets up the comparison, and the details pane gets a
+  Detected-change card. On by default, `cd=0` to turn it off. See graphs.md,
+  "Detected changes"
 - Marks in the plot's margins stack into rows instead of overlapping —
   `annotations.ts` (+ tests), shared by the change bars and the alert triangles.
   Closes the alert-marker half of the item that used to be under "Alerts: the
   parts still missing"
+- Change detection in three stages — local proposal (binary segmentation
+  against a scale estimated inside each stretch), greedy confirmation where only an
+  accepted change walls off a pool, and rank relocation of the accepted index. Closes
+  both of the items that used to be under "Open questions": the wall rule and local
+  candidate generation. What it bought, measured: signature 5352791's step at push
+  1966248 (perfherder alert #243130) is found where the dynamic program covered 460
+  pushes with one segment, a fenced-off outlier can no longer silence the step beside
+  it, a regression and its backout confirm each other, nothing appears on 40
+  synthetic flat series, and 2000 pushes cost 8.9 ms against 33. See graphs.md,
+  "Three stages", and the constants in changes.ts
 
 ## Next
 
@@ -64,6 +73,17 @@ Living checklist. Update in the same commit as the work it describes.
 
 ## Open questions / deferred
 
+- **A smooth drift is reported as a run of steps.** Measured over 40 synthetic
+  series of 500 pushes with a 4% linear climb and 0.8% noise: 32 bars, and 159 for a
+  10% climb. Every one of them is a real, confirmed level difference between the
+  pushes either side, so this is not a false-positive problem to tighten α against —
+  it is that "where did it step" is the wrong question for a series that never
+  stepped. The old dynamic program did the same thing (22 bars on the same fixture),
+  so this is longstanding rather than new. What would fix it is recognising the shape
+  instead of marking it: fit a slope to the window, and where a line explains the
+  window about as well as a step does, say "drifting +4% over 30 pushes" and draw one
+  span instead of six notches. Wants a way to say that in the UI before it is worth
+  detecting.
 - **Index replicates by trial number once the API exposes one.**
   [Bug 1981623](https://bugzilla.mozilla.org/show_bug.cgi?id=1981623) tracks
   using the run numbers and machine identifiers the replicates/trials table
@@ -102,42 +122,6 @@ Living checklist. Update in the same commit as the work it describes.
   disappears between hovers, which is inline and so only bites at a narrow pane
   width. A sweep of 40 hovers over two real series found neither, so this is
   waiting for a case that shows it.
-- **Only a confirmed change should be a wall for a window.** A candidate's
-  confirmation pool is clipped at the neighbouring segment boundaries, and
-  `windowLimits` already refuses to clip at a boundary closer than
-  `MIN_WINDOW_PUSHES` — a segment that short can never have a boundary of its own
-  confirmed, so it should not get to veto its neighbour's. That covers the case
-  that motivated it (an outlier fenced off two to five pushes from a real step
-  used to silence the step entirely, since both candidates were left with too
-  small a pool to test) but not the band just past it: a wall at exactly six
-  pushes leaves a legal pool of six that can still be the blip's, one of whose
-  values is the bad push, which is enough to keep the p-value off 0.01. The rule
-  that covers all of it is the one in the heading, and it means confirming
-  greedily — strongest evidence first, walls growing as changes are accepted,
-  repeat until nothing new is confirmed — rather than in boundary order with a
-  fixed set of walls. A different algorithm, not a wider constant, and worth
-  doing when a real series shows the band biting: the cost is O(k²)
-  confirmations where k is the candidate count, against today's O(k).
-- **Candidate boundaries should be found locally, not by one segment count per
-  grid.** The segmentation's dynamic program scores a whole 500-push grid and picks
-  a single segment count for it, so its sensitivity is set by that grid's total
-  spread rather than by the local noise around each step. On autoland signature
-  5352791 (now `fixtures/push-means-wandering.json`) the level wanders over 65–68
-  while one push in six carries a single run — robust push-mean sd 0.755 against
-  0.378 for pushes with ten or more — and a step that is 6σ against its own
-  neighbourhood is nothing at grid scale: at PENALTY_C 2.5 the grid came back as
-  one segment past push 290 and the confirmation stage was never offered the
-  boundary. Loosening the constant to 2 recovers that particular step and is what
-  shipped, but it is the same global knob and it cannot serve a series whose noise
-  varies fourfold across it. What does is a locally scaled candidate generator:
-  binary segmentation, splitting each segment at its strongest CUSUM point against
-  a σ estimated *within* that segment and recursing while the statistic clears a
-  threshold. Prototyped against this series — at a threshold of 4 it proposes the
-  step at 445 along with 291 and 363 and confirms 12–15 changes overall, which for
-  a series that wanders this much may be honest but is a lot of bars, and it needs
-  α adjusted for proposing O(n) candidates instead of O(k). Do the walls item above
-  first: at higher candidate density it is walls, not the tests, that lose real
-  changes.
 - **Mixed units on one y-axis.** Following treeherder for now; the axis says
   "mixed units" when it happens. A per-series normalized mode ("% of the
   first value") would be the real fix.

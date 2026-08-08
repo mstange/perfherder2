@@ -19,15 +19,30 @@
 // threshold policy, no server round-trip, and it works on any series including
 // ones perfherder never analysed.
 //
-// The prior art is perf.webkit.org's charts view (`public/shared/statistics.js`
-// and `public/v3/pages/chart-pane.js`, the "Segmentation with Welch's t-test
-// change detection" trend line). The two-stage shape — segment first, then
-// confirm each boundary with a test on the points either side — is theirs, as
-// is the Schwarz-criterion segmentation with the Birgé–Massart penalty. The
-// deviations are listed under "Deviations from perf.webkit.org" below. The third
-// stage — re-estimating the confirmed boundary's index with a rank statistic,
-// see `relocateBoundary` — is not theirs, and exists because a single bad run can
-// walk the segmentation's boundary several pushes off the step it found.
+// The prior art is perf.webkit.org's charts view (`public/shared/statistics.js` and
+// `public/v3/pages/chart-pane.js`, the "Segmentation with Welch's t-test change
+// detection" trend line). The two-stage shape — find where a step might be, then
+// test the points either side of it — is theirs. Neither stage is any longer the one
+// they use, and the deviations are listed under "Deviations from perf.webkit.org"
+// below.
+//
+// ## Three stages
+//
+// 1. **Propose**, `candidateBoundaries`. Binary segmentation: split the series at
+//    its sharpest CUSUM contrast, recurse into both halves, stop when a stretch is
+//    too short or its sharpest split isn't sharp enough. Cheap, parametric, and
+//    scored against a scale estimated *inside* each stretch — which is the whole
+//    point, and what the Schwarz-criterion dynamic program this replaced could not
+//    do at any setting of its penalty.
+// 2. **Confirm**, `detectChanges` and `gateChange`. Greedy forward selection: gate
+//    every candidate with a rank test on the pushes either side, accept the
+//    strongest, make its index a wall that no later pool may cross, and go round
+//    again. Nothing but an accepted change is a wall, which is what stops a
+//    fenced-off outlier silencing the step beside it, and re-testing every round is
+//    what lets a regression and its backout confirm each other.
+// 3. **Locate**, `relocateBoundary`. Re-estimate the accepted index as the cut with
+//    the cleanest rank separation, because a proposed cut is a mean-based statistic
+//    and one bad run walks it.
 //
 // ## The unit of analysis is the push mean, not the run and not the replicate
 //
@@ -70,104 +85,19 @@ import {
   changeDirection,
   mannWhitneyU,
   mean,
+  median,
   relativeChange,
   type EffectSize,
+  type MannWhitneyResult,
 } from '../shared/stats';
 
 // ---------------------------------------------------------------------------
 // Tuning
 // ---------------------------------------------------------------------------
 
-// Birgé and Massart's penalty constant. Larger means fewer segments.
-//
-// 2.5 is the value its authors suggest and the one perf.webkit.org ships, and it
-// was that here until a series turned up where it silently loses an obvious step:
-// autoland signature 5352791 (speedometer3 TodoMVC-jQuery, recorded in
-// fixtures/push-means-wandering.json), which steps from 66.2 to 67.4 at push
-// 1966248 and stays there. Locally that is a 6σ step against a push-to-push sd of
-// 0.18. The segmentation returned `0, 230, 232, 290, 752` — one segment covering
-// everything past 290 — so the confirmation stage was never offered the boundary,
-// and the criterion genuinely preferred that: over pushes 0–500 it scores k=4 at
-// 0.901 against k=8 at 0.998 and k=12 at 1.053.
-//
-// The reason is a structural limit of this stage, not a bad constant: **the DP
-// picks one segment count for a whole grid**, so its sensitivity is set by that
-// grid's total spread and not by the local noise around each step. On this series
-// the level wanders over 65–68 and one push in six carries a single run (robust
-// push-mean sd 0.755 against 0.378 for pushes with ten or more), so the grid-wide
-// spread is several times the local spread and a 2% step is 6σ locally and
-// nothing at all at grid scale.
-//
-// 2 is therefore a partial answer, chosen by measurement rather than by theory:
-//
-//   C     flat noise (40×500)   sig 299010        sig 5352791         4% drift
-//   2.5   0 bars                8 changes, 5/6    1 change,  1/8      22 bars
-//   2     0 bars                8 changes, 5/6    3 changes, 3/8      26 bars
-//   1.5   0 bars                8 changes, 4/6    6 changes, 3/8      34 bars
-//
-// ("n/m alerts" is how many of perfherder's own alerts on that signature the run
-// lands on, ±6h. Not a ground truth — two of 5352791's eight cancel each other
-// out fifteen pushes apart, and perfherder counts its windows in *job values*, so
-// on a series retriggered twelve times a push it is comparing adjacent pushes with
-// the runs pooled. It is the best independent signal available.)
-//
-// Note what stays flat: nothing appears on pure noise at any of these, because the
-// confirmation stage is what holds precision, and loosening the segmentation trades
-// against recall rather than against false bars. What it does trade against is
-// drift, already carved into steps today and slightly more of them at 2.
-//
-// 1.5 is where it starts costing: 299010 *loses* a match, because a denser
-// segmentation puts more walls in `windowLimits` and starves real changes of their
-// pools. Going below 2 wants the confirmed-changes-are-walls work in
-// graphs-todo.md first, and past that the real fix is local candidate generation —
-// same file, "Only a confirmed change should be a wall" and the entry after it.
-const PENALTY_C = 2;
-
-// The segmentation is O(n²) per candidate segment count, so a long series is
-// cut into grids of this many pushes and segmented one grid at a time — the
-// same bound, and the same reason, as perf.webkit.org's "Grid size" parameter.
-// Measured: 3 ms over 340 pushes, 10 ms over 900, 21 ms over 2000 — the last
-// two being four grids' worth, so the cost is linear once past this.
-//
-// **Grid edges are discarded rather than kept as candidates**, which
-// perf.webkit.org also does and which was worth rediscovering the hard way. The
-// tempting argument is that the confirmation stage is a real test, so an extra
-// candidate costs one test and might rescue a change that lands on an edge. It
-// doesn't work out: a grid edge is a *guaranteed* extra candidate every 500
-// pushes, and on a synthetic series with steps at 225/450/675 the edge at 500
-// duly produced a fourth "change" of −1.0% at p = 0.028 out of pure noise. The
-// change it might have rescued, meanwhile, is only ever one within MIN_SEGMENT
-// of the edge — every other one is found by its own grid's segmentation.
-const GRID_SIZE = 500;
-
-// No segment may be shorter than this. Two is the shortest length that has a
-// sample variance at all; a single value scores at the variance floor below,
-// which is an unbounded discount that one outlier could buy out of nothing.
-// (perf.webkit.org allows length-1 segments and special-cases their cost to
-// zero, which is the same problem answered with a different constant.)
-//
-// This does not stop an outlier from being segmented *off* — a two-point
-// segment can still absorb one — and it is not meant to. Rejecting the
-// boundaries around it is the confirmation stage's job, and a rank-sum test
-// over pools that differ by one value does exactly that.
-const MIN_SEGMENT = 2;
-
-// Ceiling on the segment count, per grid. Only a bound on worst-case time: the
-// search stops early (see `sinceBest`) long before this on real data.
-const MAX_SEGMENTS = 32;
-
-// A variance floor, as a fraction of the whole grid's variance. `n·log(σ²)`
-// runs away to −∞ as σ² approaches zero, so a run of near-identical values can
-// buy an arbitrarily good score. Relative to the series' own variance rather
-// than absolute, since these are milliseconds in one series and bytes in the
-// next.
-const VARIANCE_FLOOR_FRACTION = 1e-6;
-
 // How many pushes either side of a candidate the confirmation test looks at,
-// clipped to the neighbouring boundaries so a window never crosses another
-// change. `windowLimits` is where the clipping happens, and says what
-// "neighbouring" has to mean for a short outlier segment not to silence the step
-// beside it.
+// clipped so that a pool never crosses another change — `wallsAround` for what
+// counts as one, and `gateChange` for the stretch bound that goes with it.
 //
 // 24 is `PERFHERDER_ALERTS_MAX_BACK_WINDOW` (treeherder/perf/alerts.py), which
 // is deliberate rather than coincidental: perfherder's own alert quotes means
@@ -181,18 +111,28 @@ const WINDOW_PUSHES = 24;
 // How sure the test has to be. **Not `SIGNIFICANCE_ALPHA`**, the 0.05 the
 // comparison card reports against, and the difference is multiple comparisons:
 // the card asks one question about two builds the user picked, while this asks
-// one per candidate boundary — up to MAX_SEGMENTS of them per grid — over every
-// plotted series, unprompted. At 0.05 that is on the order of one manufactured
-// bar per series per range, which for a feature that draws itself by default is
-// the difference between a second opinion and a nuisance.
+// one per candidate, on every plotted series, unprompted, and the greedy loop asks
+// again each round. At 0.05 that is on the order of one manufactured bar per series
+// per range, which for a feature that draws itself by default is the difference
+// between a second opinion and a nuisance. CUSUM_THRESHOLD is the other half of the
+// same budget: it decides how many candidates this α has to cover, and the two were
+// measured together — see the table there.
 const CHANGE_ALPHA = 0.01;
 
-// Below this many pushes on a side there is no point testing. The two-sided
-// Mann-Whitney U is a rank statistic, so with small pools there is a floor on
-// the p-value it can reach *however cleanly* the two groups separate: 0.030 at
-// 4 against 4 and 0.012 at 5 against 5, both above CHANGE_ALPHA. Six a side is
-// the first that can clear it (0.005), so anything less would be rejected by
-// arithmetic rather than by evidence — and would waste a test saying so.
+// Below this many pushes on a side, don't propose a cut and don't gate one. The
+// two-sided Mann-Whitney U is a rank statistic, so *balanced* pools this small have
+// a floor on the p-value they can reach however cleanly they separate: 0.030 at 4
+// against 4 and 0.012 at 5 against 5, both above CHANGE_ALPHA. Six a side is the
+// first that clears it (0.005), so less would be rejected by arithmetic rather than
+// by evidence, and would waste a test saying so.
+//
+// **Only the proposal and the gate observe it.** Where the mark finally goes is
+// bounded by `canReachAlpha` instead, which asks the same question of the actual
+// pool sizes rather than of a balanced pair — 4 against 10 clears α, and holding the
+// estimate to six would leave a step near the edge of the range marked on the wrong
+// push. The knock-on is that a step is reported five pushes after it happens rather
+// than six: the gate still needs its six a side, but the pool it fires on can
+// straddle the step, and the estimate then slides onto it.
 const MIN_WINDOW_PUSHES = 6;
 
 // Changes smaller than this are dropped even when the test can see them. With
@@ -206,131 +146,147 @@ const MIN_WINDOW_PUSHES = 6;
 const MIN_RELATIVE_CHANGE = 0.005;
 
 // ---------------------------------------------------------------------------
-// Segmentation
+// Proposal
 // ---------------------------------------------------------------------------
 
-// Cost of the half-open segment [i, j): `len · log(variance)`, the Gaussian
-// contrast that the Schwarz criterion is applied to.
+// A robust spread for one stretch, from successive differences.
 //
-// From prefix sums, so a cost is O(1) and the whole DP needs no O(n²) matrix.
-// The values are centred on the series mean first — `Σx² − (Σx)²/n` on
-// uncentred perf numbers is a catastrophic-cancellation machine, and a series
-// sitting at 100 000 with a variance of 1 loses every significant digit of it.
-function makeCostFn(values: readonly number[]): (i: number, j: number) => number {
-  const n = values.length;
-  const centre = mean(values);
-  const sums = new Float64Array(n + 1);
-  const squares = new Float64Array(n + 1);
-  for (let i = 0; i < n; i++) {
-    const v = values[i] - centre;
-    sums[i + 1] = sums[i] + v;
-    squares[i + 1] = squares[i] + v * v;
-  }
-  const varianceOf = (i: number, j: number): number => {
-    const len = j - i;
-    if (len < 2) return 0;
-    const sum = sums[j] - sums[i];
-    return Math.max(0, (squares[j] - squares[i] - (sum * sum) / len) / (len - 1));
-  };
-  const floor = varianceOf(0, n) * VARIANCE_FLOOR_FRACTION;
-  return (i, j) => {
-    const v = Math.max(varianceOf(i, j), floor);
-    // A perfectly flat grid has no floor either, and log(0) is not a cost.
-    return v > 0 ? (j - i) * Math.log(v) : 0;
-  };
+// `median|xᵢ₊₁ − xᵢ| · 1.4826 / √2` — the MAD-to-sigma factor, and the √2 because
+// a difference of two draws has twice the variance of one. Two properties earn it
+// over a plain sd of the stretch:
+//
+//   - **Blind to level changes.** A stretch containing a step has a large sd and
+//     the same median difference as one without, which is the point: the scale a
+//     step is measured against must not be inflated by the step.
+//   - **Blind to a handful of bad pushes.** A median over ~n differences shrugs off
+//     the outlier runs CI produces; an sd squares them.
+function localScale(values: readonly number[], lo: number, hi: number): number {
+  const diffs: number[] = [];
+  for (let i = lo + 1; i < hi; i++) diffs.push(Math.abs(values[i] - values[i - 1]));
+  return diffs.length ? (median(diffs) * 1.4826) / Math.SQRT2 : 0;
 }
 
-// Birgé and Massart's penalization of a k-segment model.
-function penalty(k: number, n: number): number {
-  return k * (1 + PENALTY_C * Math.log(n / k));
-}
-
-// Optimal boundaries for one grid, as `[0, …, n]`. Length k+1 for k segments,
-// so a return of `[0, n]` means "no steps here".
+// The cut that splits [lo, hi) most sharply, and how sharply, in units of the
+// stretch's own scale.
 //
-// Dynamic programming over segment count: `costs[j]` after layer k is the best
-// total cost of covering values[0, j) with exactly k segments, and each layer
-// is one O(n²) pass. perf.webkit.org re-runs its whole DP once per candidate k,
-// which is O(n²k²) overall; running it layer by layer and reading the criterion
-// off each layer is O(n²k) for the same answer.
-function segmentGrid(values: readonly number[]): number[] {
-  const n = values.length;
-  if (n < MIN_SEGMENT * 2) return [0, n];
-
-  const cost = makeCostFn(values);
-  const maxSegments = Math.min(MAX_SEGMENTS, Math.floor(n / MIN_SEGMENT));
-  const beta = Math.log(n) / n;
-
-  let previous = new Float64Array(n + 1).fill(Infinity);
-  previous[0] = 0;
-  // One backlink layer per k: `backlinks[k-1][j]` is where the last of k
-  // segments covering [0, j) starts.
-  const backlinks: Int32Array[] = [];
-
-  let bestK = 1;
-  let bestCriterion = Infinity;
-  // The criterion is not convex in k, so the search doesn't stop at the first
-  // step uphill. Three consecutive non-improvements is perf.webkit.org's rule.
-  let sinceBest = 0;
-
-  for (let k = 1; k <= maxSegments; k++) {
-    const layer = new Float64Array(n + 1).fill(Infinity);
-    const from = new Int32Array(n + 1).fill(-1);
-    for (let j = k * MIN_SEGMENT; j <= n; j++) {
-      let best = Infinity;
-      let bestI = -1;
-      for (let i = (k - 1) * MIN_SEGMENT; i <= j - MIN_SEGMENT; i++) {
-        const head = previous[i];
-        if (head === Infinity) continue;
-        const total = head + cost(i, j);
-        if (total < best) {
-          best = total;
-          bestI = i;
-        }
-      }
-      layer[j] = best;
-      from[j] = bestI;
-    }
-    backlinks.push(from);
-    previous = layer;
-
-    if (layer[n] === Infinity) break;
-    const criterion = layer[n] / n + beta * penalty(k, n);
-    if (criterion < bestCriterion) {
-      bestCriterion = criterion;
-      bestK = k;
-      sinceBest = 0;
-    } else if (++sinceBest >= 3) {
-      break;
+// The statistic is the standard CUSUM contrast for a change in mean,
+// `|mean(cut, hi) − mean(lo, cut)| · √(n₁n₂/(n₁+n₂)) / scale`: a difference of
+// means, weighted so that a split with more data on both sides counts for more,
+// divided by what the stretch's own noise would produce. Means come from prefix
+// sums, so the whole scan is O(hi − lo).
+//
+// **Parametric, on purpose, and only here.** This is the cheap scan that decides
+// what is worth testing; the test that decides what gets drawn is the rank test in
+// `gateChange`, which never sees this number. A Gaussian-flavoured statistic is
+// fine for proposing and would not be fine for confirming.
+function strongestCut(
+  values: readonly number[],
+  sums: Float64Array,
+  lo: number,
+  hi: number,
+): { cut: number; statistic: number } | null {
+  let bestCut = -1;
+  let bestWeighted = 0;
+  for (let cut = lo + MIN_WINDOW_PUSHES; cut <= hi - MIN_WINDOW_PUSHES; cut++) {
+    const nBefore = cut - lo;
+    const nAfter = hi - cut;
+    const meanBefore = (sums[cut] - sums[lo]) / nBefore;
+    const meanAfter = (sums[hi] - sums[cut]) / nAfter;
+    const weighted =
+      Math.abs(meanAfter - meanBefore) * Math.sqrt((nBefore * nAfter) / (nBefore + nAfter));
+    if (weighted > bestWeighted) {
+      bestWeighted = weighted;
+      bestCut = cut;
     }
   }
-
-  const boundaries = new Array<number>(bestK + 1);
-  boundaries[bestK] = n;
-  let at = n;
-  for (let k = bestK; k > 0; k--) {
-    at = backlinks[k - 1][at];
-    // Can't happen for a k the loop above scored, but a truncated backlink
-    // would otherwise produce a boundary list that isn't sorted.
-    if (at < 0) return [0, n];
-    boundaries[k - 1] = at;
-  }
-  return boundaries;
+  if (bestCut < 0) return null;
+  // The scale is constant across the scan, so dividing at the end rather than
+  // inside the loop picks the same cut — and leaves the degenerate case somewhere
+  // it can be answered: a stretch of identical values has no scale, and a split of
+  // one that isn't flat is as sharp as a split gets.
+  const scale = localScale(values, lo, hi);
+  const statistic = scale > 0 ? bestWeighted / scale : bestWeighted > 0 ? Infinity : 0;
+  return { cut: bestCut, statistic };
 }
 
-// Segment boundaries over a whole series, `[0, …, n]`, strictly increasing.
-// Grids are segmented independently and their edges dropped; see GRID_SIZE.
-export function segmentValues(values: readonly number[], gridSize = GRID_SIZE): number[] {
-  const n = values.length;
-  if (n < MIN_SEGMENT * 2) return [0, n];
-  const boundaries = [0];
-  for (let start = 0; start < n; start += gridSize) {
-    const end = Math.min(n, start + gridSize);
-    const inner = segmentGrid(values.slice(start, end));
-    for (let i = 1; i < inner.length - 1; i++) boundaries.push(start + inner[i]);
-  }
-  boundaries.push(n);
-  return boundaries;
+// How sharp a split has to look before it is worth a test.
+//
+// Under the null the largest CUSUM over a stretch of n points grows like
+// √(2 log n), which is 3.5 at n = 500, and that is the number: the point where the
+// sharpest split in a few hundred pushes stops being what noise ordinarily
+// produces. It is not the verdict — the confirmation stage has its own α, its own
+// effect-size floor and a rank test rather than this Gaussian one — so what this
+// controls is how much gets tested, and therefore how much multiple-comparison
+// exposure the α is asked to absorb.
+//
+// Measured over 40 synthetic series of 500 pushes each, and the two real
+// signatures, at α = 0.01:
+//
+//   threshold   flat noise   +4% drift   sig 299010   sig 5352791
+//   3           2 bars       34 bars     5/6 alerts   6/8 alerts
+//   3.5         0 bars       32 bars     5/6 alerts   4/8 alerts
+//   4           0 bars       27 bars     5/6 alerts   4/8 alerts
+//
+// The two alerts 3 finds and 3.5 doesn't are 5352791's +2.09% and −2.08% fifteen
+// pushes apart, which cancel and which are invisible among that series' well
+// measured pushes — perfherder sees them because it counts its windows in job
+// values, so on a series retriggered twelve times a push it is comparing adjacent
+// pushes with the runs pooled. Recall measured against alerts that shouldn't be
+// there is not recall, and it cost two bars on pure noise, which for something
+// drawn by default is the wrong trade. 4 measures the same as 3.5 on both real
+// series and is a little quieter on drift; 3.5 is where the theory puts it.
+const CUSUM_THRESHOLD = 3.5;
+
+// Every cut worth testing, in ascending order.
+//
+// Binary segmentation: split the whole series at its sharpest cut, then recurse
+// into both halves, stopping when a stretch is too short to test or its sharpest
+// cut isn't sharp enough. This replaced a dynamic program that scored a whole
+// 500-push grid against a penalised Schwarz criterion, and the reason is
+// **locality**, not cost:
+//
+// The DP chose one segment count for the entire grid, so its sensitivity came from
+// the grid's total spread. On autoland signature 5352791 — recorded as
+// fixtures/push-means-wandering.json, and the case that drove all of this — the
+// level wanders over 65–68 while one push in six carries a single run (robust
+// push-mean sd 0.755 against 0.378 for pushes with ten or more). A 6σ step against
+// its own neighbourhood is nothing against that, and the DP returned a single
+// segment covering everything past push 290: the confirmation stage was never
+// offered the boundary, and perfherder's alert stood there unanswered. Loosening
+// the penalty constant recovered that one step and could not fix the shape of the
+// problem, which is that one number cannot describe a series whose noise varies
+// fourfold across it.
+//
+// Recursion fixes it by construction: each stretch is scored against a scale
+// estimated inside that stretch. The first split takes out the biggest move, and
+// what was invisible beside it becomes obvious once the halves are scored on their
+// own. Cost is O(n) per level of recursion, so a series is O(n·k) rather than the
+// DP's O(n²k) — which is why the grid, its size constant, the segment-count
+// ceiling and the variance floor are all gone with it.
+// A proposed cut, with the stretch it was found in. The stretch matters as much as
+// the cut: see `gateChange`, where it bounds that candidate's pool and nobody
+// else's.
+export type Candidate = {
+  cut: number;
+  stretchStart: number;
+  stretchEnd: number;
+};
+
+export function candidateBoundaries(values: readonly number[]): Candidate[] {
+  const sums = new Float64Array(values.length + 1);
+  for (let i = 0; i < values.length; i++) sums[i + 1] = sums[i] + values[i];
+
+  const out: Candidate[] = [];
+  const visit = (lo: number, hi: number): void => {
+    if (hi - lo < MIN_WINDOW_PUSHES * 2) return;
+    const best = strongestCut(values, sums, lo, hi);
+    if (!best || best.statistic < CUSUM_THRESHOLD) return;
+    out.push({ cut: best.cut, stretchStart: lo, stretchEnd: hi });
+    visit(lo, best.cut);
+    visit(best.cut, hi);
+  };
+  visit(0, values.length);
+  return out.sort((a, b) => a.cut - b.cut);
 }
 
 // ---------------------------------------------------------------------------
@@ -396,29 +352,43 @@ type Confirmation = Pick<
 
 // Which cut in this window separates it best? The step's index, re-estimated.
 //
-// The segmentation answers this with the variance cost, and a single bad job can
-// buy the answer. Observed on autoland signature 299010 (tresize, 2026-07-23):
-// one push's three runs came back 8.20 / 6.26 / 8.29, and the boundary landed on
-// *it* rather than on the real step eight pushes later. Holding that one push
-// out of the pre-step segment kept that segment's variance at 0.0028 instead of
-// 0.0085, worth ~65 in cost over its 58 pushes, while dropping it into the
-// post-step segment cost only ~43 — that segment already spanning the real step,
-// so its variance was large either way. One low job won by 17.
+// Could the rank test clear α at these pool sizes at all?
 //
-// The confirmation stage can't catch that, because a ±24-push window straddles
-// the real step from either index: the test says "a step is in here" and the
-// index says where, and only the index is wrong. What that cost downstream was
-// the notch drawn ten minutes early, a delta understating the step (−3.4%
-// against −4.5%, seven pushes still at the old level sitting in the "after"
-// pool) and the wrong pair of pushes pinned by a click.
+// The Mann-Whitney U is a rank statistic, so each pair of pool sizes has a floor on
+// the p-value it can produce *however cleanly* the two groups separate: 0.030 at 4
+// against 4, 0.012 at 5 against 5, 0.006 at 4 against 10. Asking the test itself —
+// two perfectly separated pools of the right sizes — keeps this honest with whatever
+// `mannWhitneyU` does about ties and continuity, instead of restating its arithmetic
+// here and drifting from it.
+function canReachAlpha(nBefore: number, nAfter: number): boolean {
+  if (nBefore < 1 || nAfter < 1) return false;
+  const before = Array.from({ length: nBefore }, (_, i) => i);
+  const after = Array.from({ length: nAfter }, (_, i) => nBefore + i);
+  const test = mannWhitneyU(before, after);
+  return test !== null && test.pValue < CHANGE_ALPHA;
+}
+
+// A proposed cut is not a reliable index. One bad run walks it: observed on
+// autoland signature 299010 (tresize, 2026-07-23), where one push's three runs came
+// back 8.20 / 6.26 / 8.29 and the boundary landed on *it* rather than on the real
+// step eight pushes later, because the segmentation that then proposed cuts scored
+// variance and holding that one push out of the pre-step segment was worth more than
+// putting it into the post-step one cost. The CUSUM scan that proposes cuts now is
+// less easily fooled — a mean shift weighted by pool size, against a median-based
+// scale — but it is still a mean, and a single bad push still pulls it.
 //
-// So the index is re-estimated with a rank statistic instead: the cut that
-// separates the window's two sides most cleanly, by the same Mann-Whitney the
-// confirmation runs. Ranks don't care *how far* the bad job fell, only that it is
-// one value out of place among ~48, so on the fixture above the peak sits on the
-// real step rather than on the outlier. Re-minimizing the variance cost inside
-// the window does not work — it picks the outlier again, for the same reason it
-// picked it in the first place.
+// The confirmation stage can't catch that either way, because a ±24-push window
+// straddles the real step from either index: the test says "a step is in here" and
+// the index says where, and only the index is wrong. What that cost downstream was
+// the notch drawn ten minutes early, a delta understating the step (−3.4% against
+// −4.5%, seven pushes still at the old level sitting in the "after" pool) and the
+// wrong pair of pushes pinned by a click.
+//
+// So the index is re-estimated with a rank statistic: the cut that separates the
+// window's two sides most cleanly, by the same Mann-Whitney the confirmation runs.
+// Ranks don't care *how far* the bad push fell, only that it is one value out of
+// place among ~48, so on the fixture above the peak sits on the real step rather
+// than on the outlier.
 //
 // **Cliff's delta and not |z|**, though the two rank the cuts almost identically.
 // A z is standardized by a null deviation that grows with `n1 · n2`, so of two
@@ -429,24 +399,32 @@ type Confirmation = Pick<
 // peaks one short of the step, trading a pair of misranked values for a better
 // balanced pool. δ is a fraction of pairs, so balance doesn't enter into it.
 //
-// **Estimation, not testing.** The gate stays the test at the segmentation's own
-// boundary — the one p-value in here that wasn't chosen after looking at the
-// data — so relocation cannot add a change this file would not otherwise have
-// found. It moves where a change is reported and which numbers describe it. The
-// p-value reported with it comes from the split that separates best out of ~37,
-// so it reads as "how cleanly do the two sides separate" and not as a
-// false-positive rate.
+// **Estimation, not testing.** The gate stays the test at the proposed cut — the one
+// p-value in here that wasn't chosen after looking at the data — so relocation
+// cannot add a change this file would not otherwise have found. It moves where a
+// change is reported and which numbers describe it. The p-value reported with it
+// comes from the split that separates best out of ~40, so it reads as "how cleanly
+// do the two sides separate" and not as a false-positive rate.
 //
-// Cuts stay MIN_WINDOW_PUSHES from both ends of the window, so the estimate
-// never rests on fewer pushes than the test itself would accept, and the notch
-// stays inside its own bar. A step within six pushes of the window's edge is
-// therefore not reachable — but the candidate is at most WINDOW_PUSHES from it to
-// begin with, so this bounds an error rather than introducing one.
+// **Any split the test could reach α at is a candidate location**, which is looser
+// than the gate's MIN_WINDOW_PUSHES a side and deliberately so. The proposal stage
+// cannot place a cut closer than MIN_WINDOW_PUSHES to the end of the stretch it is
+// scanning, so when the step is closer than that — at the start of the plotted
+// range, or a few pushes after another change — the sharpest *reachable* cut sits
+// beside the step with the step inside one of its pools. Holding the estimate to the
+// same floor would leave it there, reporting a real change at the wrong push, with a
+// delta diluted by the values on the wrong side of it and a click pinning two
+// pushes that are both after the step. Letting it slide to a 5-vs-10 split instead
+// reports the step where it is. What bounds the slide is arithmetic rather than a
+// constant: `canReachAlpha` asks the rank test itself what the smallest p-value at
+// those two pool sizes even is, and a split that could not clear α however cleanly
+// it separates is not somewhere to put a mark. That works out at three pushes as the
+// hard floor, and the relocated split then has to clear α for real below.
 //
 // On a tie the cut nearest the candidate wins, the candidate itself included.
 // Ties are real: δ saturates at 1 as soon as a split separates the window
-// perfectly, and where two adjacent splits both do there is nothing in the data
-// to choose between them, so the segmentation's opinion is as good as any.
+// perfectly, and where two adjacent splits both do there is nothing in the data to
+// choose between them, so the proposal's opinion is as good as any.
 export function relocateBoundary(
   values: readonly number[],
   windowStart: number,
@@ -461,7 +439,8 @@ export function relocateBoundary(
   // from it — including a tie with itself.
   let bestCut = candidate;
   let best = separation(candidate);
-  for (let cut = windowStart + MIN_WINDOW_PUSHES; cut <= windowEnd - MIN_WINDOW_PUSHES; cut++) {
+  for (let cut = windowStart + 1; cut < windowEnd; cut++) {
+    if (!canReachAlpha(cut - windowStart, windowEnd - cut)) continue;
     const delta = separation(cut);
     if (
       delta > best ||
@@ -474,84 +453,96 @@ export function relocateBoundary(
   return bestCut;
 }
 
-// How far a candidate's window may reach on each side: the nearest boundary that
-// still leaves MIN_WINDOW_PUSHES between itself and the candidate.
+// How far a candidate's window may reach on each side: to the nearest *accepted*
+// change, or to the end of the series.
 //
-// Clipping at a neighbouring boundary is what a window has to do — a pool that
-// crosses another step averages two levels and describes neither — but clipping
-// at the *immediate* neighbour lets a short outlier segment silence the real step
-// beside it. The segmentation isolates a bad push readily (that is what
-// MIN_SEGMENT allows it to do, and rejecting the boundaries around it is the
-// confirmation stage's job), and when it does that within six pushes of a real
-// step, both candidates die on the pool-size check: the step's own window is
-// clipped to the four or five pushes between it and the blip, and the blip's is
-// clipped to the same handful the other way. Neither says anything, so a step
-// with thirty clean pushes either side of it goes unmarked because something
-// twitched four pushes earlier. Synthetically reproducible, and the graph's most
-// annoying failure is the one where nothing is drawn.
+// A pool must not cross a step, or it averages two levels and describes neither.
+// The question is what counts as a step while the answer is still being computed,
+// and the version of this that scored candidate boundaries as walls got it wrong:
+// the segmentation fences off a bad push readily, and a fenced-off outlier four
+// pushes from a real step left the step's window clipped to those four pushes and
+// the outlier's clipped to the same four the other way. Both died on the pool-size
+// check, so a step with thirty clean pushes either side of it went unmarked because
+// something twitched four pushes earlier. Exempting boundaries closer than
+// MIN_WINDOW_PUSHES patched the common case and left a band just past it.
 //
-// So a boundary closer than MIN_WINDOW_PUSHES is not treated as a wall; the pool
-// absorbs the pushes beyond it and reaches for the next boundary instead. This
-// is the one place a window can cross a boundary, and what it can cross is at
-// most five pushes' worth — a rank test carries five contaminating values out of
-// twenty-four without changing its mind, which is exactly why the test is a rank
-// test. A boundary with six or more pushes behind it is still a wall.
-//
-// **What this does not fix**, and graphs-todo.md carries as deferred: a wall at
-// exactly MIN_WINDOW_PUSHES leaves a legal pool of six that may still be the
-// blip's, one of whose values is the bad push — enough to keep the p-value off
-// 0.01 and silence the step anyway. Reproducible from the fixture in
-// changes.test.ts ("is not silenced by an outlier segmented off next to the
-// step") by moving the step one push further away. The rule that would cover it is
-// "only a *confirmed* change is a wall", which means confirming greedily
-// strongest-first with the walls growing as it goes, and that is a different
-// algorithm rather than a wider constant.
-function windowLimits(boundaries: readonly number[], at: number): [number, number] {
-  let low = boundaries[0];
-  let high = boundaries[boundaries.length - 1];
-  for (const boundary of boundaries) {
-    if (boundary <= at - MIN_WINDOW_PUSHES) low = boundary;
-    else if (boundary >= at + MIN_WINDOW_PUSHES) {
-      high = boundary;
+// Only an *accepted* change is a wall, which is the rule that covers all of it: a
+// candidate no test has confirmed has no standing to stop another candidate being
+// tested, and the outlier above is never confirmed — it can't be, a rank test over
+// pools that differ by one value says so. `detectChanges` therefore confirms
+// greedily, walls growing as changes are accepted, which is also what lets a
+// candidate that failed against a wide window be retried against a narrow one: a
+// regression and its backout are each other's evidence, and each looks like nothing
+// until the other is a wall.
+function wallsAround(walls: readonly number[], at: number): [number, number] {
+  let low = 0;
+  let high = walls[walls.length - 1];
+  for (const wall of walls) {
+    if (wall <= at) low = wall;
+    else {
+      high = wall;
       break;
     }
   }
   return [low, high];
 }
 
-// Does a candidate boundary survive a test on the pushes either side?
+// Does a candidate survive a test on the pushes either side? Two halves, because
+// the greedy loop in `detectChanges` runs the first for every candidate on every
+// pass and the second only for the one it accepts.
 //
-// A **fixed** window of up to WINDOW_PUSHES a side, clipped to the neighbouring
-// boundaries. perf.webkit.org instead grows a window outward from ±2 until its
-// t-test turns significant and reports that window — which is optional
-// stopping, so the p-value it prints is not the false-positive rate it looks
-// like, and the means it prints come from the smallest sample that happened to
-// clear the bar rather than from the best one available. A fixed window has one
-// pool, one estimate and one p-value, all describing the same thing. What it
-// gives up is perf.webkit.org's incidental reading of "how much data it took to
-// see this"; the bar's extent here is just the evidence, not a measure of
-// confidence.
-function confirmChange(
+// A **fixed** window of up to WINDOW_PUSHES a side, clipped to the walls.
+// perf.webkit.org instead grows a window outward from ±2 until its t-test turns
+// significant and reports that window — which is optional stopping, so the p-value
+// it prints is not the false-positive rate it looks like, and the means it prints
+// come from the smallest sample that happened to clear the bar rather than from the
+// best one available. A fixed window has one pool, one estimate and one p-value,
+// all describing the same thing. What it gives up is perf.webkit.org's incidental
+// reading of "how much data it took to see this"; the bar's extent here is just the
+// evidence, not a measure of confidence.
+type Gate = {
+  windowStart: number;
+  windowEnd: number;
+  test: MannWhitneyResult;
+};
+
+function gateChange(
   values: readonly number[],
-  at: number,
-  lowLimit: number,
-  highLimit: number,
-): Confirmation | null {
-  const windowStart = Math.max(lowLimit, at - WINDOW_PUSHES);
-  const windowEnd = Math.min(highLimit, at + WINDOW_PUSHES);
+  candidate: Candidate,
+  walls: readonly number[],
+): Gate | null {
+  const at = candidate.cut;
+  const [wallLow, wallHigh] = wallsAround(walls, at);
+  // Two different bounds, for two different reasons. The walls are what a pool must
+  // not cross — an accepted change means the levels either side of it are not the
+  // same thing. The stretch is where this candidate was *found*, and using it keeps
+  // the pool inside the region the proposal stage was talking about: a cut that only
+  // exists because its parent split took a bigger move out of the way should be
+  // tested against the half it lives in, not against both. It is also what lets the
+  // two ends of a blip bootstrap each other — see `detectChanges`.
+  const windowStart = Math.max(wallLow, candidate.stretchStart, at - WINDOW_PUSHES);
+  const windowEnd = Math.min(wallHigh, candidate.stretchEnd, at + WINDOW_PUSHES);
   if (at - windowStart < MIN_WINDOW_PUSHES || windowEnd - at < MIN_WINDOW_PUSHES) return null;
 
-  // The gate, at the segmentation's own boundary. See `relocateBoundary` for why
-  // the relocated split is not what decides there is a step here.
-  const gate = mannWhitneyU(values.slice(windowStart, at), values.slice(at, windowEnd));
-  // `gate.significant` is the 0.05 the rest of the app reports against; this
-  // wants its own, stricter bar. See CHANGE_ALPHA.
-  if (!gate || gate.pValue >= CHANGE_ALPHA) return null;
+  // At the candidate's own index. See `relocateBoundary` for why the relocated
+  // split is not what decides there is a step here.
+  const test = mannWhitneyU(values.slice(windowStart, at), values.slice(at, windowEnd));
+  // `test.significant` is the 0.05 the rest of the app reports against; this wants
+  // its own, stricter bar. See CHANGE_ALPHA.
+  if (!test || test.pValue >= CHANGE_ALPHA) return null;
+  return { windowStart, windowEnd, test };
+}
 
+function describeChange(
+  values: readonly number[],
+  at: number,
+  gate: Gate,
+): Confirmation | null {
+  const { windowStart, windowEnd } = gate;
   const index = relocateBoundary(values, windowStart, windowEnd, at);
   const before = values.slice(windowStart, index);
   const after = values.slice(index, windowEnd);
-  const test = index === at ? gate : mannWhitneyU(before, after);
+  const test = index === at ? gate.test : mannWhitneyU(before, after);
   // The relocated split has to clear the same bar, which is not a second bite at
   // the apple: requiring *both* splits to pass can only ever remove a change
   // this file would have drawn, never add one. What it buys is a card that never
@@ -583,72 +574,106 @@ function confirmChange(
 
 // Every step in one series, in time order.
 //
-// `lowerIsBetter` comes from the signature's own metadata and decides only
-// which steps are regressions — never the sign of the delta on its own, for the
-// same reason compare.ts refuses to (half of perfherder's metrics are
-// higher-is-better).
+// `lowerIsBetter` comes from the signature's own metadata and decides only which
+// steps are regressions — never the sign of the delta on its own, for the same
+// reason compare.ts refuses to (half of perfherder's metrics are higher-is-better).
+//
+// The loop is greedy forward selection: gate every candidate against the walls as
+// they stand, accept the one with the strongest evidence, make its index a wall,
+// and go round again. Three things fall out of it that the previous pass in
+// boundary order had to handle by hand or couldn't handle at all:
+//
+//   - **A candidate that fails against a wide window gets retried against a narrow
+//     one.** A regression and its backout dilute each other while both are
+//     unconfirmed; accepting either one makes the other visible.
+//   - **No unconfirmed candidate can veto a confirmed one.** See `wallsAround` for
+//     the fenced-off outlier this fixes, which cost a whole step twice over.
+//   - **One step can't be marked twice.** Once accepted, a change is a wall, so a
+//     candidate within MIN_WINDOW_PUSHES of it no longer has a pool on that side —
+//     which is the same span the neighbourhood dedupe this replaces had to
+//     special-case, and it no longer needs a rule about direction to avoid eating a
+//     genuine blip: a step at least MIN_WINDOW_PUSHES away still has its pool.
+//
+// Cost is `O(k²)` gates and `O(k)` relocations for k candidates, against `O(k)`
+// gates before. Both are small next to what the proposal stage used to cost: 6 ms
+// for the 752-push fixture, which has 32 candidates, where the dynamic program alone
+// took 17.
 export function detectChanges(
   pushes: readonly PushGroup[],
   lowerIsBetter: boolean,
 ): DetectedChange[] {
   if (pushes.length < MIN_WINDOW_PUSHES * 2) return [];
   const values = pushes.map((p) => p.mean);
-  const boundaries = segmentValues(values);
 
-  const out: DetectedChange[] = [];
-  for (let b = 1; b < boundaries.length - 1; b++) {
-    const at = boundaries[b];
-    const [lowLimit, highLimit] = windowLimits(boundaries, at);
-    const confirmed = confirmChange(values, at, lowLimit, highLimit);
-    if (!confirmed) continue;
-    const before = pushes[confirmed.index - 1];
-    const after = pushes[confirmed.index];
-    out.push({
-      ...confirmed,
-      x0: pushes[confirmed.windowStart].x,
-      x1: pushes[confirmed.windowEnd - 1].x,
-      changeX: after.x,
-      // `significant` is true by construction here — `confirmChange` returned —
-      // so this asks only "which way is bad", and the two values differ by at
-      // least MIN_RELATIVE_CHANGE so it can't come back 'none'.
-      isRegression:
-        changeDirection(
-          confirmed.beforeValue,
-          confirmed.afterValue,
-          lowerIsBetter,
-          true,
-        ) === 'regression',
-      beforePushId: before.pushId,
-      afterPushId: after.pushId,
-    });
+  let pending = candidateBoundaries(values);
+  const walls = [0, values.length];
+  const confirmed: { candidate: Candidate; change: Confirmation }[] = [];
+
+  for (;;) {
+    const gated: { candidate: Candidate; gate: Gate }[] = [];
+    for (const candidate of pending) {
+      const gate = gateChange(values, candidate, walls);
+      if (gate) gated.push({ candidate, gate });
+    }
+    gated.sort((a, b) => a.gate.test.pValue - b.gate.test.pValue);
+
+    // Strongest first, and on to the next if the relocated split or the effect-size
+    // floor turns one down — a candidate rejected there stays pending, since a wall
+    // accepted later can change the answer.
+    let accepted: Candidate | null = null;
+    for (const { candidate, gate } of gated) {
+      const change = describeChange(values, candidate.cut, gate);
+      if (!change) continue;
+      confirmed.push({ candidate, change });
+      walls.push(change.index);
+      walls.sort((a, b) => a - b);
+      accepted = candidate;
+      break;
+    }
+    if (!accepted) break;
+    pending = pending.filter((candidate) => candidate !== accepted);
   }
 
-  // Two candidates can describe the same step. Their windows overlap — heavily,
-  // once a short segment between them has stopped being a wall — so one real step
-  // can be the best cut for both, and after relocation they come back on the same
-  // push or a couple of pushes apart. Drawn, that is one step marked twice: two
-  // notches, two cards in the pane saying nearly the same thing.
+  // Re-describe every change against the *final* walls. A change accepted early was
+  // gated before the later ones existed, so its window could reach across a step
+  // that is now known to be there, and the numbers on the card — a difference of
+  // means, and the pushes the bar spans — would mix two levels. The verdict is not
+  // revisited, only the description: an acceptance stands on the test that was run
+  // at the time, and if the cleaner pools no longer clear α the original
+  // description is what gets reported rather than a card contradicting its own bar.
   //
-  // So a change has to win its neighbourhood. Strongest evidence first, and a
-  // change is dropped when one already accepted is within MIN_WINDOW_PUSHES of it
-  // *in the same direction* — the same span over which the confirmation stage
-  // would have refused to treat them as separable, and the same pool either way.
-  //
-  // Direction is in the rule because of the case it must not collapse: a
-  // regression and the backout five pushes later are two changes, they are
-  // supposed to draw two bars, and the only thing that tells them apart from one
-  // step counted twice is that they point opposite ways.
-  const accepted: DetectedChange[] = [];
-  for (const change of [...out].sort((a, b) => a.pValue - b.pValue)) {
-    const sameStep = accepted.some(
-      (other) =>
-        Math.abs(other.index - change.index) < MIN_WINDOW_PUSHES &&
-        (other.index === change.index ||
-          Math.sign(other.relativeChange) === Math.sign(change.relativeChange)),
-    );
-    if (!sameStep) accepted.push(change);
-  }
-  // Sorted at the end because a relocated index no longer has to be in the order
-  // its candidate boundary was, let alone in p-value order.
-  return accepted.sort((a, b) => a.index - b.index);
+  // A refinement can in principle move an index, in which case the walls the other
+  // changes were re-described against are the pre-refinement ones. Second order, and
+  // not worth iterating to fixation over: the narrower window is a subset of the one
+  // relocation already searched, so the index only moves if it had landed beyond a
+  // wall that appeared later.
+  const described = confirmed.map(({ candidate, change }) => {
+    // Its own index is in `walls`, and a change is not a wall to itself.
+    const others = walls.filter((wall) => wall !== change.index);
+    const gate = gateChange(values, candidate, others);
+    const refined = gate && describeChange(values, candidate.cut, gate);
+    return refined ?? change;
+  });
+
+  return described
+    .map((change) => {
+      const before = pushes[change.index - 1];
+      const after = pushes[change.index];
+      return {
+        ...change,
+        x0: pushes[change.windowStart].x,
+        x1: pushes[change.windowEnd - 1].x,
+        changeX: after.x,
+        // `significant` is true by construction here — `describeChange` returned —
+        // so this asks only "which way is bad", and the two values differ by at
+        // least MIN_RELATIVE_CHANGE so it can't come back 'none'.
+        isRegression:
+          changeDirection(change.beforeValue, change.afterValue, lowerIsBetter, true) ===
+          'regression',
+        beforePushId: before.pushId,
+        afterPushId: after.pushId,
+      };
+    })
+    // Accepted in evidence order, drawn in time order.
+    .sort((a, b) => a.index - b.index);
 }
