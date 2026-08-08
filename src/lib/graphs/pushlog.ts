@@ -84,24 +84,37 @@ export function commitsInRange(
   const commits: Commit[] = [];
   let hiddenRevisions = 0;
   for (const push of inRange) {
-    hiddenRevisions += Math.max(0, push.revision_count - push.revisions.length);
-    for (const rev of push.revisions) {
-      const { summary, body } = splitCommitMessage(rev.comments);
-      commits.push({
-        revision: rev.revision,
-        author: authorName(rev.author),
-        summary,
-        body,
-        // From the summary, not the whole message: the body routinely mentions
-        // other bugs ("depends on bug N"), and the card is naming what this
-        // commit is, not everything it references.
-        bugs: bugsInComment(summary),
-        pushId: push.id,
-        pushTimestamp: push.push_timestamp,
-      });
-    }
+    const one = commitsOfPush(push);
+    commits.push(...one.commits);
+    hiddenRevisions += one.hiddenRevisions;
   }
   return { commits, pushCount: inRange.length, hiddenRevisions, truncated };
+}
+
+// One push's commits, and how many it didn't name. The details pane's Build
+// section shows exactly this for the selected push — the same projection as a
+// range of one, so the two lists in the pane can't drift apart.
+export function commitsOfPush(push: Push): { commits: Commit[]; hiddenRevisions: number } {
+  const commits = push.revisions.map((rev) => {
+    const { summary, body } = splitCommitMessage(rev.comments);
+    return {
+      revision: rev.revision,
+      author: authorName(rev.author),
+      summary,
+      body,
+      // From the summary, not the whole message: the body routinely mentions
+      // other bugs ("depends on bug N"), and the card is naming what this
+      // commit is, not everything it references.
+      bugs: bugsInComment(summary),
+      pushId: push.id,
+      pushTimestamp: push.push_timestamp,
+    };
+  });
+  // `revision_count` is the truth and `revisions` is capped at 20 by the
+  // serializer, so this gap is the only way to know a merge was abbreviated —
+  // `revisions.length` alone can never exceed the cap and so can never report
+  // one. See graphApi.ts, `PushSchema`.
+  return { commits, hiddenRevisions: Math.max(0, push.revision_count - push.revisions.length) };
 }
 
 // Almost every Firefox commit message starts by naming its bug, which the card

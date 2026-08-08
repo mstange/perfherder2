@@ -477,6 +477,16 @@ Volume is bounded by `MAX_RANGE_PUSHES` = 200, measured at ~1.1 KB per push
 window is 24 pushes and "since previous" is one. It is there for a comparison
 pinned across months, and when it bites the caveat line says so and links out.
 
+The rows themselves are
+[CommitList.svelte](../src/lib/graphs/CommitList.svelte), shared with the Build
+section's list of the selected push's own commits. Those were two
+implementations of the same row — each with its own message splitting, bug
+links, revision markup and truncation rule — and only one of them had the
+truncation rule right: the Build section guarded on `revisions.length > 20`,
+which the serializer's own cap makes unreachable, so a 164-commit merge showed
+twenty under a heading saying 164 and never rendered the line that would have
+explained it.
+
 One consequence worth knowing: expanded, a long list pushes the pane's remaining
 sections — Alert, Detected change, Replicate, Values, Run, Build — thousands of
 pixels down. 254 commits is ~16,000px. Collapsing restores them, and capping the

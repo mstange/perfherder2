@@ -61,8 +61,9 @@
     runRangeInPushValues,
     seriesLabel,
   } from './graphData';
-  import { bugUrl, jobsUrl, revisionUrl, shortRevision } from '../shared/links';
-  import { commitTitle, pushlogCaveat, pushlogLabel } from './pushlog';
+  import { jobsUrl, revisionUrl, shortRevision } from '../shared/links';
+  import CommitList from './CommitList.svelte';
+  import { pushlogCaveat, pushlogLabel } from './pushlog';
   import { SIGNIFICANCE_ALPHA } from '../shared/stats';
 
   type Props = { app: AppState };
@@ -483,32 +484,9 @@
               {/if}
             </p>
           {/if}
-          <ul class="pushlog-list">
-            {#each pushlogRange.commits as commit (commit.revision)}
-              <li>
-                <div class="pushlog-summary">
-                  {#if commit.bugs.length > 0}
-                    <a
-                      class="pushlog-bug"
-                      href={bugUrl(commit.bugs[0])}
-                      target="_blank"
-                      rel="noopener">Bug {commit.bugs[0]}</a
-                    >
-                  {/if}
-                  <span title={commit.body || undefined}>{commitTitle(commit)}</span>
-                </div>
-                <div class="pushlog-meta muted">
-                  {#if repoLink}<a
-                      class="mono"
-                      href={revisionUrl(repoLink, commit.revision)}
-                      target="_blank"
-                      rel="noopener">{shortRevision(commit.revision)}</a
-                    >{:else}<span class="mono">{shortRevision(commit.revision)}</span>{/if}
-                  · {commit.author}
-                </div>
-              </li>
-            {/each}
-          </ul>
+          <div class="pushlog-body">
+            <CommitList commits={pushlogRange.commits} {repoLink} />
+          </div>
         {/if}
       </details>
     {/if}
@@ -801,29 +779,8 @@
     margin: 6px 0 0 12px;
   }
 
-  .pushlog-list {
-    margin: 6px 0 0;
-    padding: 0 0 0 12px;
-    list-style: none;
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-  }
-
-  /* Two lines per commit: the title, then the revision and author. The title
-     wraps rather than truncating — a commit summary cut at the pane's width
-     loses the half that says what changed. */
-  .pushlog-summary {
-    line-height: 1.35;
-    overflow-wrap: anywhere;
-  }
-
-  .pushlog-bug {
-    margin-right: 4px;
-    white-space: nowrap;
-  }
-
-  .pushlog-meta {
-    line-height: 1.35;
+  /* Indented to the disclosure's text, so the list reads as its contents. */
+  .pushlog-body {
+    padding-left: 12px;
   }
 </style>

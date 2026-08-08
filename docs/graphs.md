@@ -95,9 +95,20 @@ which would put the twenty-commit pushlog above the value you asked about.
    than dropped only because the `bad` styling makes the rare exception jump out.
 
    **Profiles** sits between the task and the result — see below.
-6. **Build** — push time, revision, author, the pushlog link, and the commit
-   list. Last because it's the longest section by far and the least specific to
-   the dot: two dots on the same push have identical builds.
+6. **Build** — push time, revision, author, and this push's commit list. Last
+   because it's the longest section by far and the least specific to the dot:
+   two dots on the same push have identical builds.
+
+   The commit list is [CommitList.svelte](../src/lib/graphs/CommitList.svelte),
+   the same component the comparison card's inline pushlog uses — they were two
+   implementations of one row, and only one of them counted a truncated merge
+   correctly. It is *this push's* commits; the range between two pushes is the
+   card's, see [comparison.md](comparison.md), "The inline pushlog".
+
+   There used to be a "Since previous → pushlog" link here too. It built exactly
+   the range `comparePrevious` pins, and pinning now answers that inline in the
+   card along with the delta and the statistics, so the link was a trip out to
+   hg for a subset of one keypress.
 
 ### Profiles
 

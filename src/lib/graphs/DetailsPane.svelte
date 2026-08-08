@@ -25,15 +25,14 @@
   } from './graphData';
   import {
     alertSummaryUrl,
-    bugsInComment,
     bugUrl,
     jobsUrl,
-    pushLogRangeUrl,
     revisionUrl,
     shortRevision,
-    splitCommitMessage,
     taskUrl,
   } from '../shared/links';
+  import CommitList from './CommitList.svelte';
+  import { commitsOfPush } from './pushlog';
 
   type Props = { app: AppState };
   let { app }: Props = $props();
@@ -535,48 +534,30 @@
             <dt>Author</dt>
             <dd class="wrap">{app.selectedPush.author}</dd>
           {/if}
-          {#if app.previousPush && repoLink}
-            <dt>Since previous</dt>
-            <dd>
-              <a
-                href={pushLogRangeUrl(repoLink, app.previousPush.revision, sel.push.revision)}
-                target="_blank"
-                rel="noopener">pushlog</a
-              >
-            </dd>
-          {/if}
         </dl>
 
+        <!-- No "since previous → pushlog" row here any more. It built exactly
+             the range `comparePrevious` pins, and pinning now answers it in the
+             card above with the commits inline, the delta, the distributions
+             and the same link — so this was a trip out to hg for a subset of
+             one keypress. -->
         {#if app.selectedPush}
-          {@const push = app.selectedPush}
+          {@const commits = commitsOfPush(app.selectedPush)}
           <h4>
-            {push.revision_count} commit{push.revision_count === 1 ? '' : 's'}
+            {app.selectedPush.revision_count} commit{app.selectedPush.revision_count === 1
+              ? ''
+              : 's'}
           </h4>
-          <ul class="commits">
-            {#each push.revisions.slice(0, 20) as rev (rev.revision)}
-              {@const parts = splitCommitMessage(rev.comments)}
-              <li>
-                <div class="commit-summary">{parts.summary}</div>
-                <div class="muted commit-meta">
-                  {#if repoLink}
-                    <a
-                      href={revisionUrl(repoLink, rev.revision)}
-                      target="_blank"
-                      rel="noopener"
-                      class="mono">{shortRevision(rev.revision)}</a
-                    >
-                  {:else}
-                    <span class="mono">{shortRevision(rev.revision)}</span>
-                  {/if}
-                  {#each bugsInComment(parts.summary) as bug (bug)}
-                    <a href={bugUrl(bug)} target="_blank" rel="noopener">bug {bug}</a>
-                  {/each}
-                </div>
-              </li>
-            {/each}
-          </ul>
-          {#if push.revisions.length > 20}
-            <p class="muted">…and {push.revisions.length - 20} more.</p>
+          <CommitList commits={commits.commits} {repoLink} />
+          <!-- Against `revision_count`, not against the length of the list:
+               `revisions` is capped at 20 by the serializer, so a check on the
+               rendered length can never fire and a 164-commit merge used to
+               show twenty of them under a heading saying 164, with nothing to
+               say the rest existed. -->
+          {#if commits.hiddenRevisions > 0}
+            <p class="muted">
+              …and {commits.hiddenRevisions} more; treeherder names at most 20 per push.
+            </p>
           {/if}
         {:else}
           <p class="muted">Loading push details…</p>
@@ -802,21 +783,5 @@
   }
   section.change-card .cmp-sub:last-child {
     margin-top: 6px;
-  }
-  .commits {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-  }
-  .commit-summary {
-    overflow-wrap: anywhere;
-  }
-  .commit-meta {
-    display: flex;
-    gap: 8px;
-    font-size: 12px;
   }
 </style>
