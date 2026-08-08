@@ -95,6 +95,40 @@ export function profilerFromUrl(profileUrl: string, profileName?: string): strin
     : `${url}?profileName=${encodeURIComponent(profileName)}`;
 }
 
+// The profiler's benchmark-comparison view: two profiles of the same benchmark,
+// lined up so the difference between them can be read as statistics over their
+// samples rather than as two flame graphs the reader has to hold in their head.
+//
+// TODO: point this at `PROFILER_ORIGIN` once the view ships —
+// firefox-devtools/profiler#6012, still open. Production's
+// `ensureIsValidDataSource` rejects the `compare-benchmark` route until then, so
+// a link built against it lands on the profiler's error page rather than on a
+// comparison. The deploy preview is a real URL that works today and stops
+// working when the PR merges, which is the failure mode to prefer: a dead link
+// to a landed feature is one constant away from a live one, while a link to a
+// route that doesn't exist yet looks like our bug.
+const PROFILER_BENCHMARK_ORIGIN = 'https://deploy-preview-6012--perf-html.netlify.app';
+
+// Both arguments are *profiler* URLs, not artifact URLs — the view resolves each
+// one through the same path-splitting the `/compare/` view uses
+// (`getProfileFetchUrl` in `src/actions/receive-profile.ts`), which reads the
+// data source out of the first path segment and rejects anything else. So a raw
+// taskcluster URL is not accepted here and `profilerFromUrl` is the wrapper that
+// makes one acceptable.
+//
+// `profiles[]` twice, base first: the profiler parses this parameter with
+// `queryString` in `arrayFormat: 'bracket'` mode, and `URLSearchParams` produces
+// exactly what that expects once the brackets are percent-encoded.
+export function benchmarkComparisonUrl(
+  baseProfileUrl: string,
+  newProfileUrl: string,
+): string {
+  const params = new URLSearchParams();
+  params.append('profiles[]', baseProfileUrl);
+  params.append('profiles[]', newProfileUrl);
+  return `${PROFILER_BENCHMARK_ORIGIN}/compare-benchmark/?${params}`;
+}
+
 // Perfherder's alerts view, filtered to one summary. `?id=` is the whole
 // query — checked against the live view, which keeps the URL as given and shows
 // that summary alone, its own filter checkboxes notwithstanding.

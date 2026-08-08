@@ -7,10 +7,14 @@
 // file. Kept in step with treeherder deliberately — the same job opened from
 // either app should land on the same profile with the same title.
 //
+// The same rule, run over two task runs at once, is what decides whether a
+// pinned comparison can offer a *profile* comparison — see `benchmarkComparison`
+// at the bottom of this file and docs/comparison.md, "Profile comparison".
+//
 // Pure: the artifact names come from artifactsApi.ts, the URL shapes from
 // shared/links.ts. See docs/graphs.md, "Profiles".
 
-import { profilerFromUrl, taskArtifactUrl } from '../shared/links';
+import { benchmarkComparisonUrl, profilerFromUrl, taskArtifactUrl } from '../shared/links';
 
 const PROFILE_PREFIX = 'profile_';
 
@@ -109,4 +113,88 @@ export function profileLinks(artifactNames: string[], job: ProfileJob): ProfileL
           : undefined,
       ),
     }));
+}
+
+// ---------------------------------------------------------------------------
+// Benchmark profile comparison
+// ---------------------------------------------------------------------------
+
+// A raptor benchmark task post-processes its raw profile into three uploads, and
+// this is the suffix of the one the profiler's comparison view is built for:
+// label frames inserted, and each process' main thread merged into a single
+// track. The other two — `_all_processes` and `_raw_all_processes` — are the run
+// kept whole, which is what you want when *reading* one profile and not what
+// lines up against a second run.
+//
+// Producer: `profile_configs` in `testing/raptor/raptor/raptor_profiling.py`,
+// which names every upload `profile_<test name>_<suffix>.jslb.gz`.
+const COMPACT_PROFILE_SUFFIX = '_compact.jslb.gz';
+
+// "public/test_info/profile_speedometer3_compact.jslb.gz" -> "speedometer3".
+// Null for every other artifact, so this doubles as the test for "is this the
+// comparable profile".
+//
+// A suffix rule rather than a list of benchmarks: the name is composed from the
+// raptor test's own name, so anything that turns profiling on gets one, and an
+// allowlist here would silently withhold the feature from the next benchmark to
+// do so. What the rule *does* pin down is that both sides carry the same
+// benchmark's profile — see `benchmarkComparison`.
+export function compactBenchmarkName(artifact: string): string | null {
+  const name = fileName(artifact);
+  if (!name.startsWith(PROFILE_PREFIX) || !name.endsWith(COMPACT_PROFILE_SUFFIX)) return null;
+  const benchmark = name.slice(PROFILE_PREFIX.length, -COMPACT_PROFILE_SUFFIX.length);
+  return benchmark || null;
+}
+
+// One side of a profile comparison: which task run it is, and what that run
+// uploaded.
+export type ProfileTaskRun = {
+  taskId: string;
+  runId: number;
+  artifactNames: string[];
+};
+
+export type BenchmarkComparison = {
+  // The artifact name, identical on both sides.
+  artifact: string;
+  // Its benchmark, for saying which profiles the link opens.
+  benchmark: string;
+  url: string;
+};
+
+// The profiler's benchmark comparison between two task runs, or null when there
+// isn't one to offer.
+//
+// **Both sides have to carry the same artifact name.** That is the whole
+// eligibility rule, and it is stricter than "each side has a compact profile" on
+// purpose: the name carries the benchmark, and a speedometer3 profile compared
+// against a jetstream3 one is two unrelated sample sets in a view whose entire
+// output is the difference between them. It falls out of the same rule that two
+// counterparts of one test on different platforms — the comparison this is
+// mostly used for — match without anything having to say so.
+//
+// Null for two points in the *same* run as well: the two sides would be one
+// profile compared against itself, which is a table of zeroes. A `replicate`
+// comparison is exactly that case, and so is any pair of replicates of one job.
+export function benchmarkComparison(
+  base: ProfileTaskRun,
+  next: ProfileTaskRun,
+): BenchmarkComparison | null {
+  if (base.taskId === next.taskId && base.runId === next.runId) return null;
+  const shared = new Set(next.artifactNames);
+  // Sorted so a task that somehow uploaded two comparable profiles picks the
+  // same one on every render rather than following artifact-list order.
+  const artifact = base.artifactNames
+    .filter((name) => compactBenchmarkName(name) !== null && shared.has(name))
+    .sort()[0];
+  if (artifact === undefined) return null;
+  return {
+    artifact,
+    // Non-null by construction: `artifact` passed the filter above.
+    benchmark: compactBenchmarkName(artifact) as string,
+    url: benchmarkComparisonUrl(
+      profilerFromUrl(taskArtifactUrl(base.taskId, base.runId, artifact)),
+      profilerFromUrl(taskArtifactUrl(next.taskId, next.runId, artifact)),
+    ),
+  };
 }

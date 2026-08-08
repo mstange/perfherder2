@@ -360,6 +360,77 @@ Layout, top to bottom, in one canvas:
   at the cost of a labelled empty box in every narrow-pool case. See design.md,
   "Layout stability", for the rule this bends.)
 
+## Profile comparison
+
+A pinned comparison whose two runs both uploaded the same benchmark's profile
+gets a fourth link, **profile comparison**, into the Firefox Profiler's
+benchmark-comparison view. That view does for the profiles what this pane does
+for the scores: lines the two runs up subtest by subtest, so "it got 1.4% slower"
+becomes "TodoMVC-Svelte-Complex-DOM did, and here is where the time went".
+
+Reaching it by hand meant opening both jobs on treeherder, finding the compact
+profile in each one's artifact list, opening the profiler's compare form and
+pasting two URLs into it — and getting the base and the new the right way round
+by hand.
+
+**Eligibility is one rule: both runs uploaded an artifact with the same name,
+matching `profile_<benchmark>_compact.jslb.gz`.** Everything else follows from
+it.
+
+- **`_compact` and not its two siblings.** A raptor benchmark task post-processes
+  its raw profile into three uploads (`profile_configs` in
+  `testing/raptor/raptor/raptor_profiling.py`): `_compact` has label frames
+  inserted and each process' main thread merged into one track, which is the
+  shape the comparison view is built for. `_all_processes` and
+  `_raw_all_processes` are the run kept whole — better for *reading* one profile,
+  which is what the Run section's Profiles list is for.
+- **A suffix rule, not a list of benchmarks.** The name is composed from the
+  raptor test's own name, so anything that turns profiling on gets one; an
+  allowlist here would silently withhold the feature from the next benchmark to
+  do so. (PerfCompare gates on `suite === 'speedometer3'` instead.)
+- **The same name on both sides is what makes the pair meaningful.** The name
+  carries the benchmark, and a speedometer3 profile against a jetstream3 one is
+  two unrelated sample sets in a view whose whole output is the difference
+  between them. Two counterparts of one test on different platforms — a `series`
+  comparison, and a fair thing to want — match without anything having to say so.
+- **Never for two points in the same run**, which is one profile against itself:
+  a table of zeroes. That is every `replicate` comparison.
+
+**The two runs are the two the user clicked.** PerfCompare has to choose a run
+per side — its row knows a list of job ids and nothing about which of them the
+reader means — so it preselects each side's median and offers a dialog to
+override. Here the selection *is* a run: the dot was clicked, its value is in the
+pane, and the distribution above it shows where that run sits among its push's
+retriggers. So the honest link is between those two runs, and picking a different
+pair is clicking a different dot rather than reaching into a second picker for a
+choice the graph already makes visible. Base is the earlier run, per `sideOrder`,
+because the view subtracts in that direction.
+
+**Two fetches per side, and only when pinned.** The link needs each run's task
+id (from the job) and then its artifact list, which is two round trips the
+selection already pays for on its own side (see graphs.md, "Profiles") and two
+more for the other end. Following the *hover* preview would spend them on every
+dot the pointer crosses, for a link that goes away before it can be clicked — so
+`AppState.profileComparison` reads `comparedSelection`, which is already gated on
+`comparisonSource === 'pinned'`.
+
+The link therefore appears a beat after the rest of the card. That is inside the
+budget the links row already lives with: `pushlog` waits on `/repository/` and
+`perf.compare` on the series metadata, so this row has never been a pure function
+of the two points. Growing it is also the mildest kind of movement here — it is
+the last thing in the card, and only a pinned comparison has one.
+
+**The URL points at a deploy preview for now.** The view is
+[firefox-devtools/profiler#6012](https://github.com/firefox-devtools/profiler/pull/6012),
+still open; production's `ensureIsValidDataSource` rejects the `compare-benchmark`
+route, so a link built against `profiler.firefox.com` would land on the
+profiler's error page. `PROFILER_BENCHMARK_ORIGIN` in `links.ts` is the one
+constant to change when it ships. Each `profiles[]` entry is a *profiler* URL
+rather than an artifact URL — the view resolves it through the same path-splitting
+`/compare/` uses, which reads the data source out of the first path segment — so
+each one is a `/from-url/` URL wrapping a percent-encoded taskcluster URL, and
+the query encoding is a second layer on top of that.
+
 ## Deviations from PerfCompare
 
 - **Direct KDE evaluation, not FFT.** PerfCompare convolves on a 1024-point
@@ -417,11 +488,13 @@ Pure, and unit tested:
   geometry. The jitter hash itself is `chart.ts::jitterAt`, since both charts
   scatter overlapping dots with it.
 - `compare.ts` — kinds, side ordering, pools, labels, outgoing links.
+- `artifacts.ts::compactBenchmarkName` / `benchmarkComparison` — which artifact a
+  profile comparison can be built from, and the link when both runs have one.
 - `graphData.ts::pushValues` / `indexInPushValues` / `replicateGroups` — the
   pooling rule itself, which belongs with the push/run/replicate structure, and
   the same values grouped by job for the chip list.
-- `links.ts::perfCompareUrl` / `perfCompareSubtestsUrl`, and
-  `chart.ts`'s signed/percent/p-value formatting.
+- `links.ts::perfCompareUrl` / `perfCompareSubtestsUrl` /
+  `benchmarkComparisonUrl`, and `chart.ts`'s signed/percent/p-value formatting.
 
 Not pure:
 
@@ -431,7 +504,8 @@ Not pure:
 - `DistributionChart.svelte` — the canvas, its size, and the HTML half of the
   legend.
 - `appState.svelte.ts` — `comparedPoint`, `hoveredPoint`, `comparisonSource`,
-  `comparison`, `comparisonMarkedHere`.
+  `comparison`, `comparisonMarkedHere`, and `profileComparison` with the two
+  lookups behind it.
 - `ComparisonSection.svelte` — the comparison card, in all three of its
   states (compared, marked-here, and the hint that says the gesture exists).
 - `DetailsPane.svelte` — the push distribution, and everything else in the

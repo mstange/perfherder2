@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  benchmarkComparisonUrl,
   bugsInComment,
   jobsUrl,
   perfCompareSubtestsUrl,
@@ -99,6 +100,37 @@ describe('profilerFromUrl', () => {
       'https://profiler.firefox.com/from-url/https%3A%2F%2Fexample.com%2Fp.json' +
         '?profileName=talos%20(ABC.0)',
     );
+  });
+});
+
+describe('benchmarkComparisonUrl', () => {
+  // The profiler reads this parameter with `queryString` in bracket-array mode,
+  // so the name has to be `profiles[]` on both entries and the order has to be
+  // base first — the view subtracts in that direction.
+  it('passes both profiles as profiles[], base first', () => {
+    const url = new URL(
+      benchmarkComparisonUrl('https://profiler.firefox.com/from-url/a', 'https://p/b'),
+    );
+    expect(url.pathname).toBe('/compare-benchmark/');
+    expect(url.searchParams.getAll('profiles[]')).toEqual([
+      'https://profiler.firefox.com/from-url/a',
+      'https://p/b',
+    ]);
+  });
+
+  // Each entry is itself a `/from-url/` URL wrapping a percent-encoded artifact
+  // URL, so the query encoding here is the *second* layer. Getting this wrong
+  // gives a link that parses and then fetches a truncated artifact URL.
+  it('survives a nested from-url profile url intact', () => {
+    const inner = profilerFromUrl(
+      taskArtifactUrl('eSFQ0OC9R665QYfdgtWgKA', 0, 'public/test_info/p.jslb.gz'),
+    );
+    const url = new URL(benchmarkComparisonUrl(inner, inner));
+    expect(url.searchParams.getAll('profiles[]')).toEqual([inner, inner]);
+    // Doubly encoded in the raw query string: `%253A` is a colon inside a
+    // `from-url` segment inside a query parameter.
+    expect(url.search).toContain('profiles%5B%5D=https%3A%2F%2Fprofiler.firefox.com%2Ffrom-url%2F');
+    expect(url.search).toContain('%253A%252F%252Ffirefox-ci-tc.services.mozilla.com');
   });
 });
 

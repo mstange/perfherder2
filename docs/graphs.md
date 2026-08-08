@@ -142,6 +142,11 @@ Three deliberate deviations, all in [artifacts.ts](../src/lib/graphs/artifacts.t
   job has `profile_build_resources.json`), so letting it appear under the
   reader's eyes would shift the pane on nearly every click.
 
+The same artifact list feeds one thing that isn't a link *to* a profile: when a
+pinned comparison's two runs both uploaded the same benchmark's compact profile,
+the comparison card offers a comparison *between* them. See comparison.md,
+"Profile comparison".
+
 ### Where the artifact list comes from
 
 `GET https://firefox-ci-tc.services.mozilla.com/api/queue/v1/task/<taskId>/runs/<runId>/artifacts`
@@ -153,7 +158,7 @@ calls. See [artifactsApi.ts](../src/lib/graphs/artifactsApi.ts).
   built without the run number points at the wrong attempt's files. `task_id`
   and `retry_id` are both `v.optional` and absent together — they come from one
   `taskcluster_metadata` relation the view skips when it's missing — so
-  `AppState.selectedTaskRun` is the one place that checks for the pair.
+  `appState.svelte.ts::taskRunOf` is the one place that checks for the pair.
 - **Only `name` is declared**, against this codebase's usual habit of
   transcribing the whole serializer. The rows also carry `contentType`,
   `expires` and `storageType`, none of which we show, and every declared field

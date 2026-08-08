@@ -21,7 +21,13 @@ import {
 } from './graphApi';
 import { alertsByPush, alertsForSeries, type SeriesAlert } from './alerts';
 import { detectChanges, type DetectedChange } from './changes';
-import { profileLinks, type ProfileLink } from './artifacts';
+import {
+  benchmarkComparison,
+  profileLinks,
+  type BenchmarkComparison,
+  type ProfileLink,
+  type ProfileTaskRun,
+} from './artifacts';
 import { fetchTaskArtifactNames } from './artifactsApi';
 import type { RepoLinkInfo } from '../shared/links';
 import { fetchAlertSummaries } from './alertsApi';
@@ -49,7 +55,12 @@ import {
   type Range,
   type SeriesSymbol,
 } from '../shared/chart';
-import { buildComparison, type CompareSide, type Comparison } from './compare';
+import {
+  buildComparison,
+  type CompareSide,
+  type Comparison,
+  type ComparisonSide,
+} from './compare';
 import { MIN_CURVE_VALUES, stableScales, type StableScales } from './distribution';
 import { EMPTY_FILTER, isFilterActive, sameFilter, type Filter } from '../picker/filter';
 import {
@@ -419,10 +430,17 @@ export class AppState {
     return this.pushCache.get(`${sel.entry.ref.repository}|${sel.push.pushId}`) ?? null;
   });
 
+  // A run's job record, once the lookup has landed. Two runs want one now — the
+  // selection, and the pinned comparison's other end — so the cache key recipe
+  // is written once here rather than at each reader.
+  private jobOf(repository: string, jobId: number | null): Job | null {
+    if (jobId === null) return null;
+    return this.jobCache.get(`${repository}|${jobId}`) ?? null;
+  }
+
   selectedJob = $derived.by((): Job | null => {
     const sel = this.selection;
-    if (!sel || sel.run.jobId === null) return null;
-    return this.jobCache.get(`${sel.entry.ref.repository}|${sel.run.jobId}`) ?? null;
+    return sel ? this.jobOf(sel.entry.ref.repository, sel.run.jobId) : null;
   });
 
   // Why the job details are or aren't on screen. `expired` is the common case
@@ -439,13 +457,21 @@ export class AppState {
       : 'loading';
   });
 
-  // The task run whose artifacts belong to the selection, when we know it. Both
-  // fields are optional on `Job` and absent together, so this is the one place
-  // that checks — everything downstream takes the pair or nothing.
-  private selectedTaskRun = $derived.by((): { taskId: string; runId: number } | null => {
-    const job = this.selectedJob;
-    if (!job || job.task_id === undefined || job.retry_id === undefined) return null;
-    return { taskId: job.task_id, runId: job.retry_id };
+  // The task run whose artifacts belong to the selection, when we know it.
+  // `taskRunOf` is where the optional-and-absent-together pair is checked;
+  // everything downstream takes the pair or nothing.
+  private selectedTaskRun = $derived(taskRunOf(this.selectedJob));
+
+  // The same for the pinned comparison's other end, which needs its artifact
+  // list for the profile-comparison link below.
+  //
+  // Pinned only, via `comparedSelection`: `comparison` also covers the hover
+  // preview, and following that would issue a job lookup and an artifact list
+  // for every dot the pointer crosses.
+  private comparedTaskRun = $derived.by((): TaskRun | null => {
+    const other = this.comparedSelection;
+    if (!other) return null;
+    return taskRunOf(this.jobOf(other.entry.ref.repository, other.run.jobId));
   });
 
   // Firefox Profiler links for the selected run's `profile_*` artifacts. Empty
@@ -455,7 +481,7 @@ export class AppState {
     const job = this.selectedJob;
     const run = this.selectedTaskRun;
     if (!job || !run) return [];
-    const names = this.artifactCache.get(`${run.taskId}|${run.runId}`);
+    const names = this.artifactCache.get(artifactKey(run));
     if (!names) return [];
     return profileLinks(names, {
       job_type_name: job.job_type_name,
@@ -470,10 +496,49 @@ export class AppState {
   selectedProfilesStatus = $derived.by((): 'absent' | 'loading' | 'loaded' | 'failed' => {
     const run = this.selectedTaskRun;
     if (!run) return 'absent';
-    const key = `${run.taskId}|${run.runId}`;
+    const key = artifactKey(run);
     if (this.artifactCache.has(key)) return 'loaded';
     return this.artifactLookupFailed.has(key) ? 'failed' : 'loading';
   });
+
+  // The Firefox Profiler's benchmark comparison for the two pinned points, when
+  // both of their runs uploaded the same benchmark's comparable profile. Null the
+  // rest of the time, which is most of the time: it takes a profiling task on
+  // both sides, and neither talos nor an ordinary browsertime run produces one.
+  //
+  // **Pinned comparisons only.** A hovered one would be a link the pointer takes
+  // away again before it can be clicked, and it would put a job lookup and an
+  // artifact list on every dot crossed on the way there.
+  //
+  // **The two runs are the two the user clicked**, not a representative pair
+  // chosen from each push. PerfCompare has to pick — its row knows a list of job
+  // ids and nothing about which of them the reader means — and picks each side's
+  // median, with a dialog to override it. Here the selection *is* a run: the dot
+  // was clicked, its value is in the pane, and the distribution above it shows
+  // where that run sits among its push's retriggers. So the honest link is
+  // between those two runs, and choosing a different pair is clicking a different
+  // dot rather than reaching into a second picker for a choice the graph already
+  // makes visible.
+  profileComparison = $derived.by((): BenchmarkComparison | null => {
+    if (this.comparisonSource !== 'pinned') return null;
+    const cmp = this.comparison;
+    if (!cmp) return null;
+    const base = this.profileRunFor(cmp.base);
+    const next = this.profileRunFor(cmp.next);
+    return base && next ? benchmarkComparison(base, next) : null;
+  });
+
+  // One side of that comparison, if its job and its artifact list have both
+  // landed. Reads whichever of the two runs the side turned out to be — base and
+  // next are ordered by time, so either can be the selection (compare.ts,
+  // `sideOrder`) — which is why this goes through `jobOf` rather than through
+  // `selectedJob` and a compared-side twin.
+  private profileRunFor(side: ComparisonSide): ProfileTaskRun | null {
+    const run = taskRunOf(this.jobOf(side.ref.repository, side.run.jobId));
+    if (!run) return null;
+    const artifactNames = this.artifactCache.get(artifactKey(run));
+    return artifactNames ? { ...run, artifactNames } : null;
+  }
 
   // Which signatures are already on the graph, and in what color, so the
   // picker can mark those rows instead of offering them again. Keyed by
@@ -595,12 +660,21 @@ export class AppState {
       void this.loadJob(repo, sel.run.jobId);
     });
 
-    // The selected run's artifact list, in a second step rather than alongside
-    // the two above: the task id and run number it needs come out of the job,
+    // The pinned comparison's other end needs its job too — for the task id its
+    // artifact list hangs off, and for nothing else, so unlike the selection it
+    // gets no push lookup.
+    $effect(() => {
+      const other = this.comparedSelection;
+      if (other) void this.loadJob(other.entry.ref.repository, other.run.jobId);
+    });
+
+    // Both runs' artifact lists, in a second step rather than alongside the
+    // lookups above: the task id and run number they need come out of the job,
     // so this can only start once that lands. Re-runs when it does.
     $effect(() => {
-      const run = this.selectedTaskRun;
-      if (run) void this.loadArtifacts(run.taskId, run.runId);
+      for (const run of [this.selectedTaskRun, this.comparedTaskRun]) {
+        if (run) void this.loadArtifacts(run.taskId, run.runId);
+      }
     });
 
     // Repository metadata drives the hg/git-aware pushlog links.
@@ -718,7 +792,7 @@ export class AppState {
   }
 
   private async loadArtifacts(taskId: string, runId: number): Promise<void> {
-    const cacheKey = `${taskId}|${runId}`;
+    const cacheKey = artifactKey({ taskId, runId });
     const key = `artifacts|${cacheKey}`;
     if (
       this.artifactCache.has(cacheKey) ||
@@ -1330,6 +1404,23 @@ export class AppState {
 
 function clampIndex(i: number, length: number): number {
   return Math.max(0, Math.min(length - 1, i));
+}
+
+// Which run of which task a job's artifacts hang off. `task_id` and `retry_id`
+// are both `v.optional` on `Job` and absent together — they come from one
+// `taskcluster_metadata` relation the view skips when it's missing — so this is
+// the one place that checks for the pair.
+type TaskRun = { taskId: string; runId: number };
+
+function taskRunOf(job: Job | null): TaskRun | null {
+  if (!job || job.task_id === undefined || job.retry_id === undefined) return null;
+  return { taskId: job.task_id, runId: job.retry_id };
+}
+
+// The `artifactCache` key. A run, not a task: a retried task keeps its task id
+// and uploads a fresh set of files under a new run number.
+function artifactKey(run: TaskRun): string {
+  return `${run.taskId}|${run.runId}`;
 }
 
 function samePoint(a: SelectedPoint, b: SelectedPoint): boolean {

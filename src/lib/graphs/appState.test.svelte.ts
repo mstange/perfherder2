@@ -1194,6 +1194,132 @@ describe('AppState job details', () => {
   });
 });
 
+// The profile-comparison link needs a job lookup *and* an artifact list per
+// side, and only for a pinned comparison — the hover preview crosses a dot per
+// mouse move.
+describe('AppState profile comparison', () => {
+  const COMPACT = 'public/test_info/profile_speedometer3_compact.jslb.gz';
+
+  // Datum 10's job is 510 and datum 11's is 511 (see `datum`), so each side of
+  // the comparison lands on its own task.
+  const TASKS = new Map([
+    [510, 'BASETASK'],
+    [511, 'NEXTTASK'],
+  ]);
+
+  // `names` decides which tasks uploaded a comparable profile; anything not
+  // named gets a task with a log and nothing else.
+  function stubProfiles(names: Map<string, string[]>) {
+    fetchMock.mockImplementation(async (url: string) => {
+      const s = String(url);
+      if (s.includes('/performance/summary/')) return json([SAMPLE]);
+      if (s.includes('/performance/alertsummary/')) return json(alertPage([]));
+      if (s.includes('/repository/')) return json([]);
+      if (s.includes('/push/')) return json(push());
+      const jobId = Number(/\/jobs\/(\d+)\//.exec(s)?.[1]);
+      if (jobId) {
+        return json(job({ id: jobId, task_id: TASKS.get(jobId), retry_id: 0 }));
+      }
+      const taskId = /\/task\/([^/]+)\/runs\//.exec(s)?.[1];
+      if (taskId) {
+        const artifacts = names.get(taskId) ?? ['public/logs/live.log'];
+        return json({ artifacts: artifacts.map((name) => ({ name })) });
+      }
+      return json({});
+    });
+  }
+
+  const bothSides = () =>
+    new Map([
+      ['BASETASK', [COMPACT, 'public/logs/live.log']],
+      ['NEXTTASK', [COMPACT]],
+    ]);
+
+  const pinned = '?series=autoland,1,1&sel=autoland,1,10,0&cmp=autoland,1,11,0';
+
+  it('links both runs once the two artifact lists have landed', () => {
+    stubProfiles(bothSides());
+    return withApp(pinned, async (app) => {
+      await settle();
+      await settle();
+      const link = app.profileComparison;
+      expect(link?.benchmark).toBe('speedometer3');
+      const profiles = new URL(link!.url).searchParams.getAll('profiles[]');
+      // Base first, and base is the chronologically earlier push — datum 10,
+      // job 510 — whichever end the user selected.
+      expect(decodeURIComponent(profiles[0])).toContain('/task/BASETASK/runs/0/');
+      expect(decodeURIComponent(profiles[1])).toContain('/task/NEXTTASK/runs/0/');
+    });
+  });
+
+  it('offers nothing when only one side profiled', () => {
+    stubProfiles(new Map([['BASETASK', [COMPACT]]]));
+    return withApp(pinned, async (app) => {
+      await settle();
+      await settle();
+      expect(app.profileComparison).toBeNull();
+    });
+  });
+
+  // A hovered comparison is a preview the pointer takes away again. Following it
+  // would be two lookups per dot crossed, for a link nobody can click.
+  it('neither links nor fetches for a hovered comparison', () => {
+    stubProfiles(bothSides());
+    return withApp('?series=autoland,1,1&sel=autoland,1,10,0', async (app) => {
+      await settle();
+      await settle();
+      const before = fetchMock.mock.calls.length;
+      app.setHoveredPoint({
+        repository: 'autoland',
+        signatureId: 1,
+        datumId: 11,
+        replicateIndex: 0,
+      });
+      await settle();
+      expect(app.comparisonSource).toBe('hover');
+      expect(app.comparison).not.toBeNull();
+      expect(app.profileComparison).toBeNull();
+      expect(fetchMock.mock.calls.length).toBe(before);
+    });
+  });
+
+  // Pinning is what authorizes the second pair of lookups, so it has to reach
+  // the link without a reload.
+  it('picks the link up when a comparison is pinned', () => {
+    stubProfiles(bothSides());
+    return withApp('?series=autoland,1,1&sel=autoland,1,10,0', async (app) => {
+      await settle();
+      await settle();
+      expect(app.profileComparison).toBeNull();
+      app.comparePoint({
+        repository: 'autoland',
+        signatureId: 1,
+        datumId: 11,
+        replicateIndex: 0,
+      });
+      await settle();
+      await settle();
+      expect(app.profileComparison?.artifact).toBe(COMPACT);
+    });
+  });
+
+  // Both sides resolve to one task, so the link would compare a profile with
+  // itself. `benchmarkComparison` refuses; this pins that the two selections
+  // really do arrive as the same task run.
+  it('offers nothing for two replicates of one run', () => {
+    stubProfiles(bothSides());
+    return withApp(
+      '?series=autoland,1,1&sel=autoland,1,10,0&cmp=autoland,1,10,2',
+      async (app) => {
+        await settle();
+        await settle();
+        expect(app.comparison?.kind).toBe('replicate');
+        expect(app.profileComparison).toBeNull();
+      },
+    );
+  });
+});
+
 describe('AppState URL sync', () => {
   it('writes the view back to the query string', () =>
     withApp('?series=autoland,1,1', (app) => {

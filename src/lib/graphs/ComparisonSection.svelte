@@ -161,6 +161,12 @@
     cmp ? comparisonLinks(cmp, app.repoLinkFor(cmp.base.ref.repository)) : null,
   );
 
+  // The fourth link, and the only one that isn't a pure function of the two
+  // points: it takes a job lookup and an artifact list per side to know whether
+  // both runs uploaded a comparable profile, so it appears a beat after the rest
+  // of the card. See AppState.profileComparison.
+  const profileCmp = $derived(app.profileComparison);
+
   // What actually tells the two sides apart, and so what each side's line
   // should say. Across pushes it's the revision; within one push it's the job;
   // within one job the label already carries the replicate index, so the only
@@ -417,18 +423,31 @@
       {/each}
     </ul>
 
-    {#if cmpLinks && (cmpLinks.pushlog || cmpLinks.perfCompare)}
+    <!-- `profileCmp` is checked separately from `cmpLinks`, which is null for
+         two runs of one push — one revision, so no pushlog range and no
+         perf.compare — and that is precisely a pair whose profiles are worth
+         comparing. -->
+    {#if cmpLinks?.pushlog || cmpLinks?.perfCompare || profileCmp}
       <div class="cmp-links">
-        {#if cmpLinks.pushlog}
+        {#if cmpLinks?.pushlog}
           <a href={cmpLinks.pushlog} target="_blank" rel="noopener">pushlog</a>
         {/if}
-        {#if cmpLinks.perfCompare}
+        {#if cmpLinks?.perfCompare}
           <a href={cmpLinks.perfCompare} target="_blank" rel="noopener">perf.compare</a>
         {/if}
-        {#if cmpLinks.perfCompareSubtests}
+        {#if cmpLinks?.perfCompareSubtests}
           <a href={cmpLinks.perfCompareSubtests} target="_blank" rel="noopener">
             subtests
           </a>
+        {/if}
+        {#if profileCmp}
+          <a
+            href={profileCmp.url}
+            target="_blank"
+            rel="noopener"
+            title="Compare the two runs' {profileCmp.benchmark} profiles in the Firefox Profiler"
+            >profile comparison</a
+          >
         {/if}
       </div>
     {/if}
