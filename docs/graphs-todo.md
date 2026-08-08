@@ -118,6 +118,26 @@ Living checklist. Update in the same commit as the work it describes.
   fixed set of walls. A different algorithm, not a wider constant, and worth
   doing when a real series shows the band biting: the cost is O(k²)
   confirmations where k is the candidate count, against today's O(k).
+- **Candidate boundaries should be found locally, not by one segment count per
+  grid.** The segmentation's dynamic program scores a whole 500-push grid and picks
+  a single segment count for it, so its sensitivity is set by that grid's total
+  spread rather than by the local noise around each step. On autoland signature
+  5352791 (now `fixtures/push-means-wandering.json`) the level wanders over 65–68
+  while one push in six carries a single run — robust push-mean sd 0.755 against
+  0.378 for pushes with ten or more — and a step that is 6σ against its own
+  neighbourhood is nothing at grid scale: at PENALTY_C 2.5 the grid came back as
+  one segment past push 290 and the confirmation stage was never offered the
+  boundary. Loosening the constant to 2 recovers that particular step and is what
+  shipped, but it is the same global knob and it cannot serve a series whose noise
+  varies fourfold across it. What does is a locally scaled candidate generator:
+  binary segmentation, splitting each segment at its strongest CUSUM point against
+  a σ estimated *within* that segment and recursing while the statistic clears a
+  threshold. Prototyped against this series — at a threshold of 4 it proposes the
+  step at 445 along with 291 and 363 and confirms 12–15 changes overall, which for
+  a series that wanders this much may be honest but is a lot of bars, and it needs
+  α adjusted for proposing O(n) candidates instead of O(k). Do the walls item above
+  first: at higher candidate density it is walls, not the tests, that lose real
+  changes.
 - **Mixed units on one y-axis.** Following treeherder for now; the axis says
   "mixed units" when it happens. A per-series normalized mode ("% of the
   first value") would be the real fix.

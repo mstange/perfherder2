@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { detectChanges, relocateBoundary, segmentValues } from './changes';
 import type { PushGroup } from './graphData';
+import wandering from '../fixtures/push-means-wandering.json';
 
 // Only `mean`, `x` and `pushId` are read; the rest is filled so the fixtures
 // are real `PushGroup`s and a field added to that type shows up here.
@@ -266,6 +267,23 @@ describe('detectChanges', () => {
     // must not reach back past the first one.
     expect(found[0].windowEnd).toBeLessThanOrEqual(40);
     expect(found[1].windowStart).toBeGreaterThanOrEqual(20);
+  });
+
+  it('finds the step in a series whose level wanders around it', () => {
+    // Real data, because no synthetic fixture reproduces what makes this hard:
+    // the step is 6σ against its own neighbourhood and nothing at all against the
+    // spread of the 500-push grid the segmentation scores as a whole. See
+    // PENALTY_C — this is the case that moved it off 2.5, where the segmentation
+    // covered everything past push 290 with a single segment and the confirmation
+    // stage was never offered the boundary.
+    const found = detectChanges(pushesOf(wandering.means), wandering.lowerIsBetter);
+    const step = found.find((c) => Math.abs(c.index - wandering.alertedStepIndex) <= 2);
+    expect(step).toBeDefined();
+    expect(step!.isRegression).toBe(true);
+    // Perfherder's own alert on this push says +2.6%; ours is a difference of
+    // means over up to 24 pushes a side, so the two don't have to agree exactly.
+    expect(step!.relativeChange).toBeGreaterThan(0.015);
+    expect(step!.pValue).toBeLessThan(0.001);
   });
 
   it('says nothing about a series with almost no pushes', () => {

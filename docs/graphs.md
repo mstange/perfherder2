@@ -497,7 +497,17 @@ change is within six pushes of it *in the same direction*. Direction is in the
 rule so that a regression and its backout a few pushes later stay two changes.
 
 Every constant is in [changes.ts](../src/lib/graphs/changes.ts) with its reason;
-the four worth knowing here:
+the five worth knowing here:
+
+- **The Birgé–Massart penalty constant is 2, not the 2.5 its authors suggest.**
+  Measured, on the case that forced it: autoland signature 5352791 steps from 66.2
+  to 67.4 and stays there, 6σ against its own neighbourhood, and at 2.5 the
+  segmentation covered everything past push 290 with one segment so the
+  confirmation stage never saw the boundary. Nothing appears on flat noise at 2 —
+  the confirmation stage is what holds precision, so loosening the segmentation
+  buys recall rather than false bars. Below 2 it starts costing: a denser
+  segmentation puts more walls in `windowLimits` and starves real changes of their
+  pools.
 
 - **A fixed window of 24 pushes a side**, clipped to the neighbouring boundaries
   — except that a boundary closer than six pushes is not a wall, because a
@@ -545,6 +555,9 @@ the four worth knowing here:
   dynamic program for each candidate segment count, which is O(n²k²);
   evaluating the criterion off each layer of one run is O(n²k) for the same
   answer.
+- **A looser penalty than theirs**, 2 against 2.5 — see the constant above, and
+  "Only a confirmed change should be a wall" plus the entry after it in
+  graphs-todo.md for why 2 rather than lower.
 - **Grid edges are discarded, not kept as candidates.** Rediscovered the hard
   way — see GRID_SIZE. Keeping them manufactured a −1.0% "change" at p = 0.028
   out of the noise on a synthetic series, every 500 pushes, guaranteed.

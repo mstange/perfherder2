@@ -78,9 +78,50 @@ import {
 // Tuning
 // ---------------------------------------------------------------------------
 
-// Birgé and Massart's penalty constant, the value its authors suggest and the
-// one perf.webkit.org ships. Larger means fewer segments.
-const PENALTY_C = 2.5;
+// Birgé and Massart's penalty constant. Larger means fewer segments.
+//
+// 2.5 is the value its authors suggest and the one perf.webkit.org ships, and it
+// was that here until a series turned up where it silently loses an obvious step:
+// autoland signature 5352791 (speedometer3 TodoMVC-jQuery, recorded in
+// fixtures/push-means-wandering.json), which steps from 66.2 to 67.4 at push
+// 1966248 and stays there. Locally that is a 6σ step against a push-to-push sd of
+// 0.18. The segmentation returned `0, 230, 232, 290, 752` — one segment covering
+// everything past 290 — so the confirmation stage was never offered the boundary,
+// and the criterion genuinely preferred that: over pushes 0–500 it scores k=4 at
+// 0.901 against k=8 at 0.998 and k=12 at 1.053.
+//
+// The reason is a structural limit of this stage, not a bad constant: **the DP
+// picks one segment count for a whole grid**, so its sensitivity is set by that
+// grid's total spread and not by the local noise around each step. On this series
+// the level wanders over 65–68 and one push in six carries a single run (robust
+// push-mean sd 0.755 against 0.378 for pushes with ten or more), so the grid-wide
+// spread is several times the local spread and a 2% step is 6σ locally and
+// nothing at all at grid scale.
+//
+// 2 is therefore a partial answer, chosen by measurement rather than by theory:
+//
+//   C     flat noise (40×500)   sig 299010        sig 5352791         4% drift
+//   2.5   0 bars                8 changes, 5/6    1 change,  1/8      22 bars
+//   2     0 bars                8 changes, 5/6    3 changes, 3/8      26 bars
+//   1.5   0 bars                8 changes, 4/6    6 changes, 3/8      34 bars
+//
+// ("n/m alerts" is how many of perfherder's own alerts on that signature the run
+// lands on, ±6h. Not a ground truth — two of 5352791's eight cancel each other
+// out fifteen pushes apart, and perfherder counts its windows in *job values*, so
+// on a series retriggered twelve times a push it is comparing adjacent pushes with
+// the runs pooled. It is the best independent signal available.)
+//
+// Note what stays flat: nothing appears on pure noise at any of these, because the
+// confirmation stage is what holds precision, and loosening the segmentation trades
+// against recall rather than against false bars. What it does trade against is
+// drift, already carved into steps today and slightly more of them at 2.
+//
+// 1.5 is where it starts costing: 299010 *loses* a match, because a denser
+// segmentation puts more walls in `windowLimits` and starves real changes of their
+// pools. Going below 2 wants the confirmed-changes-are-walls work in
+// graphs-todo.md first, and past that the real fix is local candidate generation —
+// same file, "Only a confirmed change should be a wall" and the entry after it.
+const PENALTY_C = 2;
 
 // The segmentation is O(n²) per candidate segment count, so a long series is
 // cut into grids of this many pushes and segmented one grid at a time — the
