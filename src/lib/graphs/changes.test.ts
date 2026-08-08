@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { candidateBoundaries, detectChanges, relocateBoundary } from './changes';
-import type { PushGroup } from './graphData';
+import { DEFAULT_ALERT_THRESHOLD, type AlertThreshold, type PushGroup } from './graphData';
 import wandering from '../fixtures/push-means-wandering.json';
 
 // Only `mean`, `x` and `pushId` are read; the rest is filled so the fixtures
@@ -139,7 +139,7 @@ describe('relocateBoundary', () => {
 
 describe('detectChanges', () => {
   it('finds a clean step and describes it', () => {
-    const found = detectChanges(pushesOf(step(100, 110)), true);
+    const found = detectChanges(pushesOf(step(100, 110)), true, DEFAULT_ALERT_THRESHOLD);
     expect(found).toHaveLength(1);
     const change = found[0];
     expect(change.index).toBe(20);
@@ -155,16 +155,16 @@ describe('detectChanges', () => {
     // Half of perfherder's metrics are higher-is-better, so the same step is a
     // regression on one series and an improvement on the next.
     const up = pushesOf(step(100, 110));
-    expect(detectChanges(up, true)[0].isRegression).toBe(true);
-    expect(detectChanges(up, false)[0].isRegression).toBe(false);
+    expect(detectChanges(up, true, DEFAULT_ALERT_THRESHOLD)[0].isRegression).toBe(true);
+    expect(detectChanges(up, false, DEFAULT_ALERT_THRESHOLD)[0].isRegression).toBe(false);
     const down = pushesOf(step(110, 100));
-    expect(detectChanges(down, true)[0].isRegression).toBe(false);
-    expect(detectChanges(down, false)[0].isRegression).toBe(true);
+    expect(detectChanges(down, true, DEFAULT_ALERT_THRESHOLD)[0].isRegression).toBe(false);
+    expect(detectChanges(down, false, DEFAULT_ALERT_THRESHOLD)[0].isRegression).toBe(true);
   });
 
   it('names the two pushes either side of the step', () => {
     // What a click on the bar pins as a comparison.
-    const found = detectChanges(pushesOf(step(100, 110)), true);
+    const found = detectChanges(pushesOf(step(100, 110)), true, DEFAULT_ALERT_THRESHOLD);
     expect(found[0].beforePushId).toBe(1019);
     expect(found[0].afterPushId).toBe(1020);
     // …and the notch sits on the second of them, where the connecting line
@@ -174,7 +174,7 @@ describe('detectChanges', () => {
   });
 
   it('spans the pushes it compared', () => {
-    const found = detectChanges(pushesOf(step(100, 110)), true);
+    const found = detectChanges(pushesOf(step(100, 110)), true, DEFAULT_ALERT_THRESHOLD);
     const change = found[0];
     expect(change.windowStart).toBe(0);
     expect(change.windowEnd).toBe(40);
@@ -187,7 +187,7 @@ describe('detectChanges', () => {
   it('caps the window at 24 pushes a side', () => {
     // Matching perfherder's own alert window, so the two "before → after" pairs
     // the details pane can show at once are on the same scale.
-    const found = detectChanges(pushesOf(step(100, 110, 60)), true);
+    const found = detectChanges(pushesOf(step(100, 110, 60)), true, DEFAULT_ALERT_THRESHOLD);
     expect(found).toHaveLength(1);
     expect(found[0].beforeCount).toBe(24);
     expect(found[0].afterCount).toBe(24);
@@ -206,7 +206,7 @@ describe('detectChanges', () => {
     values[40] = 92.5;
     expect(candidateBoundaries(values).map((c) => c.cut)).toContain(45);
 
-    const found = detectChanges(pushesOf(values), true);
+    const found = detectChanges(pushesOf(values), true, DEFAULT_ALERT_THRESHOLD);
     expect(found).toHaveLength(1);
     expect(found[0].index).toBe(45);
     expect(found[0].relativeChange).toBeCloseTo(-0.04, 2);
@@ -217,33 +217,62 @@ describe('detectChanges', () => {
     // together and they are not the same step, and the only thing that says so is
     // that they point opposite ways.
     const values = [...noisy(100, 24, 0.5), ...noisy(104, 6, 0.5), ...noisy(100, 24, 0.5)];
-    const found = detectChanges(pushesOf(values), true);
+    const found = detectChanges(pushesOf(values), true, DEFAULT_ALERT_THRESHOLD);
     expect(found.map((c) => c.index)).toEqual([24, 30]);
     expect(found.map((c) => c.isRegression)).toEqual([true, false]);
   });
 
   it('finds nothing in noise', () => {
-    expect(detectChanges(pushesOf(noisy(100, 60, 4)), true)).toEqual([]);
+    expect(detectChanges(pushesOf(noisy(100, 60, 4)), true, DEFAULT_ALERT_THRESHOLD)).toEqual([]);
   });
 
   it('finds nothing around a single outlier', () => {
     const values = noisy(100, 41, 1);
     values[20] = 260;
-    expect(detectChanges(pushesOf(values), true)).toEqual([]);
+    expect(detectChanges(pushesOf(values), true, DEFAULT_ALERT_THRESHOLD)).toEqual([]);
   });
 
   it('drops a step too small to be worth a mark', () => {
-    // 0.2%, well inside MIN_RELATIVE_CHANGE. With this little noise the test
-    // can see it perfectly well; it is just not something to draw on a graph.
-    const found = detectChanges(pushesOf(step(100, 100.2, 20, 0.01)), true);
+    // 0.2%, a fifth of the floor perfherder's default 2% puts at 0.5%. With this
+    // little noise the test can see it perfectly well; it is just not something to
+    // draw on a graph.
+    const found = detectChanges(pushesOf(step(100, 100.2, 20, 0.01)), true, DEFAULT_ALERT_THRESHOLD);
     expect(found).toEqual([]);
+  });
+
+  it('holds a series to a quarter of its own percentage threshold', () => {
+    // awsy declares 0.25%, so a step of 0.2% is over its floor of 0.0625% and under
+    // the 0.5% that perfherder's default would have set. The old fixed floor was
+    // four times awsy's entire alerting bar.
+    const awsy: AlertThreshold = { kind: 'percentage', value: 0.25 };
+    const values = pushesOf(step(100, 100.2, 20, 0.01));
+    expect(detectChanges(values, true, awsy)).toHaveLength(1);
+    expect(detectChanges(values, true, DEFAULT_ALERT_THRESHOLD)).toEqual([]);
+  });
+
+  it('measures an absolute threshold in the metric’s own units', () => {
+    // installer size: 100 KB, so a floor of 25600 bytes. Both steps here are far
+    // below any percentage floor worth having — 0.014% and 0.004% of a 185 MB
+    // binary — and one of them is a real 340 KB regression.
+    const installer: AlertThreshold = { kind: 'absolute', value: 102400 };
+    const real = pushesOf(step(185_000_000, 185_340_000, 20, 2000));
+    const drift = pushesOf(step(185_000_000, 185_008_000, 20, 2000));
+    const found = detectChanges(real, true, installer);
+    expect(found).toHaveLength(1);
+    expect(found[0].afterValue - found[0].beforeValue).toBeGreaterThan(25600);
+    // Statistically just as clean, and 8 KB is not a step worth a mark.
+    expect(detectChanges(drift, true, installer)).toEqual([]);
+    // The percentage default drops both: 0.18% doesn't reach 0.5%, which is the
+    // bug this replaced — every installer-size step is invisible to a percentage
+    // floor calibrated for timings.
+    expect(detectChanges(real, true, DEFAULT_ALERT_THRESHOLD)).toEqual([]);
   });
 
   it('keeps a step perfherder would not have alerted on', () => {
     // The case that motivates the whole feature (graphs-todo.md, "Common
     // alerts"): +2.0% on macOS where Windows moved +9.9% and only Windows got
     // an alert. Well under perfherder's threshold, well over ours.
-    const found = detectChanges(pushesOf(step(100, 102, 20, 0.5)), true);
+    const found = detectChanges(pushesOf(step(100, 102, 20, 0.5)), true, DEFAULT_ALERT_THRESHOLD);
     expect(found).toHaveLength(1);
     expect(found[0].relativeChange).toBeCloseTo(0.02, 3);
   });
@@ -254,10 +283,10 @@ describe('detectChanges', () => {
     // come from arithmetic rather than from evidence. These fixtures are perfectly
     // separated, so only the pool sizes decide — three pushes before the step is not
     // enough for any split of them, and neither is three after.
-    expect(detectChanges(pushesOf([...noisy(100, 3, 0.5), ...noisy(130, 20, 0.5)]), true)).toEqual(
+    expect(detectChanges(pushesOf([...noisy(100, 3, 0.5), ...noisy(130, 20, 0.5)]), true, DEFAULT_ALERT_THRESHOLD)).toEqual(
       [],
     );
-    expect(detectChanges(pushesOf([...noisy(100, 30, 0.5), ...noisy(130, 3, 0.5)]), true)).toEqual(
+    expect(detectChanges(pushesOf([...noisy(100, 30, 0.5), ...noisy(130, 3, 0.5)]), true, DEFAULT_ALERT_THRESHOLD)).toEqual(
       [],
     );
   });
@@ -269,7 +298,7 @@ describe('detectChanges', () => {
     // delta diluted by the two post-step values on the wrong side of it, and a click
     // would pin two pushes that are both after the step. See `relocateBoundary`,
     // "any split the test could reach α at".
-    const found = detectChanges(pushesOf([...noisy(100, 5, 0.5), ...noisy(130, 10, 0.5)]), true);
+    const found = detectChanges(pushesOf([...noisy(100, 5, 0.5), ...noisy(130, 10, 0.5)]), true, DEFAULT_ALERT_THRESHOLD);
     expect(found).toHaveLength(1);
     expect(found[0].index).toBe(5);
     expect(found[0].relativeChange).toBeCloseTo(0.3, 2);
@@ -285,8 +314,8 @@ describe('detectChanges', () => {
     // latency floor for a clean step, and it holds at 2% as firmly as at 30%: the
     // gate's own six-a-side requirement is what sets it, not the size of the step.
     const values = (after: number) => [...noisy(100, 30, 0.5), ...noisy(104, after, 0.5)];
-    expect(detectChanges(pushesOf(values(4)), true)).toEqual([]);
-    const found = detectChanges(pushesOf(values(5)), true);
+    expect(detectChanges(pushesOf(values(4)), true, DEFAULT_ALERT_THRESHOLD)).toEqual([]);
+    const found = detectChanges(pushesOf(values(5)), true, DEFAULT_ALERT_THRESHOLD);
     expect(found).toHaveLength(1);
     expect(found[0].index).toBe(30);
     expect(found[0].afterCount).toBe(5);
@@ -303,13 +332,13 @@ describe('detectChanges', () => {
       values.push(...noisy(level, 225, 3));
       level *= 1.05;
     }
-    const found = detectChanges(pushesOf(values), true);
+    const found = detectChanges(pushesOf(values), true, DEFAULT_ALERT_THRESHOLD);
     expect(found.map((c) => c.index)).toEqual([225, 450, 675]);
   });
 
   it('finds both of two steps', () => {
     const values = [...noisy(100, 20, 1), ...noisy(115, 20, 1), ...noisy(103, 20, 1)];
-    const found = detectChanges(pushesOf(values), true);
+    const found = detectChanges(pushesOf(values), true, DEFAULT_ALERT_THRESHOLD);
     expect(found.map((c) => c.index)).toEqual([20, 40]);
     expect(found.map((c) => c.isRegression)).toEqual([true, false]);
     // Neither window crosses the other change: the second step's "before" pool
@@ -326,7 +355,11 @@ describe('detectChanges', () => {
     // covered everything past push 290 with a single segment, so the confirmation
     // stage was never offered the boundary and perfherder's alert #243130 stood
     // unanswered. See `candidateBoundaries`.
-    const found = detectChanges(pushesOf(wandering.means), wandering.lowerIsBetter);
+    const found = detectChanges(
+      pushesOf(wandering.means),
+      wandering.lowerIsBetter,
+      DEFAULT_ALERT_THRESHOLD,
+    );
     const step = found.find((c) => Math.abs(c.index - wandering.alertedStepIndex) <= 2);
     expect(step).toBeDefined();
     expect(step!.isRegression).toBe(true);
@@ -337,7 +370,7 @@ describe('detectChanges', () => {
   });
 
   it('says nothing about a series with almost no pushes', () => {
-    expect(detectChanges(pushesOf([]), true)).toEqual([]);
-    expect(detectChanges(pushesOf([1, 2, 3, 4, 5]), true)).toEqual([]);
+    expect(detectChanges(pushesOf([]), true, DEFAULT_ALERT_THRESHOLD)).toEqual([]);
+    expect(detectChanges(pushesOf([1, 2, 3, 4, 5]), true, DEFAULT_ALERT_THRESHOLD)).toEqual([]);
   });
 });

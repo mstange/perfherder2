@@ -134,6 +134,26 @@ export type SeriesRef = {
   frameworkId: number;
 };
 
+// How big a change has to be before perfherder alerts on this signature, in the
+// units perfherder states it in: `percentage` means `value` is a percentage (2
+// for 2%), `absolute` means it is a delta in the metric's own units (102400 for
+// 100 KB of installer). Which of the two it is is not cosmetic — a size metric
+// stated in percent and a timing metric stated in bytes are both nonsense, and
+// the two kinds differ by five orders of magnitude for the same signature.
+//
+// This is `PerformanceSignature.alert_threshold` and `alert_change_type`, and
+// `changes.ts` scales it down rather than using it as-is — see THRESHOLD_FRACTION
+// there.
+export type AlertThreshold = {
+  kind: 'percentage' | 'absolute';
+  value: number;
+};
+
+// `settings.PERFHERDER_REGRESSION_THRESHOLD`, which is what perfherder's own
+// alert generation falls back to for a signature that declares nothing —
+// `treeherder/perf/alerts.py`, `generate_new_alerts_in_series`.
+export const DEFAULT_ALERT_THRESHOLD: AlertThreshold = { kind: 'percentage', value: 2 };
+
 // Display metadata, taken from the summary response rather than the picker's
 // signature row, so a series restored from a bare URL looks identical to one
 // the user just added.
@@ -156,6 +176,13 @@ export type SeriesMeta = {
   // hash — the summary endpoint's `parent_signature` differs from the signatures
   // endpoint's field of the same name in exactly that way.
   parentSignatureId: number | null;
+  // This signature's own alerting threshold, or null when it declares none.
+  // **Null is not "the default"** — a subtest almost never declares one and its
+  // parent usually does, so null means "go and ask", which is `resolveAlertThreshold`
+  // and the parent lookup in appState. Collapsing it to the default here would
+  // quietly hand every build-metrics subtest a 2% floor on a metric that moves by
+  // hundredths of a percent.
+  alertThreshold: AlertThreshold | null;
   // True for the stand-in we synthesize when a signature has no data in the
   // range: the endpoint returns nothing at all in that case, so there is no
   // metadata and every field above is either empty or made up. Code that
@@ -185,8 +212,54 @@ export function metaFromSummary(summary: RawSummary): SeriesMeta {
     options: optionsFromName(summary.name ?? '', suite, test),
     parentSignatureId:
       summary.parent_signature ?? (summary.has_subtests ? summary.signature_id : null),
+    alertThreshold: alertThresholdFromSummary(summary),
     placeholder: false,
   };
+}
+
+// The signature's alerting policy, or null if it has none of its own.
+//
+// **The threshold decides which kind is in force, not the change type.** A
+// signature that names a change type without a threshold is declaring nothing —
+// there is no number to compare against — while a threshold with a null change
+// type is perfherder's ALERT_PCT default, which is why the type is read second
+// and defaults to percentage. Getting that order the other way round would read
+// `alert_change_type: 1` with no threshold as "absolute, 0 bytes" and pass
+// everything.
+export function alertThresholdFromSummary(summary: RawSummary): AlertThreshold | null {
+  const value = summary.alert_threshold;
+  if (value === null || value === undefined || !Number.isFinite(value) || value <= 0) return null;
+  // 1 is `PerformanceSignature.ALERT_ABS`; 0 and null are ALERT_PCT.
+  return { kind: summary.alert_change_type === 1 ? 'absolute' : 'percentage', value };
+}
+
+// Which threshold a series is actually held to: its own if it declares one, its
+// parent's if it doesn't, and perfherder's global default if neither does.
+//
+// **Inheriting from the parent is this app's rule, not perfherder's.** Perfherder
+// goes straight from a null signature threshold to the global 2%, but it never
+// reaches that line for these signatures: a subtest whose `should_alert` is null
+// under a suite that sets one is treated as false and never analysed at all
+// (`check_and_update_should_alert` in performance_data.py), so there is no
+// perfherder verdict here to match, only a gap to fill — which is the same gap
+// the whole feature exists for. The parent's threshold is the best available
+// statement of what counts as a real move in this metric: same suite, same units,
+// and for the absolute case the same number, since 100 KB of growth in xul.dll is
+// 100 KB of growth in the installer that contains it.
+export function resolveAlertThreshold(
+  own: AlertThreshold | null,
+  inherited: AlertThreshold | null,
+): AlertThreshold {
+  return own ?? inherited ?? DEFAULT_ALERT_THRESHOLD;
+}
+
+// The signature to inherit a threshold from, or null when there is nobody to ask:
+// a standalone signature, or a parent — `parentSignatureId` reports a parent's own
+// id, and a signature is not its own parent.
+export function thresholdParentRef(ref: SeriesRef, meta: SeriesMeta): SeriesRef | null {
+  const parent = meta.parentSignatureId;
+  if (parent === null || parent === ref.signatureId) return null;
+  return { ...ref, signatureId: parent };
 }
 
 // What we know about a signature the summary endpoint said nothing about: its
@@ -202,6 +275,7 @@ export function placeholderMeta(ref: SeriesRef): SeriesMeta {
     name: '',
     options: '',
     parentSignatureId: null,
+    alertThreshold: null,
     placeholder: true,
   };
 }

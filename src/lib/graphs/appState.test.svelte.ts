@@ -1223,6 +1223,101 @@ describe('AppState detected changes', () => {
     }));
 });
 
+// The floor detection holds a series to is perfherder's own threshold for that
+// signature, and a subtest has to go and ask its parent for it. What the floor
+// then does to a step is changes.test.ts's; this is the fetch and the waiting.
+describe('AppState alert thresholds', () => {
+  // STEP under a new id, declared a subtest of signature 4 so that its threshold
+  // has to be inherited. The step is ~100 to ~130: 30 in the metric's own units
+  // and 29.85% in relative ones, so it clears an absolute floor of 10 and not one
+  // of 100, while clearing the percentage default's 0.5% either way.
+  const SUBTEST = { ...STEP, signature_id: 3, parent_signature: 4, has_subtests: false };
+
+  // Signatures 3 and 5 are subtests, 4 is the parent they inherit from and
+  // `parent` is what it declares. `extra` gets first refusal on a URL, for the
+  // tests that need one response to differ.
+  function serve(parent: Partial<RawSummary>, extra: (url: string) => unknown = () => null) {
+    fetchMock.mockImplementation(async (url: string) => {
+      const override = extra(url);
+      if (override) return override;
+      if (url.includes('/performance/summary/')) {
+        if (url.includes('signature=4&')) return json([{ ...summary(4, []), ...parent }]);
+        if (url.includes('signature=5&')) return json([{ ...SUBTEST, signature_id: 5 }]);
+        return json([SUBTEST]);
+      }
+      if (url.includes('/performance/alertsummary/')) return json(alertPage([]));
+      return json([]);
+    });
+  }
+
+  const parentCalls = () =>
+    fetchMock.mock.calls.filter((c: unknown[]) => String(c[0]).includes('signature=4&'));
+
+  it('inherits an absolute threshold from the parent and applies it', async () => {
+    serve({ alert_threshold: 40, alert_change_type: 1 });
+    await withApp('?series=autoland,3,1', async (app) => {
+      await settle();
+      expect(app.series[0].changes).toHaveLength(1);
+      // Asked once, and over a zero-width window: the parent is not plotted, so
+      // its data points would be a payload nothing reads.
+      expect(parentCalls()).toHaveLength(1);
+      const params = new URL(String(parentCalls()[0][0])).searchParams;
+      expect(params.get('startday')).toBe(params.get('endday'));
+    });
+  });
+
+  it('holds the series to the parent threshold, not to perfherder default', async () => {
+    // A floor of 100 in the metric's units, and the step is 30 — so it goes, even
+    // though at 29.85% it would sail past the default's 0.5%. That is what says
+    // the inherited threshold is the one in force.
+    serve({ alert_threshold: 400, alert_change_type: 1 });
+    await withApp('?series=autoland,3,1', async (app) => {
+      await settle();
+      expect(app.series[0].changes).toEqual([]);
+      // …because the threshold arrived and was applied, not because detection
+      // never got as far as running.
+      expect(parentCalls()).toHaveLength(1);
+      expect(app.series[0].data.pushes).toHaveLength(60);
+    });
+  });
+
+  it('falls back to the default when the parent lookup fails', async () => {
+    serve({}, (url) =>
+      url.includes('signature=4&') ? { ok: false, status: 500, statusText: '' } : null,
+    );
+    await withApp('?series=autoland,3,1', async (app) => {
+      await settle();
+      // A blocked lookup must not leave the series permanently unanalysed, which
+      // is what waiting for an answer that never comes would do.
+      expect(parentCalls()).toHaveLength(1);
+      expect(app.series[0].changes).toHaveLength(1);
+    });
+  });
+
+  it('asks the parent once for two subtests that share it', async () => {
+    serve({ alert_threshold: 40, alert_change_type: 1 });
+    await withApp('?series=autoland,3,1&series=autoland,5,1', async (app) => {
+      await settle();
+      expect(app.series[0].changes).toHaveLength(1);
+      expect(app.series[1].changes).toHaveLength(1);
+      expect(parentCalls()).toHaveLength(1);
+    });
+  });
+
+  it('asks nobody when the series declares a threshold of its own', async () => {
+    serve({}, (url) =>
+      url.includes('signature=3&')
+        ? json([{ ...SUBTEST, alert_threshold: 6, alert_change_type: 0 }])
+        : null,
+    );
+    await withApp('?series=autoland,3,1', async (app) => {
+      await settle();
+      expect(app.series[0].changes).toHaveLength(1);
+      expect(parentCalls()).toHaveLength(0);
+    });
+  });
+});
+
 // Treeherder expires job rows long before the performance data that points at
 // them, so `job_id: null` is normal for anything more than a few months old.
 // These cases used to leave the details pane on "loading…" indefinitely.

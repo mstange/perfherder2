@@ -23,6 +23,7 @@ function meta(): SeriesMeta {
     name: 'speedometer3 opt',
     options: 'opt',
     parentSignatureId: 5152393,
+    alertThreshold: null,
     placeholder: false,
   };
 }

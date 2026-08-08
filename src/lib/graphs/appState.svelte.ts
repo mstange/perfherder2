@@ -15,6 +15,7 @@ import {
   fetchPush,
   fetchPushRange,
   fetchRepositories,
+  fetchSignatureMeta,
   fetchSummary,
   type Job,
   type Push,
@@ -39,14 +40,18 @@ import { fetchTaskArtifactNames } from './artifactsApi';
 import type { RepoLinkInfo } from '../shared/links';
 import { fetchAlertSummaries, fetchAlertSummary, type AlertSummary } from './alertsApi';
 import {
+  alertThresholdFromSummary,
   buildSeriesData,
   EMPTY_SERIES_DATA,
   MEAN_REPLICATE,
   metaFromSummary,
   placeholderMeta,
   pushValues,
+  resolveAlertThreshold,
   resolvePoint,
   seriesKey,
+  thresholdParentRef,
+  type AlertThreshold,
   type PlotPoints,
   type PushGroup,
   type Run,
@@ -148,6 +153,17 @@ function dataKey(ref: SeriesRef, span: Span): string {
   return `${seriesKey(ref)}|${span.start}|${span.end}`;
 }
 
+// The signature this one needs a threshold from, or null if it needs nobody's:
+// it declares its own, or it has no parent to inherit from.
+//
+// **One function because two effects ask it**, one to issue the lookup and one to
+// wait for the answer. If they ever disagreed about whether a series has a parent
+// to ask, the waiter would wait for a request the issuer never made and that
+// series would never be analysed at all.
+function inheritsThresholdFrom(ref: SeriesRef, meta: SeriesMeta): SeriesRef | null {
+  return meta.alertThreshold ? null : thresholdParentRef(ref, meta);
+}
+
 export class AppState {
   // ---- View state (mirrored in the URL) ---------------------------------
   seriesRefs = $state<SeriesEntryState[]>([]);
@@ -220,6 +236,22 @@ export class AppState {
   // Never cleared when `changeDetection` goes off, only hidden: turning the
   // switch back on should not pay for the work again.
   private changeCache = $state(new Map<string, DetectedChange[]>());
+
+  // Alerting thresholds for signatures we never plot, keyed by `seriesKey` of the
+  // *parent*: a subtest declares none of its own and inherits its parent's, which
+  // is what sets the floor detection holds it to (`resolveAlertThreshold`).
+  //
+  // A present `null` means "asked, and there is nothing to inherit" — a failed
+  // lookup or a parent that declares no threshold either. That distinction is
+  // load-bearing rather than tidy: detection waits for the answer before it runs
+  // (it caches its result and would otherwise bake in the wrong floor), so
+  // "missing" has to mean "still coming" and a failure has to resolve to something.
+  //
+  // Keyed by signature alone, not by range, so it survives a range change and is
+  // shared by every subtest of the same suite — the common case, since a suite's
+  // subtests are what a user plots together. Not pruned: one entry is two fields.
+  private parentThresholds = $state(new Map<string, AlertThreshold | null>());
+  private thresholdRequests = new Set<string>();
 
   pushCache = $state(new Map<string, Push>());
   jobCache = $state(new Map<string, Job>());
@@ -675,12 +707,32 @@ export class AppState {
       }
     });
 
+    // A parent's alerting threshold, for every loaded subtest that declares none
+    // of its own. Third, because it needs the child's metadata to know who the
+    // parent is.
+    $effect(() => {
+      const span = this.range;
+      const cache = this.seriesCache;
+      for (const ref of this.seriesRefs) {
+        const loaded = cache.get(dataKey(ref, span));
+        const parent = loaded && inheritsThresholdFrom(ref, loaded.meta);
+        if (parent) void this.loadParentThreshold(parent);
+      }
+    });
+
     // Detect changes in every loaded series we haven't run over yet.
     //
     // Reads `seriesCache` rather than `series`, so it doesn't wake for a theme
     // change or a replicate toggle. It still writes a cell it reads
     // (`changeCache`), so Svelte runs it once more to settle; the second pass
     // finds every key present and does nothing.
+    //
+    // **Waits for the threshold** rather than running with the default and
+    // redoing it: the result is cached under a key that says nothing about the
+    // floor it was computed with, so a first pass at 2% on a metric that moves by
+    // hundredths of a percent would be an empty array nothing ever revisits.
+    // Making the key carry the threshold instead would buy bars a round-trip
+    // earlier and pay for it by drawing a set of bars that is about to change.
     //
     // Synchronous, and cheap enough to be. Measured (node, so ratios rather
     // than absolutes): 1.3 ms at 400 pushes, 3.7 ms at 900, 8.9 ms at 2000 —
@@ -691,13 +743,21 @@ export class AppState {
       if (!this.changeDetection) return;
       const span = this.range;
       const cache = this.seriesCache;
+      const thresholds = this.parentThresholds;
       const found: [string, DetectedChange[]][] = [];
       for (const ref of this.seriesRefs) {
         const key = dataKey(ref, span);
         if (this.changeCache.has(key)) continue;
         const loaded = cache.get(key);
         if (!loaded || loaded.data.pushes.length === 0) continue;
-        found.push([key, detectChanges(loaded.data.pushes, loaded.meta.lowerIsBetter)]);
+        const parent = inheritsThresholdFrom(ref, loaded.meta);
+        // Still waiting on the lookup the effect above issued.
+        if (parent && !thresholds.has(seriesKey(parent))) continue;
+        const threshold = resolveAlertThreshold(
+          loaded.meta.alertThreshold,
+          parent ? (thresholds.get(seriesKey(parent)) ?? null) : null,
+        );
+        found.push([key, detectChanges(loaded.data.pushes, loaded.meta.lowerIsBetter, threshold)]);
       }
       if (found.length === 0) return;
       const next = new Map(this.changeCache);
@@ -784,6 +844,36 @@ export class AppState {
       done.delete(key);
       this.loadingKeys = done;
     }
+  }
+
+  // The alerting threshold of a signature nobody is plotting: the parent of a
+  // subtest that declares none of its own. One metadata-only request, once per
+  // signature per session — `fetchSignatureMeta` asks for a zero-width window, so
+  // this costs a row and no data points.
+  //
+  // **A failure records `null` rather than nothing**, which is the opposite of how
+  // `loadAlerts` treats one, and for the opposite reason: a missing alert marker is
+  // a marker that isn't drawn, while a missing threshold blocks change detection on
+  // that series entirely. Recording null unblocks it at perfherder's default —
+  // where the floor sat before any of this existed — instead of leaving the series
+  // permanently unanalysed. No abort signal for the same reason: the answer doesn't
+  // depend on the range, so a range change is not a reason to cancel it.
+  private async loadParentThreshold(parent: SeriesRef): Promise<void> {
+    const key = seriesKey(parent);
+    if (this.thresholdRequests.has(key)) return;
+    this.thresholdRequests.add(key);
+    let threshold: AlertThreshold | null = null;
+    try {
+      const summary = await fetchSignatureMeta(
+        parent.repository,
+        parent.signatureId,
+        parent.frameworkId,
+      );
+      if (summary) threshold = alertThresholdFromSummary(summary);
+    } catch {
+      // Left null: see above.
+    }
+    this.parentThresholds = new Map(this.parentThresholds).set(key, threshold);
   }
 
   // Alerts for one loaded series. `key` is the series-data key, so the result

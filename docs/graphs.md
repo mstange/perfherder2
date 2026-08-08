@@ -202,6 +202,11 @@ calls. See [artifactsApi.ts](../src/lib/graphs/artifactsApi.ts).
   UTC. The backend filters `push_timestamp > startday AND < endday`.
 - `all_data=true` is required to get the per-datum `data` array at all; without
   it the endpoint returns aggregate `values`.
+- The same endpoint, with **`startday === endday`**, is how the parent-signature
+  threshold lookup asks for metadata and nothing else (`fetchSignatureMeta`; see
+  "The floor comes from the signature"). It is also the only endpoint that
+  serializes `alert_threshold` and `alert_change_type` at all — the signatures
+  endpoint the picker uses does not.
 
 ### Replicates
 
@@ -558,6 +563,49 @@ loop rather than a pass. Three things follow from it:
 Accepted changes are then re-described against the final walls, so a change
 accepted early doesn't report means that reach across a step found later.
 
+#### The floor comes from the signature
+
+A confirmed step still has to be big enough to be worth a mark, and how big that
+is cannot be a constant. It was one — 0.5% — and the bug that killed it is three
+installer-size series plotted over a week with no bars at all. The test saw the
+steps perfectly well: 41 candidates on `installer size libxul.so`, several gating
+at p ≈ 1e-9. Every one was thrown away by the floor, because a 240 MB binary that
+grows by 68 KB has moved 0.028% and the whole week's spread is 0.14%. A 0.5% floor
+on a size metric admits nothing, ever.
+
+Perfherder has the answer already, per signature, on the summary endpoint:
+`alert_threshold` with `alert_change_type`, which is either a percentage or an
+**absolute** delta in the metric's own units. Autoland alone declares 0.25%
+(awsy), 2/5/6/10% (talos, browsertime), 50% and 100% (build times), 100 KB and
+1 MB. `changes.ts` takes a **quarter** of whichever it is — the same quarter the
+old constant was of perfherder's global 2% default, so nothing moved for the
+signatures that declare nothing, and this is only ever a change for one that does.
+
+Three wrinkles, none optional:
+
+- **The two kinds are not interchangeable.** An absolute floor compares
+  `afterValue − beforeValue`; a percentage floor compares the relative change.
+  Reading one as the other is off by whatever the metric's magnitude happens to be.
+- **A subtest declares nothing and inherits its parent's.** All three signatures
+  in the bug are subtests of an `installer size` suite that carries the 100 KB;
+  they carry nothing. Perfherder doesn't inherit — it goes straight to the global
+  2% — but it also never reaches that line, because a subtest whose `should_alert`
+  is null under a suite that sets one is treated as false and never analysed at
+  all. There is no perfherder verdict to match here, only the gap this whole
+  feature exists for, and the parent's threshold is the best statement available
+  of what a real move in the metric looks like. Costs one metadata-only request
+  per parent per session (`fetchSignatureMeta`, a zero-width window).
+- **Detection waits for that request** rather than running at the default and
+  redoing it. The result is cached under a key that says nothing about the floor
+  it was computed with, so a first pass at 2% would be an empty array nothing
+  ever revisits.
+
+With the signature's own floor, the three series draw 9, 0 and 8 bars over that
+week — and the two that draw agree on five of the same pushes, which is what you
+would expect of `libxul.so` and `xul.dll` built from the same tree. The third has
+no confirmed step at any floor: two candidates gate but fail the relocated split's
+α, which is genuine wander rather than a step.
+
 Every constant is in [changes.ts](../src/lib/graphs/changes.ts) with its reason;
 the five worth knowing here:
 
@@ -590,10 +638,11 @@ the five worth knowing here:
   round. At 0.05 that is on the order of one manufactured bar per series per range,
   which for something drawn by default is the difference between a second opinion
   and a nuisance. The CUSUM threshold is the other half of the same budget.
-- **0.5% minimum change.** With enough pushes the test will certify a 0.05%
-  drift, which is true and useless. Far below perfherder's 2% alerting
-  threshold, deliberately — a threshold near theirs would rebuild the blind spot
-  this exists to cover.
+- **A minimum change of a quarter of the signature's own alerting threshold.**
+  With enough pushes the test will certify a 0.05% drift, which is true and
+  useless, so there has to be a floor; a quarter keeps it far below perfherder's
+  bar, because a floor near theirs would rebuild the blind spot this exists to
+  cover. See "The floor comes from the signature" for why it is not a constant.
 
 #### Deviations from perf.webkit.org
 
@@ -743,7 +792,8 @@ Recovery is the explicit Retry button.
   the schemas for it. [alerts.ts](../src/lib/graphs/alerts.ts) — **pure**. Summaries →
   the marks the graph draws and the facts the pane prints. See "Alerts" above.
 - [changes.ts](../src/lib/graphs/changes.ts) — **pure**. Segmentation and the
-  confirmation test; a series' pushes → the steps in it. See "Detected changes".
+  confirmation test; a series' pushes and its `AlertThreshold` → the steps in it.
+  See "Detected changes".
 - [annotations.ts](../src/lib/graphs/annotations.ts) — **pure**. The marks in the
   plot's margins: row packing, pixel layout and hit tests for both the alert
   triangles and the change bars. Both of its layouts are computed once by

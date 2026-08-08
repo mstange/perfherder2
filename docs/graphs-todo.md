@@ -175,7 +175,10 @@ Living checklist. Update in the same commit as the work it describes.
     too narrow for it should do — nothing, an ellipsis, a wider bar — is the
     part that needs a decision, and a bar that sometimes has a label reads as a
     different kind of mark from one that never does.
-  - *False positives: field-checked, not counted.* α = 0.01 and the 0.5% floor
+  - *False positives: field-checked, not counted.* α = 0.01 and the floor (0.5%
+    at the time; now a quarter of the signature's own alerting threshold, which
+    is the same 0.5% wherever perfherder declares nothing — see "The floor comes
+    from the signature" in graphs.md)
     were chosen from first principles and one synthetic sweep. What exists now
     instead of the census that was planned is regular use over real graphs, which
     reports: the bars mostly look reasonable; where a bar and a perfherder alert
@@ -208,7 +211,7 @@ Living checklist. Update in the same commit as the work it describes.
   - *The reported percentage.* `confirm()` takes `mean(before)` against
     `mean(after)`, so one outlier push in a pool inflates the number on the card.
     A median here is a contained change: it moves the printed delta and the
-    `MIN_RELATIVE_CHANGE` comparison, and nothing else reads it.
+    `clearsFloor` comparison, and nothing else reads it.
   - *The detector's input.* Swapping in a robust push summary is the change that
     would actually remove bars, and it is the one with a coupling problem:
     `push.mean` is also the y the connecting line joins

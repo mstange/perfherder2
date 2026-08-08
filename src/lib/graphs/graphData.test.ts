@@ -3,17 +3,23 @@ import { JITTER_GAP_FRACTION } from '../shared/chart';
 import type { RawDatum, RawSummary } from './graphApi';
 import { parseApiDate } from './graphApi';
 import {
+  alertThresholdFromSummary,
   buildSeriesData,
+  DEFAULT_ALERT_THRESHOLD,
   indexInPushValues,
   jitterForSelection,
   MEAN_REPLICATE,
   metaFromSummary,
   pushValues,
   replicateGroups,
+  resolveAlertThreshold,
   resolvePoint,
   runRangeInPushValues,
   seriesKey,
   seriesLabel,
+  thresholdParentRef,
+  type AlertThreshold,
+  type SeriesRef,
 } from './graphData';
 
 function datum(o: Partial<RawDatum> & { id: number; value: number }): RawDatum {
@@ -44,6 +50,8 @@ function summary(data: RawDatum[], o: Partial<RawSummary> = {}): RawSummary {
     name: 'ts_paint opt e10s',
     parent_signature: null,
     should_alert: true,
+    alert_change_type: null,
+    alert_threshold: null,
     data,
     ...o,
   };
@@ -497,6 +505,78 @@ describe('metaFromSummary', () => {
     );
     expect(meta.lowerIsBetter).toBe(true);
     expect(meta.measurementUnit).toBe('');
+  });
+});
+
+describe('alertThresholdFromSummary', () => {
+  it('reads a percentage threshold, whether or not the change type is spelled out', () => {
+    // 0 is ALERT_PCT and null is the same thing — most signatures leave it unset.
+    expect(alertThresholdFromSummary(summary([], { alert_threshold: 5 }))).toEqual({
+      kind: 'percentage',
+      value: 5,
+    });
+    expect(
+      alertThresholdFromSummary(summary([], { alert_threshold: 5, alert_change_type: 0 })),
+    ).toEqual({ kind: 'percentage', value: 5 });
+  });
+
+  it('reads an absolute threshold in the metric’s own units', () => {
+    expect(
+      alertThresholdFromSummary(summary([], { alert_threshold: 102400, alert_change_type: 1 })),
+    ).toEqual({ kind: 'absolute', value: 102400 });
+  });
+
+  it('says nothing when there is no threshold, change type or not', () => {
+    // A change type on its own declares nothing: there is no number to compare
+    // against. Reading it as "absolute, 0" would pass every change ever measured.
+    expect(alertThresholdFromSummary(summary([]))).toBeNull();
+    expect(alertThresholdFromSummary(summary([], { alert_change_type: 1 }))).toBeNull();
+    expect(alertThresholdFromSummary(summary([], { alert_threshold: 0 }))).toBeNull();
+  });
+});
+
+describe('resolveAlertThreshold', () => {
+  const own: AlertThreshold = { kind: 'percentage', value: 6 };
+  const parent: AlertThreshold = { kind: 'absolute', value: 102400 };
+
+  it('prefers the signature’s own threshold to its parent’s', () => {
+    expect(resolveAlertThreshold(own, parent)).toBe(own);
+  });
+
+  it('inherits the parent’s when the signature declares none', () => {
+    // The build-metrics case: every installer-size subtest is silent and its
+    // parent carries the 100 KB.
+    expect(resolveAlertThreshold(null, parent)).toBe(parent);
+  });
+
+  it('falls back to perfherder’s global default when neither says anything', () => {
+    expect(resolveAlertThreshold(null, null)).toBe(DEFAULT_ALERT_THRESHOLD);
+  });
+});
+
+describe('thresholdParentRef', () => {
+  const ref: SeriesRef = { repository: 'autoland', signatureId: 1668132, frameworkId: 2 };
+
+  it('points a subtest at its parent, keeping repo and framework', () => {
+    const meta = metaFromSummary(
+      summary([], { signature_id: 1668132, parent_signature: 1457010, has_subtests: false }),
+    );
+    expect(thresholdParentRef(ref, meta)).toEqual({
+      repository: 'autoland',
+      signatureId: 1457010,
+      frameworkId: 2,
+    });
+  });
+
+  it('has nobody to ask for a parent or a standalone signature', () => {
+    // `parentSignatureId` reports a parent's *own* id, which would otherwise send
+    // the lookup back round to the signature we already have.
+    const parent = metaFromSummary(
+      summary([], { signature_id: 1668132, has_subtests: true, parent_signature: null }),
+    );
+    expect(thresholdParentRef(ref, parent)).toBeNull();
+    const alone = metaFromSummary(summary([], { has_subtests: false, parent_signature: null }));
+    expect(thresholdParentRef(ref, alone)).toBeNull();
   });
 });
 

@@ -44,6 +44,17 @@
 //    the cleanest rank separation, because a proposed cut is a mean-based statistic
 //    and one bad run walks it.
 //
+// ## How small is too small comes from the signature, not from here
+//
+// The one number in this file that isn't a property of the data is how big a step
+// has to be to be worth a mark, and it can't be a constant: 0.5% is a fifth of
+// awsy's alerting bar and forty times the noise floor of an installer-size series.
+// So the caller passes the signature's own `AlertThreshold` — perfherder's, read
+// off the summary endpoint, in percent or in the metric's own units — and
+// THRESHOLD_FRACTION scales it down to something well below the bar a sheriff sees.
+// A signature that declares nothing gets perfherder's global 2%, which lands the
+// floor exactly where the old constant was.
+//
 // ## The unit of analysis is the push mean, not the run and not the replicate
 //
 // This app has something perf.webkit.org doesn't: tens of replicate values per
@@ -80,7 +91,7 @@
 // drag it, which is an argument for summarising a push more robustly, not for
 // unpooling.
 
-import type { PushGroup } from './graphData';
+import type { AlertThreshold, PushGroup } from './graphData';
 import {
   changeDirection,
   mannWhitneyU,
@@ -135,15 +146,47 @@ const CHANGE_ALPHA = 0.01;
 // straddle the step, and the estimate then slides onto it.
 const MIN_WINDOW_PUSHES = 6;
 
-// Changes smaller than this are dropped even when the test can see them. With
-// enough pushes a rank-sum test will happily certify a 0.05% drift, which is
-// true and useless.
+// Changes smaller than this fraction of the signature's *own* alerting threshold
+// are dropped even when the test can see them. With enough pushes a rank-sum test
+// will happily certify a 0.05% drift, which is true and useless.
 //
-// Deliberately far below perfherder's own 2% alerting threshold — catching the
-// sub-threshold changes perfherder stays quiet about is the whole point (see
-// the macOS example above), so a threshold anywhere near theirs would rebuild
-// the blind spot this is meant to cover.
-const MIN_RELATIVE_CHANGE = 0.005;
+// **A fraction, and of the signature's threshold rather than a constant.** A
+// quarter keeps this deliberately far below the bar perfherder alerts at, because
+// catching the sub-threshold changes perfherder stays quiet about is the whole
+// point (see the macOS example above) and a floor anywhere near theirs would
+// rebuild the blind spot this is meant to cover. A quarter of perfherder's *global*
+// default of 2% is 0.5%, which is exactly the constant this replaces — so nothing
+// moves for a signature that declares no threshold, and this is only ever a change
+// for one that does.
+//
+// Taking it from the signature is what makes the floor mean the same thing across
+// frameworks, and the spread is far too wide for any constant to cover: autoland
+// signatures declare 2%, 5%, 6% and 10% (talos, browsertime), 0.25% (awsy), 50%
+// and 100% (build times), and 100 KB and 1 MB *absolute* (installer and apk size).
+// A fixed 0.5% is a fifth of awsy's alerting bar and forty times the noise floor of
+// an installer-size series, where a week's entire spread is 0.14% and a real,
+// attributable 340 KB step is 0.18% — every one of them was dropped, which is the
+// bug this fixes. `AlertThreshold` is where the two units are described.
+const THRESHOLD_FRACTION = 0.25;
+
+// Does a change clear the floor its signature's threshold sets?
+//
+// The two kinds are not interchangeable and neither is a fallback for the other:
+// `absolute` compares the difference of the two window means in the metric's own
+// units, `percentage` compares the relative change. A percentage floor on a
+// deterministic size metric admits everything, and an absolute floor on a timing
+// metric measured in a different unit admits nothing.
+function clearsFloor(
+  threshold: AlertThreshold,
+  beforeValue: number,
+  afterValue: number,
+  relative: number,
+): boolean {
+  const floor = threshold.value * THRESHOLD_FRACTION;
+  return threshold.kind === 'absolute'
+    ? Math.abs(afterValue - beforeValue) >= floor
+    : Math.abs(relative) * 100 >= floor;
+}
 
 // ---------------------------------------------------------------------------
 // Proposal
@@ -322,8 +365,10 @@ export type DetectedChange = {
   // Means of the two windows.
   beforeValue: number;
   afterValue: number;
-  // (after − before) / before. Never null and never below MIN_RELATIVE_CHANGE —
-  // a candidate that can't produce one isn't returned.
+  // (after − before) / before. Never null — a candidate whose baseline is zero
+  // isn't returned. It can be arbitrarily small when the signature's floor is an
+  // absolute one, since then it is `afterValue - beforeValue` that cleared the
+  // bar and this is only the way of expressing it.
   relativeChange: number;
   // From the metric's direction, never from the sign alone.
   isRegression: boolean;
@@ -537,6 +582,7 @@ function describeChange(
   values: readonly number[],
   at: number,
   gate: Gate,
+  threshold: AlertThreshold,
 ): Confirmation | null {
   const { windowStart, windowEnd } = gate;
   const index = relocateBoundary(values, windowStart, windowEnd, at);
@@ -556,7 +602,13 @@ function describeChange(
   // Applied to the relocated split, not to the candidate's: a boundary sitting
   // on an outlier understates its own step, and dropping a change for a delta
   // that only the wrong index made small would be the same bug twice.
-  if (relative === null || Math.abs(relative) < MIN_RELATIVE_CHANGE) return null;
+  //
+  // A null `relative` is a zero baseline, and it is dropped whichever kind of
+  // floor is in force — not because an absolute floor couldn't judge it, but
+  // because `DetectedChange.relativeChange` is what the card leads with and a
+  // series stepping off zero has no percentage to print.
+  if (relative === null) return null;
+  if (!clearsFloor(threshold, beforeValue, afterValue, relative)) return null;
 
   return {
     index,
@@ -601,6 +653,7 @@ function describeChange(
 export function detectChanges(
   pushes: readonly PushGroup[],
   lowerIsBetter: boolean,
+  threshold: AlertThreshold,
 ): DetectedChange[] {
   if (pushes.length < MIN_WINDOW_PUSHES * 2) return [];
   const values = pushes.map((p) => p.mean);
@@ -622,7 +675,7 @@ export function detectChanges(
     // accepted later can change the answer.
     let accepted: Candidate | null = null;
     for (const { candidate, gate } of gated) {
-      const change = describeChange(values, candidate.cut, gate);
+      const change = describeChange(values, candidate.cut, gate, threshold);
       if (!change) continue;
       confirmed.push({ candidate, change });
       walls.push(change.index);
@@ -651,7 +704,7 @@ export function detectChanges(
     // Its own index is in `walls`, and a change is not a wall to itself.
     const others = walls.filter((wall) => wall !== change.index);
     const gate = gateChange(values, candidate, others);
-    const refined = gate && describeChange(values, candidate.cut, gate);
+    const refined = gate && describeChange(values, candidate.cut, gate, threshold);
     return refined ?? change;
   });
 
@@ -665,8 +718,8 @@ export function detectChanges(
         x1: pushes[change.windowEnd - 1].x,
         changeX: after.x,
         // `significant` is true by construction here — `describeChange` returned —
-        // so this asks only "which way is bad", and the two values differ by at
-        // least MIN_RELATIVE_CHANGE so it can't come back 'none'.
+        // so this asks only "which way is bad", and the two values cleared a
+        // positive floor so it can't come back 'none'.
         isRegression:
           changeDirection(change.beforeValue, change.afterValue, lowerIsBetter, true) ===
           'regression',

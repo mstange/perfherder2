@@ -1,7 +1,9 @@
 // Treeherder API calls that back the graphs view.
 //
 // Four endpoints:
-//   /performance/summary/       the actual data points for one signature
+//   /performance/summary/       the actual data points for one signature, and —
+//                               asked over a zero-width window — a signature's
+//                               metadata on its own; see `fetchSignatureMeta`
 //   /project/<repo>/push/<id>/  push ("build") metadata for a clicked point
 //   /project/<repo>/jobs/<id>/  job ("run") metadata for a clicked point
 //   /repository/                repo list; `dvcs_type` and `url` shape the links
@@ -64,6 +66,17 @@ export const RawSummarySchema = v.object({
   // endpoint's `parent_signature`.
   parent_signature: v.nullable(v.number()),
   should_alert: v.nullable(v.boolean()),
+  // The signature's own alerting policy, and the only endpoint that reports it —
+  // the signatures endpoint the picker uses serializes neither. Null means the
+  // signature said nothing and perfherder falls back to its global default; see
+  // `alertThresholdFromSummary`.
+  //
+  // `alert_change_type` indexes `PerformanceSignature.ALERT_CHANGE_TYPES`:
+  // 0 percentage, 1 absolute, null percentage. `alert_threshold` is read in
+  // *percent* for the first and in the metric's own units for the second, which
+  // is why the two can never be looked at separately.
+  alert_change_type: v.nullish(v.number()),
+  alert_threshold: v.nullish(v.number()),
   data: v.array(RawDatumSchema),
 });
 export type RawSummary = v.InferOutput<typeof RawSummarySchema>;
@@ -176,6 +189,29 @@ export async function fetchSummary(
     signal,
   );
   return list.length > 0 ? list[0] : null;
+}
+
+// One signature's metadata and none of its data, for the parent lookup in
+// `appState` — a subtest carries no alerting policy of its own and inherits its
+// parent's (see `resolveAlertThreshold`), so this asks about a signature nobody
+// is plotting.
+//
+// **A zero-width window is how you ask for that.** The endpoint filters
+// signatures by `last_updated` only when given a relative `interval`, so passing
+// `startday === endday` skips that filter entirely and answers with the
+// signature row and an empty `data` — the row is returned "even if there isn't
+// performance data", per the comment in `PerformanceSummary.list`. An `interval`
+// would have been the obvious way to ask and is the wrong one twice: it would
+// drop a signature that has gone quiet, and it would carry back a value per push
+// over the interval for a request that wants none of them.
+export function fetchSignatureMeta(
+  repository: string,
+  signatureId: number,
+  frameworkId: number,
+  signal?: AbortSignal,
+): Promise<RawSummary | null> {
+  const now = Date.now();
+  return fetchSummary(repository, signatureId, frameworkId, now, now, signal);
 }
 
 export function fetchPush(

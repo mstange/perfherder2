@@ -11,6 +11,7 @@
   import {
     formatPValue,
     formatSignedPercent,
+    formatSignedValue,
     formatTimestamp,
     formatValue,
   } from '../shared/chart';
@@ -237,6 +238,19 @@
           <div class="cmp-head"><h3>Detected change</h3></div>
           <p class="value">
             {formatSignedPercent(change.relativeChange)}
+            <!-- And the delta beside it, in the metric's own units, because the
+                 percentage is not always the number that means anything: a
+                 signature whose alerting threshold is an absolute one (installer
+                 size sets 100 KB) has its floor measured in those units, so a
+                 real 340 KB regression appears here as −0.19% and reads as noise
+                 unless the KB are on the card too. The comparison card below
+                 shows the same pair the other way round. -->
+            <span class="muted">
+              ({formatSignedValue(change.afterValue - change.beforeValue)}{sel.entry.meta
+                ?.measurementUnit
+                ? ` ${sel.entry.meta.measurementUnit}`
+                : ''})
+            </span>
             <span class="verdict {change.isRegression ? 'regression' : 'improvement'}">
               {change.isRegression ? 'regression' : 'improvement'}
             </span>
