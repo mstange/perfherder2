@@ -24,7 +24,10 @@
 // change detection" trend line). The two-stage shape — segment first, then
 // confirm each boundary with a test on the points either side — is theirs, as
 // is the Schwarz-criterion segmentation with the Birgé–Massart penalty. The
-// deviations are listed under "Deviations from perf.webkit.org" below.
+// deviations are listed under "Deviations from perf.webkit.org" below. The third
+// stage — re-estimating the confirmed boundary's index with a rank statistic,
+// see `relocate` — is not theirs, and exists because a single bad job can walk
+// the segmentation's boundary several pushes off the step it found.
 //
 // ## The unit of analysis is the push mean, not the replicate
 //
@@ -272,10 +275,12 @@ export function segmentValues(values: readonly number[], gridSize = GRID_SIZE): 
 
 // One confirmed step in a series, in push-index space.
 export type DetectedChange = {
-  // Index into the series' `pushes` of the first push *after* the step.
+  // Index into the series' `pushes` of the first push *after* the step. From the
+  // rank relocation below, not from the segmentation's boundary.
   index: number;
-  // The pushes the test compared, as a half-open index range that straddles
-  // `index`. Also what the annotation bar spans.
+  // The pushes the test compared, as a half-open index range containing
+  // `index`. Also what the annotation bar spans. It is the *candidate's* window,
+  // so `index` sits inside it but not necessarily in the middle of it.
   windowStart: number;
   windowEnd: number;
   beforeCount: number;
@@ -305,6 +310,7 @@ export type DetectedChange = {
 
 type Confirmation = Pick<
   DetectedChange,
+  | 'index'
   | 'windowStart'
   | 'windowEnd'
   | 'beforeCount'
@@ -315,6 +321,86 @@ type Confirmation = Pick<
   | 'pValue'
   | 'effectSize'
 >;
+
+// Which cut in this window separates it best? The step's index, re-estimated.
+//
+// The segmentation answers this with the variance cost, and a single bad job can
+// buy the answer. Observed on autoland signature 299010 (tresize, 2026-07-23):
+// one push's three runs came back 8.20 / 6.26 / 8.29, and the boundary landed on
+// *it* rather than on the real step eight pushes later. Holding that one push
+// out of the pre-step segment kept that segment's variance at 0.0028 instead of
+// 0.0085, worth ~65 in cost over its 58 pushes, while dropping it into the
+// post-step segment cost only ~43 — that segment already spanning the real step,
+// so its variance was large either way. One low job won by 17.
+//
+// The confirmation stage can't catch that, because a ±24-push window straddles
+// the real step from either index: the test says "a step is in here" and the
+// index says where, and only the index is wrong. What that cost downstream was
+// the notch drawn ten minutes early, a delta understating the step (−3.4%
+// against −4.5%, seven pushes still at the old level sitting in the "after"
+// pool) and the wrong pair of pushes pinned by a click.
+//
+// So the index is re-estimated with a rank statistic instead: the cut that
+// separates the window's two sides most cleanly, by the same Mann-Whitney the
+// confirmation runs. Ranks don't care *how far* the bad job fell, only that it is
+// one value out of place among ~48, so on the fixture above the peak sits on the
+// real step rather than on the outlier. Re-minimizing the variance cost inside
+// the window does not work — it picks the outlier again, for the same reason it
+// picked it in the first place.
+//
+// **Cliff's delta and not |z|**, though the two rank the cuts almost identically.
+// A z is standardized by a null deviation that grows with `n1 · n2`, so of two
+// splits that separate the window equally well it prefers the more balanced one —
+// which is a pull toward the middle of the window, and the middle of the window
+// is exactly where the candidate we are trying to get away from sits. On a
+// fixture whose step is eight pushes off-centre that bias is worth a push: |z|
+// peaks one short of the step, trading a pair of misranked values for a better
+// balanced pool. δ is a fraction of pairs, so balance doesn't enter into it.
+//
+// **Estimation, not testing.** The gate stays the test at the segmentation's own
+// boundary — the one p-value in here that wasn't chosen after looking at the
+// data — so relocation cannot add a change this file would not otherwise have
+// found. It moves where a change is reported and which numbers describe it. The
+// p-value reported with it comes from the split that separates best out of ~37,
+// so it reads as "how cleanly do the two sides separate" and not as a
+// false-positive rate.
+//
+// Cuts stay MIN_WINDOW_PUSHES from both ends of the window, so the estimate
+// never rests on fewer pushes than the test itself would accept, and the notch
+// stays inside its own bar. A step within six pushes of the window's edge is
+// therefore not reachable — but the candidate is at most WINDOW_PUSHES from it to
+// begin with, so this bounds an error rather than introducing one.
+//
+// On a tie the cut nearest the candidate wins, the candidate itself included.
+// Ties are real: δ saturates at 1 as soon as a split separates the window
+// perfectly, and where two adjacent splits both do there is nothing in the data
+// to choose between them, so the segmentation's opinion is as good as any.
+export function relocateBoundary(
+  values: readonly number[],
+  windowStart: number,
+  windowEnd: number,
+  candidate: number,
+): number {
+  const separation = (cut: number): number => {
+    const test = mannWhitneyU(values.slice(windowStart, cut), values.slice(cut, windowEnd));
+    return test ? Math.abs(test.cliffsDelta) : -1;
+  };
+  // The candidate is the incumbent, which is what settles a tie at any distance
+  // from it — including a tie with itself.
+  let bestCut = candidate;
+  let best = separation(candidate);
+  for (let cut = windowStart + MIN_WINDOW_PUSHES; cut <= windowEnd - MIN_WINDOW_PUSHES; cut++) {
+    const delta = separation(cut);
+    if (
+      delta > best ||
+      (delta === best && Math.abs(cut - candidate) < Math.abs(bestCut - candidate))
+    ) {
+      best = delta;
+      bestCut = cut;
+    }
+  }
+  return bestCut;
+}
 
 // Does a candidate boundary survive a test on the pushes either side?
 //
@@ -336,27 +422,40 @@ function confirmChange(
 ): Confirmation | null {
   const windowStart = Math.max(lowLimit, at - WINDOW_PUSHES);
   const windowEnd = Math.min(highLimit, at + WINDOW_PUSHES);
-  const beforeCount = at - windowStart;
-  const afterCount = windowEnd - at;
-  if (beforeCount < MIN_WINDOW_PUSHES || afterCount < MIN_WINDOW_PUSHES) return null;
+  if (at - windowStart < MIN_WINDOW_PUSHES || windowEnd - at < MIN_WINDOW_PUSHES) return null;
 
-  const before = values.slice(windowStart, at);
-  const after = values.slice(at, windowEnd);
-  const test = mannWhitneyU(before, after);
-  // `test.significant` is the 0.05 the rest of the app reports against; this
+  // The gate, at the segmentation's own boundary. See `relocate` for why the
+  // relocated split is not the thing that gets to decide there is a step here.
+  const gate = mannWhitneyU(values.slice(windowStart, at), values.slice(at, windowEnd));
+  // `gate.significant` is the 0.05 the rest of the app reports against; this
   // wants its own, stricter bar. See CHANGE_ALPHA.
+  if (!gate || gate.pValue >= CHANGE_ALPHA) return null;
+
+  const index = relocateBoundary(values, windowStart, windowEnd, at);
+  const before = values.slice(windowStart, index);
+  const after = values.slice(index, windowEnd);
+  const test = index === at ? gate : mannWhitneyU(before, after);
+  // The relocated split has to clear the same bar, which is not a second bite at
+  // the apple: requiring *both* splits to pass can only ever remove a change
+  // this file would have drawn, never add one. What it buys is a card that never
+  // prints a p-value above the α it says it works to — δ chooses the split, and δ
+  // is not the p-value, so the two can in principle disagree.
   if (!test || test.pValue >= CHANGE_ALPHA) return null;
 
   const beforeValue = mean(before);
   const afterValue = mean(after);
   const relative = relativeChange(beforeValue, afterValue);
+  // Applied to the relocated split, not to the candidate's: a boundary sitting
+  // on an outlier understates its own step, and dropping a change for a delta
+  // that only the wrong index made small would be the same bug twice.
   if (relative === null || Math.abs(relative) < MIN_RELATIVE_CHANGE) return null;
 
   return {
+    index,
     windowStart,
     windowEnd,
-    beforeCount,
-    afterCount,
+    beforeCount: index - windowStart,
+    afterCount: windowEnd - index,
     beforeValue,
     afterValue,
     relativeChange: relative,
@@ -384,11 +483,10 @@ export function detectChanges(
     const at = boundaries[b];
     const confirmed = confirmChange(values, at, boundaries[b - 1], boundaries[b + 1]);
     if (!confirmed) continue;
-    const before = pushes[at - 1];
-    const after = pushes[at];
+    const before = pushes[confirmed.index - 1];
+    const after = pushes[confirmed.index];
     out.push({
       ...confirmed,
-      index: at,
       x0: pushes[confirmed.windowStart].x,
       x1: pushes[confirmed.windowEnd - 1].x,
       changeX: (before.x + after.x) / 2,
@@ -406,5 +504,17 @@ export function detectChanges(
       afterPushId: after.pushId,
     });
   }
-  return out;
+
+  // Two adjacent candidates can relocate onto the same push: their windows
+  // overlap between the boundary they share, so one real step can be the best
+  // cut for both. Rare, but two notches in one column and two identical cards in
+  // the details pane is not something to ship on the off chance. The better-
+  // separated one wins, and the sort is because a relocated index no longer has
+  // to be in the order its candidate was.
+  const byIndex = new Map<number, DetectedChange>();
+  for (const change of out) {
+    const seen = byIndex.get(change.index);
+    if (!seen || change.pValue < seen.pValue) byIndex.set(change.index, change);
+  }
+  return [...byIndex.values()].sort((a, b) => a.index - b.index);
 }

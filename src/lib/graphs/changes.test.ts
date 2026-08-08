@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { detectChanges, segmentValues } from './changes';
+import { detectChanges, relocateBoundary, segmentValues } from './changes';
 import type { PushGroup } from './graphData';
 
 // Only `mean`, `x` and `pushId` are read; the rest is filled so the fixtures
@@ -81,6 +81,42 @@ describe('segmentValues', () => {
     for (let i = 1; i < boundaries.length; i++) {
       expect(boundaries[i]).toBeGreaterThan(boundaries[i - 1]);
     }
+  });
+});
+
+describe('relocateBoundary', () => {
+  // The shape that motivates relocation, from autoland signature 299010 on
+  // 2026-07-23 and scaled: a flat level, one push whose mean a single bad job
+  // dragged below *both* levels, seven more pushes still at the old level, then
+  // the real step. The segmentation's boundary lands on the bad push, because
+  // holding it out of the pre-step segment is worth more in variance than
+  // putting it in the post-step one costs — that segment spanning the real step
+  // either way.
+  function outlierBeforeStep(): number[] {
+    const values = [...noisy(100, 32, 0.5), ...noisy(96, 16, 0.5)];
+    values[24] = 92.5;
+    return values;
+  }
+
+  it('moves a boundary sitting on an outlier onto the step', () => {
+    // Rank separation peaks at the step (index 32), not at the outlier the
+    // variance cost preferred (24). Re-minimising that cost inside the window
+    // would pick 24 all over again — the point of using a rank statistic is that
+    // it counts one value out of place, not how far out of place it is.
+    expect(relocateBoundary(outlierBeforeStep(), 0, 48, 24)).toBe(32);
+  });
+
+  it('leaves a boundary that is already the best split alone', () => {
+    const clean = step(100, 110, 24);
+    expect(relocateBoundary(clean, 0, 48, 24)).toBe(24);
+  });
+
+  it('never lands within six pushes of the window edge', () => {
+    // The same floor the test itself observes: an estimate resting on fewer
+    // pushes than MIN_WINDOW_PUSHES would be one the confirmation stage would
+    // have refused to make, and the notch has to stay inside its own bar.
+    const late = [...noisy(100, 45, 0.5), ...noisy(130, 3, 0.5)];
+    expect(relocateBoundary(late, 0, 48, 24)).toBeLessThanOrEqual(42);
   });
 });
 

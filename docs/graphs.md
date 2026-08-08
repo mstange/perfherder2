@@ -461,7 +461,7 @@ pseudo-replication. So the values are `PushGroup.mean`, one per build: the same
 number the connecting line joins. The replicates still earn their keep, by
 making each of those means precise.
 
-#### Two stages
+#### Three stages
 
 1. **Segment.** Find the boundaries that minimise a penalised cost — segment
    cost is `len · log(variance)`, penalty is Birgé and Massart's, the whole
@@ -471,6 +471,9 @@ making each of those means precise.
    push means either side. `confirmChange`. Boundaries that don't survive are
    dropped, which is what keeps a segmentation that liked an outlier from
    reaching the graph.
+3. **Relocate.** Re-estimate the confirmed boundary's index as the cut through
+   its own window with the largest Cliff's delta. `relocateBoundary`. Not
+   perf.webkit.org's, and the reason it exists is below.
 
 Every constant is in [changes.ts](../src/lib/graphs/changes.ts) with its reason;
 the four worth knowing here:
@@ -519,6 +522,23 @@ the four worth knowing here:
 - **Grid edges are discarded, not kept as candidates.** Rediscovered the hard
   way — see GRID_SIZE. Keeping them manufactured a −1.0% "change" at p = 0.028
   out of the noise on a synthetic series, every 500 pushes, guaranteed.
+- **A confirmed boundary's index is re-estimated with a rank statistic.** One bad
+  job can walk the segmentation's boundary several pushes off the step it found,
+  and the confirmation stage cannot see it happen: a ±24-push window straddles
+  the real step from either index, so the test says "a step is in here" and only
+  the index is wrong. Found on autoland signature 299010 (tresize, 2026-07-23),
+  where a push whose three runs came back 8.20 / 6.26 / 8.29 took the boundary
+  eight pushes — ten minutes — off the real step, because holding that one push
+  out of the pre-step segment bought more variance than putting it in the
+  post-step one cost. The notch was drawn early, the reported delta understated
+  the step (−3.4% against −4.7%, pushes still at the old level sitting in the
+  "after" pool), and a click pinned the wrong pair of builds. Cliff's delta over
+  the same window puts the boundary back on the step; the variance cost, re-run
+  inside the window, picks the outlier all over again. δ rather than |z| because a
+  z is standardized by a null deviation that grows with `n1 · n2` and so prefers
+  the balanced split — a pull toward the middle of the window, which is where the
+  candidate being escaped from sits. Both splits have to clear α, so relocation
+  can only remove a change, never add one.
 
 #### How it's drawn, and what a click does
 
