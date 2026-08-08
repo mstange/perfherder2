@@ -124,3 +124,15 @@ export async function fetchAlertSummaries(
   );
   return page.results;
 }
+
+// One summary by id, which the list request above cannot reach: its filter is
+// `alerts__series_signature`, and that matches a summary's *own* alerts only. A
+// reassigned alert stays in its original summary's `alerts` and appears in the
+// target's `related_alerts`, so the push a sheriff moved the alert to has to be
+// asked for by id. See `alertsForSeries`.
+//
+// The viewset is a `ModelViewSet`, so the detail route exists and answers with a
+// bare summary rather than with a page of one.
+export function fetchAlertSummary(id: number, signal?: AbortSignal): Promise<AlertSummary> {
+  return fetchJson(AlertSummarySchema, `${API_BASE}/performance/alertsummary/${id}/`, signal);
+}

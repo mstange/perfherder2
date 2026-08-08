@@ -19,7 +19,12 @@ import {
   type Push,
   type RepositoryInfo,
 } from './graphApi';
-import { alertsByPush, alertsForSeries, type SeriesAlert } from './alerts';
+import {
+  alertsByPush,
+  alertsForSeries,
+  reassignmentTargetIds,
+  type SeriesAlert,
+} from './alerts';
 import { detectChanges, type DetectedChange } from './changes';
 import {
   benchmarkComparison,
@@ -30,7 +35,7 @@ import {
 } from './artifacts';
 import { fetchTaskArtifactNames } from './artifactsApi';
 import type { RepoLinkInfo } from '../shared/links';
-import { fetchAlertSummaries } from './alertsApi';
+import { fetchAlertSummaries, fetchAlertSummary, type AlertSummary } from './alertsApi';
 import {
   buildSeriesData,
   EMPTY_SERIES_DATA,
@@ -741,13 +746,41 @@ export class AppState {
     const seconds = Math.max(DAY_SECONDS, (Date.now() - this.range.start) / 1000);
     try {
       const summaries = await fetchAlertSummaries(ref.signatureId, ref.frameworkId, seconds);
+      // Not `await`ed unconditionally: the ids are empty for all but a
+      // reassigned alert, and awaiting an already-settled promise still costs
+      // the graph a microtask turn on every series that ever loads.
+      const ids = reassignmentTargetIds(summaries, ref.signatureId);
+      const targets = ids.length > 0 ? await this.loadReassignmentTargets(ids) : undefined;
       this.alertCache = new Map(this.alertCache).set(
         key,
-        alertsForSeries(summaries, ref.signatureId, data),
+        alertsForSeries(summaries, ref.signatureId, data, targets),
       );
     } catch {
       // As with pushes and jobs: a failed lookup must not take the graph down.
     }
+  }
+
+  // The summaries a reassigned alert was moved to, so `alertsForSeries` can draw
+  // it on the push a sheriff blamed rather than on the one the analysis flagged.
+  // One request each, because the list request can't carry them (see
+  // `fetchAlertSummary`) — affordable only because reassignments are a small
+  // minority: one of the five alerts autoland signature 300397 collected over a
+  // year, and that one shared its target with thirteen other signatures'.
+  //
+  // Failures are swallowed per id rather than as a batch, so one dead lookup
+  // costs one marker its move instead of costing every marker its position.
+  private async loadReassignmentTargets(ids: number[]): Promise<Map<number, AlertSummary>> {
+    const targets = new Map<number, AlertSummary>();
+    await Promise.all(
+      ids.map(async (id) => {
+        try {
+          targets.set(id, await fetchAlertSummary(id));
+        } catch {
+          // `alertsForSeries` leaves the marker on the detected push.
+        }
+      }),
+    );
+    return targets;
   }
 
   private async loadPush(repository: string, pushId: number): Promise<void> {

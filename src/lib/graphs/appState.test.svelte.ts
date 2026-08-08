@@ -877,6 +877,95 @@ describe('AppState alerts', () => {
     });
   });
 
+  // The one case that needs a second request: a reassigned alert belongs on the
+  // push the sheriff moved it to, and the list request can't see that summary
+  // (its filter matches a summary's own alerts, and a reassigned alert is in the
+  // target's `related_alerts`). Placement itself is alerts.test.ts's; what this
+  // pins down is that the extra lookup happens at all, and only here.
+  describe('reassignment', () => {
+    const reassignedTo901 = alertSummary({
+      status: 2,
+      bug_number: null,
+      alerts: [{ ...alertSummary().alerts[0], status: 2, related_summary_id: 901 }],
+    });
+
+    // Summary 901 sits on SAMPLE's *first* push, so a move is visible as the
+    // marker changing columns.
+    const target = alertSummary({ id: 901, push_id: 1, prev_push_id: 0, alerts: [] });
+
+    const withTarget = (detail: unknown) => {
+      fetchMock.mockImplementation(async (url: string) => {
+        if (url.includes('/performance/summary/')) return json([SAMPLE]);
+        if (url.includes('/alertsummary/901/')) return detail === null ? json({}) : json(detail);
+        if (url.includes('/performance/alertsummary/')) {
+          return json(alertPage([reassignedTo901]));
+        }
+        if (url.includes('/repository/')) return json([]);
+        return json({});
+      });
+    };
+
+    // Two settles: the target lookup is a second round trip, and the ordinary
+    // path deliberately doesn't spend a microtask turn on it.
+    const settleTwice = async () => {
+      await settle();
+      await settle();
+    };
+
+    it('draws the alert on the push it was reassigned to', async () => {
+      withTarget(target);
+      await withApp('?series=autoland,1,1', async (app) => {
+        await settleTwice();
+        expect(app.series[0].alerts.map((a) => a.pushId)).toEqual([1]);
+        expect(app.series[0].alerts[0].summaryId).toBe(901);
+        // The triage state comes with the push: 901 is the summary a sheriff is
+        // investigating, and the only one of the two with a bug on it.
+        expect(app.series[0].alerts[0].bugNumber).toBe(1234567);
+        expect(app.series[0].alerts[0].reassignment).toEqual({
+          fromSummaryId: 900,
+          toSummaryId: 901,
+        });
+      });
+    });
+
+    it('asks for the target once, by id', async () => {
+      withTarget(target);
+      await withApp('?series=autoland,1,1', async (app) => {
+        await settleTwice();
+        const calls = fetchMock.mock.calls
+          .map((c: unknown[]) => String(c[0]))
+          .filter((u: string) => u.includes('/alertsummary/'));
+        expect(calls.filter((u: string) => u.includes('/alertsummary/901/'))).toHaveLength(1);
+        expect(app.series[0].alerts).toHaveLength(1);
+      });
+    });
+
+    it('leaves the marker where it was detected when the lookup fails', async () => {
+      // A bad response, not a rejection: the schema is what rejects it, and the
+      // marker must survive that the same way.
+      withTarget(null);
+      await withApp('?series=autoland,1,1', async (app) => {
+        await settleTwice();
+        expect(app.series[0].alerts.map((a) => a.pushId)).toEqual([2]);
+        expect(app.series[0].alerts[0].summaryId).toBe(900);
+      });
+    });
+
+    it('asks for no target when nothing was reassigned', async () => {
+      withAlerts([alertSummary()]);
+      await withApp('?series=autoland,1,1', async (app) => {
+        await settleTwice();
+        const calls = fetchMock.mock.calls
+          .map((c: unknown[]) => String(c[0]))
+          .filter((u: string) => u.includes('/alertsummary/'));
+        // The list request, and nothing else.
+        expect(calls).toHaveLength(1);
+        expect(calls[0]).toContain('alerts__series_signature=1');
+        expect(app.series[0].alerts[0].pushId).toBe(2);
+      });
+    });
+  });
+
   // Clicking a marker, and the keyboard's version of it. SAMPLE has two
   // pushes: 1 (datum 10) and 2 (datum 11). alertSummary() alerts on push 2 and
   // names push 1 as the one perfherder measured against.

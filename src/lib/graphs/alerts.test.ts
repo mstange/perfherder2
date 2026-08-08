@@ -3,6 +3,7 @@ import {
   alertsByPush,
   alertsForSeries,
   alertStatusLabel,
+  reassignmentTargetIds,
   summaryStatusLabel,
 } from './alerts';
 import type { Alert, AlertSummary } from './alertsApi';
@@ -180,6 +181,177 @@ describe('alertsForSeries', () => {
       alerts: [alert({ id: 1, t_value: null, manually_created: true })],
     });
     expect(alertsForSeries([manual], SIGNATURE, data)[0].tValue).toBeNull();
+  });
+});
+
+// A sheriff bisecting an alert and blaming a different push. Shaped after
+// autoland signature 300397: alert 244501 was detected on summary 51606 (push
+// 1984607) and reassigned to summary 51596 (push 1983389), which is where
+// perfherder's own alerts view lists it and where bug 2059682 hangs off.
+describe('alertsForSeries with a reassignment', () => {
+  const data = seriesData([
+    datum({ id: 1, value: 10, push_id: 7, push_timestamp: '2026-07-21T06:00:00' }),
+    datum({ id: 2, value: 20, push_id: 8, push_timestamp: '2026-07-22T06:00:00' }),
+    datum({ id: 3, value: 20, push_id: 9, push_timestamp: '2026-07-23T06:00:00' }),
+  ]);
+
+  // The alert as it arrives: in the detecting summary's own `alerts`, status
+  // reassigned, pointing at the summary it was moved to.
+  const moved = alert({ id: 1, status: 2, summary_id: 900, related_summary_id: 901 });
+  const detected = summary({ id: 900, push_id: 9, prev_push_id: 7, status: 2, alerts: [moved] });
+  // The target: another push entirely, and the one carrying the triage state.
+  const targetSummary = summary({
+    id: 901,
+    push_id: 8,
+    prev_push_id: 7,
+    status: 5,
+    bug_number: 2059682,
+    alerts: [],
+    related_alerts: [moved],
+  });
+  const targets = new Map([[901, targetSummary]]);
+
+  it('draws the alert on the push it was reassigned to', () => {
+    const [placed] = alertsForSeries([detected], SIGNATURE, data, targets);
+    expect(placed.pushId).toBe(8);
+    expect(placed.x).toBe(data.pushById.get(8)!.x);
+    // Both ends named, and `summaryId` is the end the marker sits on — which is
+    // what tells the pane to word this "reassigned from #900".
+    expect(placed.summaryId).toBe(901);
+    expect(placed.reassignment).toEqual({ fromSummaryId: 900, toSummaryId: 901 });
+  });
+
+  it('takes the triage state from the summary being investigated', () => {
+    // The original summary's status is "reassigned" and it never gets a bug;
+    // reading either off it would tell the sheriff nothing.
+    const [placed] = alertsForSeries([detected], SIGNATURE, data, targets);
+    expect(placed.summaryStatus).toBe(5);
+    expect(placed.bugNumber).toBe(2059682);
+    // The alert's own numbers are the analysis's and are not restated by a
+    // reassignment, so they come across untouched.
+    expect(placed.amountPct).toBe(20);
+    expect(placed.prevValue).toBe(100);
+    expect(placed.newValue).toBe(120);
+  });
+
+  it('pins the pair the target summary claims, not the detected one', () => {
+    const [placed] = alertsForSeries(
+      [summary({ id: 900, push_id: 9, prev_push_id: 7, alerts: [moved] })],
+      SIGNATURE,
+      data,
+      new Map([[901, summary({ id: 901, push_id: 8, prev_push_id: 7, alerts: [] })]]),
+    );
+    expect(placed.pushId).toBe(8);
+    expect(placed.prevPushId).toBe(7);
+  });
+
+  it('leaves the marker on the detected push when the target was not fetched', () => {
+    // A failed lookup costs the alert its move, not its marker.
+    const [placed] = alertsForSeries([detected], SIGNATURE, data);
+    expect(placed.pushId).toBe(9);
+    expect(placed.summaryId).toBe(900);
+    // Still says so, the other way round: "reassigned to #901".
+    expect(placed.reassignment).toEqual({ fromSummaryId: 900, toSummaryId: 901 });
+  });
+
+  it('leaves the marker on the detected push when the target push has no data', () => {
+    // The commonest reason the analysis skipped the culprit push in the first
+    // place: this series never ran on it.
+    const elsewhere = new Map([[901, summary({ id: 901, push_id: 99, alerts: [] })]]);
+    const [placed] = alertsForSeries([detected], SIGNATURE, data, elsewhere);
+    expect(placed.pushId).toBe(9);
+    expect(placed.summaryId).toBe(900);
+  });
+
+  it('draws an alert whose detected push is outside the graph on its target', () => {
+    // Dropped outright before the move existed, and the move is what makes it
+    // placeable: the range filter is the push lookup, and now it has two pushes
+    // to try rather than one.
+    const outside = summary({ id: 900, push_id: 99, alerts: [moved] });
+    const [placed] = alertsForSeries([outside], SIGNATURE, data, targets);
+    expect(placed.pushId).toBe(8);
+    expect(placed.summaryId).toBe(901);
+  });
+
+  it('reads an alert off its target and words the reassignment the same way', () => {
+    // The other end of the same relationship: found in `related_alerts`, already
+    // on the right push, nothing to move.
+    const [placed] = alertsForSeries([targetSummary], SIGNATURE, data, targets);
+    expect(placed.pushId).toBe(8);
+    expect(placed.summaryId).toBe(901);
+    expect(placed.reassignment).toEqual({ fromSummaryId: 900, toSummaryId: 901 });
+  });
+
+  it('does not move a downstream alert', () => {
+    // Status 1 also sets `related_summary_id`, and means something else: the
+    // change is real here and is a consequence of one tracked over there, often
+    // on another repository. Moving it would put the marker on a push this
+    // series may not even share a repository with.
+    const downstream = summary({
+      id: 900,
+      push_id: 9,
+      alerts: [alert({ id: 1, status: 1, summary_id: 900, related_summary_id: 901 })],
+    });
+    const [placed] = alertsForSeries([downstream], SIGNATURE, data, targets);
+    expect(placed.pushId).toBe(9);
+    expect(placed.summaryId).toBe(900);
+    expect(placed.reassignment).toBeNull();
+  });
+
+  it('leaves an ordinary alert with no reassignment to report', () => {
+    const [placed] = alertsForSeries([summary({ id: 900, push_id: 8 })], SIGNATURE, data);
+    expect(placed.reassignment).toBeNull();
+  });
+});
+
+describe('reassignmentTargetIds', () => {
+  const reassigned = (id: number, summaryId: number, relatedId: number | null) =>
+    summary({
+      id: summaryId,
+      push_id: 8,
+      alerts: [alert({ id, status: 2, summary_id: summaryId, related_summary_id: relatedId })],
+    });
+
+  it('asks for each target once', () => {
+    // One sheriff's verdict commonly gathers a dozen summaries' alerts onto a
+    // single push — fourteen of them on summary 51596.
+    expect(
+      reassignmentTargetIds([reassigned(1, 900, 950), reassigned(2, 901, 950)], SIGNATURE),
+    ).toEqual([950]);
+  });
+
+  it('asks for nothing in the ordinary case', () => {
+    // The whole point of a separate pass: no reassignment, no round trip.
+    expect(reassignmentTargetIds([summary({ id: 900, push_id: 8 })], SIGNATURE)).toEqual([]);
+  });
+
+  it('ignores a summary that already is the target', () => {
+    expect(reassignmentTargetIds([reassigned(1, 900, 900)], SIGNATURE)).toEqual([]);
+  });
+
+  it('ignores statuses that have nothing to move', () => {
+    const downstream = summary({
+      id: 900,
+      push_id: 8,
+      alerts: [alert({ id: 1, status: 1, summary_id: 900, related_summary_id: 950 })],
+    });
+    const invalid = summary({
+      id: 901,
+      push_id: 8,
+      alerts: [alert({ id: 2, status: 3, summary_id: 901, related_summary_id: 951 })],
+    });
+    expect(reassignmentTargetIds([downstream, invalid], SIGNATURE)).toEqual([]);
+  });
+
+  it('ignores another signature’s reassignment', () => {
+    const other = summary({
+      id: 900,
+      push_id: 8,
+      alerts: [
+        alert({ id: 1, signatureId: 7, status: 2, summary_id: 900, related_summary_id: 950 }),
+      ],
+    });
+    expect(reassignmentTargetIds([other], SIGNATURE)).toEqual([]);
   });
 });
 

@@ -182,7 +182,29 @@
           </p>
           <dl>
             <dt title="Perfherder's own status for this series' alert">Alert</dt>
-            <dd>{alertStatusLabel(alert.alertStatus)}</dd>
+            <!-- A reassigned alert is drawn on the push it was reassigned *to*,
+                 so the marker is deliberately not on the push perfherder's
+                 analysis flagged — which this has to name, or the card and the
+                 summary link above it quietly disagree with the alert view.
+                 "from" once the move happened, "to" when it couldn't (the target
+                 push isn't in this graph, or its lookup failed) and the marker is
+                 still on the detected push. Perfherder's alert table words the
+                 two cases the same way. `{' '}` per the whitespace gotcha in
+                 design.md: the space before a block is otherwise stripped. -->
+            <dd>
+              {alertStatusLabel(alert.alertStatus)}
+              {#if alert.reassignment}
+                {@const moved = alert.reassignment.toSummaryId === alert.summaryId}
+                {@const other = moved
+                  ? alert.reassignment.fromSummaryId
+                  : alert.reassignment.toSummaryId}
+                {' '}{moved ? 'from' : 'to'}{' '}<a
+                  href={alertSummaryUrl(other)}
+                  target="_blank"
+                  rel="noopener">#{other}</a
+                >
+              {/if}
+            </dd>
             <dt title="The triage state of the whole push's alert summary">Summary</dt>
             <dd>{summaryStatusLabel(alert.summaryStatus)}</dd>
             {#if alert.tValue !== null}

@@ -326,6 +326,38 @@ superset — everything since the start of the window — and a summary whose
 `push_id` isn't one of the pushes we plotted is dropped. That is a stricter test
 than comparing timestamps: it also drops a push the series has no data on.
 
+**A reassigned alert is drawn on the push it was reassigned to.** The analysis
+marks the push where the numbers moved; a sheriff who bisects it and finds the
+culprit elsewhere says so by reassigning the alert, and perfherder's own alerts
+view then lists it under the target push and strikes the original row through
+(`AlertTableRow.jsx::getTitleText`). Treeherder's *graph* keeps marking the
+detected push, but only because it can't see otherwise: `createGraphData` in
+`perf-helpers/helpers.js` places every summary at its own `push_id`, and the
+target summary isn't in the response. So this is a deliberate deviation from
+treeherder, and the direction of it is towards what the sheriff decided.
+
+Seeing the target costs one extra request per reassignment
+(`fetchAlertSummary`): the list filter is `alerts__series_signature`, which
+matches a summary's *own* alerts, and a reassigned alert stays in the original
+summary's `alerts` while appearing in the target's `related_alerts` — so the
+target has to be asked for by id. Affordable because reassignments are a small
+minority (one of the five alerts autoland signature 300397 collected over a
+year, whose target summary #51596 had gathered fourteen signatures' alerts onto
+one push), and the ids are computed first so the ordinary case doesn't even
+spend a microtask turn on the lookup.
+
+Everything about the *push* then comes from the target: `prevPushId` and the
+revisions, so clicking the marker pins the pair the sheriff claims, and the
+status and bug number, because the original summary's status is "reassigned" and
+it never gets a bug. Only the alert's own numbers stay — `amountPct`, the two
+values, `tValue` — which a reassignment doesn't restate. Both ends are kept in
+`SeriesAlert.reassignment` so the pane can name the other one, worded the way
+perfherder words it: "reassigned from #N" once the marker moved, "reassigned to
+#N" when it couldn't. It can't when the target lookup failed or when this series
+has no data on the target push — the commonest reason the analysis skipped that
+push in the first place — and then the marker stays where the analysis put it,
+which is still a real alert about a real change.
+
 **Invalid alerts are the one status not drawn.** A sheriff marking an alert
 invalid is saying the change was an artefact, and a mark on the graph would
 contradict the person who owns it. Downstream, reassigned and infra alerts *are*

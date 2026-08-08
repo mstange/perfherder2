@@ -65,6 +65,15 @@ export const SUMMARY_STATUS: Record<number, string> = {
 // claims more than the sheriff did.
 export const ALERT_STATUS_INVALID = 3;
 
+// A sheriff moving an alert onto the push they blame for it. The one status that
+// changes *where* a marker goes; see `alertsForSeries`.
+//
+// Not to be confused with status 1, downstream, which also sets
+// `related_summary_id` and means something else entirely: the change is real on
+// this push and is a consequence of a regression tracked over there, often on
+// another repository. Nothing to relocate.
+export const ALERT_STATUS_REASSIGNED = 2;
+
 export function alertStatusLabel(status: number): string {
   return ALERT_STATUS[status] ?? `status ${status}`;
 }
@@ -73,8 +82,25 @@ export function summaryStatusLabel(status: number): string {
   return SUMMARY_STATUS[status] ?? `status ${status}`;
 }
 
+// Both ends of a reassignment. `SeriesAlert.summaryId` is whichever of the two
+// the marker actually sits on, so comparing them says which way this reads —
+// "reassigned *from* #from" once the marker moved, "reassigned *to* #to" when it
+// couldn't. Perfherder's alert table words it the same way and for the same
+// reason (`AlertTableRow.jsx::getReassignment`).
+export type Reassignment = {
+  // Where perfherder's analysis filed the alert.
+  fromSummaryId: number;
+  // The push a sheriff decided the change actually belongs to.
+  toSummaryId: number;
+};
+
 // One alert, flattened onto the push we plotted it at.
 export type SeriesAlert = {
+  // The summary whose push this alert is drawn on — the reassignment target for
+  // a relocated alert, so the status, bug and revisions below are that summary's
+  // too. Only `amountPct`, the two values and `tValue` belong to the alert
+  // itself, and those are unchanged by a reassignment: they are the numbers the
+  // analysis computed over its own detection window.
   summaryId: number;
   alertId: number;
   pushId: number;
@@ -99,6 +125,8 @@ export type SeriesAlert = {
   alertStatus: number;
   summaryStatus: number;
   bugNumber: number | null;
+  // Null unless a sheriff reassigned this alert to another push.
+  reassignment: Reassignment | null;
 };
 
 function alertFor(summary: AlertSummary, signatureId: number): Alert | null {
@@ -111,6 +139,36 @@ function alertFor(summary: AlertSummary, signatureId: number): Alert | null {
   return null;
 }
 
+// The reassignment an alert carries, or null if it isn't one. Read off the alert
+// alone, so it says the same thing from either end: the alert stays in its
+// original summary's `alerts` and appears in the target's `related_alerts`, and
+// `summary_id` and `related_summary_id` name the two ends whichever list we
+// happened to find it in.
+function reassignmentOf(alert: Alert): Reassignment | null {
+  if (alert.status !== ALERT_STATUS_REASSIGNED || alert.related_summary_id === null) return null;
+  return { fromSummaryId: alert.summary_id, toSummaryId: alert.related_summary_id };
+}
+
+// The summaries `alertsForSeries` needs fetched before it can place a reassigned
+// alert on the push it was moved to — one id per reassignment, deduplicated,
+// since one sheriff's verdict commonly gathers a dozen summaries' alerts onto a
+// single push. Empty in the ordinary case, which is what keeps this from costing
+// a round trip on every series.
+export function reassignmentTargetIds(
+  summaries: readonly AlertSummary[],
+  signatureId: number,
+): number[] {
+  const ids = new Set<number>();
+  for (const summary of summaries) {
+    const alert = alertFor(summary, signatureId);
+    if (!alert || alert.status === ALERT_STATUS_INVALID) continue;
+    const reassignment = reassignmentOf(alert);
+    // Nothing to fetch when the summary in hand already *is* the target.
+    if (reassignment && reassignment.toSummaryId !== summary.id) ids.add(reassignment.toSummaryId);
+  }
+  return [...ids];
+}
+
 // Every alert about `signatureId` that landed on a push this series has data
 // for, in time order.
 //
@@ -119,33 +177,61 @@ function alertFor(summary: AlertSummary, signatureId: number): Alert | null {
 // and a summary whose push isn't in `data` is one we can't place on the graph
 // anyway. It also drops alerts belonging to *another* signature that happened
 // to share a summary with ours.
+//
+// **A reassigned alert is drawn on the push it was reassigned to.** The analysis
+// picks the push where the numbers moved; a sheriff who bisects it and finds the
+// culprit somewhere else says so by reassigning the alert, and from then on
+// perfherder's own alerts view lists it under the target push and strikes the
+// original row through (`AlertTableRow.jsx::getTitleText`). Treeherder's *graph*
+// keeps marking the detected push, but only because it can't see otherwise: it
+// places each summary at its own `push_id` and never fetches the target
+// (`createGraphData` in `perf-helpers/helpers.js`). So this is a deliberate
+// deviation, and the direction of it is towards what the sheriff decided.
+//
+// `reassignmentTargets` is keyed by summary id, from `reassignmentTargetIds` —
+// pass it and the move happens; leave it out and every marker sits where the
+// analysis put it. A target that isn't in the map (the lookup failed) or whose
+// push this series has no data for falls back to the detected push, which is
+// still a real alert about a real change and better shown there than not at all.
 export function alertsForSeries(
   summaries: readonly AlertSummary[],
   signatureId: number,
   data: SeriesData,
+  reassignmentTargets?: ReadonlyMap<number, AlertSummary>,
 ): SeriesAlert[] {
   const out: SeriesAlert[] = [];
   for (const summary of summaries) {
-    const push = data.pushById.get(summary.push_id);
-    if (!push) continue;
     const alert = alertFor(summary, signatureId);
     if (!alert || alert.status === ALERT_STATUS_INVALID) continue;
+
+    const reassignment = reassignmentOf(alert);
+    const targetId =
+      reassignment && reassignment.toSummaryId !== summary.id ? reassignment.toSummaryId : null;
+    const target = targetId === null ? undefined : reassignmentTargets?.get(targetId);
+    // Everything about the *push* comes from whichever summary won, including
+    // the triage state and the bug: once an alert is reassigned, the summary
+    // being investigated is the target's, and the original carries no bug.
+    const home = target && data.pushById.has(target.push_id) ? target : summary;
+    const push = data.pushById.get(home.push_id);
+    if (!push) continue;
+
     out.push({
-      summaryId: summary.id,
+      summaryId: home.id,
       alertId: alert.id,
-      pushId: summary.push_id,
-      prevPushId: summary.prev_push_id,
+      pushId: home.push_id,
+      prevPushId: home.prev_push_id,
       x: push.x,
-      revision: summary.revision,
-      prevRevision: summary.prev_push_revision,
+      revision: home.revision,
+      prevRevision: home.prev_push_revision,
       isRegression: alert.is_regression,
       amountPct: alert.amount_pct,
       prevValue: alert.prev_value,
       newValue: alert.new_value,
       tValue: alert.t_value ?? null,
       alertStatus: alert.status,
-      summaryStatus: summary.status,
-      bugNumber: summary.bug_number,
+      summaryStatus: home.status,
+      bugNumber: home.bug_number,
+      reassignment,
     });
   }
   out.sort((a, b) => a.x - b.x);
