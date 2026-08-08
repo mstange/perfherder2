@@ -560,8 +560,14 @@ the four worth knowing here:
   not one of them read as green. So the two swapped: the fill carries direction,
   and the 2px notch marking the step carries the series color.
 - **The notch is there because a wide bar over-claims.** The bar spans the
-  pushes the test compared; the step itself happened between two of them, and
-  the notch says which two.
+  pushes the test compared; the notch marks the first push after the step, which
+  is the vertex where the connecting line kinks. Halfway between that push and
+  the one before it is the honester estimate — the step happened somewhere in
+  that gap and nothing in the data says where — and that is what it was at first.
+  It read as a bug: at a tight zoom half a push gap is minutes wide, so the notch
+  stood visibly beside the kink it was pointing at, and a mark that doesn't line
+  up with the line the reader is looking at doesn't get the benefit of the doubt.
+  The bar is what carries the "somewhere in here".
 - **Hover grows the bar and runs a full-height guide up its column.** A bar
   hugging the floor is a long way from the dots it is about; the guide is what
   connects them, and keeping it to the hover is what lets the resting bar stay

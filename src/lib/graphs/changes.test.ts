@@ -150,8 +150,10 @@ describe('detectChanges', () => {
     const found = detectChanges(pushesOf(step(100, 110)), true);
     expect(found[0].beforePushId).toBe(1019);
     expect(found[0].afterPushId).toBe(1020);
-    // …and the notch sits between their two timestamps.
-    expect(found[0].changeX).toBe((10_000 + 19 * 100 + (10_000 + 20 * 100)) / 2);
+    // …and the notch sits on the second of them, where the connecting line
+    // kinks. Halfway between the two is the honester estimate and reads as a
+    // misdrawn mark; see `changeX`.
+    expect(found[0].changeX).toBe(10_000 + 20 * 100);
   });
 
   it('spans the pushes it compared', () => {

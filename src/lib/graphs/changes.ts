@@ -288,8 +288,16 @@ export type DetectedChange = {
   // Push timestamps at `windowStart` and at `windowEnd - 1` — the bar's extent.
   x0: number;
   x1: number;
-  // Halfway between the last push before the step and the first one after it:
-  // where the change actually happened, as far as this data can say.
+  // The x of the first push after the step — the vertex where the connecting
+  // line kinks.
+  //
+  // Halfway between that push and the one before it is the honester estimate,
+  // since the step happened somewhere in that gap and nothing here can say
+  // where, and that is what this was at first. It read as a bug: at a tight
+  // zoom half a push gap is minutes wide, so the notch stood visibly beside the
+  // kink it was pointing at, and a mark that doesn't line up with the line the
+  // reader is looking at doesn't get the benefit of the doubt. The bar is what
+  // carries the "somewhere in here" part.
   changeX: number;
   // Means of the two windows.
   beforeValue: number;
@@ -489,7 +497,7 @@ export function detectChanges(
       ...confirmed,
       x0: pushes[confirmed.windowStart].x,
       x1: pushes[confirmed.windowEnd - 1].x,
-      changeX: (before.x + after.x) / 2,
+      changeX: after.x,
       // `significant` is true by construction here — `confirmChange` returned —
       // so this asks only "which way is bad", and the two values differ by at
       // least MIN_RELATIVE_CHANGE so it can't come back 'none'.
