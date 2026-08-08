@@ -170,15 +170,59 @@ Living checklist. Update in the same commit as the work it describes.
     too narrow for it should do — nothing, an ellipsis, a wider bar — is the
     part that needs a decision, and a bar that sometimes has a label reads as a
     different kind of mark from one that never does.
-  - *False positives are bounded but not measured.* α = 0.01 and the 0.5% floor
-    were chosen from first principles and one synthetic sweep; nobody has gone
-    through a week of real graphs counting bars a human would disagree with.
-    That is the measurement that should decide whether the constants are right,
-    and it is the one thing that would justify moving the default.
+  - *False positives: field-checked, not counted.* α = 0.01 and the 0.5% floor
+    were chosen from first principles and one synthetic sweep. What exists now
+    instead of the census that was planned is regular use over real graphs, which
+    reports: the bars mostly look reasonable; where a bar and a perfherder alert
+    describe the same event **the bar has the tighter push range**, which is the
+    locality the three-stage rewrite was for and is the clearest evidence it paid
+    off; an alert with no bar happens but is rare; and a bar with no alert is
+    common and *usually explained by an outlier*.
+
+    This is qualitative — nobody has a numerator and denominator — but it answers
+    the decision the count was for: **the constants stay and the default stays
+    on.** A census would now only refine numbers nothing is waiting on.
+
+    What it redirects effort to is the outlier mode, which is no longer a
+    hypothetical: see "A push is summarised by its mean" below.
   - *Gradual drift is invisible by construction.* Segmentation looks for steps.
     A series that slides 8% over three months has no step in it and gets no bar,
     which is honest but is also the case a trend line would answer — see the
     next item.
+- **A push is summarised by its mean.** `values = pushes.map(p => p.mean)`
+  ([changes.ts](../src/lib/graphs/changes.ts)), and `push.mean` is the mean of its
+  runs' means, each of which is the mean of its replicates. Two comments in
+  changes.ts already call this the weak point — the module header ("a single bad
+  run can still drag it, which is an argument for summarising a push more
+  robustly, not for unpooling") and `relocateBoundary` ("still a mean, and a single
+  bad push still pulls it") — and field use now reports the same thing from the
+  other end, as the usual explanation for a bar with no alert.
+
+  Three places a mean enters, and they are not equally entangled:
+
+  - *The reported percentage.* `confirm()` takes `mean(before)` against
+    `mean(after)`, so one outlier push in a pool inflates the number on the card.
+    A median here is a contained change: it moves the printed delta and the
+    `MIN_RELATIVE_CHANGE` comparison, and nothing else reads it.
+  - *The detector's input.* Swapping in a robust push summary is the change that
+    would actually remove bars, and it is the one with a coupling problem:
+    `push.mean` is also the y the connecting line joins
+    ([chartDraw.ts](../src/lib/graphs/chartDraw.ts), the edge interpolation in
+    `appState`) and the value the pane prints. A detector on medians and a line on
+    means means a bar can sit where the line looks flat, which is the confusion
+    this would be trying to remove.
+  - *`run.mean` over replicates.* The least controversial in principle — the
+    module header calls replicates "repeated measurements of one number" — and the
+    one with a documented systematic outlier, since the first trial of a
+    browsertime run is routinely the slow one (see the trial-number item below).
+    A constant bias creates no steps, so this only matters where the replicate
+    count changes; whether that happens often enough to make bars is unmeasured
+    and would be the thing to check first.
+
+  Unresolved, and it decides the shape: whether the outlier bars sit *on* the
+  outlier push (the detector was fooled, and a robust summary deletes them) or
+  are real level changes an outlier merely pushed over the threshold (a robust
+  summary moves the number and keeps the bar).
 - **Trend lines.** perf.webkit.org's chart offers simple, cumulative and
   exponential moving averages alongside its segmentation, from one menu
   (`chart-pane.js::ChartTrendLineTypes`). We took the segmentation and left
