@@ -84,6 +84,13 @@ export class PickerState {
   // ---- Fetch caches -----------------------------------------------------
   seriesCache = $state(new Map<string, Series[]>());
   loadingRepos = $state(new Set<string>());
+  // Cache keys whose fetch failed, so "not in `seriesCache`" can be told apart
+  // from "still coming". Two things need that distinction: the fetch effect,
+  // which would otherwise refetch a failed key the moment `loadingRepos`
+  // dropped it — an unbounded retry loop, one error banner line per attempt —
+  // and `subtestStatus`, which must stop claiming an expanded row is loading.
+  // Cleared for a repo when it's re-checked, which is the only retry we offer.
+  failedFetches = $state(new Set<string>());
   errors = $state<string[]>([]);
 
   // ---- Run activity -----------------------------------------------------
@@ -245,7 +252,13 @@ export class PickerState {
       if (!this.metadataReady) return;
       for (const repo of this.selectedRepos) {
         const key = cacheKey(repo, this.needSubtestsFetch, this.timeRangeSeconds);
-        if (this.seriesCache.has(key) || this.loadingRepos.has(key)) continue;
+        if (
+          this.seriesCache.has(key) ||
+          this.loadingRepos.has(key) ||
+          this.failedFetches.has(key)
+        ) {
+          continue;
+        }
         void this.loadRepo(repo, this.needSubtestsFetch, this.timeRangeSeconds);
       }
     });
@@ -290,6 +303,7 @@ export class PickerState {
       this.seriesCache = cache;
     } catch (e) {
       this.errors = [...this.errors, `${repo}: ${(e as Error).message}`];
+      this.failedFetches = new Set(this.failedFetches).add(key);
     } finally {
       const done = new Set(this.loadingRepos);
       done.delete(key);
@@ -419,6 +433,32 @@ export class PickerState {
     return this.filterResult.matchedChildren.get(parent.key) ?? all;
   }
 
+  // What an expanded parent has to show underneath it. Same shape of question
+  // as `listStatus`: several of these render as "no child rows" and mean very
+  // different things, so the distinction is drawn once, here.
+  //
+  // `loading` is deliberately the narrow case — the subtests=1 payload for this
+  // row's repo and interval is genuinely still on its way. It must not be the
+  // fallback: `has_subtests` on a parent does not guarantee the API will return
+  // any subtest rows for it (the flag can outlive the subtests, and the
+  // `interval` filter applies to children by their own `last_updated`), and a
+  // note that says "Loading subtests…" forever reads as a broken picker. Seen
+  // on autoland `installer size` / osx-cross-aarch64 / opt, whose parent claims
+  // subtests the API has none of.
+  subtestStatus(parent: Series): 'children' | 'no-matches' | 'loading' | 'failed' | 'none' {
+    if ((this.childrenByParent.get(parent.key) ?? []).length > 0) {
+      return this.childrenForParent(parent).length > 0 ? 'children' : 'no-matches';
+    }
+    // No children in the loaded data, so the answer is about the fetch. Every
+    // way of expanding a row makes `needSubtestsFetch` true, so "neither cached
+    // nor failed" really does mean in flight (or about to be, in the tick
+    // between the caret click and the effect).
+    const key = cacheKey(parent.repository, true, this.timeRangeSeconds);
+    if (this.seriesCache.has(key)) return 'none';
+    if (this.failedFetches.has(key)) return 'failed';
+    return 'loading';
+  }
+
   isRowExpanded(key: string): boolean {
     const override = this.userExpansion.get(key);
     if (override) return override === 'user-open';
@@ -486,7 +526,17 @@ export class PickerState {
   toggleRepo(repo: string): void {
     const next = new Set(this.selectedRepos);
     if (next.has(repo)) next.delete(repo);
-    else next.add(repo);
+    else {
+      next.add(repo);
+      // Re-checking a repo is the retry: forget that its fetches failed so the
+      // effect will ask again. Without this, one transient failure leaves the
+      // repo permanently rowless for the life of the panel.
+      const failed = new Set(this.failedFetches);
+      for (const key of this.failedFetches) {
+        if (key.startsWith(`${repo}|`)) failed.delete(key);
+      }
+      this.failedFetches = failed;
+    }
     this.selectedRepos = next;
   }
 

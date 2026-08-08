@@ -343,6 +343,128 @@ describe('PickerState.listStatus', () => {
   });
 });
 
+// The note under an expanded parent. Its whole job is to tell "the fatter
+// payload is on its way" apart from "it arrived and had nothing in it" — the
+// second of which used to render as a permanent "Loading subtests…".
+describe('PickerState.subtestStatus', () => {
+  const parent = signature(1, { has_subtests: true });
+  const child = signature(2, { test: 'libxul.so', parent_signature: 'hash1' });
+
+  // Answers the two signature requests separately, so a test can hold the
+  // subtests=1 one back — that's the window the loading note exists for.
+  function serveSignatures(sub: () => Promise<Response>, plain: Record<string, unknown>) {
+    fetchMock.mockImplementation(async (url: string) => {
+      const s = String(url);
+      if (s.includes('/performance/framework/')) return json([{ id: 13, name: 'browsertime' }]);
+      if (s.includes('/optioncollectionhash/')) {
+        return json([{ option_collection_hash: 'H_OPT', options: [{ name: 'opt' }] }]);
+      }
+      if (s.includes('/performance/data/')) return json(activityData);
+      return s.includes('subtests=1') ? sub() : json(plain);
+    });
+  }
+
+  it('loads while the subtests payload is still in flight', () => {
+    serveSignatures(() => new Promise<Response>(() => {}), { '1': parent });
+    return withPicker(
+      (p) => p.seed(view({ repos: ['autoland'] })),
+      async (p) => {
+        await settle();
+        const row = p.filteredParents[0];
+        p.toggleExpanded(row.key);
+        await settle();
+        expect(p.subtestStatus(row)).toBe('loading');
+      },
+    );
+  });
+
+  it('stops loading when the payload comes back without the promised subtests', () => {
+    // `has_subtests` on the parent, and no child row anywhere in the fatter
+    // response — the live shape of autoland `installer size` on
+    // osx-cross-aarch64. Claiming to load here never ends.
+    serveSignatures(() => Promise.resolve(json({ '1': parent })), { '1': parent });
+    return withPicker(
+      (p) => p.seed(view({ repos: ['autoland'] })),
+      async (p) => {
+        await settle();
+        const row = p.filteredParents[0];
+        p.toggleExpanded(row.key);
+        await settle();
+        expect(p.subtestStatus(row)).toBe('none');
+      },
+    );
+  });
+
+  it('reports a failed subtests fetch rather than loading forever', () => {
+    serveSignatures(
+      async () => ({ ok: false, status: 500, statusText: '' }) as Response,
+      { '1': parent },
+    );
+    return withPicker(
+      (p) => p.seed(view({ repos: ['autoland'] })),
+      async (p) => {
+        await settle();
+        const row = p.filteredParents[0];
+        p.toggleExpanded(row.key);
+        await settle();
+        expect(p.subtestStatus(row)).toBe('failed');
+        // And stays that way. The effect refetching a key the moment
+        // `loadingRepos` dropped it was an unbounded retry loop — a request and
+        // a banner line per turn of the effect graph, forever.
+        await settle();
+        await settle();
+        expect(p.subtestStatus(row)).toBe('failed');
+        expect(p.errors).toHaveLength(1);
+        // The subtests=0 fetch and the failed subtests=1 one, and no more.
+        expect(signatureRepos()).toHaveLength(2);
+      },
+    );
+  });
+
+  it('asks again for a failed repo when it is re-checked', () => {
+    let failing = true;
+    serveSignatures(
+      async () => (failing ? ({ ok: false, status: 500, statusText: '' } as Response) : json({})),
+      { '1': parent },
+    );
+    return withPicker(
+      (p) => p.seed(view({ repos: ['autoland'], matchSubtests: true })),
+      async (p) => {
+        await settle();
+        expect(p.errors).toHaveLength(1);
+        // Not remembering the failure forever is the point of clearing it here:
+        // unchecking and re-checking the chip is the only retry the panel
+        // offers, and without this the repo would stay rowless for good.
+        failing = false;
+        p.toggleRepo('autoland');
+        p.toggleRepo('autoland');
+        await settle();
+        expect(signatureRepos()).toEqual(['autoland', 'autoland']);
+      },
+    );
+  });
+
+  it('separates children the filter hid from children that do not exist', () => {
+    // The parent carries an extra option its subtest doesn't, which is how a
+    // parent can satisfy a chip none of its children do.
+    signatures = { '1': { ...parent, extra_options: ['aarch64'] }, '2': child };
+    return withPicker(
+      (p) => p.seed(view({ repos: ['autoland'], matchSubtests: true })),
+      async (p) => {
+        await settle();
+        const row = p.filteredParents[0];
+        p.toggleExpanded(row.key);
+        await settle();
+        expect(p.subtestStatus(row)).toBe('children');
+        // The subtest is there, it's just not shown — a different note, and a
+        // different thing for the user to do about it.
+        p.filter = { chips: [{ field: 'option', value: 'aarch64' }], text: '' };
+        expect(p.subtestStatus(row)).toBe('no-matches');
+      },
+    );
+  });
+});
+
 describe('PickerState.plotted', () => {
   it('splits the shown rows by whether they are on the graph', () => {
     signatures = { '1': signature(1), '2': signature(2) };

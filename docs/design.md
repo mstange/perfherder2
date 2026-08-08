@@ -33,6 +33,7 @@ change is wrong for a reason the code doesn't show:
 | A fetch, or a new endpoint | "Validating API responses"; plus "Cache key" if the result is cached |
 | A treeherder *list* endpoint | its default page is 10 rows and truncation is silent — a partial answer is shaped exactly like a complete one. comparison.md, "The inline pushlog", and the `getCommonAlerts` note in graphs-todo.md |
 | How a row is identified | "Row identity: `Series.key`, composed at construction" |
+| A loading or empty state for subtests | "`has_subtests` is a claim, not a promise" — `has_subtests` does not mean a subtests=1 fetch will return any |
 | Canvas drawing | graphs.md "Rendering" and "Dots are translucent, and jittered sideways" |
 | The change detector's constants | graphs.md "Detected changes", and the reasoning and measurements recorded beside each constant in `changes.ts` |
 | A statistic | comparison.md "Statistics" and "Deviations from PerfCompare" |
@@ -279,6 +280,43 @@ chip *addition*, not removal, and only if the checkbox was off — so the
 user's explicit off-state is preserved for badge clicks on parent rows
 and for chips typed into the FilterInput. Users can uncheck the box
 after the fact to reset.
+
+### `has_subtests` is a claim, not a promise — never make it the loading state
+
+A parent row's `has_subtests` decides whether it gets a disclosure caret, and
+that's all it's good for. It does **not** guarantee that a `subtests=1` fetch
+will return any child rows for that parent: the flag is set when subtests are
+first ingested and never cleared, so it outlives them when the job stops
+reporting them or when treeherder's data cycling deletes the child signatures.
+Live example — autoland `installer size` / osx-cross-aarch64 / opt (signature
+5688441): `has_subtests: true`, and `?parent_signature=<its hash>` answers
+`{}` at any interval.
+
+The note under an expanded parent used to be chosen as "`has_subtests` and no
+children loaded → *Loading subtests…*", which for that row was a spinner with
+nothing behind it. `PickerState.subtestStatus` now decides from what the fetch
+has actually done:
+
+| Status | Means | Note |
+| --- | --- | --- |
+| `children` | children matched | the "overall score" note, then the rows |
+| `no-matches` | children exist, the filter hid all of them | "No subtests match the current filter." |
+| `loading` | the subtests=1 payload for this repo+interval is genuinely in flight | "Loading subtests…" |
+| `failed` | that fetch failed | "Subtests failed to load." (the error banner has the reason) |
+| `none` | it landed and had no children for this parent | "No subtests in the selected time range." |
+
+The rule generalises: **"we haven't got it yet" must be read off the fetch, not
+inferred from data being absent.** Absent data is also what a completed fetch
+of nothing looks like.
+
+Telling `failed` from `loading` needs `PickerState.failedFetches`, a set of
+cache keys whose fetch lost. The fetch effect skips those too, which fixed a
+second bug in the same area: the effect's guard was `seriesCache.has(key) ||
+loadingRepos.has(key)`, and since the failure path deletes the key from
+`loadingRepos`, every failure immediately re-triggered the effect — an
+unbounded retry loop appending a banner line per attempt. The only retry now on
+offer is unchecking and re-checking the repo chip, which clears that repo's
+failed keys in `toggleRepo`.
 
 ### Framework is searchable but not shown
 

@@ -94,13 +94,14 @@ import { TIME_RANGES } from './pickerOptions';
     for (const parent of picker.filteredParents) {
       rows.push({ kind: 'parent', row: parent });
       if (!picker.isRowExpanded(parent.key)) continue;
-      const allChildren = picker.childrenByParent.get(parent.key) ?? [];
-      const children = picker.childrenForParent(parent);
-      if (parent.hasSubtests && allChildren.length === 0) {
+      const status = picker.subtestStatus(parent);
+      if (status === 'loading') {
         rows.push({ kind: 'note', message: 'Loading subtests…' });
-      } else if (allChildren.length === 0) {
-        rows.push({ kind: 'note', message: 'No subtests in loaded data.' });
-      } else if (children.length === 0) {
+      } else if (status === 'failed') {
+        rows.push({ kind: 'note', message: 'Subtests failed to load.' });
+      } else if (status === 'none') {
+        rows.push({ kind: 'note', message: 'No subtests in the selected time range.' });
+      } else if (status === 'no-matches') {
         rows.push({ kind: 'note', message: 'No subtests match the current filter.' });
       } else {
         // Says out loud what the tree only implies. Users who expanded a
@@ -112,7 +113,7 @@ import { TIME_RANGES } from './pickerOptions';
           kind: 'note',
           message: 'The row above is the overall score — these are its individual subtests.',
         });
-        for (const child of picker.sortedChildren(children)) {
+        for (const child of picker.sortedChildren(picker.childrenForParent(parent))) {
           rows.push({ kind: 'child', row: child });
         }
       }
