@@ -4,6 +4,38 @@ Read this before making non-trivial changes. It captures the *why* behind
 choices that aren't obvious from the code, and warns about gotchas that have
 already burned us once.
 
+## Which document
+
+This file is two things: the **app-wide conventions** every change has to
+obey, and the **picker** — the "Add series" panel. The graphs half of the app
+is documented elsewhere.
+
+| Looking for | Go to |
+| --- | --- |
+| The picker: filtering, sorting, badges, virtual scrolling, run activity | this file |
+| Conventions: theming, buttons, layout stability, response validation, testing, measuring | this file, "Key design decisions" onward |
+| The graphs view: panes, fetch, the run/replicate hierarchy, canvas drawing, alerts, detected changes | [graphs.md](graphs.md) |
+| What the details pane does with a selection: distributions, comparison mode, statistics | [comparison.md](comparison.md) |
+| What's built, what's next, what was deliberately deferred and why | [graphs-todo.md](graphs-todo.md) |
+| Which module owns a thing | "Architecture" below, graphs.md "Code map", comparison.md "Code map" |
+
+**If you touch X, read Y first.** Each of these is a place where the obvious
+change is wrong for a reason the code doesn't show:
+
+| Changing | Read |
+| --- | --- |
+| A URL parameter | three sections that have to agree: "Architecture" below (`urlState.ts` owns the whole schema), graphs.md "URL state", comparison.md "URL state" |
+| `FilterInput.svelte`, or anything holding filter state | "The one component that owns state" — this has bitten us twice |
+| Markup with two adjacent badges | "Whitespace between adjacent badges (Svelte gotcha)" |
+| A color, anywhere | "Theming: one resolved attribute, one exception" — there are exactly two, and neither is new |
+| A button | "One button, defined once" |
+| Anything that renders before its data arrives | "Layout stability" |
+| A fetch, or a new endpoint | "Validating API responses"; plus "Cache key" if the result is cached |
+| How a row is identified | "Row identity: `Series.key`, composed at construction" |
+| Canvas drawing | graphs.md "Rendering" and "Dots are translucent, and jittered sideways" |
+| The change detector's constants | graphs.md "Detected changes", and the reasoning and measurements recorded beside each constant in `changes.ts` |
+| A statistic | comparison.md "Statistics" and "Deviations from PerfCompare" |
+
 ## What this is
 
 A Svelte 5 SPA that reimplements Treeherder Perfherder's "Add series" dialog
@@ -1403,10 +1435,11 @@ these strings for display — you'll get bitten by edge cases.**
   restating its numbers; and the commit message for why it changed now. Worth
   doing as a pass over graphs.md and comparison.md rather than a rule invented
   in advance.
-- **No routing table for the docs.** design.md is ~1000 lines and graphs.md ~500,
-  and a session that only needs one section has no way to know which. A short
-  map at the top of design.md — picker here, graphs in graphs.md, the details
-  pane's distributions in comparison.md, status in graphs-todo.md, plus "if you
-  touch X, check section Y" — would cost a dozen lines and save reading both
-  files end to end.
+- **Keeping the routing map honest.** "Which document" at the top of this file
+  is now the entry point, and its second table only earns its place if the rows
+  stay true. A row is worth adding when a change went wrong for a reason a
+  section already explained; it should be deleted when the gotcha is designed
+  out rather than documented around. Don't grow it into a table of contents —
+  the first table routes, the second warns, and a warning nobody has been
+  burned by is noise.
 

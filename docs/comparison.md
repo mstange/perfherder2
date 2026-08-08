@@ -1,6 +1,7 @@
 # Distributions and comparison mode
 
-Companion to [graphs.md](graphs.md). Two features that share one piece of
+Companion to [graphs.md](graphs.md); the map of which document answers what is
+at the top of [design.md](design.md). Two features that share one piece of
 machinery:
 
 1. **Push distributions.** Selecting a dot shows, in the details pane, the

@@ -2,10 +2,11 @@
 
 Project-specific instructions for Claude Code.
 
-**Read [docs/design.md](docs/design.md) first.** It has the *why* behind
-non-obvious choices (cache-fallback preference, filter model, layout
-constraints, Svelte whitespace gotcha, Perfherder data quirks). Every
-non-trivial change should be checked against that document.
+**Read [docs/design.md](docs/design.md) first**, starting with its "Which
+document" map — it routes to the right file for the area you're touching, and
+its second table lists the changes that have gone wrong before and the section
+that explains each. It has the *why* behind non-obvious choices, and every
+non-trivial change should be checked against it.
 
 ## Working style for this repo
 
