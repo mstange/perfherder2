@@ -178,6 +178,33 @@ describe('detectChanges', () => {
     expect(found[0].windowEnd).toBe(84);
   });
 
+  it('is not silenced by an outlier segmented off next to the step', () => {
+    // The segmentation fences the bad push at 40 into a segment of its own, four
+    // pushes short of the real step at 45. Clipping each candidate's window at
+    // its immediate neighbour left both of them with four or five pushes on one
+    // side — under MIN_WINDOW_PUSHES, so neither could be tested at all, and a
+    // step with thirty clean pushes either side of it went unmarked because
+    // something twitched four pushes earlier. See `windowLimits`.
+    const values = [...noisy(100, 45, 0.5), ...noisy(96, 30, 0.5)];
+    values[40] = 92.5;
+    expect(segmentValues(values)).toEqual([0, 40, 45, 75]);
+
+    const found = detectChanges(pushesOf(values), true);
+    expect(found).toHaveLength(1);
+    expect(found[0].index).toBe(45);
+    expect(found[0].relativeChange).toBeCloseTo(-0.04, 2);
+  });
+
+  it('marks a regression and its backout as two changes', () => {
+    // What keeps the neighbourhood dedupe honest: these two steps are close
+    // together and they are not the same step, and the only thing that says so is
+    // that they point opposite ways.
+    const values = [...noisy(100, 24, 0.5), ...noisy(104, 6, 0.5), ...noisy(100, 24, 0.5)];
+    const found = detectChanges(pushesOf(values), true);
+    expect(found.map((c) => c.index)).toEqual([24, 30]);
+    expect(found.map((c) => c.isRegression)).toEqual([true, false]);
+  });
+
   it('finds nothing in noise', () => {
     expect(detectChanges(pushesOf(noisy(100, 60, 4)), true)).toEqual([]);
   });

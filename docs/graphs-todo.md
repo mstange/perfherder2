@@ -102,6 +102,22 @@ Living checklist. Update in the same commit as the work it describes.
   disappears between hovers, which is inline and so only bites at a narrow pane
   width. A sweep of 40 hovers over two real series found neither, so this is
   waiting for a case that shows it.
+- **Only a confirmed change should be a wall for a window.** A candidate's
+  confirmation pool is clipped at the neighbouring segment boundaries, and
+  `windowLimits` already refuses to clip at a boundary closer than
+  `MIN_WINDOW_PUSHES` — a segment that short can never have a boundary of its own
+  confirmed, so it should not get to veto its neighbour's. That covers the case
+  that motivated it (an outlier fenced off two to five pushes from a real step
+  used to silence the step entirely, since both candidates were left with too
+  small a pool to test) but not the band just past it: a wall at exactly six
+  pushes leaves a legal pool of six that can still be the blip's, one of whose
+  values is the bad push, which is enough to keep the p-value off 0.01. The rule
+  that covers all of it is the one in the heading, and it means confirming
+  greedily — strongest evidence first, walls growing as changes are accepted,
+  repeat until nothing new is confirmed — rather than in boundary order with a
+  fixed set of walls. A different algorithm, not a wider constant, and worth
+  doing when a real series shows the band biting: the cost is O(k²)
+  confirmations where k is the candidate count, against today's O(k).
 - **Mixed units on one y-axis.** Following treeherder for now; the axis says
   "mixed units" when it happens. A per-series normalized mode ("% of the
   first value") would be the real fix.

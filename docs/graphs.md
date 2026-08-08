@@ -475,11 +475,22 @@ making each of those means precise.
    its own window with the largest Cliff's delta. `relocateBoundary`. Not
    perf.webkit.org's, and the reason it exists is below.
 
+Two candidates can then describe one step — their windows overlap, so the same
+cut can be the best answer for both — so a confirmed change also has to win its
+neighbourhood: strongest evidence first, and one is dropped when an accepted
+change is within six pushes of it *in the same direction*. Direction is in the
+rule so that a regression and its backout a few pushes later stay two changes.
+
 Every constant is in [changes.ts](../src/lib/graphs/changes.ts) with its reason;
 the four worth knowing here:
 
-- **A fixed window of 24 pushes a side**, clipped to the neighbouring
-  boundaries. 24 is `PERFHERDER_ALERTS_MAX_BACK_WINDOW`, matched deliberately:
+- **A fixed window of 24 pushes a side**, clipped to the neighbouring boundaries
+  — except that a boundary closer than six pushes is not a wall, because a
+  segment that short can never have a boundary of its own confirmed and so should
+  not get to veto its neighbour's (`windowLimits`; an outlier fenced off four
+  pushes short of a real step used to leave both candidates with too small a pool
+  to test, and the step went unmarked). 24 is
+  `PERFHERDER_ALERTS_MAX_BACK_WINDOW`, matched deliberately:
   perfherder's alert quotes means over 12–24 pushes back against 12 forward, and
   both cards can be in the details pane at once, so the two "before → after"
   pairs should be on the same scale. Where they differ it should be because the

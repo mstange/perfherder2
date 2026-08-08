@@ -103,7 +103,9 @@ const VARIANCE_FLOOR_FRACTION = 1e-6;
 
 // How many pushes either side of a candidate the confirmation test looks at,
 // clipped to the neighbouring boundaries so a window never crosses another
-// change.
+// change. `windowLimits` is where the clipping happens, and says what
+// "neighbouring" has to mean for a short outlier segment not to silence the step
+// beside it.
 //
 // 24 is `PERFHERDER_ALERTS_MAX_BACK_WINDOW` (treeherder/perf/alerts.py), which
 // is deliberate rather than coincidental: perfherder's own alert quotes means
@@ -410,6 +412,51 @@ export function relocateBoundary(
   return bestCut;
 }
 
+// How far a candidate's window may reach on each side: the nearest boundary that
+// still leaves MIN_WINDOW_PUSHES between itself and the candidate.
+//
+// Clipping at a neighbouring boundary is what a window has to do — a pool that
+// crosses another step averages two levels and describes neither — but clipping
+// at the *immediate* neighbour lets a short outlier segment silence the real step
+// beside it. The segmentation isolates a bad push readily (that is what
+// MIN_SEGMENT allows it to do, and rejecting the boundaries around it is the
+// confirmation stage's job), and when it does that within six pushes of a real
+// step, both candidates die on the pool-size check: the step's own window is
+// clipped to the four or five pushes between it and the blip, and the blip's is
+// clipped to the same handful the other way. Neither says anything, so a step
+// with thirty clean pushes either side of it goes unmarked because something
+// twitched four pushes earlier. Synthetically reproducible, and the graph's most
+// annoying failure is the one where nothing is drawn.
+//
+// So a boundary closer than MIN_WINDOW_PUSHES is not treated as a wall; the pool
+// absorbs the pushes beyond it and reaches for the next boundary instead. This
+// is the one place a window can cross a boundary, and what it can cross is at
+// most five pushes' worth — a rank test carries five contaminating values out of
+// twenty-four without changing its mind, which is exactly why the test is a rank
+// test. A boundary with six or more pushes behind it is still a wall.
+//
+// **What this does not fix**, and graphs-todo.md carries as deferred: a wall at
+// exactly MIN_WINDOW_PUSHES leaves a legal pool of six that may still be the
+// blip's, one of whose values is the bad push — enough to keep the p-value off
+// 0.01 and silence the step anyway. Reproducible from the fixture in
+// changes.test.ts ("is not silenced by an outlier segmented off next to the
+// step") by moving the step one push further away. The rule that would cover it is
+// "only a *confirmed* change is a wall", which means confirming greedily
+// strongest-first with the walls growing as it goes, and that is a different
+// algorithm rather than a wider constant.
+function windowLimits(boundaries: readonly number[], at: number): [number, number] {
+  let low = boundaries[0];
+  let high = boundaries[boundaries.length - 1];
+  for (const boundary of boundaries) {
+    if (boundary <= at - MIN_WINDOW_PUSHES) low = boundary;
+    else if (boundary >= at + MIN_WINDOW_PUSHES) {
+      high = boundary;
+      break;
+    }
+  }
+  return [low, high];
+}
+
 // Does a candidate boundary survive a test on the pushes either side?
 //
 // A **fixed** window of up to WINDOW_PUSHES a side, clipped to the neighbouring
@@ -432,8 +479,8 @@ function confirmChange(
   const windowEnd = Math.min(highLimit, at + WINDOW_PUSHES);
   if (at - windowStart < MIN_WINDOW_PUSHES || windowEnd - at < MIN_WINDOW_PUSHES) return null;
 
-  // The gate, at the segmentation's own boundary. See `relocate` for why the
-  // relocated split is not the thing that gets to decide there is a step here.
+  // The gate, at the segmentation's own boundary. See `relocateBoundary` for why
+  // the relocated split is not what decides there is a step here.
   const gate = mannWhitneyU(values.slice(windowStart, at), values.slice(at, windowEnd));
   // `gate.significant` is the 0.05 the rest of the app reports against; this
   // wants its own, stricter bar. See CHANGE_ALPHA.
@@ -489,7 +536,8 @@ export function detectChanges(
   const out: DetectedChange[] = [];
   for (let b = 1; b < boundaries.length - 1; b++) {
     const at = boundaries[b];
-    const confirmed = confirmChange(values, at, boundaries[b - 1], boundaries[b + 1]);
+    const [lowLimit, highLimit] = windowLimits(boundaries, at);
+    const confirmed = confirmChange(values, at, lowLimit, highLimit);
     if (!confirmed) continue;
     const before = pushes[confirmed.index - 1];
     const after = pushes[confirmed.index];
@@ -513,16 +561,32 @@ export function detectChanges(
     });
   }
 
-  // Two adjacent candidates can relocate onto the same push: their windows
-  // overlap between the boundary they share, so one real step can be the best
-  // cut for both. Rare, but two notches in one column and two identical cards in
-  // the details pane is not something to ship on the off chance. The better-
-  // separated one wins, and the sort is because a relocated index no longer has
-  // to be in the order its candidate was.
-  const byIndex = new Map<number, DetectedChange>();
-  for (const change of out) {
-    const seen = byIndex.get(change.index);
-    if (!seen || change.pValue < seen.pValue) byIndex.set(change.index, change);
+  // Two candidates can describe the same step. Their windows overlap — heavily,
+  // once a short segment between them has stopped being a wall — so one real step
+  // can be the best cut for both, and after relocation they come back on the same
+  // push or a couple of pushes apart. Drawn, that is one step marked twice: two
+  // notches, two cards in the pane saying nearly the same thing.
+  //
+  // So a change has to win its neighbourhood. Strongest evidence first, and a
+  // change is dropped when one already accepted is within MIN_WINDOW_PUSHES of it
+  // *in the same direction* — the same span over which the confirmation stage
+  // would have refused to treat them as separable, and the same pool either way.
+  //
+  // Direction is in the rule because of the case it must not collapse: a
+  // regression and the backout five pushes later are two changes, they are
+  // supposed to draw two bars, and the only thing that tells them apart from one
+  // step counted twice is that they point opposite ways.
+  const accepted: DetectedChange[] = [];
+  for (const change of [...out].sort((a, b) => a.pValue - b.pValue)) {
+    const sameStep = accepted.some(
+      (other) =>
+        Math.abs(other.index - change.index) < MIN_WINDOW_PUSHES &&
+        (other.index === change.index ||
+          Math.sign(other.relativeChange) === Math.sign(change.relativeChange)),
+    );
+    if (!sameStep) accepted.push(change);
   }
-  return [...byIndex.values()].sort((a, b) => a.index - b.index);
+  // Sorted at the end because a relocated index no longer has to be in the order
+  // its candidate boundary was, let alone in p-value order.
+  return accepted.sort((a, b) => a.index - b.index);
 }
