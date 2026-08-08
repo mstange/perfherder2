@@ -432,6 +432,56 @@ rather than an artifact URL — the view resolves it through the same path-split
 each one is a `/from-url/` URL wrapping a percent-encoded taskcluster URL, and
 the query encoding is a second layer on top of that.
 
+## The inline pushlog
+
+"What landed in this range" is the question a comparison exists to set up, and
+until now answering it meant following the `pushlog` link into hg.mozilla.org.
+The card lists the commits itself, in a disclosure under the links.
+
+**Collapsed, with the count in the summary** — "254 of 263 commits". The count
+is most of the answer, so a disclosure that had to be opened to find out how
+much was behind it would save nothing; and the pane deliberately does not lead
+with a commit list (graphs.md, "The details pane, top to bottom"), which
+default-open would undo. The row is one line tall in every state, loading
+included, so nothing above or below it moves.
+
+**Fetched when the comparison is pinned, not when the row is opened.** That is
+what lets the collapsed row carry a count. It is also why it is pinned-only:
+`appState.pushlogRangeRef` returns null for a hover, because a range fetch is
+the largest of the pane's lookups and hovering crosses dots by the dozen — the
+same rule, for the same reason, as the artifact lookups behind the profile
+comparison link.
+
+Three things about the data, each of which would otherwise make the list quietly
+wrong:
+
+- **The page size is 10 and truncation is silent.** A 300-push range asked for
+  without an explicit `count` returns ten rows and a `meta.count` of ten, which
+  reads exactly like a complete answer. This is the same trap that makes
+  treeherder's own `getCommonAlerts` wrong over long ranges (graphs-todo.md).
+  `fetchPushRange` asks for one more than it keeps, so the overflow is observed
+  rather than inferred from a full-looking page.
+- **Treeherder's range includes the base push; hg's pushlog excludes it.** The
+  two would disagree by one commit, and the extra one would be the *before*
+  side of the comparison — listing the baseline build among the suspects for a
+  change it is the reference for. `commitsInRange` drops it.
+- **`revisions` is capped at 20 per push, `revision_count` is the truth.** Never
+  fires on autoland, where a push is one commit; fires constantly on
+  mozilla-central, where 14 of 30 sampled pushes were merges and the largest
+  named 20 of its 164 commits. The gap is counted, which is what lets the label
+  say "20 of 164" instead of presenting a fifth of a merge as all of it. When
+  the range cap *also* bit, the total is a floor too and the label says "164+".
+
+Volume is bounded by `MAX_RANGE_PUSHES` = 200, measured at ~1.1 KB per push
+(300 pushes = 344 KB in 0.63 s). Nothing normal comes close: a detected change's
+window is 24 pushes and "since previous" is one. It is there for a comparison
+pinned across months, and when it bites the caveat line says so and links out.
+
+One consequence worth knowing: expanded, a long list pushes the pane's remaining
+sections — Alert, Detected change, Replicate, Values, Run, Build — thousands of
+pixels down. 254 commits is ~16,000px. Collapsing restores them, and capping the
+open list's height with its own scroller is the fix if that turns out to matter.
+
 ## Deviations from PerfCompare
 
 - **Direct KDE evaluation, not FFT.** PerfCompare convolves on a 1024-point
@@ -489,6 +539,8 @@ Pure, and unit tested:
   geometry. The jitter hash itself is `chart.ts::jitterAt`, since both charts
   scatter overlapping dots with it.
 - `compare.ts` — kinds, side ordering, pools, labels, outgoing links.
+- `pushlog.ts` — a fetched range → the commit list, its label and its caveat.
+  The transport half is `fetchPushRange` in graphApi.ts.
 - `artifacts.ts::compactBenchmarkName` / `benchmarkComparison` — which artifact a
   profile comparison can be built from, and the link when both runs have one.
 - `graphData.ts::pushValues` / `indexInPushValues` / `replicateGroups` — the

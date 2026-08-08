@@ -13,12 +13,14 @@
 import {
   fetchJob,
   fetchPush,
+  fetchPushRange,
   fetchRepositories,
   fetchSummary,
   type Job,
   type Push,
   type RepositoryInfo,
 } from './graphApi';
+import { commitsInRange, type PushlogRange } from './pushlog';
 import {
   alertsByPush,
   alertsForSeries,
@@ -232,6 +234,13 @@ export class AppState {
   // is for.
   private artifactCache = $state(new Map<string, string[]>());
   private artifactLookupFailed = $state(new Set<string>());
+
+  // The commit list for a pinned comparison's range, keyed
+  // `${repo}|${baseRev}|${nextRev}`, with the same negative cache. Bounded by
+  // how many comparisons one session pins, and each entry is at most a few
+  // hundred commits — small next to the point arrays, so it isn't pruned.
+  private pushlogCache = $state(new Map<string, PushlogRange>());
+  private pushlogFailed = $state(new Set<string>());
 
   repoInfo = $state(new Map<string, RepositoryInfo>());
 
@@ -533,6 +542,46 @@ export class AppState {
     return base && next ? benchmarkComparison(base, next) : null;
   });
 
+  // The revision range a pinned, same-repository comparison spans, or null when
+  // there is nothing to fetch a pushlog for.
+  //
+  // **Pinned only, and for the same reason the artifact lookups are** — a hover
+  // preview would fire a push-list request for every dot the pointer crosses,
+  // and a range fetch is far and away the largest of the three.
+  //
+  // Same repository only, and non-degenerate: two ends in different repos have
+  // no range between them, and two runs of one push have an empty one. Both are
+  // exactly when `ComparisonLinks.pushlog` is null, so the inline list and the
+  // link appear and disappear together rather than by two separate rules.
+  private pushlogRangeRef = $derived.by((): PushlogRangeRef | null => {
+    if (this.comparisonSource !== 'pinned') return null;
+    const cmp = this.comparison;
+    if (!cmp) return null;
+    if (cmp.base.ref.repository !== cmp.next.ref.repository) return null;
+    if (cmp.base.push.revision === cmp.next.push.revision) return null;
+    return {
+      repository: cmp.base.ref.repository,
+      baseRevision: cmp.base.push.revision,
+      nextRevision: cmp.next.push.revision,
+    };
+  });
+
+  // What landed in that range. Null when there is no range to speak of, which
+  // is what the card reads to decide whether to draw the row at all.
+  pushlogRange = $derived.by((): PushlogRange | null => {
+    const ref = this.pushlogRangeRef;
+    return ref ? (this.pushlogCache.get(pushlogKey(ref)) ?? null) : null;
+  });
+
+  // `absent` means no row; the other three mirror `selectedJobStatus`.
+  pushlogStatus = $derived.by((): 'absent' | 'loading' | 'loaded' | 'failed' => {
+    const ref = this.pushlogRangeRef;
+    if (!ref) return 'absent';
+    const key = pushlogKey(ref);
+    if (this.pushlogCache.has(key)) return 'loaded';
+    return this.pushlogFailed.has(key) ? 'failed' : 'loading';
+  });
+
   // One side of that comparison, if its job and its artifact list have both
   // landed. Reads whichever of the two runs the side turned out to be — base and
   // next are ordered by time, so either can be the selection (compare.ts,
@@ -680,6 +729,15 @@ export class AppState {
       for (const run of [this.selectedTaskRun, this.comparedTaskRun]) {
         if (run) void this.loadArtifacts(run.taskId, run.runId);
       }
+    });
+
+    // The pinned comparison's commit list. Fetched when the comparison is
+    // pinned rather than when the row is expanded, because the collapsed row
+    // states the count — a disclosure that has to be opened to find out how much
+    // is behind it is most of the click it was meant to save.
+    $effect(() => {
+      const ref = this.pushlogRangeRef;
+      if (ref) void this.loadPushlog(ref);
     });
 
     // Repository metadata drives the hg/git-aware pushlog links.
@@ -843,6 +901,33 @@ export class AppState {
       // expire a year after the run and the queue answers 404 for good once
       // they have, so a failure here is usually permanent.
       this.artifactLookupFailed = new Set(this.artifactLookupFailed).add(cacheKey);
+    } finally {
+      this.detailRequests.delete(key);
+    }
+  }
+
+  private async loadPushlog(ref: PushlogRangeRef): Promise<void> {
+    const cacheKey = pushlogKey(ref);
+    const key = `pushlog|${cacheKey}`;
+    if (
+      this.pushlogCache.has(cacheKey) ||
+      this.detailRequests.has(key) ||
+      this.pushlogFailed.has(cacheKey)
+    ) {
+      return;
+    }
+    this.detailRequests.add(key);
+    try {
+      const range = await fetchPushRange(ref.repository, ref.baseRevision, ref.nextRevision);
+      this.pushlogCache = new Map(this.pushlogCache).set(
+        cacheKey,
+        commitsInRange(range.pushes, ref.baseRevision, range.truncated),
+      );
+    } catch {
+      // Remembered rather than retried, as with the job and artifact lookups.
+      // The card keeps its pushlog link, so a failure here costs the inline
+      // list and nothing else.
+      this.pushlogFailed = new Set(this.pushlogFailed).add(cacheKey);
     } finally {
       this.detailRequests.delete(key);
     }
@@ -1454,6 +1539,19 @@ function taskRunOf(job: Job | null): TaskRun | null {
 // and uploads a fresh set of files under a new run number.
 function artifactKey(run: TaskRun): string {
   return `${run.taskId}|${run.runId}`;
+}
+
+// Which range a pushlog belongs to. Revisions rather than push ids because the
+// endpoint takes revisions, and because they are what the equivalent hg link
+// is built from — one identity for both.
+type PushlogRangeRef = {
+  repository: string;
+  baseRevision: string;
+  nextRevision: string;
+};
+
+function pushlogKey(ref: PushlogRangeRef): string {
+  return `${ref.repository}|${ref.baseRevision}|${ref.nextRevision}`;
 }
 
 function samePoint(a: SelectedPoint, b: SelectedPoint): boolean {

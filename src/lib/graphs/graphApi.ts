@@ -190,6 +190,55 @@ export function fetchPush(
   );
 }
 
+// The most pushes one range query keeps. 300 pushes measured 344 KB in 0.63 s,
+// so this is roughly a quarter-megabyte worst case — chosen to bound a
+// comparison pinned across months, not because anything near it is common: a
+// detected change's window is 24 pushes and "since previous" is one.
+export const MAX_RANGE_PUSHES = 200;
+
+// The *list* route of the push endpoint, which is how a range is asked for. It
+// wraps its rows in `{meta, results}`, unlike the detail route above.
+export const PushListSchema = v.object({ results: v.array(PushSchema) });
+
+export type PushRange = {
+  // Newest first, as the endpoint returns them.
+  pushes: Push[];
+  // The range was longer than `MAX_RANGE_PUSHES` and these are the newest of it.
+  truncated: boolean;
+};
+
+// Every push between two revisions, inclusive of both ends — `pushlog.ts` is
+// where the base end is dropped, and its comment says why.
+//
+// **Both endpoints are inclusive and the page size is 10.** Truncation here is
+// silent: a 300-push range answered without an explicit `count` returns 10 rows
+// and a `meta.count` of 10, which reads exactly like a complete answer. That is
+// the trap that made treeherder's own `getCommonAlerts` quietly wrong over long
+// ranges (see docs/graphs-todo.md), so this asks for one more than it will keep
+// and reports the overflow rather than inferring it from a full-looking page.
+export async function fetchPushRange(
+  repository: string,
+  fromRevision: string,
+  toRevision: string,
+  signal?: AbortSignal,
+): Promise<PushRange> {
+  const params = new URLSearchParams({
+    fromchange: fromRevision,
+    tochange: toRevision,
+    count: String(MAX_RANGE_PUSHES + 1),
+  });
+  const { results } = await fetchJson(
+    PushListSchema,
+    `${API_BASE}/project/${encodeURIComponent(repository)}/push/?${params}`,
+    signal,
+  );
+  // Keeping the newest keeps the pushes nearest the change being explained.
+  return {
+    pushes: results.slice(0, MAX_RANGE_PUSHES),
+    truncated: results.length > MAX_RANGE_PUSHES,
+  };
+}
+
 export function fetchJob(
   repository: string,
   jobId: number,

@@ -64,6 +64,11 @@ Living checklist. Update in the same commit as the work it describes.
   synthetic flat series, and 2000 pushes cost 8.9 ms against 33. See graphs.md,
   "Three stages", and the constants in changes.ts
 
+- The commit list for a pinned comparison, inline in the card — `pushlog.ts` (+
+  tests) and `fetchPushRange`. Collapsed with the count in the summary, fetched
+  on pin so the count is there to show, pinned-only so a hover doesn't fetch a
+  range per dot. See [comparison.md](comparison.md), "The inline pushlog"
+
 ## Next
 
 - [ ] A full repaint of the detail graph at 100k+ dots takes ~60ms, which is

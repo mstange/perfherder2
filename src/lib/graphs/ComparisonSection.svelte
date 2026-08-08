@@ -61,7 +61,8 @@
     runRangeInPushValues,
     seriesLabel,
   } from './graphData';
-  import { jobsUrl, revisionUrl, shortRevision } from '../shared/links';
+  import { bugUrl, jobsUrl, revisionUrl, shortRevision } from '../shared/links';
+  import { commitTitle, pushlogCaveat, pushlogLabel } from './pushlog';
   import { SIGNIFICANCE_ALPHA } from '../shared/stats';
 
   type Props = { app: AppState };
@@ -160,6 +161,12 @@
   const cmpLinks = $derived(
     cmp ? comparisonLinks(cmp, app.repoLinkFor(cmp.base.ref.repository)) : null,
   );
+
+  // The inline pushlog, and the repository its revisions are browsed in. Both
+  // sides share a repository whenever there is a range at all (appState,
+  // `pushlogRangeRef`), so the base's record is the right one for every row.
+  const pushlogRange = $derived(app.pushlogRange);
+  const repoLink = $derived(cmp ? app.repoLinkFor(cmp.base.ref.repository) : null);
 
   // The fourth link, and the only one that isn't a pure function of the two
   // points: it takes a job lookup and an artifact list per side to know whether
@@ -451,6 +458,60 @@
         {/if}
       </div>
     {/if}
+
+    <!-- What landed in the range. Collapsed, but with the count in the summary:
+         the number is most of the answer, and a disclosure that has to be opened
+         to find out how much is behind it saves nothing. The row's height is one
+         line in every state, so loading it moves nothing below it. -->
+    {#if app.pushlogStatus !== 'absent'}
+      <details class="pushlog">
+        <summary>
+          {#if app.pushlogStatus === 'loading'}
+            <span class="muted">loading commits…</span>
+          {:else if app.pushlogStatus === 'failed'}
+            <span class="muted">commits unavailable</span>
+          {:else if pushlogRange}
+            {pushlogLabel(pushlogRange)}
+          {/if}
+        </summary>
+        {#if pushlogRange}
+          {#if pushlogCaveat(pushlogRange)}
+            <p class="pushlog-caveat muted">
+              {pushlogCaveat(pushlogRange)}
+              {#if cmpLinks?.pushlog}
+                <a href={cmpLinks.pushlog} target="_blank" rel="noopener">Full pushlog</a>.
+              {/if}
+            </p>
+          {/if}
+          <ul class="pushlog-list">
+            {#each pushlogRange.commits as commit (commit.revision)}
+              <li>
+                <div class="pushlog-summary">
+                  {#if commit.bugs.length > 0}
+                    <a
+                      class="pushlog-bug"
+                      href={bugUrl(commit.bugs[0])}
+                      target="_blank"
+                      rel="noopener">Bug {commit.bugs[0]}</a
+                    >
+                  {/if}
+                  <span title={commit.body || undefined}>{commitTitle(commit)}</span>
+                </div>
+                <div class="pushlog-meta muted">
+                  {#if repoLink}<a
+                      class="mono"
+                      href={revisionUrl(repoLink, commit.revision)}
+                      target="_blank"
+                      rel="noopener">{shortRevision(commit.revision)}</a
+                    >{:else}<span class="mono">{shortRevision(commit.revision)}</span>{/if}
+                  · {commit.author}
+                </div>
+              </li>
+            {/each}
+          </ul>
+        {/if}
+      </details>
+    {/if}
   {/if}
 </section>
 
@@ -702,5 +763,67 @@
     padding-top: 8px;
     border-top: 1px solid var(--border-muted);
     font-size: 11px;
+  }
+
+  /* The disclosure. `list-style: none` plus the ::marker rule is what it takes
+     to replace the default triangle in both engines; the row is one line tall
+     in every state, loading included, so nothing below it moves. */
+  .pushlog {
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid var(--border-muted);
+    font-size: 11px;
+  }
+
+  .pushlog > summary {
+    cursor: pointer;
+    list-style: none;
+    user-select: none;
+    line-height: 16px;
+  }
+
+  .pushlog > summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .pushlog > summary::before {
+    content: '▸';
+    display: inline-block;
+    width: 12px;
+    color: var(--text-muted);
+  }
+
+  .pushlog[open] > summary::before {
+    content: '▾';
+  }
+
+  .pushlog-caveat {
+    margin: 6px 0 0 12px;
+  }
+
+  .pushlog-list {
+    margin: 6px 0 0;
+    padding: 0 0 0 12px;
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  /* Two lines per commit: the title, then the revision and author. The title
+     wraps rather than truncating — a commit summary cut at the pane's width
+     loses the half that says what changed. */
+  .pushlog-summary {
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+  }
+
+  .pushlog-bug {
+    margin-right: 4px;
+    white-space: nowrap;
+  }
+
+  .pushlog-meta {
+    line-height: 1.35;
   }
 </style>

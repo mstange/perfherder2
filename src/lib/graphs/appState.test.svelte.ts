@@ -2095,3 +2095,150 @@ describe('extentOf', () => {
     });
   });
 });
+
+describe('the inline pushlog', () => {
+  // Distinct revisions on the two pushes. The shared SAMPLE gives every datum
+  // the same one, which is the degenerate case the range is suppressed for.
+  const BASE_REV = 'b'.repeat(40);
+  const NEXT_REV = 'c'.repeat(40);
+  const TWO_REVS = summary(3, [
+    datum({
+      id: 20,
+      value: 100,
+      push_id: 1,
+      revision: BASE_REV,
+      push_timestamp: '2026-07-21T06:00:00',
+    }),
+    datum({
+      id: 21,
+      value: 200,
+      push_id: 2,
+      revision: NEXT_REV,
+      push_timestamp: '2026-07-22T06:00:00',
+    }),
+  ]);
+
+  // The range as treeherder answers it: newest first, and *including* the push
+  // named by `fromchange`.
+  const RANGE_RESULTS = [
+    push({
+      id: 2,
+      revision: NEXT_REV,
+      revisions: [
+        { revision: NEXT_REV, author: 'Dev <dev@example.com>', comments: 'Bug 22 - the culprit' },
+      ],
+    }),
+    push({
+      id: 1,
+      revision: BASE_REV,
+      revisions: [
+        { revision: BASE_REV, author: 'Dev <dev@example.com>', comments: 'Bug 11 - the baseline' },
+      ],
+    }),
+  ];
+
+  // Installed *before* `withApp`, which constructs the state and runs its
+  // effects before it hands it over. Range requests are collected separately
+  // from the push *detail* lookups the selection makes, which share a prefix.
+  function stubRanges(rangeResponse: () => Response) {
+    const ranges: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        const s = String(url);
+        if (s.includes('/performance/summary/')) return json([TWO_REVS]);
+        if (s.includes('/performance/alertsummary/')) return json(alertPage([]));
+        if (s.includes('/repository/')) return json([]);
+        if (s.includes('/push/?')) {
+          ranges.push(s);
+          return rangeResponse();
+        }
+        if (s.includes('/push/')) return json(push());
+        if (s.includes('/jobs/')) return json(job());
+        return json({});
+      }),
+    );
+    return ranges;
+  }
+
+  const ok = () => json({ results: RANGE_RESULTS });
+  const selOnly = '?series=autoland,3,1&sel=autoland,3,20,0';
+  const pinned = `${selOnly}&cmp=autoland,3,21,0`;
+
+  it('fetches the range for a pinned comparison and drops the base push', () => {
+    const ranges = stubRanges(ok);
+    return withApp(pinned, async (app) => {
+      await settle();
+      expect(ranges).toHaveLength(1);
+      expect(ranges[0]).toContain(`fromchange=${BASE_REV}`);
+      expect(ranges[0]).toContain(`tochange=${NEXT_REV}`);
+      // Explicit count: the endpoint's default page is 10 and truncates in
+      // silence.
+      expect(ranges[0]).toContain('count=201');
+
+      expect(app.pushlogStatus).toBe('loaded');
+      // The baseline commit is the "before" side, not a suspect.
+      expect(app.pushlogRange?.commits.map((c) => c.summary)).toEqual(['Bug 22 - the culprit']);
+      expect(app.pushlogRange?.pushCount).toBe(1);
+    });
+  });
+
+  // The rule this feature most needs to keep: a range fetch is the largest of
+  // the pane's lookups, and hovering crosses dots by the dozen.
+  it('does not fetch anything for a hovered comparison', () => {
+    const ranges = stubRanges(ok);
+    return withApp(selOnly, async (app) => {
+      await settle();
+      app.setHoveredPoint({
+        repository: 'autoland',
+        signatureId: 3,
+        datumId: 21,
+        replicateIndex: 0,
+      });
+      await settle();
+      expect(app.comparisonSource).toBe('hover');
+      expect(app.comparison).not.toBeNull();
+      expect(ranges).toEqual([]);
+      expect(app.pushlogStatus).toBe('absent');
+    });
+  });
+
+  it('has no range to fetch when both ends are the same push', () => {
+    const ranges = stubRanges(ok);
+    return withApp('?series=autoland,3,1&sel=autoland,3,20,0&cmp=autoland,3,20,0', async (app) => {
+      await settle();
+      expect(ranges).toEqual([]);
+      expect(app.pushlogStatus).toBe('absent');
+    });
+  });
+
+  it('serves a re-pinned range from cache', () => {
+    const ranges = stubRanges(ok);
+    return withApp(pinned, async (app) => {
+      await settle();
+      expect(ranges).toHaveLength(1);
+      app.clearComparison();
+      await settle();
+      app.comparePoint({
+        repository: 'autoland',
+        signatureId: 3,
+        datumId: 21,
+        replicateIndex: 0,
+      });
+      await settle();
+      expect(app.pushlogStatus).toBe('loaded');
+      expect(ranges).toHaveLength(1);
+    });
+  });
+
+  it('reports a failed range instead of retrying it', () => {
+    const ranges = stubRanges(() => ({ ok: false, status: 503, statusText: 'nope' }) as Response);
+    return withApp(pinned, async (app) => {
+      await settle();
+      expect(app.pushlogStatus).toBe('failed');
+      // The negative cache stops the effect reissuing a doomed request.
+      await settle();
+      expect(ranges).toHaveLength(1);
+    });
+  });
+});

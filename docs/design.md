@@ -31,6 +31,7 @@ change is wrong for a reason the code doesn't show:
 | A button | "One button, defined once" |
 | Anything that renders before its data arrives | "Layout stability" |
 | A fetch, or a new endpoint | "Validating API responses"; plus "Cache key" if the result is cached |
+| A treeherder *list* endpoint | its default page is 10 rows and truncation is silent — a partial answer is shaped exactly like a complete one. comparison.md, "The inline pushlog", and the `getCommonAlerts` note in graphs-todo.md |
 | How a row is identified | "Row identity: `Series.key`, composed at construction" |
 | Canvas drawing | graphs.md "Rendering" and "Dots are translucent, and jittered sideways" |
 | The change detector's constants | graphs.md "Detected changes", and the reasoning and measurements recorded beside each constant in `changes.ts` |
