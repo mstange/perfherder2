@@ -154,22 +154,27 @@ export function parseApiDate(s: string): number {
   return Date.parse(`${s}Z`);
 }
 
+// `frameworkId` is nullable, and the parameter is then omitted.
+//
+// **The endpoint does not need it** — `signature` already identifies the row,
+// and checked against production the two requests answer identically. The app
+// always has a framework and passes it, matching treeherder's own request; the
+// null case is for a caller that has only `(repository, signatureId)` and would
+// otherwise have to download a repo's whole signature list to learn a number
+// the response is about to hand back in `framework_id`. See src/cli/.
 export function summaryUrl(
   repository: string,
   signatureId: number,
-  frameworkId: number,
+  frameworkId: number | null,
   startMs: number,
   endMs: number,
 ): string {
-  const params = new URLSearchParams({
-    repository,
-    signature: String(signatureId),
-    framework: String(frameworkId),
-    startday: toApiDate(new Date(startMs)),
-    endday: toApiDate(new Date(endMs)),
-    all_data: 'true',
-    replicates: 'true',
-  });
+  const params = new URLSearchParams({ repository, signature: String(signatureId) });
+  if (frameworkId !== null) params.set('framework', String(frameworkId));
+  params.set('startday', toApiDate(new Date(startMs)));
+  params.set('endday', toApiDate(new Date(endMs)));
+  params.set('all_data', 'true');
+  params.set('replicates', 'true');
   return `${API_BASE}/performance/summary/?${params}`;
 }
 
@@ -178,7 +183,7 @@ export function summaryUrl(
 export async function fetchSummary(
   repository: string,
   signatureId: number,
-  frameworkId: number,
+  frameworkId: number | null,
   startMs: number,
   endMs: number,
   signal?: AbortSignal,
@@ -204,14 +209,19 @@ export async function fetchSummary(
 // would have been the obvious way to ask and is the wrong one twice: it would
 // drop a signature that has gone quiet, and it would carry back a value per push
 // over the interval for a request that wants none of them.
+//
+// `nowMs` is the width-zero instant, and it is a parameter only so a caller can
+// make the request cacheable: the answer doesn't depend on it (the filter it
+// skips is the point), but `Date.now()` puts a fresh timestamp in the URL on
+// every call, which is a cache miss every time for anything keyed on one.
 export function fetchSignatureMeta(
   repository: string,
   signatureId: number,
-  frameworkId: number,
+  frameworkId: number | null,
   signal?: AbortSignal,
+  nowMs: number = Date.now(),
 ): Promise<RawSummary | null> {
-  const now = Date.now();
-  return fetchSummary(repository, signatureId, frameworkId, now, now, signal);
+  return fetchSummary(repository, signatureId, frameworkId, nowMs, nowMs, signal);
 }
 
 export function fetchPush(
@@ -273,6 +283,31 @@ export async function fetchPushRange(
     pushes: results.slice(0, MAX_RANGE_PUSHES),
     truncated: results.length > MAX_RANGE_PUSHES,
   };
+}
+
+// One push, by revision, or null when the repository has no such push.
+//
+// The list route again, filtered by `revision=` — which accepts a 12-character
+// prefix as well as the full 40, matching how revisions are written everywhere
+// else (`shortRevision`). Verified against production.
+//
+// This exists for the CLI's `step` command, which has to turn "the change at
+// revision X" into an instant it can split *another* series at. The other series
+// routinely has no data on that push — a platform that runs the benchmark every
+// few hours skips most of them — so it cannot be looked up in the data already
+// fetched, which is exactly the case where the question is being asked.
+export async function fetchPushByRevision(
+  repository: string,
+  revision: string,
+  signal?: AbortSignal,
+): Promise<Push | null> {
+  const params = new URLSearchParams({ revision });
+  const { results } = await fetchJson(
+    PushListSchema,
+    `${API_BASE}/project/${encodeURIComponent(repository)}/push/?${params}`,
+    signal,
+  );
+  return results[0] ?? null;
 }
 
 export function fetchJob(
