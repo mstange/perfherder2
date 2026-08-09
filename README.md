@@ -33,6 +33,21 @@ run to a single dot at its mean, which is much easier to read on a long range.
 Either way replicates are fetched, so the toggle is instant and the right-hand
 pane still lists a run's individual values.
 
+**A command line.** `bin/perfherder` answers the same questions without a
+browser, built from the same modules — search for signatures, summarize and
+compare series over a range, list the steps this app detects alongside
+perfherder's alerts and the commits that caused them, and compare two pushes
+with the statistics and the mode analysis the details pane shows, and measure a
+known change across several series at once. Every command prints a link back
+into the app.
+
+```sh
+./bin/perfherder search speedometer3 android
+./bin/perfherder changes autoland,5350953 --range 6mo --commits
+./bin/perfherder compare autoland,5350953@c6d6d959a537 4138203b7be1
+./bin/perfherder step autoland,5352617 autoland,5690973 --at 080629dcb120
+```
+
 **The URL is the view.** Series and their order, the absolute time range, the
 zoom, the selected point and the picker's state all live in the query string,
 so any view can be linked. The range is stored as absolute timestamps rather
@@ -43,13 +58,14 @@ view as time passes.
 
 ```sh
 npm install
-npm run dev     # vite dev server
-npm run check   # svelte-check (types + a11y) and tsc over the vite config
-npm test        # vitest, pure-logic unit tests
+npm run dev       # vite dev server
+npm run check     # svelte-check (types + a11y), and tsc over the vite and CLI configs
+npm test          # vitest, pure-logic unit tests
 npm run build
+npm run build:cli # dist-cli/perfherder.mjs; bin/perfherder does this for you when stale
 ```
 
-The last three must all be clean; [.github/workflows/ci.yml](.github/workflows/ci.yml)
+The last four must all be clean; [.github/workflows/ci.yml](.github/workflows/ci.yml)
 runs exactly those, in that order, on every push and pull request.
 
 ## Where to read next
@@ -59,6 +75,9 @@ runs exactly those, in that order, on every push and pull request.
 - [docs/graphs.md](docs/graphs.md) — the graphs: API quirks, the
   push/run/replicate model, rendering, URL state, and every deliberate
   deviation from treeherder.
+- [docs/cli.md](docs/cli.md) — the `bin/perfherder` command line: its
+  commands, its cache, and the two things it adds that the app answers with a
+  picture instead of in words.
 - [docs/graphs-todo.md](docs/graphs-todo.md) — what's next and what's
   deferred.
 

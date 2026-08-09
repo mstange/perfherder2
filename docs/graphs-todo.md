@@ -69,6 +69,16 @@ Living checklist. Update in the same commit as the work it describes.
   on pin so the count is there to show, pinned-only so a hover doesn't fetch a
   range per dot. See [comparison.md](comparison.md), "The inline pushlog"
 
+- `bin/perfherder`, a CLI over the same modules — `src/cli/` (+ tests for its
+  four pure halves), built by `vite.cli.config.ts`. Six commands mirroring the
+  UI: `search`, `series`, `changes`, `compare`, `commits`, `url`. It adds two
+  things the app doesn't have, both because a CLI has no reader to lend a
+  picture to: `modes.ts`, which says in words whether the modes moved or their
+  weights did, and `step`, which measures a change at a point the caller names
+  and reports which of the detector's bars a real-but-unmarked move failed —
+  the question a quiet graph on an under-sampled platform raises and `changes`
+  cannot answer. See [cli.md](cli.md)
+
 ## Next
 
 - [ ] A full repaint of the detail graph at 100k+ dots takes ~60ms, which is

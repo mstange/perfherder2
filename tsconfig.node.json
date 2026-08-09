@@ -20,4 +20,6 @@
     "noFallthroughCasesInSwitch": true
   },
   "include": ["vite.config.ts"]
+  // vite.cli.config.ts is checked by tsconfig.cli.json, alongside the code it
+  // builds.
 }

@@ -8,17 +8,75 @@ its second table lists the changes that have gone wrong before and the section
 that explains each. It has the *why* behind non-obvious choices, and every
 non-trivial change should be checked against it.
 
+## Answering performance questions: use `bin/perfherder`, not the source
+
+**When you are asked a question *about Firefox performance data* — how two
+browsers compare, when something regressed, what caused a step, what a
+distribution looks like — run `./bin/perfherder`. Do not read this codebase to
+work out what URL the UI would build, and do not hand-write `curl` calls
+against treeherder.** The CLI is built from the same `src/lib` modules the app
+runs, so its answers are the app's answers, and it does the parts that are easy
+to get wrong (which alerts to hide, which threshold a subtest inherits, why a
+push mean is not a pooled replicate) already.
+
+```sh
+./bin/perfherder --help              # commands and worked examples
+./bin/perfherder <command> --help    # one command's options
+```
+
+Typical shape of an investigation:
+
+```sh
+# 1. Find the signature. The first column is the ref every other command takes.
+./bin/perfherder search speedometer3 android --repo mozilla-central
+
+# 2. Levels over a window — this is the "A vs B" answer.
+./bin/perfherder series mozilla-central,270490 mozilla-central,230167 --range 60d
+
+# 3. When did it move, and what landed?
+./bin/perfherder changes autoland,5350953 --range 6mo --commits
+
+# 4. What kind of change was it? Statistics, distributions, and whether the
+#    modes moved or just their weights.
+./bin/perfherder compare autoland,5350953@<beforeRev> <afterRev> --range 6mo
+
+# 5. Which subtests drove a suite-level move, and did other platforms see it?
+./bin/perfherder search --parent autoland,5352597 --limit 100
+./bin/perfherder step <subtest refs...> --at <rev> --range 60d
+```
+
+**`step` is the one to reach for when `changes` says nothing on a platform you
+expected it to.** A quiet graph is often an under-sampled one, not an unaffected
+one, and `step` measures the move at a point you name and reports which of the
+detector's bars it failed.
+
+Notes that save a round trip:
+
+- A ref is `<repo>,<signatureId>` — the framework id is optional and is
+  discovered from the response. The three-field form is what a `series=`
+  parameter in the app's URL contains, so refs paste both ways.
+- Responses are cached on disk, so iterating a search is cheap. `--no-cache`
+  when you need it fresh.
+- `--json` gives the same object the text was rendered from, for piping.
+- Every command prints a link into the app. Include it when reporting a
+  finding — it is how the human checks you.
+- If the tool can't express the question, that is worth saying, and possibly
+  worth a new command. Read [docs/cli.md](docs/cli.md) first.
+
 ## Working style for this repo
 
 - **VCS is jj.** Commit with `jj commit -m "…"`, one logical change per
   commit. Descriptive first-line summary, blank line, then rationale.
 - **Pure logic goes in `src/lib/picker/filter.ts` (or a similar module) and gets
   a unit test in `filter.test.ts`.** Do not add business logic to
-  `.svelte` files if it can live in a testable pure function.
+  `.svelte` files if it can live in a testable pure function. The same rule
+  runs through `src/cli`: fetching and printing live in `main.ts`, and
+  everything that decides what an answer *is* lives in a pure module beside
+  it with a test.
 - **Run `npm run check` and `npm test` before commits.** Both must be
-  clean. `npm run build` must also succeed. These are the three steps
-  `.github/workflows/ci.yml` runs, so a green local run means a green CI
-  run.
+  clean. `npm run build` and `npm run build:cli` must also succeed. These are
+  the four steps `.github/workflows/ci.yml` runs, so a green local run means a
+  green CI run.
 - **No committed browser tests.** Smoke-test in a browser from
   `tools/visual/`, which is gitignored and carries **its own** puppeteer
   install. Write a `.mjs` there, run it against `npm run dev` with

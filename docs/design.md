@@ -16,8 +16,9 @@ is documented elsewhere.
 | Conventions: theming, buttons, layout stability, response validation, testing, measuring | this file, "Key design decisions" onward |
 | The graphs view: panes, fetch, the run/replicate hierarchy, canvas drawing, alerts, detected changes | [graphs.md](graphs.md) |
 | What the details pane does with a selection: distributions, comparison mode, statistics | [comparison.md](comparison.md) |
+| The `bin/perfherder` CLI: its commands, its caching, and the mode analysis it adds | [cli.md](cli.md) |
 | What's built, what's next, what was deliberately deferred and why | [graphs-todo.md](graphs-todo.md) |
-| Which module owns a thing | "Architecture" below, graphs.md "Code map", comparison.md "Code map" |
+| Which module owns a thing | "Architecture" below, graphs.md "Code map", comparison.md "Code map", cli.md "Code map" |
 
 **If you touch X, read Y first.** Each of these is a place where the obvious
 change is wrong for a reason the code doesn't show:
@@ -37,6 +38,7 @@ change is wrong for a reason the code doesn't show:
 | Canvas drawing | graphs.md "Rendering" and "Dots are translucent, and jittered sideways" |
 | The change detector's constants | graphs.md "Detected changes", and the reasoning and measurements recorded beside each constant in `changes.ts`. **Open the graph first**: graphs.md "The series behind the tuning" is a table of URLs, one per signature those constants were measured on, and every constant that has been wrong was wrong because it was reasoned about instead of loaded |
 | A statistic | comparison.md "Statistics" and "Deviations from PerfCompare" |
+| Anything under `src/lib` | cli.md — `bin/perfherder` is built from the same modules, so a change here changes its answers too, and it is checked by a third tsconfig `npm run check` runs |
 
 ## What this is
 

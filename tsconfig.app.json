@@ -20,5 +20,9 @@
     "checkJs": true,
     "moduleDetection": "force"
   },
-  "include": ["src/**/*.ts", "src/**/*.js", "src/**/*.svelte"]
+  "include": ["src/**/*.ts", "src/**/*.js", "src/**/*.svelte"],
+  // The CLI is the one thing under src/ that isn't the app: it runs on node and
+  // needs node's globals, which this config deliberately doesn't provide.
+  // tsconfig.cli.json checks it instead, and `npm run check` runs both.
+  "exclude": ["src/cli/**"]
 }

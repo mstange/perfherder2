@@ -1,0 +1,26 @@
+#!/bin/sh
+# Run the CLI, rebuilding the bundle first if it is missing or out of date.
+#
+# The auto-build is the point of this wrapper. `dist-cli/` is gitignored, so a
+# fresh checkout has no bundle at all, and the alternative to rebuilding here is
+# an error message telling the reader to run a command they could not have known
+# they needed. A no-op check costs one `find` over src/.
+set -e
+
+root=$(cd "$(dirname "$0")/.." && pwd)
+bundle="$root/dist-cli/perfherder.mjs"
+
+stale=0
+if [ ! -f "$bundle" ]; then
+  stale=1
+elif [ -n "$(find "$root/src" "$root/vite.cli.config.ts" -newer "$bundle" -print -quit 2>/dev/null)" ]; then
+  stale=1
+fi
+
+if [ "$stale" -eq 1 ]; then
+  # Build chatter goes to stderr so `perfherder … --json | jq` keeps working
+  # through a rebuild.
+  (cd "$root" && npm run --silent build:cli >&2)
+fi
+
+exec node "$bundle" "$@"

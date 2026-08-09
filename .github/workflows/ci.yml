@@ -19,8 +19,12 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
-      # The three gates CLAUDE.md asks for before every commit, in the order
-      # that fails fastest on the most likely mistake.
+      # The gates CLAUDE.md asks for before every commit, in the order that
+      # fails fastest on the most likely mistake. `check` covers the CLI too
+      # (tsconfig.cli.json); `build:cli` is here because a bundle can break in
+      # ways a type check can't see — an unexternalized node builtin, say — and
+      # it costs 21 ms.
       - run: npm run check
       - run: npm test
       - run: npm run build
+      - run: npm run build:cli

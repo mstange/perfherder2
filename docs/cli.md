@@ -1,0 +1,329 @@
+# The CLI — design and usage
+
+`bin/perfherder` is a command-line front end to this app, built from the same
+`src/lib` modules the browser runs. Companion to [design.md](design.md); read
+its "Which document" map if you're not sure which file answers your question.
+
+## What it's for
+
+Answering a performance question without opening a browser — and, specifically,
+letting an agent answer one. The three questions it was shaped around, each of
+which used to mean reading this codebase to work out what URL the UI would
+build:
+
+1. *How does Firefox's speedometer3 compare with Chrome's on Android?*
+   → `search`, then `series` with both signatures.
+2. *Was that regression the modes moving, or the same modes with a different
+   share of the samples?* → `changes` to find the step, `compare` across it.
+3. *How has IndexedDB open performance changed in six months, and what caused
+   each move?* → `changes --commits`.
+
+## Usage
+
+```sh
+./bin/perfherder --help              # commands and worked examples
+./bin/perfherder <command> --help    # one command's options
+```
+
+The wrapper rebuilds `dist-cli/perfherder.mjs` when it is missing or older than
+`src/`, so there is no build step to remember. `npm run build:cli` does it
+explicitly.
+
+| Command | The UI feature it is |
+| --- | --- |
+| `search <term...>` | the Add-series picker |
+| `series <ref...>` | the series list's summary, plus a level comparison |
+| `changes <ref...>` | the alert triangles and the detected-change bars |
+| `step <ref...> --at` | no UI equivalent — see "Measuring a step the detector didn't mark" |
+| `compare <a> <b>` | the details pane's comparison card |
+| `commits <repo> <from> <to>` | the comparison card's inline pushlog |
+| `url <ref...>` | a shareable link, without fetching anything |
+
+A **series reference** is `<repo>,<signatureId>[,<frameworkId>]` — the
+three-field form is exactly what a `series=` parameter in the app's URL
+contains, so one can be pasted out of a shared link. The framework is optional;
+see "Two-field references" below. `compare` takes a `@<revision|pushId|first|last>`
+suffix, and its second argument may be a bare selector meaning "the same series".
+
+## Decisions worth knowing
+
+### It is built from src/lib, and adds no analysis of its own
+
+Every number printed comes from the module the app reads it from: `stats.ts` for
+the tests, `changes.ts` for the steps, `alerts.ts` for perfherder's verdicts,
+`kde.ts` and `distribution.ts` for the densities, `pushlog.ts` for the commits,
+`filter.ts` and `series.ts` for the search. The CLI's own modules decide what a
+command *reports* and how it *reads*, never what a number *is*.
+
+That is the whole reason it lives in this repo rather than beside it. A separate
+tool would drift: it would grow its own idea of what a push mean is, of which
+alerts to hide, of how a subtest inherits an alerting threshold — and then two
+answers to one question, from two tools written by the same people, would
+disagree with nothing to say which was right.
+
+The one piece of genuinely new logic is [modes.ts](../src/cli/modes.ts), and it
+exists because the app answers its question with a picture (see "The mode
+analysis" below).
+
+**Every command prints a link into the app.** graphs.md's rule for the change
+detector — *open the graph first* — applies at least as much to a reader who
+only has text, and `changes` links each finding with both ends of its comparison
+already pinned.
+
+### Text by default, `--json` when you want the object
+
+Text is three to five times cheaper to read than the equivalent JSON, and this
+tool's whole value is being cheap enough to run four times while narrowing a
+question. `--json` prints the same report object the text was rendered from —
+the *same object*, from [reports.ts](../src/cli/reports.ts), so the two can't
+describe different things. That is the failure mode of every tool that formats
+twice.
+
+### A missing thing and an empty thing print differently
+
+"No alerts in this range" is a finding. "The alerts request failed" is not, and
+`changes` says which — `ChangesReport.alertsLoaded` is a boolean beside the
+list, not an empty list standing in for both. Same for a search that matched
+nothing versus a repository whose fetch failed, and for a series with no data in
+the range versus one that does not exist.
+
+The related rule: **a truncated answer must never be shaped like a complete
+one.** `search` prints "showing 30 of 412", `changes --commits` carries
+`pushlogLabel`'s "20 of 164 commits" through unchanged, and a range cut short by
+the fetch cap says so with a `+`. This codebase has been caught by the opposite
+before — treeherder's own `getCommonAlerts` silently answers a long range from
+one page of ten (graphs-todo.md).
+
+### Responses are cached on disk
+
+Under `$XDG_CACHE_HOME/perfherder2-cli`, keyed by request URL, pruned at 24
+hours. TTLs by how fast the thing behind them changes: a day for frameworks,
+option collections and the repository list; an hour for signature lists; ten
+minutes for performance data, alerts and pushes. `--no-cache` bypasses it.
+
+This is not an optimisation, it is what makes the tool usable. One repo's
+signature list is 4–22 MB (design.md has the table) and `search` needs it before
+it can filter anything, so without a cache, narrowing a search from twelve
+hundred rows to four costs a second full download. Measured: a cold
+`search idb-open-many-seq` over autoland is 5.6 MB and 0.6 s; the next search is
+0.05 s.
+
+**It is installed by wrapping `globalThis.fetch`**, not by a layer inside
+`http.ts`. The app has the browser's cache and does not want ours, and wrapping
+the global means every module under `src/lib` runs exactly as the app runs it.
+
+### Two-field references
+
+`/performance/summary/` does not need `framework` — `signature` already
+identifies the row, and the two requests answer identically in production. So a
+reference may be `autoland,5350953`, and the response's `framework_id` supplies
+the number anything downstream needs (the alerts endpoint does need one).
+
+This is the CLI's only change to app code: `summaryUrl`, `fetchSummary` and
+`fetchSignatureMeta` take `frameworkId: number | null` and omit the parameter
+when it is null. The app still passes one, matching treeherder's own request.
+The alternative was downloading a repo's whole signature list to learn a number
+the response was about to hand back.
+
+`url` is the exception and requires the three-field form: it fetches nothing, so
+it has nothing to read the framework off, and the app needs one to fetch with.
+
+### `--parent` is a separate axis from the filter
+
+`search --parent <ref>` restricts the result to one signature's subtests, and
+implies `--subtests` (children only exist in that payload, so without it the
+answer would be a confident "none" for a signature with 26 of them).
+
+It cannot be a chip, and that is the whole reason it exists. A subtest's row
+carries its parent's *id* in `parentKey` and nothing else about it, so
+`suite:speedometer3 platform:macosx1500-aarch64-shippable` gathers all five
+variants of that suite on that platform — nova, no-nova, samply-profile and two
+more — and there is no chip, and no negation, that separates one parent's 26
+children from the other four parents' 104. `parentKey` is exactly that
+separation and it is already composed for us (design.md, "Row identity").
+
+Three empty results, three different messages: a parent that isn't in the
+fetched set (mistyped id, wrong repository, or a signature that has gone quiet
+and so is outside `--interval`), a parent with no children matching the rest of
+the search, and an ordinary no-match. The first is not a finding and the output
+says so.
+
+`--parent` also narrows the default repository set to the parent's own, since
+fetching a second repo's signature list only to filter every row out of it is
+several megabytes for nothing.
+
+### Measuring a step the detector didn't mark
+
+`step <ref...> --at <revision|date>` is the one command with no UI counterpart,
+and the gap it fills was found by using the tool: after `changes` located a
+speedometer3 improvement on aarch64 macOS, the natural next question — "did the
+other platforms see it?" — could not be asked. `changes` reports the steps it
+*found*, and the interesting case is a series where it found none.
+
+That case is common and it is not a bug. A platform running the benchmark once
+per push, beside one running it twelve times, has several times the per-push
+noise: measured on the July 2026 case, aarch64 macOS had 2,636 runs over 296
+pushes at cv 0.7% while Intel macOS had 181 runs over 181 pushes at cv 1.9%. A
+real 0.8% step clears α = 0.01 on the first and not on the second. **Reading
+that silence as "it didn't happen here" is the mistake this command prevents.**
+
+- **The unit is the push mean and the window is 24 a side**, both taken from
+  `changes.ts` (`WINDOW_PUSHES` is exported for this) so a `step` number and a
+  `changes` number are on one scale. The alternative — inventing a window — puts
+  two figures for one event in front of the reader with no way to reconcile
+  them.
+- **It reports which of the detector's two bars a move failed**: α = 0.01, or
+  the signature's own size floor. Those are different answers to "why is there
+  no bar on this graph" and the reader needs to know which they got, so
+  `clearsFloor` and `CHANGE_ALPHA` are exported from `changes.ts` rather than
+  restated here. A tool whose whole claim is that it agrees with the app cannot
+  afford a second opinion about the app's own α.
+- **`--at` takes a revision**, resolved through `fetchPushByRevision` against
+  whichever of the given repositories has it. It has to be a lookup rather than
+  a search of the data already fetched, because the series being asked about
+  routinely has no data on that push — which is precisely the case that prompts
+  the question.
+- **Several refs at once is the point.** One invocation over a suite's subtests,
+  or over one subtest on four platforms. Rows are labelled by
+  `seriesSummary.ts::splitCommonAttrs` — what the series share goes in the
+  header and each row keeps only what distinguishes it, the same factoring the
+  app's series list uses, which is what makes a four-platform table read as one
+  line per platform.
+
+### `search` flattens subtests instead of grouping them
+
+The picker groups a matched child under its parent, auto-expanding it, because a
+table of 25,000 rows needs the hierarchy to stay navigable (design.md, "Match
+inside subtests"). Here the answer is a list of signature references and a
+subtest's reference is as good as a parent's, so `--subtests` widens *the set of
+rows the filter sees* and nothing else. Rows carry `isSubtest` in `--json`.
+
+### `series` compares levels, not builds, and says so
+
+With more than one reference, every series after the first is tested against the
+first over their **push means** — one value per push, the same unit of analysis
+`changes.ts` argues for at length. Pooling replicates would report a sample size
+the data has not earned.
+
+This is deliberately *not* `compare.ts`. That module answers "these two clicked
+points", and its `series` kind is two series on **one** push, where both sides
+share a build. Here the sides are two different sets of builds over the same
+weeks, which is the right question for "how does Firefox compare with Chrome"
+and the wrong one for anything causal: nothing pairs a Firefox push with a
+Chrome push, so the output says which side is better over the window and never
+why. The `BETTER` column is blank unless the test is significant *and* both
+sides agree about which direction is better — never the sign of the delta alone.
+
+### `changes` merges two analyses into one timeline
+
+Perfherder's alerts and this app's detected changes are independent opinions
+about the same series, and graphs.md explains why both are worth having: the
+detector finds sub-threshold steps perfherder never alerts on, and perfherder
+carries a sheriff's triage and a bug number.
+
+A detected step and an alert **within three pushes of each other and agreeing
+about direction** are reported as one row, marked `both`, with the push distance
+printed when it isn't zero. Three pushes because on autoland that is minutes to
+a couple of hours, and the two analyses locate a step differently by
+construction — a rank relocation over a ±24-push window against perfherder's
+sliding windows — so exact agreement is not the common case even when both are
+right. Beyond three they are claims about different pushes and merging them
+would invent an agreement.
+
+Their percentages still differ, and both are right; the output says why
+(perfherder averages a 12–24 push window, the detector averages either side of
+the step it located). Invalid alerts are dropped, because a sheriff has already
+said they mean nothing — the same single exclusion `alerts.ts` makes.
+
+### The mode analysis
+
+[modes.ts](../src/cli/modes.ts) is the one place the CLI computes something the
+app does not, and only because the app answers the question with a picture: it
+draws both KDE curves on one axis and lets the reader see whether the peaks
+moved. There is no reader here, so the finding has to be a sentence.
+
+Given both sides' `ModeInfo` — whatever `kde.ts` found, with PerfCompare's
+thresholds untouched — it pairs the modes and returns one of five verdicts:
+`unchanged`, `shifted`, `reweighted`, `shifted-and-reweighted`, `restructured`.
+
+- **"Moved" means further than one bandwidth.** A Gaussian KDE smooths at the
+  scale of its bandwidth, so a smaller displacement is the kernel talking, not
+  the data. This is the load-bearing threshold: calling such a shift a movement
+  would hide the interesting answer ("the modes are where they were; the weight
+  moved") behind a false one, and that answer is the entire reason the analysis
+  exists. The resolution is the *wider* of the two bandwidths, and the output
+  prints it.
+- **"Reweighted" means ten percentage points of the density changed hands.**
+  Below that a share moves with which replicates happened to land near a
+  boundary. The exact figures are in the table regardless.
+- **Equal mode counts pair by rank; unequal counts pair nearest-first** within
+  four bandwidths, and whatever is left over is reported as gone or new. A mode
+  appearing or disappearing is a change in what the test *does*, and the output
+  says so rather than letting it read as a slowdown.
+
+### The ASCII density plot uses a square-root scale
+
+Both sides are drawn on one shared axis and one shared density scale, because
+two curves on separate scales can be compared by neither eye nor sentence. But
+eight block characters is not sixty-eight pixels: both curves integrate to 1, so
+a tight pool peaks many times higher than a broad one, and at eight levels a
+linear scale renders anything past 8× as an *empty row*. That does not read as
+"shorter", it reads as "no data" — a false statement about the side whose
+distribution is the question. It happened on the first real series this was run
+against, a 4-value push against a 7-value one.
+
+So the block level is `√(density / sharedPeak)`, which keeps the ordering, bounds
+the squash, and costs the plain reading that height is spread in proportion — a
+reading that was not available at this resolution anyway. The pool summaries
+above the plot carry the spread. graphs-todo.md has the same trade-off open for
+the canvas version, where it is a closer call because 68 pixels can show a 20×
+ratio and eight characters cannot. A column below the first level is a space, so
+the curve's extent is visible; the ruler underneath carries the axis.
+
+### Times are UTC
+
+`chart.ts::formatTimestamp` is local, because the app's reader is reasoning
+about their own day. CLI output is pasted into bugs, diffed against a previous
+run, and read by a session in an unknown timezone, so the same instant has to
+print the same string everywhere — and every timestamp treeherder serves is UTC
+to begin with. Timestamps carry a trailing `Z`; `--from`/`--to` read a bare
+`YYYY-MM-DD` as UTC midnight.
+
+### A misspelled flag is an error, not a silent difference
+
+`parseArgv` records a flag with no available value as `true` rather than
+rejecting it, so that a typo reaches `unknownFlags` and gets told *this command
+has no such flag*. Rejecting at parse time reported the wrong problem:
+`changes --replicates` used to come back as "--replicates needs a value". A
+declared flag that was given no value still gets "--x needs a value", from
+`flagString`.
+
+## Code map
+
+Dependencies run impure → pure, so everything that decides what an answer *is*
+is testable without a network.
+
+- [reports.ts](../src/cli/reports.ts) also owns `buildStepReport`; see above.
+- [args.ts](../src/cli/args.ts) — **pure**. argv, durations, ranges, series
+  references, search terms. Reuses `filter.ts::parseChip` and
+  `pickerOptions.ts::TIME_RANGES`, so a chip means the same thing here as in the
+  picker's search box and an interval is one the endpoint is actually asked for.
+- [format.ts](../src/cli/format.ts) — **pure**. Tables, sparklines, the density
+  row, the ruler, word wrap.
+- [modes.ts](../src/cli/modes.ts) — **pure**. The mode comparison and its
+  sentence. See above.
+- [reports.ts](../src/cli/reports.ts) — **pure**. The report object per command,
+  which is both what `--json` prints and what `render.ts` reads.
+- [render.ts](../src/cli/render.ts) — **pure**. Report → lines.
+- [cache.ts](../src/cli/cache.ts) — the `fetch` wrapper and its TTL rules.
+- [load.ts](../src/cli/load.ts) — fetch orchestration. The rules about when to
+  ask, and what a failure means, are copied from `appState.svelte.ts`; where
+  they differ the reason is written beside them.
+- [main.ts](../src/cli/main.ts) — dispatch, the six commands, help, errors.
+
+Built by [vite.cli.config.ts](../vite.cli.config.ts) into one dependency-free
+ES module, and type-checked by [tsconfig.cli.json](../tsconfig.cli.json) — which
+exists so that `src/cli` is the only code under `src/` that can see node's
+globals. Folding `"node"` into the app's `types` would have checked the CLI at
+the cost of letting a Svelte component `import 'node:fs'` and pass
+`npm run check`.

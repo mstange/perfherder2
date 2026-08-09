@@ -1,0 +1,35 @@
+{
+  // The CLI's own config, separate from the app's for one reason: it is the
+  // only code in `src/` allowed to see node's globals. Folding `"node"` into
+  // tsconfig.app.json's `types` would type-check the CLI at the cost of letting
+  // a Svelte component import `node:fs` and pass `npm run check`.
+  //
+  // DOM is in `lib` because the modules under src/lib are shared with the app
+  // and are written against it — `fetch`, `AbortSignal`, `URLSearchParams`.
+  // @types/node guards its own declarations of those against exactly this
+  // combination, so the two coexist.
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.cli.tsbuildinfo",
+    "target": "es2023",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "types": ["node"],
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "moduleDetection": "force",
+    "verbatimModuleSyntax": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true
+
+    // No `erasableSyntaxOnly`, unlike tsconfig.node.json. That flag is for code
+    // node runs through its own type stripping; this is bundled by vite, and
+    // the modules it pulls in from src/lib use parameter properties (http.ts's
+    // error classes), which the app's own config allows.
+  },
+  "include": ["src/cli/**/*.ts", "vite.cli.config.ts"]
+}
