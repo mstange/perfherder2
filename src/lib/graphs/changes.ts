@@ -134,7 +134,11 @@ import {
 // after" pairs are on the same scale, so where they differ it is because the
 // two analyses disagree and not because one of them averaged ten times as much
 // data as the other.
-const WINDOW_PUSHES = 24;
+// Exported because the CLI's `step` command measures a change at a point the
+// caller names rather than one this file located, and it sizes its windows the
+// same way so the two are on one scale — the same argument that ties this
+// constant to perfherder's own.
+export const WINDOW_PUSHES = 24;
 
 // How sure the test has to be. **Not `SIGNIFICANCE_ALPHA`**, the 0.05 the
 // comparison card reports against, and the difference is multiple comparisons:
@@ -145,7 +149,12 @@ const WINDOW_PUSHES = 24;
 // between a second opinion and a nuisance. CUSUM_THRESHOLD is the other half of the
 // same budget: it decides how many candidates this α has to cover, and the two were
 // measured together — see the table there.
-const CHANGE_ALPHA = 0.01;
+// Exported for the same reason as WINDOW_PUSHES: `step` reports whether the
+// change it measured would have cleared this bar, which is half the answer to
+// "why is there no bar on this graph". Reimplementing the comparison there
+// would let the two drift, and a tool whose whole claim is that it agrees with
+// the app cannot afford a second opinion about the app's own α.
+export const CHANGE_ALPHA = 0.01;
 
 // Below this many pushes on a side, don't propose a cut and don't gate one. The
 // two-sided Mann-Whitney U is a rank statistic, so *balanced* pools this small have
@@ -188,6 +197,16 @@ const MIN_WINDOW_PUSHES = 6;
 // bug this fixes. `AlertThreshold` is where the two units are described.
 const THRESHOLD_FRACTION = 0.25;
 
+// The size a change has to reach before this file will mark it, in whichever
+// unit the signature states its threshold in. Exported alongside `clearsFloor`
+// so a caller can *report* the floor rather than only test against it — the
+// CLI's `step` prints it, since "the step is real but a quarter of the bar"
+// and "the step is too noisy to call" are different answers to "why is there no
+// bar here" and the reader needs to know which they got.
+export function detectionFloor(threshold: AlertThreshold): AlertThreshold {
+  return { kind: threshold.kind, value: threshold.value * THRESHOLD_FRACTION };
+}
+
 // Does a change clear the floor its signature's threshold sets?
 //
 // The two kinds are not interchangeable and neither is a fallback for the other:
@@ -195,7 +214,7 @@ const THRESHOLD_FRACTION = 0.25;
 // units, `percentage` compares the relative change. A percentage floor on a
 // deterministic size metric admits everything, and an absolute floor on a timing
 // metric measured in a different unit admits nothing.
-function clearsFloor(
+export function clearsFloor(
   threshold: AlertThreshold,
   beforeValue: number,
   afterValue: number,
