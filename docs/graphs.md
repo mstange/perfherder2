@@ -497,11 +497,39 @@ can confirm, drawn as bars along the plot's floor.
 **The gap it fills is a real one, with a case number.** graphs-todo.md records
 it under "Common alerts": plotting idb-open-many-seq `open_duration` on macOS
 (signature 5350956) over a year shows nothing at all, while its Windows
-counterpart carries alert #51136 for the very same push. The change hit both —
-macOS moved +2.0% against Windows' +9.9% — and only one of them crossed the
-alerting threshold. The macOS graph is not quiet; it is unannotated. The idea
-and the two-stage shape are perf.webkit.org's ("Segmentation with Welch's t-test
-change detection", `public/v3/pages/chart-pane.js`); the deviations are below.
+counterpart carries alert #51136 for the very same push. Only one of the two
+crossed an alerting threshold. The macOS graph is not quiet; it is unannotated.
+The idea and the two-stage shape are perf.webkit.org's ("Segmentation with
+Welch's t-test change detection", `public/v3/pages/chart-pane.js`); the
+deviations are below.
+
+#### The series behind the tuning
+
+Every constant in [changes.ts](../src/lib/graphs/changes.ts) that came from real
+data names the signature it came from. **Load them.** Each row below is a URL
+this app will open, next to what a reader should expect to see in it and what it
+decided; a claim in that file that can't be checked against a graph is a claim
+that has already drifted once. `range` is absolute, so these stay pointed at the
+same window — until treeherder expires the data, which it does about a year
+after the run, and a row whose graph has gone empty is stale rather than wrong.
+
+| Graph | What it shows | What it decided |
+| --- | --- | --- |
+| [5350956 — idb-open-many-seq `open_duration`, macOS, one year](http://localhost:5173/?series=autoland,5350956,13&range=1754407080000,1785943080000) | 2,101 points and **neither an alert marker nor a bar**, while [its Windows counterpart](http://localhost:5173/?series=autoland,5350953,13&range=1781113080000,1786297080000) carries alert #51136 on 2026-06-23 for the same change. The empty sidebar line is the finding — see below | That the gap is real: this is why the feature exists |
+| [5350953 — the same test on Windows, two months](http://localhost:5173/?series=autoland,5350953,13&range=1781113080000,1786297080000) | 1 alert, 2 bars: one on alert #51136's own push, and one on 2026-07-30 that perfherder has no alert for | The standard-error penalty in `relocateBoundary`. Before it, the first bar sat 16 pushes and 21 hours early and the second did not exist |
+| [299010 — tresize, two months](http://localhost:5173/?series=autoland,299010,1&range=1780954380000,1786138380000) | 5 alerts and 10 bars, among them alert #51554's −4.56% improvement on 2026-07-23 with one push shortly before it dragged low by a single bad job | That `relocateBoundary` has to exist at all: the proposed cut lands on the bad push, not on the step |
+| [5352791 — speedometer3 TodoMVC-jQuery/total, macOS, two months](http://localhost:5173/?series=autoland,5352791,13&range=1780963200000,1786147200000) | A level that wanders over 65–68 ms with one push in six measured far less precisely, four perfherder alerts and 17 bars. Recorded as `fixtures/push-means-wandering.json` | Binary segmentation, replacing a dynamic program that scored the whole range against one noise scale and covered everything past push 290 with a single segment |
+| [installer size — three subtests, one week](http://localhost:5173/?series=autoland,1954909,2&series=autoland,1668132,2&series=autoland,5688441,2&range=1785563520000,1786168320000&reps=0) | 9, 8 and 2 bars, all of them steps of tens of KB on binaries of 119–240 MB — tenths of a *tenth* of a percent — with four of the first two landing on the same push across two platforms | The per-signature threshold. A fixed 0.5% floor drew nothing at all on any of the three |
+
+**The first row is the honest one, and worth reading twice.** The macOS series
+gets no bar either. Measured over the two months around that push, the same event
+is a ~10.5% shift on it — but the per-push noise there has a robust scale of 12.3%
+*of the level*, push means bouncing between 5,046 and 9,127 with a single run
+each, so 24 pushes a side put it at p = 0.04 and it does not clear the detector's
+α of 0.01. Perfherder is silent there because of a threshold; this app is silent
+there because at that noise level the evidence genuinely isn't in the data. The
+feature closes the gap on series like the installer-size row, not on this one, and
+the case that motivates a design is not automatically a case it fixes.
 
 #### The unit of analysis is the push mean
 
@@ -542,8 +570,11 @@ summarising a push more robustly rather than for unpooling.
    index a wall that no later pool may cross, and go round again until nothing new
    clears α. `detectChanges` and `gateChange`.
 3. **Locate.** Re-estimate the accepted index as the cut through its window with
-   the largest Cliff's delta. `relocateBoundary`. A proposed cut is a mean-based
-   statistic and one bad run walks it.
+   the largest Cliff's delta *minus one standard error of it*. `relocateBoundary`.
+   A proposed cut is a mean-based statistic and one bad run walks it, which is why
+   a rank statistic re-estimates it — and δ on its own is maximised by the
+   smallest pool the window allows, which is why it is charged for its own
+   imprecision. See "Locating a step is not the same question as testing for one".
 
 **Only an accepted change is a wall**, and that is what makes the second stage a
 loop rather than a pass. Three things follow from it:
@@ -562,6 +593,46 @@ loop rather than a pass. Three things follow from it:
 
 Accepted changes are then re-described against the final walls, so a change
 accepted early doesn't report means that reach across a step found later.
+
+#### Locating a step is not the same question as testing for one
+
+The gate answers "is there a step in this window", at the cut the segmentation
+proposed. `relocateBoundary` then answers "where", and the two questions want
+different statistics — the mistake that cost two bugs was letting the second one
+be answered by a number that is only meaningful for the first.
+
+Cliff's delta is the fraction of cross-pool pairs that are ordered the right way.
+As a *description* of one split it is exactly right, which is why the card prints
+its interpretation. As a *criterion for choosing among splits* it has a defect:
+it says nothing about how many pairs it was computed from, so it is maximised at
+the smallest pool the window admits. Three pushes need only be three ordinary low
+values to separate perfectly and score 1.000, and 1.000 beats the real step's 0.90
+every time.
+
+That is not a corner case. Over the 92 gated candidates in the four real series in
+the table above, bare δ landed on a pool of four or fewer a side **8 times**, and
+4 of those then failed the α re-check and lost the change altogether. Both failure
+modes are visible on [the Windows idb-open-many-seq
+graph](http://localhost:5173/?series=autoland,5350953,13&range=1781113080000,1786297080000),
+which is where they were found: the 2026-06-23 step that perfherder alerted on
+(#51136) was reported on a 4-vs-44 split 16 pushes and 21 hours early, and a real
++4.6% step on 2026-07-30 relocated to a 3-vs-45 split at p = 0.067 and disappeared.
+
+The fix is to charge each split the imprecision of its own estimate: subtract
+`√((n₁+n₂+1)/(3·n₁·n₂))`, the null standard deviation of δ. It is 0.30 at 4-vs-44
+against 0.17 at 20-vs-28, so the tiny pool now has to separate a sixth of a
+pair-fraction better to win — and on that graph it doesn't. The two failures become
+the alert's own push at p = 3e-8, and a 24-vs-24 split at p = 2e-4.
+
+**Not |z|**, which is the other way to weight δ by its precision and is δ *divided*
+by the same deviation. Dividing is a strong enough preference for balance to pull
+the estimate toward the middle of the window, and the middle of the window is where
+the candidate we are trying to get away from sits: on the 299010 fixture |z| peaks
+one push short of the step. Subtracting leaves splits of comparable size ranked by
+δ alone, because their penalties are within a hair of each other, and only bites
+when the sizes are far apart — which is exactly when the δ estimates aren't
+comparable. One standard error is a correction rather than a guarantee: where the
+real step separates weakly enough, a tiny perfectly-separating pool still wins.
 
 #### The floor comes from the signature
 
@@ -600,11 +671,11 @@ Three wrinkles, none optional:
   it was computed with, so a first pass at 2% would be an empty array nothing
   ever revisits.
 
-With the signature's own floor, the three series draw 9, 0 and 8 bars over that
-week — and the two that draw agree on five of the same pushes, which is what you
-would expect of `libxul.so` and `xul.dll` built from the same tree. The third has
-no confirmed step at any floor: two candidates gate but fail the relocated split's
-α, which is genuine wander rather than a step.
+With the signature's own floor, the three series draw 9, 8 and 2 bars over that
+week where they drew none. The `libxul.so` and `xul.dll` graphs put four of theirs
+on the same push to within a quarter of an hour, three of them to the second, which
+is the check worth doing on a detector: two platforms built from one tree should
+step together, and noise should not.
 
 Every constant is in [changes.ts](../src/lib/graphs/changes.ts) with its reason;
 the five worth knowing here:

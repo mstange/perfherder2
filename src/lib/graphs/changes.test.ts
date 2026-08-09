@@ -135,6 +135,35 @@ describe('relocateBoundary', () => {
     expect(relocateBoundary([...noisy(100, 47, 0.5), ...noisy(130, 1, 0.5)], 0, 48, 24)).toBe(45);
     expect(relocateBoundary([...noisy(100, 3, 0.5), ...noisy(130, 45, 0.5)], 0, 48, 24)).toBe(3);
   });
+
+  // Three pushes is where `canReachAlpha` stops, and bare Cliff's delta walks
+  // straight to it: a pool that small separates perfectly on a run of ordinary
+  // low values, and 1.000 beats a real step's 0.90. The standard-error penalty is
+  // what keeps the estimate off the floor of the window. See `relocateBoundary`.
+  function lowRunBeforeStep(): number[] {
+    // A clean step at 24 that doesn't *quite* separate — the two levels overlap
+    // by a value or two, so δ there is 0.90 rather than 1 — and three unremarkable
+    // low pushes at the start of the window.
+    const values = [...noisy(100, 24, 4), ...noisy(105, 24, 4)];
+    values[0] = 92;
+    values[1] = 91;
+    values[2] = 92.5;
+    return values;
+  }
+
+  it('does not fence off a run of low values into a tiny pool', () => {
+    // Bare δ scores the 3-vs-45 split 1.000 against the step's 0.903 and reports
+    // the change 21 pushes early. Both splits could clear α, so `canReachAlpha`
+    // does not save it: 3 against 45 reaches p = 0.004.
+    expect(relocateBoundary(lowRunBeforeStep(), 0, 48, 24)).toBe(24);
+  });
+
+  it('still prefers the smaller pool when it separates a lot better', () => {
+    // The penalty is a charge, not a floor. A genuine step three pushes from the
+    // window's edge separates perfectly where nothing else comes close, and pays
+    // the 0.35 standard error of a 3-vs-45 split out of a margin bigger than that.
+    expect(relocateBoundary([...noisy(100, 3, 0.5), ...noisy(130, 45, 0.5)], 0, 48, 24)).toBe(3);
+  });
 });
 
 describe('detectChanges', () => {

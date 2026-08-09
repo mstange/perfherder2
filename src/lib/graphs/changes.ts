@@ -4,16 +4,31 @@
 // drawing is chartDraw's, the layout annotations.ts's, the caching
 // appState's.
 //
+// ## Every signature named below is a graph you can open
+//
+// The tuning in this file was not derived; it was measured, on five real series,
+// and each of them is one URL in **"The series behind the tuning"** in
+// docs/graphs.md — signature id, plotted range, what to expect in it, and which
+// decision here it drove. Every `autoland signature NNNNNNN` in the comments
+// below is a key into that table. Load the graph before changing the constant it
+// justifies: the numbers quoted here were true when they were written and the
+// data behind them keeps moving.
+//
 // ## Why this exists at all, given alerts.ts
 //
 // Perfherder's alerts are somebody else's verdict, and they exist only where
 // somebody else's threshold fired. The gap that motivates this is recorded in
 // graphs-todo.md under "Common alerts": plotting idb-open-many-seq
-// `open_duration` on macOS over a year shows nothing at all, while its Windows
-// counterpart carries alert #51136 for the very same push. The change hit both
-// platforms — macOS moved +2.0% against Windows' +9.9% — and only one of them
-// crossed the alerting threshold. The macOS graph is not quiet; it is
-// unannotated.
+// `open_duration` on macOS (autoland signature 5350956) over a year shows not one
+// alert marker, while its Windows counterpart (5350953) carries alert #51136 for
+// the same change. Only one of the two crossed an alerting threshold. The macOS
+// graph is not quiet; it is unannotated.
+//
+// **This file is also silent on that macOS series, and the table says why**: the
+// same event is ~10.5% there against a per-push noise scale of 12.3% of the
+// level, which is p = 0.04 over 24 pushes a side and does not clear CHANGE_ALPHA.
+// The case that motivates a design is not automatically a case it fixes, and the
+// gap this does close is the one on the installer-size row.
 //
 // So this is the second opinion, computed from the data on screen: no
 // threshold policy, no server round-trip, and it works on any series including
@@ -41,8 +56,10 @@
 //    fenced-off outlier silencing the step beside it, and re-testing every round is
 //    what lets a regression and its backout confirm each other.
 // 3. **Locate**, `relocateBoundary`. Re-estimate the accepted index as the cut with
-//    the cleanest rank separation, because a proposed cut is a mean-based statistic
-//    and one bad run walks it.
+//    the cleanest rank separation *for its pool sizes*, because a proposed cut is a
+//    mean-based statistic and one bad run walks it — and because a rank separation
+//    that ignores its pool sizes is maximised by the smallest pool there is, which
+//    walked it further than the outlier ever did.
 //
 // ## How small is too small comes from the signature, not from here
 //
@@ -164,8 +181,10 @@ const MIN_WINDOW_PUSHES = 6;
 // signatures declare 2%, 5%, 6% and 10% (talos, browsertime), 0.25% (awsy), 50%
 // and 100% (build times), and 100 KB and 1 MB *absolute* (installer and apk size).
 // A fixed 0.5% is a fifth of awsy's alerting bar and forty times the noise floor of
-// an installer-size series, where a week's entire spread is 0.14% and a real,
-// attributable 340 KB step is 0.18% — every one of them was dropped, which is the
+// an installer-size series: on autoland signatures 1954909 (`libxul.so`), 1668132
+// (`xul.dll`) and 5688441 (`aarch64`) — the installer-size row of the table, one
+// week — the entire spread is 0.14% and a real, attributable 340 KB step is 0.18%,
+// so every candidate was dropped and the graphs drew nothing at all. That is the
 // bug this fixes. `AlertThreshold` is where the two units are described.
 const THRESHOLD_FRACTION = 0.25;
 
@@ -262,8 +281,10 @@ function strongestCut(
 // controls is how much gets tested, and therefore how much multiple-comparison
 // exposure the α is asked to absorb.
 //
-// Measured over 40 synthetic series of 500 pushes each, and the two real
-// signatures, at α = 0.01:
+// Measured over 40 synthetic series of 500 pushes each, and two of the table's
+// real signatures — autoland 299010 (tresize) and 5352791 (the wandering
+// speedometer3 subtest) — at α = 0.01. "n/m alerts" is how many of perfherder's
+// own alerts on that graph got a bar:
 //
 //   threshold   flat noise   +4% drift   sig 299010   sig 5352791
 //   3           2 bars       34 bars     5/6 alerts   6/8 alerts
@@ -413,6 +434,22 @@ function canReachAlpha(nBefore: number, nAfter: number): boolean {
   return test !== null && test.pValue < CHANGE_ALPHA;
 }
 
+// How far a Cliff's delta computed from these two pool sizes would scatter under
+// the null: `√(Var(U) · 4 / (n₁n₂)²)` with `Var(U) = n₁n₂(n₁+n₂+1)/12`, which is
+// what the whole expression reduces to.
+//
+// The *null* deviation rather than a sample one (Cliff's own variance estimator,
+// say), for two reasons. It is the same quantity `mannWhitneyU` standardizes by, so
+// the penalty and the p-value beside it describe the same scale. And it depends on
+// nothing but the two sizes, so it is a property of the split being *considered*
+// rather than of how well that split happened to come out — which is what makes it
+// a fair charge to levy on every candidate. A real effect scatters less than the
+// null, so this over-charges every split a little and the splits it over-charges
+// most are the small ones. That is the direction to err in.
+function deltaStandardError(n1: number, n2: number): number {
+  return Math.sqrt((n1 + n2 + 1) / (3 * n1 * n2));
+}
+
 // A proposed cut is not a reliable index. One bad run walks it: observed on
 // autoland signature 299010 (tresize, 2026-07-23), where one push's three runs came
 // back 8.20 / 6.26 / 8.29 and the boundary landed on *it* rather than on the real
@@ -435,14 +472,42 @@ function canReachAlpha(nBefore: number, nAfter: number): boolean {
 // place among ~48, so on the fixture above the peak sits on the real step rather
 // than on the outlier.
 //
-// **Cliff's delta and not |z|**, though the two rank the cuts almost identically.
-// A z is standardized by a null deviation that grows with `n1 · n2`, so of two
-// splits that separate the window equally well it prefers the more balanced one —
-// which is a pull toward the middle of the window, and the middle of the window
-// is exactly where the candidate we are trying to get away from sits. On a
-// fixture whose step is eight pushes off-centre that bias is worth a push: |z|
-// peaks one short of the step, trading a pair of misranked values for a better
-// balanced pool. δ is a fraction of pairs, so balance doesn't enter into it.
+// **Cliff's delta, minus one standard error of it**, and the correction is not a
+// refinement — without it this walks straight off the end of the window.
+//
+// Bare δ is a fraction of pairs, so it says nothing about how many pairs it was
+// computed from, and it is *maximised at the smallest pool the window allows*. A
+// 3-vs-45 split needs only three luckily-low values at one end to separate
+// perfectly and score 1.000, which beats the real step's 0.90 every time. Over the
+// 92 gated candidates in four of the table's series, bare δ landed on a pool of four
+// or fewer a side 8 times, and 4 of those then failed the α re-check below and lost
+// the change altogether. On `idb-open-many-seq open_duration` (autoland signature
+// 5350953, the Windows row) it cost both failures at once: the 2026-06-23 step that
+// perfherder alerted on (#51136) was reported 16 pushes and 21 hours early on a
+// 4-vs-44 split, and a second real +4.6% step on 2026-07-30 relocated to a 3-vs-45
+// split at p = 0.067 and vanished. Open that graph; both are on it.
+//
+// The fix is to compare the candidates on the same footing, which means charging
+// each one the imprecision of its own estimate: `√((n₁+n₂+1)/(3·n₁·n₂))`, the null
+// standard deviation of δ. It is 0.30 at 4-vs-44 and 0.17 at 20-vs-28, so the
+// 4-vs-44 split has to separate a sixth of a pair-fraction better to win, and on
+// that series it doesn't. The two failures above become 98 (the alert's own push,
+// p = 3e-8) and 24-vs-24 at p = 2e-4.
+//
+// **Not |z|**, which is the other way to weight δ by its precision, and the reason
+// is the opposite failure. z is δ *divided* by that deviation, which is a strong
+// enough preference for balance to pull the estimate toward the middle of the
+// window — and the middle of the window is where the candidate we are trying to get
+// away from sits. On the 299010 fixture below, |z| peaks one push short of the step,
+// trading a pair of misranked values for a better balanced pool. Subtracting one
+// standard error instead leaves splits of comparable size ranked by δ alone, since
+// their penalties are within a hair of each other, and only bites when the sizes
+// are far apart — which is exactly when the δ estimates aren't comparable.
+//
+// One standard error is a correction and not a guarantee: where the real step
+// separates weakly enough (δ ≈ 0.78 against a perfect 1.000 at 3-vs-45) the tiny
+// pool still wins. What it buys is that a *clean* step is no longer beaten by three
+// lucky values.
 //
 // **Estimation, not testing.** The gate stays the test at the proposed cut — the one
 // p-value in here that wasn't chosen after looking at the data — so relocation
@@ -468,8 +533,9 @@ function canReachAlpha(nBefore: number, nAfter: number): boolean {
 //
 // On a tie the cut nearest the candidate wins, the candidate itself included.
 // Ties are real: δ saturates at 1 as soon as a split separates the window
-// perfectly, and where two adjacent splits both do there is nothing in the data to
-// choose between them, so the proposal's opinion is as good as any.
+// perfectly, and two splits that both do and have the same pool sizes score
+// identically, so there is nothing in the data to choose between them and the
+// proposal's opinion is as good as any.
 export function relocateBoundary(
   values: readonly number[],
   windowStart: number,
@@ -478,7 +544,8 @@ export function relocateBoundary(
 ): number {
   const separation = (cut: number): number => {
     const test = mannWhitneyU(values.slice(windowStart, cut), values.slice(cut, windowEnd));
-    return test ? Math.abs(test.cliffsDelta) : -1;
+    if (!test) return -1;
+    return Math.abs(test.cliffsDelta) - deltaStandardError(cut - windowStart, windowEnd - cut);
   };
   // The candidate is the incumbent, which is what settles a tie at any distance
   // from it — including a tie with itself.
@@ -486,12 +553,12 @@ export function relocateBoundary(
   let best = separation(candidate);
   for (let cut = windowStart + 1; cut < windowEnd; cut++) {
     if (!canReachAlpha(cut - windowStart, windowEnd - cut)) continue;
-    const delta = separation(cut);
+    const score = separation(cut);
     if (
-      delta > best ||
-      (delta === best && Math.abs(cut - candidate) < Math.abs(bestCut - candidate))
+      score > best ||
+      (score === best && Math.abs(cut - candidate) < Math.abs(bestCut - candidate))
     ) {
-      best = delta;
+      best = score;
       bestCut = cut;
     }
   }

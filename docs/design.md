@@ -35,7 +35,7 @@ change is wrong for a reason the code doesn't show:
 | How a row is identified | "Row identity: `Series.key`, composed at construction" |
 | A loading or empty state for subtests | "`has_subtests` is a claim, not a promise" — `has_subtests` does not mean a subtests=1 fetch will return any |
 | Canvas drawing | graphs.md "Rendering" and "Dots are translucent, and jittered sideways" |
-| The change detector's constants | graphs.md "Detected changes", and the reasoning and measurements recorded beside each constant in `changes.ts` |
+| The change detector's constants | graphs.md "Detected changes", and the reasoning and measurements recorded beside each constant in `changes.ts`. **Open the graph first**: graphs.md "The series behind the tuning" is a table of URLs, one per signature those constants were measured on, and every constant that has been wrong was wrong because it was reasoned about instead of loaded |
 | A statistic | comparison.md "Statistics" and "Deviations from PerfCompare" |
 
 ## What this is
