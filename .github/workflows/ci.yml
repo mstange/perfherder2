@@ -28,3 +28,8 @@ jobs:
       - run: npm test
       - run: npm run build
       - run: npm run build:cli
+      # What `prepublishOnly` runs. Here too, because the things it checks — the
+      # shebang, the executable bit, the version compiled into the bundle — are
+      # properties of the build config, and finding them broken at publish time
+      # means finding them broken in a hurry.
+      - run: npm run verify:cli

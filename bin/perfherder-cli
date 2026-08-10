@@ -8,7 +8,7 @@
 set -e
 
 root=$(cd "$(dirname "$0")/.." && pwd)
-bundle="$root/dist-cli/perfherder.mjs"
+bundle="$root/perfherder-cli/dist/perfherder-cli.mjs"
 
 stale=0
 if [ ! -f "$bundle" ]; then

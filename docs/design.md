@@ -16,7 +16,7 @@ is documented elsewhere.
 | Conventions: theming, buttons, layout stability, response validation, testing, measuring | this file, "Key design decisions" onward |
 | The graphs view: panes, fetch, the run/replicate hierarchy, canvas drawing, alerts, detected changes | [graphs.md](graphs.md) |
 | What the details pane does with a selection: distributions, comparison mode, statistics | [comparison.md](comparison.md) |
-| The `bin/perfherder-cli` CLI: its commands, its caching, and the mode analysis it adds | [cli.md](cli.md) |
+| The `bin/perfherder-cli` CLI: its commands, its caching, the mode analysis it adds, and how it is published | [cli.md](cli.md) |
 | What's built, what's next, what was deliberately deferred and why | [graphs-todo.md](graphs-todo.md) |
 | Which module owns a thing | "Architecture" below, graphs.md "Code map", comparison.md "Code map", cli.md "Code map" |
 

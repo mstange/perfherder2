@@ -91,6 +91,13 @@ import {
 // PERFHERDER2_BASE_URL=http://localhost:5173/ once, or passes --base.
 const DEFAULT_APP_BASE = 'https://perfherder2.netlify.app/';
 
+// Replaced at build time from perfherder-cli/package.json (see
+// vite.cli.config.ts). Guarded rather than assumed, so that running this module
+// unbundled — a test, a loader — prints something honest instead of throwing on
+// an identifier nothing defined.
+declare const __VERSION__: string | undefined;
+const VERSION = typeof __VERSION__ === 'string' ? __VERSION__ : '0.0.0-dev';
+
 type Context = {
   json: boolean;
   verbose: boolean;
@@ -938,7 +945,7 @@ function warn(message: string): void {
 function topLevelHelp(): string[] {
   const width = Math.max(...Object.keys(COMMANDS).map((n) => n.length));
   return [
-    'perfherder-cli — query treeherder performance data.',
+    `perfherder-cli ${VERSION} — query treeherder performance data.`,
     '',
     'Usage: perfherder-cli <command> [args] [--json] [--no-cache] [--verbose]',
     '',
@@ -946,6 +953,7 @@ function topLevelHelp(): string[] {
     ...Object.entries(COMMANDS).map(([name, c]) => `  ${name.padEnd(width)}  ${c.summary}`),
     '',
     'Global options:',
+    '  --version       print the version and exit',
     '  --json          print the full report object instead of text',
     '  --no-cache      bypass the on-disk response cache',
     '  --verbose       print timing and cache statistics to stderr',
@@ -1003,6 +1011,13 @@ export async function run(argv: readonly string[]): Promise<number> {
   // it made `changes --commits --commit-limit 6` fail before dispatch: the
   // probe pass didn't know `--commits` takes no value.
   const name = argv.length > 0 && !argv[0].startsWith('-') ? argv[0] : '';
+
+  // Before the command lookup, because `--version` is not a command and a
+  // reader who types it has usually just been asked which version they are on.
+  if (name === 'version' || argv.includes('--version') || argv.includes('-v')) {
+    print([`perfherder-cli ${VERSION}`]);
+    return 0;
+  }
 
   if (!name || name === 'help') {
     const target = name === 'help' ? argv[1] : undefined;

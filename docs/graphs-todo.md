@@ -79,6 +79,14 @@ Living checklist. Update in the same commit as the work it describes.
   the question a quiet graph on an under-sampled platform raises and `changes`
   cannot answer. See [cli.md](cli.md)
 
+- The CLI, published. `perfherder-cli/` is a package of its own — the
+  profiler repository's arrangement for `profiler-cli` — so `npm publish
+  perfherder-cli/` ships the tool without shipping the app or versioning the two
+  together. The bundle carries its version, and `verify-cli-build.mjs` refuses to
+  publish one that does not match, since the output is gitignored and only the
+  wrapper rebuilds it. Links now default to the deployed app rather than to a dev
+  server nobody else is running. See cli.md, "The published package"
+
 - The eight gaps a four-session live trial of the CLI found, closed. Three were
   output defects — a sparkline with no scale, `step` printing percentages but no
   absolute Δ, and direction stated in a header that by construction cannot carry

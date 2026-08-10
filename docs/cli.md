@@ -25,9 +25,13 @@ build:
 ./bin/perfherder-cli <command> --help    # one command's options
 ```
 
-The wrapper rebuilds `dist-cli/perfherder.mjs` when it is missing or older than
-`src/`, so there is no build step to remember. `npm run build:cli` does it
-explicitly.
+The wrapper rebuilds `perfherder-cli/dist/perfherder-cli.mjs` when it is missing
+or older than `src/`, so there is no build step to remember. `npm run build:cli`
+does it explicitly.
+
+Outside a checkout it is on npm as
+[`@mstange/perfherder-cli`](https://www.npmjs.com/package/@mstange/perfherder-cli),
+installing one binary of the same name — see "The published package" below.
 
 | Command | The UI feature it is |
 | --- | --- |
@@ -431,6 +435,38 @@ above the plot carry the spread. graphs-todo.md has the same trade-off open for
 the canvas version, where it is a closer call because 68 pixels can show a 20×
 ratio and eight characters cannot. A column below the first level is a space, so
 the curve's extent is visible; the ruler underneath carries the axis.
+
+### The published package
+
+`perfherder-cli/` is a package of its own: its own `package.json`, its own
+version, and the built bundle. The arrangement is
+[profiler-cli](https://github.com/firefox-devtools/profiler/tree/main/profiler-cli)'s,
+and it exists so that publishing the tool is not publishing the app, and so the
+tool's version is not the app's — the root package stays `private`, at 0.0.0,
+where it belongs.
+
+The tarball is four files and 58 kB: the bundle, `package.json`, the README and
+the licence. Not the sourcemap, which is four times the size of the thing it
+describes and buys nothing here — the bundle is unminified on purpose, so its
+stack traces are already readable (see the `minify: false` note in
+`vite.cli.config.ts`). Not `src/` either: the published artifact is one file that
+`node` runs, and the source is a `git clone` away.
+
+**The version is compiled into the bundle**, from the package's own
+`package.json`, and that is load-bearing rather than decorative.
+`perfherder-cli/dist/` is gitignored and the only thing that ever rebuilds it is
+the wrapper, when somebody happens to run it — so the standing risk is bumping
+the version, publishing, and shipping last week's code under this week's number,
+which is worse than shipping nothing because the version is what a bug report
+quotes. [verify-cli-build.mjs](../scripts/verify-cli-build.mjs) searches the
+bundle for the version string, and is wired to `prepublishOnly` so it runs
+whichever way `npm publish` is reached. It checks the shebang and the executable
+bit for the same reason: npm sets the bit when it installs a `bin`, and a tarball
+unpacked by hand does not get that favour.
+
+`npm run publish:cli` runs the four gates, rebuilds, and publishes — with a
+prerelease version going to the `next` dist-tag, so nobody installing by name
+lands on one.
 
 ### Times are UTC
 

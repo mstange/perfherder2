@@ -1,0 +1,39 @@
+{
+  "name": "@mstange/perfherder-cli",
+  "version": "0.1.0",
+  "description": "Query Firefox performance data from the command line: search signatures, detect steps, compare pushes, and attribute a regression to what landed",
+  "type": "module",
+  "bin": {
+    "perfherder-cli": "dist/perfherder-cli.mjs"
+  },
+  "files": [
+    "dist/perfherder-cli.mjs"
+  ],
+  "engines": {
+    "node": ">=20.19"
+  },
+  "scripts": {
+    "prepublishOnly": "node ../scripts/verify-cli-build.mjs"
+  },
+  "keywords": [
+    "perfherder",
+    "treeherder",
+    "firefox",
+    "mozilla",
+    "performance",
+    "benchmark",
+    "regression",
+    "cli"
+  ],
+  "author": "Markus Stange",
+  "license": "MPL-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mstange/perfherder2.git",
+    "directory": "perfherder-cli"
+  },
+  "homepage": "https://perfherder2.netlify.app/",
+  "bugs": {
+    "url": "https://github.com/mstange/perfherder2/issues"
+  }
+}

@@ -33,7 +33,9 @@ run to a single dot at its mean, which is much easier to read on a long range.
 Either way replicates are fetched, so the toggle is instant and the right-hand
 pane still lists a run's individual values.
 
-**A command line.** `bin/perfherder-cli` answers the same questions without a
+**A command line.** `bin/perfherder-cli` — also on npm as
+[`@mstange/perfherder-cli`](https://www.npmjs.com/package/@mstange/perfherder-cli) —
+answers the same questions without a
 browser, built from the same modules — search for signatures, summarize and
 compare series over a range, list the steps this app detects alongside
 perfherder's alerts and the commits that caused them, and compare two pushes

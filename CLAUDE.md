@@ -24,6 +24,10 @@ push mean is not a pooled replicate) already.
 ./bin/perfherder-cli <command> --help    # one command's options
 ```
 
+(The same tool ships to npm as `@mstange/perfherder-cli`, where the binary has
+the same name. In this repository use the wrapper: it rebuilds from `src/` when
+stale, so it is always the code in front of you.)
+
 Typical shape of an investigation:
 
 ```sh

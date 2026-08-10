@@ -11,6 +11,8 @@
     "dev": "vite",
     "build": "vite build",
     "build:cli": "vite build --config vite.cli.config.ts",
+    "verify:cli": "node scripts/verify-cli-build.mjs",
+    "publish:cli": "node scripts/publish-cli.mjs",
     "preview": "vite preview",
     "check": "svelte-check --tsconfig ./tsconfig.app.json && tsc -p tsconfig.node.json && tsc -p tsconfig.cli.json",
     "test": "vitest run"

@@ -9,7 +9,7 @@ lerna-debug.log*
 
 node_modules
 dist
-dist-cli
+perfherder-cli/dist
 dist-ssr
 *.local
 
