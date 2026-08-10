@@ -200,6 +200,24 @@ export function resolveRange(opts: RangeOptions, nowMs: number): Span {
   return span;
 }
 
+const DAY_MS = DAY_SECONDS * 1000;
+
+// Widen a span to whole UTC days. For `url` alone, whose entire output is a
+// link: `--range 6mo` resolved against the clock produced
+// `range=1770824167527,1786376167527` — thirteen digits of precision on a window
+// whose ends are days, in a string a person pastes into a bug and reads back.
+//
+// Outward, never inward, so a rounded link cannot show less than the range asked
+// for. And only here: `resolveRange` feeds the fetches, so snapping it there
+// would change which pushes are in the window rather than how the window is
+// written down.
+export function roundSpanToDays(span: Span): Span {
+  return {
+    start: Math.floor(span.start / DAY_MS) * DAY_MS,
+    end: Math.ceil(span.end / DAY_MS) * DAY_MS,
+  };
+}
+
 // The signatures endpoint is only ever asked for one of the picker's intervals
 // (see pickerOptions.ts), so an arbitrary `--interval 45d` is rounded *up* to
 // the next one it offers rather than passed through. Up, because rounding down

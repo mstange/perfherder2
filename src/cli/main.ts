@@ -32,6 +32,7 @@ import {
   parseSeriesArg,
   parseSort,
   resolveRange,
+  roundSpanToDays,
   snapInterval,
   unknownFlags,
   UsageError,
@@ -812,10 +813,15 @@ const url: Command = {
     'app needs one to fetch with and this command has not asked the API for anything.',
     '',
     `--base defaults to ${DEFAULT_APP_BASE}, or $PERFHERDER2_BASE_URL when that is set.`,
+    '',
+    'The range is widened to whole UTC days, since the link is the whole output and a window',
+    'whose ends are days should not be written with thirteen digits of precision. It is still',
+    'absolute: the app has no relative range on purpose, because a link that says "last 6mo"',
+    'lets the data point it was shared for drift out of view (src/lib/urlState.ts).',
   ],
   async run(parsed, ctx) {
     const refs = requireRefs(parsed.positionals, 'url');
-    const span = resolveRange(rangeOptions(parsed), ctx.now);
+    const span = roundSpanToDays(resolveRange(rangeOptions(parsed), ctx.now));
     const missing = refs.filter((ref) => ref.frameworkId === null);
     if (missing.length > 0) {
       throw new UsageError(

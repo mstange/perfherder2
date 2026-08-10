@@ -12,6 +12,7 @@ import {
   parseSeriesArg,
   parseSort,
   resolveRange,
+  roundSpanToDays,
   snapInterval,
   unknownFlags,
   UsageError,
@@ -136,6 +137,28 @@ describe('resolveRange', () => {
 
   it('rejects an empty range rather than fetching nothing', () => {
     expect(() => resolveRange({ from: '2026-06-02', to: '2026-06-01' }, now)).toThrow(UsageError);
+  });
+});
+
+describe('roundSpanToDays', () => {
+  it('widens to whole UTC days, so a link never shows less than the range asked for', () => {
+    expect(
+      roundSpanToDays({
+        start: Date.parse('2026-02-11T09:22:47.527Z'),
+        end: Date.parse('2026-08-10T09:22:47.527Z'),
+      }),
+    ).toEqual({
+      start: Date.parse('2026-02-11T00:00:00Z'),
+      end: Date.parse('2026-08-11T00:00:00Z'),
+    });
+  });
+
+  it('leaves a span that is already whole days alone', () => {
+    const span = {
+      start: Date.parse('2026-06-01T00:00:00Z'),
+      end: Date.parse('2026-06-08T00:00:00Z'),
+    };
+    expect(roundSpanToDays(span)).toEqual(span);
   });
 });
 
