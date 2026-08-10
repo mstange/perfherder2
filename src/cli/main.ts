@@ -71,6 +71,7 @@ import {
   graphUrl,
   poolPushes,
   type AcrossDescriptor,
+  type ChangesReport,
   type LoadedSeries,
 } from './reports';
 import {
@@ -340,7 +341,7 @@ const changes: Command = {
     };
 
     const lines: string[] = [];
-    const reports: unknown[] = [];
+    const reports: ChangesReport[] = [];
     const all: LoadedSeries[] = [];
 
     for (const [i, ref] of refs.entries()) {
@@ -389,7 +390,15 @@ const changes: Command = {
     }
 
     return {
-      report: reports.length === 1 ? reports[0] : reports,
+      // Always the array, even for one ref. It used to be the bare report when
+      // there was exactly one, which made the shape of the output a function of
+      // the length of the input: a script written against either form breaks on
+      // the other, and does it silently, because both are valid JSON carrying
+      // the right field names one level off. `series` and `step` have never
+      // done this. No envelope around the array, unlike theirs, because a
+      // ChangesReport already carries its own span and url and an envelope
+      // would only repeat them.
+      report: reports,
       lines,
       exitCode: exitCodeFor(all),
     };
