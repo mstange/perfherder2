@@ -37,6 +37,7 @@ import {
   type Align,
 } from './format';
 import type {
+  AcrossDescriptor,
   ChangeEntry,
   ChangesReport,
   CommitsReport,
@@ -63,6 +64,33 @@ const SPARK_WIDTH = 48;
 export function describeSeries(series: SeriesHeader): string {
   const parts = [series.suite, series.test, series.application, series.platform, series.options];
   return parts.filter(Boolean).join(' · ') || `signature ${series.signatureId}`;
+}
+
+// How a `--like` / `--across` ref list was arrived at.
+//
+// Printed because the list is this tool's claim rather than the reader's
+// instruction, and a claim about coverage that cannot be checked is the failure
+// mode this file keeps guarding against. So both numbers are here: what the
+// slice found, and what shares the suite and test and was held out of it
+// anyway. The second is the one that says whether the strictness helped or hid
+// something — an `option` line under `--across platform` usually means a
+// platform that runs the test with a different configuration.
+function describeAcross(across: AcrossDescriptor): string[] {
+  const out = [
+    `across ${across.fields.join(' and ')} from ${across.anchors.join(', ')} — ` +
+      `${across.matched} series`,
+  ];
+  if (across.omitted.length > 0) {
+    out.push(
+      `  not included: ${across.omitted
+        .map((o) => `${o.rows} differing in ${o.differs}`)
+        .join(', ')} (same framework, suite and test)`,
+    );
+  }
+  for (const missing of across.missing) {
+    out.push(`  ! ${missing} is not in the fetched signature list, so it contributed nothing`);
+  }
+  return out;
 }
 
 // A series whose fetch failed, said the same way by every command.
@@ -95,6 +123,7 @@ export function renderSearch(report: SearchReport): string[] {
   const days = Math.round(report.intervalSeconds / 86400);
 
   out.push(`search: ${terms}${report.parent ? ` · subtests of ${report.parent}` : ''}`);
+  if (report.across) out.push(...describeAcross(report.across));
   out.push(
     `${report.repos.join(', ')} · last ${days} days · ` +
       `${report.includeSubtests ? 'subtests included' : 'no subtests'} · ` +
@@ -122,6 +151,21 @@ export function renderSearch(report: SearchReport): string[] {
       out.push(
         'Drop the other terms to see all of its subtests. If there are none at all, the parent',
         'may be a standalone signature — `has_subtests` is a claim, not a promise (design.md).',
+      );
+      return out;
+    }
+    if (report.across && report.across.matched === 0) {
+      out.push(
+        report.across.missing.length > 0
+          ? `No signature ${report.across.missing.join(', ')} in the fetched set.`
+          : `${report.across.anchors.join(', ')} has no counterparts across ${report.across.fields.join(' and ')}.`,
+      );
+      out.push('');
+      out.push(
+        report.across.missing.length > 0
+          ? '  Check the id and the repository, and widen --interval: the signatures endpoint only\n' +
+            '  returns signatures that have run inside it.'
+          : '  It is the only row with this framework, suite, test, application and option set.',
       );
       return out;
     }
@@ -248,6 +292,7 @@ export function renderStep(report: StepReport): string[] {
       })`
     : formatUtc(report.atMs);
   out.push(`step at ${at} · up to ${report.windowPushes} pushes a side`);
+  if (report.across) out.push(...describeAcross(report.across));
   if (report.common) out.push(`all series: ${report.common}`);
   // Direction belongs beside the number it qualifies. A run over a suite's
   // subtests can hold a score and three timings, and then "+0.53% improvement"

@@ -37,6 +37,7 @@ import {
   UsageError,
   type PointSelector,
   type SeriesArg,
+  type Span,
 } from './args';
 import { installFetchCache } from './cache';
 import { formatUtcDate } from './format';
@@ -52,6 +53,13 @@ import {
   loadThreshold,
 } from './load';
 import {
+  ACROSS_FIELDS,
+  expandAcross,
+  isAcrossField,
+  type AcrossField,
+  type Expansion,
+} from './siblings';
+import {
   attachCommits,
   buildChangesReport,
   buildCommitsReport,
@@ -60,6 +68,7 @@ import {
   buildSeriesReport,
   buildStepReport,
   graphUrl,
+  type AcrossDescriptor,
   type LoadedSeries,
 } from './reports';
 import {
@@ -113,11 +122,11 @@ const search: Command = {
   summary: 'find signatures — the Add-series picker, as a query',
   usage: [
     'perfherder search <term...> [--repo <list>] [--interval <dur>] [--subtests]',
-    '                            [--parent <ref>] [--limit <n>] [--sort <col[:desc]>]',
-    '                            [--activity]',
+    '                            [--parent <ref>] [--like <ref>] [--across <field>]',
+    '                            [--limit <n>] [--sort <col[:desc]>] [--activity]',
   ],
   booleans: ['subtests', 'activity'],
-  valued: ['repo', 'interval', 'limit', 'sort', 'parent'],
+  valued: ['repo', 'interval', 'limit', 'sort', 'parent', 'like', 'across'],
   details: [
     'Terms are the picker\'s: free text is a case-insensitive substring match against the',
     'whole row, and <field>:<value> is an exact match on one field. The fields are suite,',
@@ -132,6 +141,11 @@ const search: Command = {
     'It is not something a chip can do: five variants of a suite on one platform (nova,',
     'no-nova, samply-profile, …) match the same chips, and only the parent id separates one',
     'set of children from the others.',
+    '',
+    '--like <ref> is its inverse: one row\'s counterparts elsewhere. Everything that signature',
+    'is stays fixed — framework, suite, test, application, option set — and one attribute is',
+    'let vary, named by --across (platform, application, repo or option; platform by default).',
+    'That is the "same subtest on four platforms" list, and no chip expresses it either.',
     '',
     'The first column is the reference every other command takes.',
   ],
@@ -149,10 +163,28 @@ const search: Command = {
     const parent = parentArg
       ? { repository: parentArg.repository, signatureId: parentArg.signatureId }
       : null;
+    const likeFlag = flagString(parsed.flags, 'like');
+    const likeArg = likeFlag ? parseSeriesArg(likeFlag) : null;
+    if (parent && likeArg) {
+      throw new UsageError(
+        '--parent and --like ask opposite questions of one signature (its children, and its ' +
+          'counterparts elsewhere); give one or the other',
+      );
+    }
+    const across = acrossFields(flagString(parsed.flags, 'across'));
+    if (across && !likeArg) throw new UsageError('--across needs a --like <ref> to vary from');
+
     const reposFlag = flagString(parsed.flags, 'repo');
-    // A parent names its own repository, so asking for the default pair would
-    // download a second repo's signature list to filter every row out of it.
-    const repos = reposFlag ? parseList(reposFlag) : parent ? [parent.repository] : DEFAULT_REPOS;
+    // A parent or an anchor names its own repository, so asking for the default
+    // pair would download a second repo's signature list to filter every row
+    // out of it. Varying *across* the repository is the exception: that is the
+    // one slice whose answer is in the other repo.
+    const anchor = parent ?? (likeArg ? { repository: likeArg.repository, signatureId: likeArg.signatureId } : null);
+    const repos = reposFlag
+      ? parseList(reposFlag)
+      : anchor && !across?.includes('repo')
+        ? [anchor.repository]
+        : DEFAULT_REPOS;
     const intervalFlag = flagString(parsed.flags, 'interval');
     const intervalSeconds = snapInterval(
       intervalFlag ? parseDuration(intervalFlag) : 14 * 86400,
@@ -160,7 +192,10 @@ const search: Command = {
     // Children only exist in the subtests=1 payload, so `--parent` without it
     // would answer "no subtests" for a signature that has 26 of them. Implied
     // rather than an error: there is exactly one thing the user can have meant.
-    const includeSubtests = flagBoolean(parsed.flags, 'subtests') || parent !== null;
+    // `--like` needs them for the same reason from the other end: the row being
+    // matched is usually itself a subtest.
+    const includeSubtests =
+      flagBoolean(parsed.flags, 'subtests') || parent !== null || likeArg !== null;
     const limit = flagNumber(parsed.flags, 'limit', 30);
     const sortFlag = flagString(parsed.flags, 'sort');
 
@@ -174,18 +209,27 @@ const search: Command = {
     }
 
     const signatures = await loadSignatures(repos, intervalSeconds, includeSubtests);
-    let report = buildSearchReport({
-      rows: signatures.rows,
+    // `--like` narrows the rows the filter ever sees, the way `--parent` does,
+    // so everything downstream — the count, the limit, the no-match diagnosis —
+    // is about the slice rather than about the corpus.
+    const expansion = likeArg
+      ? expandAcross(signatures.rows, [anchor!], across ?? ['platform'])
+      : null;
+    const rows = expansion ? expansion.rows : signatures.rows;
+    const describedAcross = expansion ? describeExpansion(expansion, [anchor!]) : null;
+
+    const inputs = {
       fetched: signatures.fetched,
       filter,
       repos,
       intervalSeconds,
       includeSubtests,
       parent,
+      across: describedAcross,
       sort: sortFlag ? parseSort(sortFlag) : null,
       limit,
-      activity: undefined,
-    });
+    };
+    let report = buildSearchReport({ ...inputs, rows, activity: undefined });
 
     // Activity is fetched for the rows that survived the limit, exactly as the
     // app fetches it for the rows in the viewport: the counts are one batched
@@ -193,22 +237,11 @@ const search: Command = {
     if (flagBoolean(parsed.flags, 'activity') && report.rows.length > 0) {
       const shown = new Set(report.rows.map((r) => `${r.repository}|${r.signatureId}`));
       const activity = await loadActivity(
-        signatures.rows.filter((row) => shown.has(row.key)),
+        rows.filter((row) => shown.has(row.key)),
         intervalSeconds,
         ctx.now,
       );
-      report = buildSearchReport({
-        rows: signatures.rows,
-        fetched: signatures.fetched,
-        filter,
-        repos,
-        intervalSeconds,
-        includeSubtests,
-        parent,
-        sort: sortFlag ? parseSort(sortFlag) : null,
-        limit,
-        activity,
-      });
+      report = buildSearchReport({ ...inputs, rows, activity });
     }
 
     return { report, lines: renderSearch(report) };
@@ -348,9 +381,10 @@ const step: Command = {
   summary: 'measure the change at one point, across several series at once',
   usage: [
     'perfherder step <ref...> --at <revision|date> [--window <n>] [--range <dur>]',
+    '                         [--across <field>] [--repo <list>]',
   ],
   booleans: [],
-  valued: [...RANGE_VALUED, 'at', 'window'],
+  valued: [...RANGE_VALUED, 'at', 'window', 'across', 'repo'],
   details: [
     'The question `changes` cannot answer: it reports the steps it *found*, and the case worth',
     'investigating is usually a series where it found none. A platform that runs the benchmark',
@@ -372,10 +406,22 @@ const step: Command = {
     '',
     'Several refs at once is the point: one invocation over a suite\'s subtests, or over one',
     'subtest on four platforms.',
+    '',
+    '--across <field> writes that second list for you. Give one ref and every attribute of it',
+    'is held fixed — framework, suite, test, application, option set — while the named field',
+    '(platform, application, repo or option) is let vary, so `--across platform` is "did the',
+    'other platforms see it?" in one command. Rows that share the suite and test but were held',
+    'out are counted in the header rather than dropped in silence. --repo says where to look;',
+    'it defaults to the refs\' own repositories, or to the app\'s pair for --across repo.',
   ],
   async run(parsed, ctx) {
-    const refs = requireRefs(parsed.positionals, 'step');
+    let refs = requireRefs(parsed.positionals, 'step');
     const span = resolveRange(rangeOptions(parsed), ctx.now);
+    const across = acrossFields(flagString(parsed.flags, 'across'));
+    const expanded = across
+      ? await expandRefs(refs, across, flagString(parsed.flags, 'repo'), span, ctx.now)
+      : null;
+    if (expanded) refs = expanded.refs;
     const at = flagString(parsed.flags, 'at');
     if (!at) throw new UsageError('step needs --at <revision|date>');
     const windowPushes = flagNumber(parsed.flags, 'window', WINDOW_PUSHES);
@@ -406,6 +452,7 @@ const step: Command = {
       windowPushes,
       span,
       base: ctx.appBase,
+      across: expanded?.described ?? null,
     });
     return { report, lines: renderStep(report), exitCode: exitCodeFor(loaded) };
   },
@@ -643,6 +690,109 @@ function rangeOptions(parsed: ReturnType<typeof parseArgv>) {
   };
 }
 
+// ---------------------------------------------------------------------------
+// --across: the horizontal slice
+// ---------------------------------------------------------------------------
+
+// One field, or a comma list of them. Several at once because Chrome runs on
+// neither the same platform nor the same option set as Fenix, so
+// `--across application` alone cannot express "Firefox against Chrome" —
+// `--across platform,application` can.
+function acrossFields(value: string | null): AcrossField[] | null {
+  if (value === null) return null;
+  const names = parseList(value);
+  for (const name of names) {
+    if (!isAcrossField(name)) {
+      throw new UsageError(
+        `"${name}" is not something to vary across — try ${ACROSS_FIELDS.join(', ')}, ` +
+          'or a comma list of them',
+      );
+    }
+  }
+  if (names.length === 0) throw new UsageError('--across needs at least one field');
+  return names as AcrossField[];
+}
+
+// Where to look for an anchor's counterparts. Its own repository, because
+// that is where they are and a second repo's signature list is megabytes spent
+// to filter every row out of it — except when the repository is the thing being
+// varied, which is the one case whose answer is somewhere else.
+function repoScope(
+  reposFlag: string | null,
+  anchors: readonly { repository: string }[],
+  fields: readonly AcrossField[],
+): string[] {
+  if (reposFlag) return parseList(reposFlag);
+  const owned = [...new Set(anchors.map((a) => a.repository))];
+  return fields.includes('repo') ? [...new Set([...owned, ...DEFAULT_REPOS])] : owned;
+}
+
+// The signature list is filtered server-side to signatures that have run inside
+// an interval counted back from *now*, so a range that ends in the past needs
+// an interval reaching back to its start or the anchor itself may be absent.
+// Snapped up to one of the picker's, since those are the only intervals this
+// endpoint is ever asked for.
+function signatureInterval(span: Span, nowMs: number): number {
+  return snapInterval(Math.max(14 * 86400, (nowMs - span.start) / 1000));
+}
+
+function describeExpansion(
+  expansion: Expansion,
+  anchors: readonly { repository: string; signatureId: number }[],
+): AcrossDescriptor {
+  return {
+    fields: expansion.fields,
+    anchors: anchors.map((a) => `${a.repository},${a.signatureId}`),
+    missing: expansion.missing,
+    omitted: expansion.omitted,
+    matched: expansion.rows.length,
+  };
+}
+
+// One ref list in, its counterparts out — the whole point being that the caller
+// never assembles this by hand, which in a live trial took more commands than
+// the analysis did and mixed three suites into one table.
+async function expandRefs(
+  refs: readonly SeriesArg[],
+  fields: readonly AcrossField[],
+  reposFlag: string | null,
+  span: Span,
+  nowMs: number,
+): Promise<{ refs: SeriesArg[]; described: AcrossDescriptor }> {
+  const anchors = refs.map((ref) => ({
+    repository: ref.repository,
+    signatureId: ref.signatureId,
+  }));
+  const signatures = await loadSignatures(
+    repoScope(reposFlag, anchors, fields),
+    signatureInterval(span, nowMs),
+    // The anchor is usually a subtest, and children only exist in this payload —
+    // the same reason `--parent` implies it.
+    true,
+  );
+  const expansion = expandAcross(signatures.rows, anchors, fields);
+  if (expansion.rows.length === 0) {
+    throw new UsageError(
+      expansion.missing.length > 0
+        ? `${expansion.missing.join(', ')} ${
+            expansion.missing.length === 1 ? 'is' : 'are'
+          } not in the signature list for ${repoScope(reposFlag, anchors, fields).join(', ')} — ` +
+            'check the id and the repository, and widen --range, since the list only carries ' +
+            'signatures that have run recently'
+        : `no counterparts across ${fields.join(', ')}`,
+    );
+  }
+  return {
+    refs: expansion.rows.map((row) => ({
+      repository: row.repository,
+      signatureId: row.id,
+      frameworkId: row.frameworkId,
+      at: null,
+    })),
+    described: describeExpansion(expansion, anchors),
+  };
+}
+
 // Nothing came back for any of them, so there is no report to have produced.
 function exitCodeFor(loaded: readonly LoadedSeries[]): number | undefined {
   return loaded.length > 0 && loaded.every((one) => one.error !== null) ? 1 : undefined;
@@ -697,7 +847,11 @@ function topLevelHelp(): string[] {
     '  # Which subtests drove a suite-level move, and did other platforms see it?',
     '  perfherder search --parent autoland,1234567 --limit 100',
     '  perfherder step <subtest refs…> --at <revision> --range 60d',
-    '  perfherder step <one subtest, four platforms> --at <revision> --range 60d',
+    '  perfherder step autoland,1234567 --across platform --at <revision> --range 60d',
+    '',
+    '  # The same row somewhere else: every platform, or Firefox against Chrome.',
+    '  perfherder search --like autoland,1234567 --across platform',
+    '  perfherder search --like autoland,1234567 --across platform,application',
     '',
     'Run `perfherder <command> --help` for a command\'s own options.',
   ];

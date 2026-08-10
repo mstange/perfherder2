@@ -174,6 +174,37 @@ says so.
 fetching a second repo's signature list only to filter every row out of it is
 several megabytes for nothing.
 
+### `--across` is `--parent` turned sideways
+
+`--parent` is the vertical slice, a signature's own subtests. The horizontal one
+— the same row on every platform — had no expression at all, and assembling it
+meant `search --json` through a hand-written pivot: in one live trial that took
+more commands than the analysis did and produced three mechanical errors, one of
+which quietly mixed three benchmark suites into one table.
+
+[siblings.ts](../src/cli/siblings.ts) is the relation instead. Hold every
+identifying attribute of one named row fixed — repository, framework, suite,
+test, application, platform, option set — let the named one vary, and return
+what is left. `search --like <ref> --across platform` prints the list;
+`step <ref> --across platform` skips the round trip and measures them all.
+
+It cannot be a chip for the same reason `--parent` cannot: `suite:speedometer3
+test:score` gathers every variant of that row on every platform *and* every
+application and option set that also ran it, and no chip says "everything this
+row is, except its platform".
+
+**Strict, and what it excludes is counted.** Loosening to suite-and-test would
+sweep the nova / no-nova / samply-profile variants of a suite into one table
+beside each other, which is the error the trial made by hand. So the header
+carries what was held out and why — `not included: 39 differing in option` — and
+that line is usually the interesting one, since a platform running the test with
+a different configuration shows up there rather than nowhere.
+
+**Several fields at once**, because Chrome runs on neither the same platform nor
+the same option set as Fenix: `--across application` alone answers "just this
+row" for the very question the first worked example asks, and
+`--across platform,application` is that question.
+
 ### Measuring a step the detector didn't mark
 
 `step <ref...> --at <revision|date>` is the one command with no UI counterpart,
@@ -440,11 +471,9 @@ examples are the guide, and they are in the right place — extend those.
 
 ### Known gaps it found that are not yet closed
 
-See graphs-todo.md; the ones worth naming here are the inverse of `--parent`
-(one subtest across every platform, which is where most of the ref-wrangling
-went), pooling replicates across a window so `compare`'s mode analysis is not
-resting on a single push's 25–75 values, and a partial failure in a multi-ref
-run printing as a row rather than aborting the process.
+See graphs-todo.md. What is left there is pooling replicates across a window, so
+`compare`'s mode analysis is not resting on a single push's 25–75 values, and a
+way to ask which of two candidate pushes a step is really on.
 
 ## Code map
 
@@ -460,6 +489,8 @@ is testable without a network.
   row, the ruler, word wrap.
 - [modes.ts](../src/cli/modes.ts) — **pure**. The mode comparison and its
   sentence. See above.
+- [siblings.ts](../src/cli/siblings.ts) — **pure**. One row's counterparts
+  across one attribute — `--like` and `--across`. See above.
 - [suggest.ts](../src/cli/suggest.ts) — **pure**. Why a search matched nothing,
   and what to type instead. See above.
 - [reports.ts](../src/cli/reports.ts) — **pure**. The report object per command,

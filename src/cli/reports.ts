@@ -222,6 +222,9 @@ export type SearchReport = {
   // signature that has gone quiet all land here, and none of them means the
   // parent has no subtests.
   parentFound: boolean;
+  // The `--like` slice, when one was asked for; null otherwise. The rows this
+  // report was built from are already restricted to it.
+  across: AcrossDescriptor | null;
   // Raw signature rows the API returned, per repository.
   fetched: Record<string, number>;
   matched: number;
@@ -236,6 +239,24 @@ export type SearchReport = {
 // neither narrows a parent-child relation.
 export type ParentRef = { repository: string; signatureId: number };
 
+// How a ref list was arrived at, when the caller named one row and asked for
+// its counterparts across one attribute (`siblings.ts`). Reported rather than
+// applied silently: a slice is a claim about coverage, and the two numbers that
+// make it falsifiable are how many rows it found and how many it left out.
+export type AcrossDescriptor = {
+  fields: string[];
+  // What the caller named, as `<repo>,<signatureId>`.
+  anchors: string[];
+  // Anchors that were not in the fetched signature list at all — a mistyped id,
+  // the wrong repository, or a signature quiet enough to fall outside the
+  // interval. Not the same answer as "it has no counterparts".
+  missing: string[];
+  // Rows sharing the anchors' framework, suite and test that were excluded
+  // anyway, by what they differ in.
+  omitted: { differs: string; rows: number }[];
+  matched: number;
+};
+
 export type SearchInput = {
   rows: readonly Series[];
   fetched: ReadonlyMap<string, number>;
@@ -244,6 +265,7 @@ export type SearchInput = {
   intervalSeconds: number;
   includeSubtests: boolean;
   parent?: ParentRef | null;
+  across?: AcrossDescriptor | null;
   sort: SortState | null;
   limit: number;
   activity?: ReadonlyMap<string, Activity>;
@@ -290,6 +312,7 @@ export function buildSearchReport(input: SearchInput): SearchReport {
     includeSubtests: input.includeSubtests,
     parent: parent ? `${parent.repository},${parent.signatureId}` : null,
     parentFound,
+    across: input.across ?? null,
     fetched: Object.fromEntries(input.fetched),
     matched: matched.length,
     diagnosis,
@@ -831,6 +854,10 @@ export type StepReport = {
   url: string;
   // Attributes every series shares, for the header.
   common: string;
+  // Set when the ref list came from `--across` rather than from the command
+  // line. The reader has to be able to tell the two apart: one is a list they
+  // wrote and the other is a claim this tool made about what that list is.
+  across: AcrossDescriptor | null;
   entries: StepEntry[];
 };
 
@@ -844,6 +871,7 @@ export type StepInput = {
   windowPushes: number;
   span: Span;
   base: string;
+  across?: AcrossDescriptor | null;
 };
 
 export function buildStepReport(input: StepInput): StepReport {
@@ -871,6 +899,7 @@ export function buildStepReport(input: StepInput): StepReport {
     span: input.span,
     url: graphUrl(input.base, input.loaded.map((l) => l.ref), input.span),
     common: useSplit && split.hasCommon ? chipText(split.common) : '',
+    across: input.across ?? null,
     entries,
   };
 }

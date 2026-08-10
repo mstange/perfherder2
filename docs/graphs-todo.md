@@ -84,13 +84,6 @@ Living checklist. Update in the same commit as the work it describes.
 - [ ] **CLI gaps a live trial found, in the order they cost time.** See
       cli.md, "What four fresh sessions found", for the exercise and for the
       defects that *were* fixed.
-  - *The inverse of `search --parent`: one subtest across every platform.*
-    `--parent` gives the vertical slice; there is no horizontal one, and
-    assembling "the same row on four platforms" meant `search --json | python3`
-    pivots that took more commands than the analysis did — and produced three
-    mechanical errors, one of which silently mixed three benchmark suites into
-    one table. `step --across platform`, or letting `step` take a search query
-    instead of a ref list, is the shape.
   - *`compare` cannot pool a window.* Its mode analysis rests on one push's
     25–75 replicates, and the mode *count* flipped between two legitimate
     choices of push pair on one real series. `step` pools 24 pushes a side and
