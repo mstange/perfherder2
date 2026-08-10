@@ -464,9 +464,31 @@ whichever way `npm publish` is reached. It checks the shebang and the executable
 bit for the same reason: npm sets the bit when it installs a `bin`, and a tarball
 unpacked by hand does not get that favour.
 
-`npm run publish:cli` runs the four gates, rebuilds, and publishes — with a
-prerelease version going to the `next` dist-tag, so nobody installing by name
-lands on one.
+#### Releasing
+
+1. **Bump `version` in [perfherder-cli/package.json](../perfherder-cli/package.json)**
+   and commit it. Nothing does this for you: the version is a claim about what
+   changed, and the two mistakes it guards against are both caught anyway (npm
+   refuses a version it already has; `prepublishOnly` refuses a bundle that
+   doesn't carry the one on the tin).
+2. **`npm run publish:cli`.** It runs `check`, `test`, `build` and `build:cli` —
+   the same four gates CI runs — then `npm publish perfherder-cli/`. Extra
+   arguments are forwarded, so `npm run publish:cli -- --dry-run` rehearses it.
+3. That machine needs `npm login`. The scope is personal, so there is no
+   organisation to be a member of.
+
+A prerelease version (`0.2.0-rc.1`) goes to the `next` dist-tag rather than
+`latest`, so nobody installing by name lands on one. `--access public` is passed
+for you: a scoped package is restricted unless told otherwise, and "published,
+but only I can see it" is a failure that looks exactly like success.
+
+**After a first publish the registry can 404 for a minute or two.** The
+npmjs.com page appears before `registry.npmjs.org/@mstange%2fperfherder-cli`
+does, and `npm view` 404s in the gap. Wait, don't debug. Two things that look
+like evidence in that window and are not: npmjs.com answers plain `curl` with
+403 whatever the package's state, because of bot protection; and `npm view` 404s
+for an unauthenticated shell in the same words it uses for a package that does
+not exist.
 
 ### Times are UTC
 

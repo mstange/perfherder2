@@ -14,6 +14,11 @@
 // A prerelease version goes to the `next` dist-tag rather than `latest`, so
 // `npm install -g @mstange/perfherder-cli` never lands a reader on one by
 // accident. Pass `--tag` yourself to override.
+//
+// `--access public` is passed because a scoped package is restricted unless
+// told otherwise, and "published, but only the publisher can see it" is a
+// failure that looks exactly like success. Forwarded arguments come after it,
+// so `-- --access restricted` still wins if that is ever what someone means.
 import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -36,4 +41,4 @@ run('npm', ['run', 'check']);
 run('npm', ['test']);
 run('npm', ['run', 'build']);
 run('npm', ['run', 'build:cli']);
-run('npm', ['publish', 'perfherder-cli/', ...tag, ...forwarded]);
+run('npm', ['publish', 'perfherder-cli/', '--access', 'public', ...tag, ...forwarded]);
