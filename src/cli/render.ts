@@ -37,6 +37,7 @@ import {
   wrap,
   type Align,
 } from './format';
+import { commitsHeading } from './reports';
 import type {
   AcrossDescriptor,
   ChangeEntry,
@@ -824,18 +825,29 @@ function renderChangeDetail(entry: ChangeEntry): string[] {
     out.push(`  between ${entry.prevRevision.slice(0, 12)} and ${entry.revision.slice(0, 12)}`);
   }
 
-  if (entry.commits) {
-    if (entry.commits.length === 0) {
-      out.push('  no commits in the range (the two pushes are adjacent with nothing between)');
-    } else {
-      out.push(`  ${entry.commitsLabel}:`);
-      out.push(...indent(renderCommitTable(entry.commits), '    '));
-    }
-    if (entry.commitsCaveat) out.push(`  ! ${entry.commitsCaveat}`);
-  }
+  out.push(...commitLines(entry));
   if (entry.pushlogUrl) out.push(`  pushlog: ${entry.pushlogUrl}`);
   if (entry.url) out.push(`  graph:   ${entry.url}`);
   out.push('');
+  return out;
+}
+
+// The commit list under one change, with the two narrowings it may have had
+// declared. Shared by the full and brief forms so they cannot drift.
+function commitLines(entry: ChangeEntry): string[] {
+  if (!entry.commits) return [];
+  const out: string[] = [];
+  if (entry.commits.length === 0) {
+    out.push(
+      entry.commitsFiltered
+        ? `  no commits match --commit-grep (${entry.commitsFiltered} in the range did not)`
+        : '  no commits in the range (the two pushes are adjacent with nothing between)',
+    );
+  } else {
+    out.push(`  ${commitsHeading(entry)}:`);
+    out.push(...indent(renderCommitTable(entry.commits), '    '));
+  }
+  if (entry.commitsCaveat) out.push(`  ! ${entry.commitsCaveat}`);
   return out;
 }
 
@@ -1102,11 +1114,20 @@ export function renderCommits(report: CommitsReport): string[] {
   );
   out.push(
     `${report.label} across ${report.pushCount} ${report.pushCount === 1 ? 'push' : 'pushes'} ` +
-      '(the base push is excluded, as hg\'s own pushlog excludes it)',
+      '(the base push is excluded, as hg\'s own pushlog excludes it)' +
+      // The label counts the range. A filtered list under it would read as a
+      // range that only ever held these rows.
+      (report.filtered !== null
+        ? `, ${report.commits.length} matching --commit-grep`
+        : ''),
   );
   out.push('');
   if (report.commits.length === 0) {
-    out.push('Nothing landed between these two revisions.');
+    out.push(
+      report.filtered
+        ? `No commits match --commit-grep; ${report.filtered} in the range did not.`
+        : 'Nothing landed between these two revisions.',
+    );
     return out;
   }
   out.push(...renderCommitTable(report.commits));
@@ -1116,13 +1137,19 @@ export function renderCommits(report: CommitsReport): string[] {
   return out;
 }
 
+// Headers name the fields of `CommitSummary`, not synonyms for them. `BUG` and
+// `SUMMARY` cost a session a column of `undefined`: it read the headers, reached
+// for `commit.bug` and `commit.summary` in `--json`, and got neither — the same
+// trap as the `APP` header for `application`, and the same fix.
 function renderCommitTable(commits: readonly { revision: string; author: string; title: string; bugs: number[]; pushTimestamp: number }[]): string[] {
   return table(
-    ['WHEN', 'REVISION', 'BUG', 'AUTHOR', 'SUMMARY'],
+    ['WHEN', 'REVISION', 'BUGS', 'AUTHOR', 'TITLE'],
     commits.map((c) => [
       formatUtcDate(c.pushTimestamp * 1000),
       c.revision.slice(0, 12),
-      c.bugs.length > 0 ? String(c.bugs[0]) : NONE,
+      // Every bug, not the first of them: a commit citing two is not a commit
+      // citing one, and dropping the rest here is a truncation nothing declares.
+      c.bugs.length > 0 ? c.bugs.join(',') : NONE,
       truncate(c.author, 22),
       truncate(c.title, 78),
     ]),

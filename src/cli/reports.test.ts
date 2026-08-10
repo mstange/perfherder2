@@ -12,6 +12,7 @@ import type { PushlogRange } from '../lib/graphs/pushlog';
 import type { Series } from '../lib/picker/series';
 import { EMPTY_FILTER } from '../lib/picker/filter';
 import {
+  attachCommits,
   buildChangesReport,
   buildCommitsReport,
   buildCompareReport,
@@ -19,8 +20,11 @@ import {
   buildLocateReport,
   buildSearchReport,
   buildStepReport,
+  commitMatches,
+  commitsHeading,
   graphUrl,
   poolPushes,
+  type ChangeEntry,
   type LoadedSeries,
 } from './reports';
 
@@ -585,6 +589,132 @@ describe('buildCommitsReport', () => {
     const report = buildCommitsReport('autoland', 'from', 'to', range, null);
     expect(report.label).toBe('1 of 145 commits');
     expect(report.caveat).toMatch(/at most 20 per push/);
+  });
+});
+
+// A change row is only ever built by `buildChangesReport`; these tests are about
+// what `attachCommits` folds into one, so the row itself is a stub with the
+// fields that function reads and copies.
+function changeEntryStub(): ChangeEntry {
+  return {
+    atMs: BASE_TIME,
+    pushId: 2,
+    revision: 'after0000000',
+    prevPushId: 1,
+    prevRevision: 'before000000',
+    source: 'detected',
+    isRegression: true,
+    detected: null,
+    alert: null,
+    pushOffset: null,
+    url: null,
+    pushlogUrl: null,
+    commits: null,
+    commitsLabel: null,
+    commitsOmitted: 0,
+    commitsFiltered: null,
+    commitsCaveat: null,
+  };
+}
+
+function commit(summary: string, author: string, bugs: number[], id: number) {
+  return {
+    revision: `rev${id}`,
+    author,
+    summary,
+    body: '',
+    bugs,
+    pushId: 1,
+    pushTimestamp: BASE_TIME / 1000,
+  };
+}
+
+describe('attachCommits', () => {
+  const range: PushlogRange = {
+    commits: [
+      commit('Bug 1 - Quota manager: reconcile the L1 cache r=x', 'Jari', [1], 1),
+      commit('Bug 2 - Enlarge the crossword widget r=y', 'Reem', [2], 2),
+      commit('Bug 3 - IDBCursor: use row values comparison r=z', 'Arnaud', [3], 3),
+      commit('Bug 4 - Update the WPT manifest r=w', 'bot', [4], 4),
+    ],
+    pushCount: 2,
+    hiddenRevisions: 0,
+    truncated: false,
+  };
+
+  it('counts what --commit-limit held back, rather than showing a short list under a full count', () => {
+    const entry = attachCommits(changeEntryStub(), range, { limit: 2, grep: null });
+    expect(entry.commits).toHaveLength(2);
+    expect(entry.commitsOmitted).toBe(2);
+    // The label still describes the range, which is why the omitted count has to
+    // exist: on its own it would caption two rows with "4 commits".
+    expect(entry.commitsLabel).toBe('4 commits');
+    expect(commitsHeading(entry)).toBe('4 commits, showing 2 (--commit-limit)');
+  });
+
+  it('leaves the omitted count at zero when the whole range fits', () => {
+    const entry = attachCommits(changeEntryStub(), range, { limit: 15, grep: null });
+    expect(entry.commitsOmitted).toBe(0);
+    expect(entry.commitsFiltered).toBeNull();
+    expect(commitsHeading(entry)).toBe('4 commits');
+  });
+
+  it('filters on title, and counts the commits the pattern excluded', () => {
+    const entry = attachCommits(changeEntryStub(), range, { limit: 15, grep: /quota|idbcursor/i });
+    expect(entry.commits?.map((c) => c.author)).toEqual(['Jari', 'Arnaud']);
+    expect(entry.commitsFiltered).toBe(2);
+    expect(commitsHeading(entry)).toBe('4 commits, 2 matching --commit-grep');
+  });
+
+  it('reports both narrowings when both applied', () => {
+    const entry = attachCommits(changeEntryStub(), range, { limit: 1, grep: /bug/i });
+    expect(entry.commits).toHaveLength(1);
+    expect(entry.commitsFiltered).toBe(0);
+    expect(entry.commitsOmitted).toBe(3);
+    expect(commitsHeading(entry)).toBe(
+      '4 commits, 4 matching --commit-grep, showing 1 (--commit-limit)',
+    );
+  });
+
+  it('distinguishes a filter that excluded everything from a range that was empty', () => {
+    const filtered = attachCommits(changeEntryStub(), range, { limit: 15, grep: /nothing/i });
+    expect(filtered.commits).toEqual([]);
+    expect(filtered.commitsFiltered).toBe(4);
+
+    const empty = attachCommits(
+      changeEntryStub(),
+      { commits: [], pushCount: 0, hiddenRevisions: 0, truncated: false },
+      { limit: 15, grep: null },
+    );
+    expect(empty.commits).toEqual([]);
+    expect(empty.commitsFiltered).toBeNull();
+  });
+});
+
+describe('commitMatches', () => {
+  const one = {
+    revision: 'r',
+    author: 'Jari Jalkanen',
+    title: 'Reconcile L1 cache rows with disk during repository init',
+    bugs: [1998600, 2052152],
+    pushId: 1,
+    pushTimestamp: 0,
+  };
+
+  it('matches a subsystem in the title', () => {
+    expect(commitMatches(one, /l1 cache/i)).toBe(true);
+  });
+
+  it('matches an author, because "who landed this" is the same question', () => {
+    expect(commitMatches(one, /jalkanen/i)).toBe(true);
+  });
+
+  it('matches any of the bugs cited, not just the first', () => {
+    expect(commitMatches(one, /2052152/)).toBe(true);
+  });
+
+  it('does not match a word in none of the three', () => {
+    expect(commitMatches(one, /webgl/i)).toBe(false);
   });
 });
 

@@ -598,6 +598,15 @@ export type ChangeEntry = {
   // Only present with --commits.
   commits: CommitSummary[] | null;
   commitsLabel: string | null;
+  // How many commits of the range `--commit-limit` held back. `commitsLabel`
+  // counts the *range*, so without this a limit of 8 over a 36-commit range
+  // prints "36 commits:" above eight rows — a truncated answer shaped exactly
+  // like a complete one, which is the one thing this tool does not do quietly.
+  commitsOmitted: number;
+  // How many commits `--commit-grep` excluded, for the same reason. Null when
+  // no pattern was given, so "nothing was filtered" and "no filter ran" stay
+  // different answers.
+  commitsFiltered: number | null;
   commitsCaveat: string | null;
 };
 
@@ -771,27 +780,80 @@ function describeEntry(
         : null,
     commits: null,
     commitsLabel: null,
+    commitsOmitted: 0,
+    commitsFiltered: null,
     commitsCaveat: null,
   };
+}
+
+// Does this commit answer `--commit-grep`? Title, author and bug number, because
+// the question the flag exists for — "which of these twenty commits could have
+// caused this" — is asked of a subsystem ("quota|indexeddb"), a person, or a
+// bug, and a reader who has to remember which of the three the pattern searches
+// will pick wrong. Case-insensitive for the same reason `search`'s free text is.
+export function commitMatches(commit: CommitSummary, pattern: RegExp): boolean {
+  return (
+    pattern.test(commit.title) ||
+    pattern.test(commit.author) ||
+    commit.bugs.some((bug) => pattern.test(String(bug)))
+  );
+}
+
+export type CommitOptions = {
+  limit: number;
+  // Null when `--commit-grep` was not given.
+  grep: RegExp | null;
+};
+
+// The line above the commit table. `commitsLabel` alone is a count of the range,
+// and the list under it may be shorter for two independent reasons, so the
+// heading names each one that applied and the reader can tell three rows of
+// three from three rows of thirty-six.
+export function commitsHeading(entry: {
+  commits: CommitSummary[] | null;
+  commitsLabel: string | null;
+  commitsOmitted: number;
+  commitsFiltered: number | null;
+}): string {
+  const shown = entry.commits?.length ?? 0;
+  const matched = shown + entry.commitsOmitted;
+  const parts = [entry.commitsLabel ?? 'commits'];
+  if (entry.commitsFiltered !== null) parts.push(`${matched} matching --commit-grep`);
+  if (entry.commitsOmitted > 0) parts.push(`showing ${shown} (--commit-limit)`);
+  return parts.join(', ');
 }
 
 // Fold a fetched pushlog into a change row. Separate from `describeEntry`
 // because the fetch is per-entry and optional (`--commits`), and a report that
 // is correct without it should not be built differently when it has it.
-export function attachCommits(entry: ChangeEntry, range: PushlogRange, limit: number): ChangeEntry {
+//
+// Two narrowings happen here and **both are counted**, because `commitsLabel`
+// describes the range rather than the list under it: a grep that excluded 19 of
+// 20 commits and a range that only had one are the same three rows on screen and
+// entirely different answers to "what landed here".
+export function attachCommits(
+  entry: ChangeEntry,
+  range: PushlogRange,
+  options: CommitOptions,
+): ChangeEntry {
+  const all = range.commits.map(
+    (commit: Commit): CommitSummary => ({
+      revision: commit.revision,
+      author: commit.author,
+      title: commitTitle(commit),
+      bugs: commit.bugs,
+      pushId: commit.pushId,
+      pushTimestamp: commit.pushTimestamp,
+    }),
+  );
+  const matched = options.grep ? all.filter((c) => commitMatches(c, options.grep!)) : all;
+  const shown = matched.slice(0, options.limit);
   return {
     ...entry,
-    commits: range.commits.slice(0, limit).map(
-      (commit: Commit): CommitSummary => ({
-        revision: commit.revision,
-        author: commit.author,
-        title: commitTitle(commit),
-        bugs: commit.bugs,
-        pushId: commit.pushId,
-        pushTimestamp: commit.pushTimestamp,
-      }),
-    ),
+    commits: shown,
     commitsLabel: pushlogLabel(range),
+    commitsOmitted: matched.length - shown.length,
+    commitsFiltered: options.grep ? all.length - matched.length : null,
     commitsCaveat: pushlogCaveat(range),
   };
 }
@@ -1479,6 +1541,10 @@ export type CommitsReport = {
   pushCount: number;
   hiddenRevisions: number;
   truncated: boolean;
+  // How many commits `--commit-grep` excluded; null when no pattern was given.
+  // `label` counts the range, so without this a filtered list is three rows
+  // under "35 commits" and reads as a range that only held three.
+  filtered: number | null;
   url: string | null;
   commits: CommitSummary[];
 };
@@ -1489,7 +1555,19 @@ export function buildCommitsReport(
   toRevision: string,
   range: PushlogRange,
   repoLink: RepoLinkInfo | null,
+  // Null when `--commit-grep` was not given, so that "the pattern excluded
+  // nothing" and "no pattern ran" stay distinguishable in the report.
+  grep: RegExp | null = null,
 ): CommitsReport {
+  const all = range.commits.map((commit) => ({
+    revision: commit.revision,
+    author: commit.author,
+    title: commitTitle(commit),
+    bugs: commit.bugs,
+    pushId: commit.pushId,
+    pushTimestamp: commit.pushTimestamp,
+  }));
+  const matched = grep ? all.filter((c) => commitMatches(c, grep)) : all;
   return {
     repository,
     fromRevision,
@@ -1499,14 +1577,8 @@ export function buildCommitsReport(
     pushCount: range.pushCount,
     hiddenRevisions: range.hiddenRevisions,
     truncated: range.truncated,
+    filtered: grep ? all.length - matched.length : null,
     url: repoLink ? pushLogRangeUrl(repoLink, fromRevision, toRevision) : null,
-    commits: range.commits.map((commit) => ({
-      revision: commit.revision,
-      author: commit.author,
-      title: commitTitle(commit),
-      bugs: commit.bugs,
-      pushId: commit.pushId,
-      pushTimestamp: commit.pushTimestamp,
-    })),
+    commits: matched,
   };
 }

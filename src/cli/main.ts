@@ -305,9 +305,10 @@ const changes: Command = {
   summary: "steps this app detects and alerts perfherder raised, on one timeline",
   usage: [
     'perfherder-cli changes <ref...> [--range <dur>] [--commits] [--commit-limit <n>]',
+    '                            [--commit-grep <pattern>]',
   ],
   booleans: ['commits'],
-  valued: [...RANGE_VALUED, 'commit-limit'],
+  valued: [...RANGE_VALUED, 'commit-limit', 'commit-grep'],
   details: [
     'Two independent analyses of the same series, merged into one row per event:',
     '',
@@ -324,13 +325,19 @@ const changes: Command = {
     'right — they average different windows.',
     '',
     '--commits lists what landed between the two pushes of each change, which is the answer to',
-    '"what caused this".',
+    '"what caused this". Over a busy merge that list is twenty commits with one candidate in it,',
+    'so --commit-grep <pattern> keeps the ones whose title, author or bug number match — a',
+    'case-insensitive regular expression. What it excluded is counted in the heading, since a',
+    'filter that hides the culprit must not look like a range that never held one.',
   ],
   async run(parsed, ctx) {
     const refs = requireRefs(parsed.positionals, 'changes');
     const span = resolveRange(rangeOptions(parsed), ctx.now);
     const withCommits = flagBoolean(parsed.flags, 'commits');
-    const commitLimit = flagNumber(parsed.flags, 'commit-limit', 15);
+    const commitOptions = {
+      limit: flagNumber(parsed.flags, 'commit-limit', 15),
+      grep: compileGrep(flagString(parsed.flags, 'commit-grep'), 'commit-grep'),
+    };
 
     const lines: string[] = [];
     const reports: unknown[] = [];
@@ -367,7 +374,7 @@ const changes: Command = {
                 entry.prevRevision,
                 entry.revision,
               );
-              return attachCommits(entry, range, commitLimit);
+              return attachCommits(entry, range, commitOptions);
             } catch {
               // One dead pushlog costs one change its commit list, not the run.
               return entry;
@@ -737,9 +744,11 @@ function rangeHint(what: string, pushes: readonly PushGroup[]): string {
 
 const commits: Command = {
   summary: 'what landed between two revisions',
-  usage: ['perfherder-cli commits <repo> <fromRevision> <toRevision>'],
+  usage: [
+    'perfherder-cli commits <repo> <fromRevision> <toRevision> [--commit-grep <pattern>]',
+  ],
   booleans: [],
-  valued: [],
+  valued: ['commit-grep'],
   details: [
     'The base revision\'s own push is excluded, matching hg\'s pushloghtml — so this is the set',
     'of candidates for a change measured between the two, and not a list that blames the',
@@ -747,6 +756,11 @@ const commits: Command = {
     '',
     'Treeherder names at most 20 revisions per push, so a merge is reported as "20 of 164',
     'commits" rather than silently as 20.',
+    '',
+    '--commit-grep <pattern> keeps the commits whose title, author or bug number match a',
+    'case-insensitive regular expression, and counts the ones it excluded. Over a busy merge',
+    'that is the difference between reading twenty commits and reading the two that touch the',
+    'subsystem the graph moved on.',
   ],
   async run(parsed) {
     if (parsed.positionals.length !== 3) {
@@ -757,7 +771,14 @@ const commits: Command = {
       loadPushlog(repository, from, to),
       loadRepository(repository),
     ]);
-    const report = buildCommitsReport(repository, from, to, range, repoLink);
+    const report = buildCommitsReport(
+      repository,
+      from,
+      to,
+      range,
+      repoLink,
+      compileGrep(flagString(parsed.flags, 'commit-grep'), 'commit-grep'),
+    );
     return { report, lines: renderCommits(report) };
   },
 };
@@ -940,6 +961,23 @@ function requireRefs(positionals: readonly string[], command: string): SeriesArg
 
 function warn(message: string): void {
   process.stderr.write(`warning: ${message}\n`);
+}
+
+// A pattern flag, compiled where the caller can be told which flag was wrong.
+// Case-insensitive: every other free-text match in this tool is (`search`'s
+// terms, `filter.ts`), and a case-sensitive one here would be a second rule for
+// the same gesture. An invalid expression is a usage error rather than a silent
+// literal match — the mistake it guards against is an unescaped bracket quietly
+// matching nothing at all.
+function compileGrep(pattern: string | null, flag: string): RegExp | null {
+  if (pattern === null) return null;
+  try {
+    return new RegExp(pattern, 'i');
+  } catch (error) {
+    throw new UsageError(
+      `--${flag} is not a valid regular expression: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
 }
 
 function topLevelHelp(): string[] {
