@@ -320,6 +320,40 @@ Their percentages still differ, and both are right; the output says why
 the step it located). Invalid alerts are dropped, because a sheriff has already
 said they mean nothing — the same single exclusion `alerts.ts` makes.
 
+### `--pool` widens a comparison from a push to a window
+
+`compare`'s mode analysis rested on one push's 25–75 replicates, and on a real
+series the mode *count* flipped between two legitimate choices of push pair —
+which makes the finding a property of the pair rather than of the data. `step`
+pools 24 pushes a side and has no modes at all, because it works in push means.
+The capability sat in the gap between two commands with half of it each.
+
+`--pool <n>` closes it. Each side becomes `n` pushes: the earlier one reaches
+back from the push named, the later one forward, so the windows meet at the step
+instead of straddling it — the same shape `step` measures, which is what lets the
+two commands' numbers be read against each other. The merged group keeps the
+named push's id, revision and timestamp, since it is still a comparison *of that
+build* and the links must not start pointing somewhere else.
+
+**Pooling changes what the test is over, and this is the one number the CLI
+overrides.** 24 pushes × 30 replicates is 720 values and nothing like 720
+independent draws: replicates of a run are repeated measurements of one number
+and every run of a push shares its binary and its moment (changes.ts makes the
+argument at length). A rank test told otherwise returns p < 1e-100 for any two
+windows at all, which is worse than no number. So the pooled cloud keeps the
+distributions, the modes and the spread — the shape is the whole reason to pool —
+and the test switches to one value per push, using the same `mannWhitneyU` and
+the same unit of analysis `step` and `changes` use. `CompareReport.testBasis`
+says which, and the text does too.
+
+Two figures for one event are reconciled rather than left to disagree: the pooled
+medians weight a push by how many times it ran, so the report also prints the
+equally-weighted push-mean level, which is exactly what `step` prints for the
+same window.
+
+`--pool` needs the two points to be on different pushes. For two series over a
+window, `series` is the command — its whole subject is levels over a range.
+
 ### The mode analysis
 
 [modes.ts](../src/cli/modes.ts) is the one place the CLI computes something the

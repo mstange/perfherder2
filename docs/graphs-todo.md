@@ -84,11 +84,6 @@ Living checklist. Update in the same commit as the work it describes.
 - [ ] **CLI gaps a live trial found, in the order they cost time.** See
       cli.md, "What four fresh sessions found", for the exercise and for the
       defects that *were* fixed.
-  - *`compare` cannot pool a window.* Its mode analysis rests on one push's
-    25–75 replicates, and the mode *count* flipped between two legitimate
-    choices of push pair on one real series. `step` pools 24 pushes a side and
-    reports no modes; `compare` reports modes and will not pool. The capability
-    needed sits in the gap between two commands that each have half of it.
   - *No way to ask which of two candidate pushes is the step.* `changes` gives a
     point estimate with no interval, and on one series it picked a push five
     hours before the one a sheriff's independent alert lands on. There is no

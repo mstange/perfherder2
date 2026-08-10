@@ -68,6 +68,7 @@ import {
   buildSeriesReport,
   buildStepReport,
   graphUrl,
+  poolPushes,
   type AcrossDescriptor,
   type LoadedSeries,
 } from './reports';
@@ -491,13 +492,13 @@ async function resolveSplit(
 const compare: Command = {
   summary: 'compare two pushes: statistics, distributions, and whether the modes moved',
   usage: [
-    'perfherder compare <ref@where> <ref@where|where> [--range <dur>]',
+    'perfherder compare <ref@where> <ref@where|where> [--range <dur>] [--pool <n>]',
     '',
     '  <where> is a revision, a push id, or first / last.',
     '  The second argument may be a bare <where>, meaning the same series.',
   ],
   booleans: [],
-  valued: [...RANGE_VALUED],
+  valued: [...RANGE_VALUED, 'pool'],
   details: [
     'The comparison card from the details pane: pool summaries, a two-sided Mann-Whitney U',
     'with Cliff\'s delta and CLES, both replicate distributions drawn on one axis, and the',
@@ -508,6 +509,15 @@ const compare: Command = {
     'taken more often (the peaks stayed and their shares changed)? A peak shift smaller than',
     'the KDE\'s own bandwidth is reported as "in place", because that is the smallest shift',
     'the estimate can resolve.',
+    '',
+    '--pool <n> widens each side from one push to n of them: the earlier side reaches back from',
+    'the push named, the later side forward, the same windows `step` measures. One push\'s 25-75',
+    'replicates is a thin basis for a mode analysis — on a real series the mode *count* flipped',
+    'between two legitimate choices of push pair — and pooling is how that stops being luck.',
+    'The distributions, the modes and the spread then describe the pooled cloud; the',
+    'significance test switches to the pushes\' means, because replicates of a run are repeated',
+    'measurements of one number and a rank test over 700 of them reports a p-value it has not',
+    'earned. --pool needs two different pushes: for two series over a window, use `series`.',
   ],
   async run(parsed, ctx) {
     if (parsed.positionals.length !== 2) {
@@ -535,9 +545,37 @@ const compare: Command = {
     const nextPush = resolvePush(nextLoaded, second, secondText);
     const repoLink = await loadRepository(baseLoaded.ref.repository);
 
+    const pool = flagNumber(parsed.flags, 'pool', 1);
+    if (!Number.isInteger(pool) || pool < 1) {
+      throw new UsageError('--pool must be a whole number of pushes, at least 1');
+    }
+    if (pool > 1 && basePush.pushId === nextPush.pushId) {
+      throw new UsageError(
+        'the two points are on one push, so there is no window to pool either side of — ' +
+          '`perfherder series` compares two series over a whole range',
+      );
+    }
+    // Which side reaches back and which reaches forward is decided by time, not
+    // by argument order: the windows have to meet at the step rather than
+    // overlap across it, and `buildComparison` puts the sides in time order
+    // anyway.
+    const baseIsEarlier = basePush.x <= nextPush.x;
+    const basePooled = poolPushes(
+      baseLoaded.data.pushes,
+      basePush,
+      pool,
+      baseIsEarlier ? 'backward' : 'forward',
+    );
+    const nextPooled = poolPushes(
+      nextLoaded.data.pushes,
+      nextPush,
+      pool,
+      baseIsEarlier ? 'forward' : 'backward',
+    );
+
     const report = buildCompareReport({
-      base: { loaded: baseLoaded, push: basePush },
-      next: { loaded: nextLoaded, push: nextPush },
+      base: { loaded: baseLoaded, push: basePooled.push, pooled: basePooled.pooled },
+      next: { loaded: nextLoaded, push: nextPooled.push, pooled: nextPooled.pooled },
       span,
       appBase: ctx.appBase,
       repoLink,

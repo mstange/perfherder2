@@ -19,6 +19,7 @@ import {
   buildSearchReport,
   buildStepReport,
   graphUrl,
+  poolPushes,
   type LoadedSeries,
 } from './reports';
 
@@ -378,15 +379,15 @@ describe('buildCompareReport', () => {
 
   it('orders the sides by time, whichever way round they were given', () => {
     const forwards = buildCompareReport({
-      base: { loaded, push: before },
-      next: { loaded, push: after },
+      base: { loaded, push: before, pooled: null },
+      next: { loaded, push: after, pooled: null },
       span: SPAN,
       appBase: 'http://localhost:5173/',
       repoLink: null,
     })!;
     const backwards = buildCompareReport({
-      base: { loaded, push: after },
-      next: { loaded, push: before },
+      base: { loaded, push: after, pooled: null },
+      next: { loaded, push: before, pooled: null },
       span: SPAN,
       appBase: 'http://localhost:5173/',
       repoLink: null,
@@ -398,8 +399,8 @@ describe('buildCompareReport', () => {
 
   it('pools each push\'s whole replicate cloud and marks no single value', () => {
     const report = buildCompareReport({
-      base: { loaded, push: before },
-      next: { loaded, push: after },
+      base: { loaded, push: before, pooled: null },
+      next: { loaded, push: after, pooled: null },
       span: SPAN,
       appBase: 'http://localhost:5173/',
       repoLink: null,
@@ -411,11 +412,76 @@ describe('buildCompareReport', () => {
     expect(report.modes?.verdict).toBe('shifted');
   });
 
+  it('pools a window of pushes and tests it over their means', () => {
+    // Ten pushes at one level, ten at another, four replicates each. Pooled,
+    // each side has 20 values to estimate a density from instead of 4 — which
+    // is the point, since a mode count off one push's cloud flipped between two
+    // legitimate choices of pair on a real series.
+    const stepped = loadedOf(
+      summaryOf([
+        ...noisy(100, 10, 1).map((v) => [v, v + 1, v - 1, v + 0.5]),
+        ...noisy(140, 10, 1, 31).map((v) => [v, v + 1, v - 1, v + 0.5]),
+      ]),
+    );
+    const pushes = stepped.data.pushes;
+    const basePooled = poolPushes(pushes, pushes[9], 5, 'backward');
+    const nextPooled = poolPushes(pushes, pushes[10], 5, 'forward');
+    // The windows meet at the step rather than straddling it.
+    expect(basePooled.pooled.map((p) => p.pushId)).toEqual(
+      pushes.slice(5, 10).map((p) => p.pushId),
+    );
+    expect(nextPooled.pooled.map((p) => p.pushId)).toEqual(
+      pushes.slice(10, 15).map((p) => p.pushId),
+    );
+
+    const report = buildCompareReport({
+      base: { loaded: stepped, push: basePooled.push, pooled: basePooled.pooled },
+      next: { loaded: stepped, push: nextPooled.push, pooled: nextPooled.pooled },
+      span: SPAN,
+      appBase: 'http://localhost:5173/',
+      repoLink: null,
+    })!;
+
+    expect(report.pool).toMatchObject({ basePushes: 5, nextPushes: 5 });
+    // The push-weighted level, which is the figure `step` prints for the same
+    // window — reported so the two commands can be reconciled rather than left
+    // to disagree by a statistic nobody named.
+    expect(report.pool!.baseLevel).toBeCloseTo(
+      pushes.slice(5, 10).reduce((a, p) => a + p.mean, 0) / 5,
+      6,
+    );
+    expect(report.base.valueCount).toBe(20);
+    expect(report.base.pushCount).toBe(5);
+    // The test is over five values a side, not twenty: pooled replicates would
+    // report an n the data has not earned.
+    expect(report.testBasis).toBe('push means');
+    expect(report.test!.nBase).toBe(5);
+    expect(report.test!.nNext).toBe(5);
+    expect(report.direction).toBe('regression');
+    // The named push still names the comparison, so the links keep pointing at
+    // the build that was asked about.
+    expect(report.base.pushId).toBe(pushes[9].pushId);
+    expect(report.base.revision).toBe(pushes[9].revision);
+  });
+
+  it('leaves an unpooled comparison exactly as it was', () => {
+    const report = buildCompareReport({
+      base: { loaded, push: before, pooled: [before] },
+      next: { loaded, push: after, pooled: [after] },
+      span: SPAN,
+      appBase: 'http://localhost:5173/',
+      repoLink: null,
+    })!;
+    expect(report.pool).toBeNull();
+    expect(report.testBasis).toBe('replicates');
+    expect(report.test!.nBase).toBe(6);
+  });
+
   it('is null when both arguments name the same push', () => {
     expect(
       buildCompareReport({
-        base: { loaded, push: before },
-        next: { loaded, push: before },
+        base: { loaded, push: before, pooled: null },
+        next: { loaded, push: before, pooled: null },
         span: SPAN,
         appBase: 'http://localhost:5173/',
         repoLink: null,

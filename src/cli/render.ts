@@ -730,7 +730,12 @@ function renderChangeDetail(entry: ChangeEntry): string[] {
 
 export function renderCompare(report: CompareReport): string[] {
   const out: string[] = [];
-  out.push(`comparison: ${report.headline}`);
+  out.push(
+    `comparison: ${report.headline}` +
+      (report.pool
+        ? ` · pooled over ${report.pool.basePushes} and ${report.pool.nextPushes} pushes`
+        : ''),
+  );
   if (report.swapped) {
     out.push('(the sides were put in time order, so the baseline is not the one given first)');
   }
@@ -790,7 +795,11 @@ export function renderCompare(report: CompareReport): string[] {
 
   if (report.test) {
     const t = report.test;
-    out.push('Mann-Whitney U (two-sided, over the replicate pools above)');
+    out.push(
+      report.testBasis === 'push means'
+        ? 'Mann-Whitney U (two-sided, over the pushes\' means — see below)'
+        : 'Mann-Whitney U (two-sided, over the replicate pools above)',
+    );
     out.push(
       `  p ${formatPValue(t.pValue)}${t.significant ? ' (significant at α = 0.05)' : ' (not significant at α = 0.05)'}` +
         ` · Cliff's δ ${t.cliffsDelta.toFixed(3)} (${t.effectSize})` +
@@ -804,6 +813,32 @@ export function renderCompare(report: CompareReport): string[] {
       `  δ < 0 means "${report.next.label}" tends to be higher; CLES is the share of pairs ` +
         `where "${report.next.label}" comes in below "${report.base.label}".`,
     );
+    if (report.pool) {
+      // Reconciling two figures for one event, rather than leaving the reader
+      // to notice they differ: this is the number `step` and `changes` print for
+      // the same windows, and the medians above are not it.
+      out.push(
+        `  push-mean level ${formatValue(report.pool.baseLevel)} → ` +
+          `${formatValue(report.pool.nextLevel)}${unit}` +
+          (report.pool.levelFraction === null
+            ? ''
+            : ` (${formatSignedPercent(report.pool.levelFraction)})`) +
+          ' — one value per push, equally weighted,',
+        '  which is what `step` and `changes` report. The medians above are over the pooled',
+        '  replicates, so they weight a push by how many times it ran.',
+      );
+    }
+    if (report.testBasis === 'push means') {
+      // The one number here that is not the one the app's card would print, so
+      // it says why in the output and not only in the source.
+      out.push(
+        '  Over one value per push, not over the pooled replicates: replicates of a run are',
+        '  repeated measurements of one number, and every run of a push shares its binary and',
+        '  its moment, so a rank test over hundreds of them reports a p-value it has not earned',
+        '  (src/lib/graphs/changes.ts makes the argument at length). The pooled cloud is what the',
+        '  distributions and the modes below describe, which is what pooling is for.',
+      );
+    }
     if (t.degenerate) {
       out.push('  ! every value in both pools is identical, so p = 1 by construction, not by evidence');
     } else if (t.smallSample) {
@@ -883,6 +918,15 @@ function renderCompareSide(
     `  ${side.revision.slice(0, 12)} · push ${side.pushId} · ${formatUtc(side.pushTimeMs)} · ` +
       `${side.runCount} ${side.runCount === 1 ? 'run' : 'runs'}, ${side.valueCount} values`,
   );
+  if (side.pushCount > 1) {
+    // The revision above is still the push that was named — the links and the
+    // pushlog are about that build — so the window it stands for has to be
+    // spelled out or the two lines contradict each other.
+    out.push(
+      `  pooled over ${side.pushCount} pushes, ${formatUtc(side.firstPushMs)} → ` +
+        `${formatUtc(side.lastPushMs)}`,
+    );
+  }
   const s = side.summary;
   if (s) {
     out.push(

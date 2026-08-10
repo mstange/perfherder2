@@ -62,6 +62,7 @@ import { pushLogRangeUrl, type RepoLinkInfo } from '../lib/shared/links';
 import {
   changeDirection,
   mannWhitneyU,
+  mean,
   median,
   relativeChange,
   summarize,
@@ -996,6 +997,11 @@ export type CompareSideReport = {
   summary: PoolSummary | null;
   bandwidth: number;
   modes: { letter: string; location: number; share: number }[];
+  // How many pushes this side pooled, and over what span, when `--pool` widened
+  // it past the one push named. `1` and a zero-width span otherwise.
+  pushCount: number;
+  firstPushMs: number;
+  lastPushMs: number;
 };
 
 export type CompareReport = {
@@ -1012,6 +1018,23 @@ export type CompareReport = {
   unit: string;
   warning: string | null;
   test: MannWhitneyResult | null;
+  // Which values the test above was computed over. A pooled comparison's test
+  // is over *push means*, not over the pooled replicates — see
+  // `buildCompareReport`.
+  testBasis: 'replicates' | 'push means';
+  // Set when `--pool` was used, naming what was pooled — and carrying the
+  // push-weighted level of each side, which is the figure `step` and `changes`
+  // print. The medians elsewhere in the report are over the pooled replicates
+  // and so weight a push by how many times it ran; the two differ, both are
+  // right, and a tool that prints one of them must not leave the other
+  // unreconciled.
+  pool: {
+    basePushes: number;
+    nextPushes: number;
+    baseLevel: number;
+    nextLevel: number;
+    levelFraction: number | null;
+  } | null;
   // Null for a `replicate` comparison, which has no distribution.
   modes: ModeComparison | null;
   modeSummary: string | null;
@@ -1027,13 +1050,62 @@ export type CompareReport = {
   } | null;
 };
 
+// One side of a comparison: the push the caller named, and — when `--pool`
+// widened it — the window of pushes standing behind it. `push` is then the
+// synthetic group `poolPushes` built, which keeps the named push's identity so
+// every label and link still points at the build that was asked about.
+export type ComparePoint = {
+  loaded: LoadedSeries;
+  push: PushGroup;
+  pooled: PushGroup[] | null;
+};
+
 export type CompareInput = {
-  base: { loaded: LoadedSeries; push: PushGroup };
-  next: { loaded: LoadedSeries; push: PushGroup };
+  base: ComparePoint;
+  next: ComparePoint;
   span: Span;
   appBase: string;
   repoLink: RepoLinkInfo | null;
 };
+
+// A window of pushes as one `PushGroup`, so the mode analysis has a pool worth
+// estimating a density from.
+//
+// The gap this closes was found by using the tool. `compare`'s mode analysis
+// rests on one push's 25–75 replicates, and on a real series the mode *count*
+// flipped between two legitimate choices of push pair — while `step`, which
+// pools 24 pushes a side, reports no modes at all because it works in push
+// means. The capability sat in the gap between two commands that each had half
+// of it.
+//
+// `direction` says which way the window reaches: the earlier side pools
+// backwards from the push named, the later side forwards, so the two windows
+// meet at the step and never overlap. That is the same shape `step` uses, which
+// is what lets the two commands' numbers be read against each other.
+//
+// The merged group keeps the named push's id, revision and timestamp — it is
+// still a comparison *of that build*, and the links and labels must not start
+// pointing somewhere else — and its `mean` is the mean of the window's push
+// means, one weight per push, because that is the level the window sits at.
+export function poolPushes(
+  pushes: readonly PushGroup[],
+  at: PushGroup,
+  count: number,
+  direction: 'backward' | 'forward',
+): { push: PushGroup; pooled: PushGroup[] } {
+  const index = pushes.findIndex((p) => p.pushId === at.pushId);
+  if (index === -1 || count <= 1) return { push: at, pooled: [at] };
+  const pooled =
+    direction === 'backward'
+      ? pushes.slice(Math.max(0, index - count + 1), index + 1)
+      : pushes.slice(index, index + count);
+  const runs = pooled.flatMap((p) => p.runs);
+  const means = pooled.map((p) => p.mean);
+  return {
+    push: { ...at, runs, mean: means.reduce((a, b) => a + b, 0) / means.length },
+    pooled,
+  };
+}
 
 // Build the two `CompareSide`s `compare.ts` wants out of two *pushes*.
 //
@@ -1061,14 +1133,15 @@ export function buildCompareReport(input: CompareInput): CompareReport | null {
   );
   if (!comparison) return null;
 
-  // Which loaded series each resolved side belongs to. `buildComparison`
-  // reorders by time, so this cannot be assumed from the input order.
-  const loadedFor = (side: CompareSide): LoadedSeries =>
+  // Which input point each resolved side came from. `buildComparison` reorders
+  // by time, so this cannot be assumed from the input order.
+  const pointFor = (side: CompareSide): ComparePoint =>
     side.ref.signatureId === input.base.loaded.ref.signatureId &&
     side.ref.repository === input.base.loaded.ref.repository &&
     side.push.pushId === input.base.push.pushId
-      ? input.base.loaded
-      : input.next.loaded;
+      ? input.base
+      : input.next;
+  const loadedFor = (side: CompareSide): LoadedSeries => pointFor(side).loaded;
 
   const plot = hasDistribution(comparison) ? distributionFor(comparison) : null;
   const baseSeries = plot?.series[0];
@@ -1092,20 +1165,64 @@ export function buildCompareReport(input: CompareInput): CompareReport | null {
         )
       : null;
 
+  // **A pooled comparison is tested over push means, not over its pooled
+  // replicates**, and this is the one place the CLI overrides a number
+  // compare.ts computed. The reason is changes.ts's, at length: replicates of a
+  // run are repeated measurements of one number and every run of a push shares
+  // the binary and the moment, so 24 pushes × 30 replicates is 720 values and
+  // nothing like 720 independent draws. A rank test told otherwise reports a
+  // p-value it has not earned — and at these sizes it would be p < 1e-100 for
+  // any two windows at all, which is worse than no number.
+  //
+  // What the pooled cloud *is* good for is its shape, which is the whole reason
+  // to pool: the KDE, the modes and the spread all describe it. So the pools
+  // stay pooled and only the test changes unit. The statistic is still
+  // `mannWhitneyU` from stats.ts, over the same push means `step` and `changes`
+  // use, which is what lets a pooled `compare` and a `step` at the same point be
+  // read against each other.
+  const basePooled = pointFor(comparison.base).pooled;
+  const nextPooled = pointFor(comparison.next).pooled;
+  const pooling = (basePooled?.length ?? 1) > 1 || (nextPooled?.length ?? 1) > 1;
+  const baseMeans = (basePooled ?? []).map((p) => p.mean);
+  const nextMeans = (nextPooled ?? []).map((p) => p.mean);
+  const pooledTest = pooling ? mannWhitneyU(baseMeans, nextMeans) : null;
+  const test = pooling ? pooledTest : comparison.test;
+
   return {
     kind: comparison.kind,
     headline: comparison.headline,
     swapped: comparison.swapped,
-    base: sideReport(comparison, 'base', loadedFor(comparison.base), baseSeries),
-    next: sideReport(comparison, 'next', loadedFor(comparison.next), nextSeries),
+    base: sideReport(comparison, 'base', loadedFor(comparison.base), baseSeries, basePooled),
+    next: sideReport(comparison, 'next', loadedFor(comparison.next), nextSeries, nextPooled),
     medianDelta: comparison.medianDelta,
     medianDeltaFraction: comparison.medianDeltaFraction,
     meanDelta: comparison.meanDelta,
-    direction: comparison.direction,
+    // Recomputed when pooling, because `changeDirection` is gated on the test's
+    // significance and the test is no longer the one comparison.ts ran. Only
+    // the `push` kind gets a direction at all; that rule is compare.ts's.
+    direction:
+      pooling && comparison.kind === 'push'
+        ? changeDirection(
+            comparison.base.summary?.median ?? NaN,
+            comparison.next.summary?.median ?? NaN,
+            comparison.lowerIsBetter,
+            test?.significant ?? false,
+          )
+        : comparison.direction,
     lowerIsBetter: comparison.lowerIsBetter,
     unit: comparison.unit,
     warning: comparison.warning,
-    test: comparison.test,
+    test,
+    testBasis: pooling ? 'push means' : 'replicates',
+    pool: pooling
+      ? {
+          basePushes: basePooled?.length ?? 1,
+          nextPushes: nextPooled?.length ?? 1,
+          baseLevel: mean(baseMeans),
+          nextLevel: mean(nextMeans),
+          levelFraction: relativeChange(mean(baseMeans), mean(nextMeans)),
+        }
+      : null,
     modes,
     modeSummary: modes
       ? describeModeComparison(modes, {
@@ -1162,8 +1279,10 @@ function sideReport(
   which: 'base' | 'next',
   loaded: LoadedSeries,
   distribution: DistributionPlot['series'][number] | undefined,
+  pooled: readonly PushGroup[] | null,
 ): CompareSideReport {
   const side = comparison[which];
+  const window = pooled && pooled.length > 0 ? pooled : [side.push];
   return {
     label: side.label,
     series: seriesHeader(loaded),
@@ -1181,6 +1300,9 @@ function sideReport(
           share: distribution.modes.fracs[i] ?? 0,
         }))
       : [],
+    pushCount: window.length,
+    firstPushMs: window[0].x,
+    lastPushMs: window[window.length - 1].x,
   };
 }
 
