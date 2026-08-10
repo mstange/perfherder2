@@ -102,6 +102,40 @@ Living checklist. Update in the same commit as the work it describes.
 
 ## Next
 
+- [ ] **Group the bars of the loaded series into landings, and say so.** With
+      twelve signatures on one graph the bars are per-series, each card gets its
+      own count ("3 changes", `SeriesList.svelte`), and nothing says that nine of
+      them are one event. The CLI hit this from the other side and grew
+      `changes --cluster` for it (change `mlkznsuu`, [cli.md](cli.md),
+      "`--cluster` makes the row a landing instead of a series"): events group by
+      the push interval each brackets, and the intersection of those brackets is a
+      **narrower** window than any one series carries — on nine cursor signatures
+      it collapsed to the single push bug 1899194 landed on.
+
+      The cost argument is the one already written down under "Common alerts —
+      decided against" below, and it comes out the other way here. That feature
+      was killed because "who else moved on this push" meant 29 MB of alert
+      summaries for a framework. **For the series already plotted this is free**:
+      the changes are computed, the push times are in memory, and the grouping is
+      arithmetic. The note that closes that item says the underlying question is
+      now answered by the bars *"for the series in front of you rather than for
+      its siblings"* — this is the rest of that sentence, for the siblings the
+      user has already chosen to load.
+
+      [src/cli/cluster.ts](../src/cli/cluster.ts) is pure and would do it
+      unchanged, but it lives under `src/cli`, and dependencies run
+      `src/cli` → `src/lib` and never back. It moves to `src/lib/graphs/` first,
+      which is also the honest home for it: app logic the CLI reuses, rather than
+      the reverse.
+
+- [ ] **`CommitList.svelte` shows only the first bug a commit cites.**
+      `commit.bugs[0]`, labelled "Bug N", while `bugs` is a list. `pushlog.ts`
+      already restricts it to the summary line and says why, so two entries means
+      the summary really did name two bugs and the card drops one silently. The
+      CLI's table prints all of them as of change `ssmtuzwt`, so this is now two
+      views of one `pushlog.ts` field disagreeing — the drift cli.md warns about,
+      and a one-line fix.
+
 - [ ] A full repaint of the detail graph at 100k+ dots takes ~60ms, which is
       one dropped frame on a discrete action like resetting the zoom.
       Decimating the overview by pixel column would be the first thing to
@@ -120,6 +154,38 @@ Living checklist. Update in the same commit as the work it describes.
   window about as well as a step does, say "drifting +4% over 30 pushes" and draw one
   span instead of six notches. Wants a way to say that in the UI before it is worth
   detecting.
+
+  **It is no longer only synthetic — load these.** A six-month CLI trial over the
+  idb-open family found every one of twelve signatures slower at the end of the
+  window than the start — +7.7% to +45%, each at p < 0.01 — and the four macOS rows
+  below are the shape in real data. Each URL opens this app on the window the
+  figures were measured over (2026-02-11 → 2026-08-10, absolute, so they stay
+  pointed at it until treeherder expires the runs about a year after the run).
+  Drift is `series --drift`: medians of 24 pushes at each end, the window
+  `changes.ts` already exports.
+
+  | Graph | Drift over the range | Bars | What it shows |
+  | --- | --- | --- | --- |
+  | [5350957 — idb-open-many-seq `time_duration`, macOS](https://perfherder2.netlify.app/?series=autoland,5350957,13&range=1770768000000,1786320000000) | 6,326 → 6,978 ms, **+10%**, p < 0.001 | **0** | The witness for "gradual drift is invisible by construction" below. 1,158 pushes, a climb visible in the sparkline, and **neither a bar nor a perfherder alert anywhere in six months.** A 10% regression that neither this app's detector nor perfherder says one word about |
+  | [5350975 — idb-open-few-seq `time_duration`, macOS](https://perfherder2.netlify.app/?series=autoland,5350975,13&range=1770768000000,1786320000000) | 622 → 900 ms, **+45%**, p < 0.001 | 1 | The largest of the twelve, and the mixed case: one bar, the +27% step on 2026-07-14, and a further **+14% left over as slope** with no bar anywhere. Drift and steps are not alternatives — this series has both and only one of them is on screen |
+  | [5350972 — idb-open-few-par `time_duration`, macOS](https://perfherder2.netlify.app/?series=autoland,5350972,13&range=1770768000000,1786320000000) | 702 → 902 ms, **+29%**, p 0.005 | 1 | The same split again: one bar of +16% on 2026-07-22, +11% unaccounted. Its p of 0.005 is the weakest of the four, which is the honest part — a slope this gradual is near the edge of what two windows can establish |
+  | [5350963 — idb-open-many-par `time_duration`, macOS](https://perfherder2.netlify.app/?series=autoland,5350963,13&range=1770768000000,1786320000000) | 27,817 → 31,796 ms, **+14%**, p < 0.001 | **5** | *This* is "a run of steps": +2.5%, +5.3%, +5.6%, −7.0%, +6.4% between March and August — five notches, one of them backwards, for one net climb, and no single one of them the event |
+  | [all four together](https://perfherder2.netlify.app/?series=autoland,5350957,13&series=autoland,5350975,13&series=autoland,5350972,13&series=autoland,5350963,13&range=1770768000000,1786320000000) | — | — | The family drifting in parallel, which is the reading no per-series view gives |
+
+  For contrast, and worth loading beside them so the distinction stays sharp:
+  [5691620 — the same many-par test on Linux](https://perfherder2.netlify.app/?series=autoland,5691620,13&range=1770768000000,1786320000000)
+  drifts +7.7% over the same window, and it is **not** the same shape — its
+  sparkline is flat, then steps, then flat, and its two bars (+3.0% and +7.1%,
+  the second carrying alert #50971 / bug 2048556) between them account for the
+  whole of it. Segmentation is right about that one. The question is only what to
+  do about the four above it.
+
+  **`series --drift` (change `xkpxpklo`) is one candidate answer to "a way to say
+  it".** It is deliberately not detection: two medians, both windows' dates
+  printed, and a p-value labelled as saying the ends differ rather than that
+  anything stepped. If that framing survives use, the UI form is a figure on the
+  series-list card next to the change count — not another line on a plot that
+  already draws every replicate.
 - **Index replicates by trial number once the API exposes one.**
   [Bug 1981623](https://bugzilla.mozilla.org/show_bug.cgi?id=1981623) tracks
   using the run numbers and machine identifiers the replicates/trials table
@@ -227,7 +293,10 @@ Living checklist. Update in the same commit as the work it describes.
   - *Gradual drift is invisible by construction.* Segmentation looks for steps.
     A series that slides 8% over three months has no step in it and gets no bar,
     which is honest but is also the case a trend line would answer — see the
-    next item.
+    next item. **No longer hypothetical**: signature 5350957 climbs 10% over six
+    months and 1,158 pushes with zero bars and zero perfherder alerts, and it is
+    the first row of the table under "A smooth drift is reported as a run of
+    steps" above. Load it before reasoning about this one.
 - **A push is summarised by its mean.** `values = pushes.map(p => p.mean)`
   ([changes.ts](../src/lib/graphs/changes.ts)), and `push.mean` is the mean of its
   runs' means, each of which is the mean of its replicates. Two comments in
@@ -268,6 +337,16 @@ Living checklist. Update in the same commit as the work it describes.
   those. They are perhaps twenty lines each and would answer the drift case the
   bars can't, at the cost of another control and another line on a plot that
   already draws every replicate. Worth it only if the drift case comes up.
+
+  **It came up.** Twelve of twelve idb-open signatures drifted over six months,
+  four of them shown in the table under "A smooth drift is reported as a run of
+  steps", and one of those is a 10% regression with no bar and no alert. That was
+  the condition this item was parked behind, so the question is no longer whether
+  but which form — and the cheaper form may not be a trend line at all. A drift
+  *figure* on the series-list card costs no control and no ink on the plot, which
+  is what `series --drift` does in the CLI; a moving average is the version to
+  reach for only if reading the slope off the plot turns out to be the thing
+  people want.
 - **Retrigger / delta-vs-previous readouts.** Treeherder's tooltip shows the
   delta from the previous data point and a retrigger count. We show the
   retrigger count, and hovering any dot gives the delta against the *selected*
