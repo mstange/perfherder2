@@ -103,9 +103,6 @@ Living checklist. Update in the same commit as the work it describes.
   - *No absolute delta.* `step` prints percentages, and "which subtests *drove*
     a suite-level move" is the milliseconds question; ranking by the two gives
     different answers. A Δ column, or a share-of-suite-total column, is missing.
-  - *Sparklines carry no scale.* A ~10% dip on a series whose printed `range`
-    spans outliers was read as a large improvement, because `▁` is relative to
-    the sparkline's own min/max and nothing says what those are.
   - *`search` cannot suggest.* `indexeddb` matches nothing; the tests are
     `idb-*`. Two of one session's first five commands went on that, and the
     no-match hint talks about chips when the reader used none.

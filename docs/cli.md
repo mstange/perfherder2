@@ -367,6 +367,14 @@ examples are the guide, and they are in the right place — extend those.
   is the question. It now falls back to the rest of the pinned set.
 - **Column legends printed once per series.** Six times in one `changes` run.
   Once per invocation now.
+- **A sparkline carried no scale.** `▁` is the row's own minimum and eight block
+  characters have no axis, so a ~10% dip read as a large improvement: the only
+  numbers beside it were a `range` widened by outliers, which the row does not
+  span. `series` now prints the two values the lowest and highest blocks stand
+  for. They are the *drawn* extremes — bucket means over the resampled columns —
+  rather than the series', because those are what the blocks are, and the level
+  line above already carries the raw spread. Where the two disagree, that
+  disagreement is the outliers, and is worth seeing.
 
 ### Known gaps it found that are not yet closed
 

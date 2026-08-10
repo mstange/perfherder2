@@ -297,7 +297,7 @@ export function renderSeries(report: SeriesReport): string[] {
       );
     }
     if (entry.pushMeans.length > 1) {
-      out.push(`  ${sparkline(entry.pushMeans, SPARK_WIDTH)}  (push means, oldest first)`);
+      out.push(`  ${describeSparkline(entry.pushMeans, entry.series.unit)}`);
     }
     if (entry.recentPushes && entry.recentPushes.length > 0) {
       out.push('');
@@ -349,6 +349,23 @@ export function renderSeries(report: SeriesReport): string[] {
 
   out.push(report.url);
   return out;
+}
+
+// A sparkline is drawn against its own extremes, and eight block characters
+// carry no axis, so the row says what `▁` and `█` stand for. Without it the
+// picture is only shape — a live trial read a 10% dip as a large improvement,
+// having nothing but a `range` widened by outliers to scale it against, and the
+// two numbers are not the same numbers: these are bucket means over the drawn
+// columns, which is what the blocks are, and the level line above carries the
+// raw spread.
+function describeSparkline(values: readonly number[], unit: string): string {
+  const spark = sparkline(values, SPARK_WIDTH);
+  const suffix = unit ? ` ${unit}` : '';
+  const scale =
+    spark.low === spark.high
+      ? `flat at ${formatValue(spark.low)}${suffix}`
+      : `▁ ${formatValue(spark.low)} → █ ${formatValue(spark.high)}${suffix}`;
+  return `${spark.text}  (push means, oldest first · ${scale})`;
 }
 
 // MEAN is `PushGroup.mean` — the mean of the runs' means, which is the value

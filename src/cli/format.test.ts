@@ -57,19 +57,34 @@ describe('formatDurationMs', () => {
 
 describe('sparkline', () => {
   it('scales between the extremes of what it was given', () => {
-    expect(sparkline([0, 1, 2, 3, 4, 5, 6, 7], 8)).toBe('▁▂▃▄▅▆▇█');
+    expect(sparkline([0, 1, 2, 3, 4, 5, 6, 7], 8).text).toBe('▁▂▃▄▅▆▇█');
   });
 
   it('draws a flat series flat rather than stretching its rounding noise', () => {
-    expect(sparkline([5, 5, 5], 3)).toBe('▄▄▄');
+    expect(sparkline([5, 5, 5], 3).text).toBe('▄▄▄');
   });
 
   it('resamples down to the requested width', () => {
-    expect(sparkline([0, 0, 7, 7], 2)).toHaveLength(2);
+    expect(sparkline([0, 0, 7, 7], 2).text).toHaveLength(2);
   });
 
   it('never draws more columns than it has values', () => {
-    expect(sparkline([1, 2], 40)).toHaveLength(2);
+    expect(sparkline([1, 2], 40).text).toHaveLength(2);
+  });
+
+  it('reports the two values the lowest and highest blocks stand for', () => {
+    expect(sparkline([0, 1, 2, 3, 4, 5, 6, 7], 8)).toMatchObject({ low: 0, high: 7 });
+  });
+
+  it('reports the *drawn* extremes, which resampling moves inward', () => {
+    // Two values a bucket, so the row's floor is the mean of the two lowest and
+    // not the series minimum. Printing the input's 0 beside a row whose lowest
+    // block is 0.5 would relabel the picture.
+    expect(sparkline([0, 1, 2, 3], 2)).toMatchObject({ low: 0.5, high: 2.5 });
+  });
+
+  it('says low and high are the same for a flat row', () => {
+    expect(sparkline([5, 5, 5], 3)).toMatchObject({ low: 5, high: 5 });
   });
 });
 

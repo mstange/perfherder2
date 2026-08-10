@@ -98,6 +98,21 @@ export function formatDurationMs(ms: number): string {
 
 const BLOCKS = ['▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'] as const;
 
+// A sparkline and the two values its lowest and highest blocks stand for.
+//
+// The pair is not decoration. `▁` is the *drawn* minimum, which is a bucket
+// mean and so is not the series minimum, and nothing in eight block characters
+// says what either of them is: a live trial read a ~10% dip as a large
+// improvement because the row spanned the whole plot and the only numbers
+// nearby were a `range` widened by outliers. So the caller is handed the
+// endpoints of the scale it actually drew, and prints them.
+export type Sparkline = {
+  text: string;
+  // What `▁` and `█` mean. Equal for a flat row, NaN for an empty one.
+  low: number;
+  high: number;
+};
+
 // `values` resampled into `width` columns and scaled to the eight block
 // characters.
 //
@@ -110,8 +125,8 @@ export function sparkline(
   values: readonly number[],
   width: number,
   reduce: 'mean' | 'max' = 'mean',
-): string {
-  if (values.length === 0 || width < 1) return '';
+): Sparkline {
+  if (values.length === 0 || width < 1) return { text: '', low: NaN, high: NaN };
   const cols = Math.min(width, Math.max(1, values.length));
   const bucketed: number[] = [];
   for (let i = 0; i < cols; i++) {
@@ -123,7 +138,11 @@ export function sparkline(
     }
     bucketed.push(reduce === 'max' ? acc : acc / (hi - lo));
   }
-  return scaleToBlocks(bucketed);
+  // The extremes of the *bucketed* series, not of the input: those are the two
+  // the blocks are scaled between, and a caller printing the input's extremes
+  // beside a row that never reached them would be relabelling the picture.
+  const { min, max } = extremes(bucketed);
+  return { text: scaleToBlocks(bucketed), low: min, high: max };
 }
 
 // A density curve is already sampled on a grid the caller shares between both
@@ -165,7 +184,7 @@ export function densityRow(
   return out.join('').trimEnd();
 }
 
-function scaleToBlocks(values: readonly number[]): string {
+function extremes(values: readonly number[]): { min: number; max: number } {
   let min = Infinity;
   let max = -Infinity;
   for (const v of values) {
@@ -173,6 +192,11 @@ function scaleToBlocks(values: readonly number[]): string {
     if (v < min) min = v;
     if (v > max) max = v;
   }
+  return Number.isFinite(min) ? { min, max } : { min: NaN, max: NaN };
+}
+
+function scaleToBlocks(values: readonly number[]): string {
+  const { min, max } = extremes(values);
   if (!Number.isFinite(min)) return ' '.repeat(values.length);
   // A flat series has no shape to show, and stretching its rounding noise to
   // full height would invent one. Half height says "flat" honestly.
