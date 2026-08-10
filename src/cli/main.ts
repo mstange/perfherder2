@@ -83,7 +83,13 @@ import {
   renderStep,
 } from './render';
 
-const DEFAULT_APP_BASE = 'http://localhost:5173/';
+// The deployed app, because every command prints a link into it and a link is
+// the reader's only way to check a text answer against the picture (see the
+// module header). The dev server used to be the default, which was right for the
+// one person running `npm run dev` and dead for everybody else — including this
+// tool's own future installs. A checkout that wants the local app sets
+// PERFHERDER2_BASE_URL=http://localhost:5173/ once, or passes --base.
+const DEFAULT_APP_BASE = 'https://perfherder2.netlify.app/';
 
 type Context = {
   json: boolean;

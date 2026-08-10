@@ -71,6 +71,13 @@ detector — *open the graph first* — applies at least as much to a reader who
 only has text, and `changes` links each finding with both ends of its comparison
 already pinned.
 
+Those links point at <https://perfherder2.netlify.app/> by default. They used to
+point at the dev server, which was right for the one person running `npm run
+dev` and dead for everyone else — and would have been dead for every install of
+the published package, which turns the tool's own rule into a broken promise.
+`--base <url>`, or `PERFHERDER2_BASE_URL` in the environment, overrides it; a
+checkout that wants the local app sets that once.
+
 ### Text by default, `--json` when you want the object
 
 Text is three to five times cheaper to read than the equivalent JSON, and this
