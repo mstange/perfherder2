@@ -190,6 +190,38 @@ that silence as "it didn't happen here" is the mistake this command prevents.**
   app's series list uses, which is what makes a four-platform table read as one
   line per platform.
 
+### A search that matched nothing is diagnosed against the rows it searched
+
+"No signatures match" is true and useless. Two of one trial session's first five
+commands went on `indexeddb`, which matches nothing because the tests are called
+`idb-*` — a vocabulary problem in the *data*, which no amount of documentation
+reaches, because the reader does not know the word they are missing and the only
+thing that does is the signature list already in memory.
+
+So [suggest.ts](../src/cli/suggest.ts) answers two questions off that list.
+**Which term is responsible**: every term is counted twice, on its own and with
+everything but itself, because a term that matches nothing alone is a wrong word
+while a term that matches plenty alone and nothing in company is an
+over-constrained search, and those have different remedies. And **what the
+corpus calls it**: the closest words actually present, each with the number of
+rows it leaves *given the search's other terms* — a suggestion that also matches
+nothing is not a suggestion.
+
+Two matching rules, and the second is the one that earns the module. A
+misspelling shares a start (`speedomter3` → `speedometer3`). An abbreviation is
+a subsequence sharing a first letter — which is how `idb` is found in
+`indexeddb`, where the edit distance is 6 on a 9-letter word and no substring
+relates the two at all. They are ranked in separate tiers because an
+abbreviation always scores badly by length, so mixing them would bury `idb`
+under every word sharing four letters.
+
+A chip fails differently: it is exact, so the common failure is a fragment of a
+real value, and the suggestions are the whole values containing it, ordered by
+how many rows each covers. **The paragraph explaining that chips are exact is
+now printed only for a search that used one.** It used to be printed at every
+empty result, including the ones from free text, which sent a reader hunting for
+a wrong value when the word itself was wrong.
+
 ### `search` flattens subtests instead of grouping them
 
 The picker groups a matched child under its parent, auto-expanding it, because a
@@ -406,6 +438,8 @@ is testable without a network.
   row, the ruler, word wrap.
 - [modes.ts](../src/cli/modes.ts) — **pure**. The mode comparison and its
   sentence. See above.
+- [suggest.ts](../src/cli/suggest.ts) — **pure**. Why a search matched nothing,
+  and what to type instead. See above.
 - [reports.ts](../src/cli/reports.ts) — **pure**. The report object per command,
   which is both what `--json` prints and what `render.ts` reads.
 - [render.ts](../src/cli/render.ts) — **pure**. Report → lines.

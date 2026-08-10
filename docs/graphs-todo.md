@@ -100,9 +100,6 @@ Living checklist. Update in the same commit as the work it describes.
     lost 27 successful fetches. For a command whose stated purpose is "several
     refs at once is the point", a per-series failure should be a row saying so —
     the same missing-vs-empty rule the rest of the tool follows.
-  - *`search` cannot suggest.* `indexeddb` matches nothing; the tests are
-    `idb-*`. Two of one session's first five commands went on that, and the
-    no-match hint talks about chips when the reader used none.
   - *No way to ask which of two candidate pushes is the step.* `changes` gives a
     point estimate with no interval, and on one series it picked a push five
     hours before the one a sheriff's independent alert lands on. There is no

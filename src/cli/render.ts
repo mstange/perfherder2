@@ -113,11 +113,7 @@ export function renderSearch(report: SearchReport): string[] {
     }
     out.push('No signatures match.');
     out.push('');
-    out.push(
-      'Try fewer terms, or drop a field chip — a chip is an exact match, so ' +
-        '`platform:android` will not find `android-hw-a51-11-0-aarch64-shippable`. ' +
-        'Free text is a substring match and is usually what you want first.',
-    );
+    out.push(...renderDiagnosis(report));
     return out;
   }
 
@@ -155,6 +151,73 @@ export function renderSearch(report: SearchReport): string[] {
   );
   if (!report.includeSubtests) {
     out.push('Subtests were not fetched; pass --subtests to search inside them.');
+  }
+  return out;
+}
+
+// What went wrong with a search that matched nothing, term by term.
+//
+// The generic advice this replaces was wrong twice over: it explained chips to
+// a reader who had used none, and it had nothing to say about the real failure,
+// which is that the corpus calls the thing something else. Both halves are now
+// drawn from the fetched rows — which is the only place the answer was ever
+// available — and the chip paragraph appears only for a search with a chip in
+// it.
+function renderDiagnosis(report: SearchReport): string[] {
+  const out: string[] = [];
+  const diagnosis = report.diagnosis;
+  const culprits = diagnosis?.terms.filter((t) => t.alone === 0) ?? [];
+  const survivors = diagnosis?.terms.filter((t) => t.alone > 0 && t.without > 0) ?? [];
+
+  for (const term of culprits) {
+    // "Without it, N rows match" is only worth saying when there is another
+    // term to be left with: on a single-term search it restates the corpus
+    // size, which the header line above already gives.
+    const alone = diagnosis!.terms.length === 1;
+    out.push(
+      `  "${term.term}" matches nothing in the ${diagnosis!.scanned.toLocaleString('en-US')} ` +
+        `rows searched${
+          !alone && term.without > 0
+            ? `; without it, ${term.without.toLocaleString('en-US')} rows match.`
+            : '.'
+        }`,
+    );
+    if (term.suggestions.length > 0) {
+      out.push(
+        `    try: ${term.suggestions
+          .map((s) => `${s.term} (${s.rows} ${s.rows === 1 ? 'row' : 'rows'})`)
+          .join(' · ')}`,
+      );
+    }
+    if (term.field !== null) {
+      // Said per chip and only for a chip, because it is the *chip* that is
+      // exact — and this sentence used to be printed at a reader who had typed
+      // free text, sending them to look for a wrong value.
+      out.push(
+        `    ${term.field}: is a chip, so it must equal a whole ${term.field} value, not a part of one.`,
+      );
+    }
+    out.push('');
+  }
+
+  if (culprits.length === 0 && survivors.length > 0) {
+    // Every term is a real word and the combination is what is empty, which is
+    // a different problem and has a different answer.
+    out.push('  Every term matches something on its own; it is the combination that is empty.');
+    for (const term of survivors) {
+      out.push(
+        `    without "${term.term}": ${term.without.toLocaleString('en-US')} rows ` +
+          `(it matches ${term.alone.toLocaleString('en-US')} on its own)`,
+      );
+    }
+    out.push('');
+  }
+
+  if (!report.includeSubtests) {
+    out.push('  Subtests were not fetched; pass --subtests to search inside them.');
+  }
+  if (culprits.length === 0 && survivors.length === 0) {
+    out.push('  Try fewer terms, or widen --interval so quieter signatures are fetched.');
   }
   return out;
 }

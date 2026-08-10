@@ -72,6 +72,7 @@ import {
 import { EMPTY_VIEW_STATE, serializeViewState, type SeriesEntryState, type ViewState } from '../lib/urlState';
 import type { Span } from './args';
 import { compareModes, describeModeComparison, type ModeComparison } from './modes';
+import { diagnoseNoMatch, type NoMatchDiagnosis } from './suggest';
 
 // One signature, fetched. Defined here rather than in load.ts so the dependency
 // runs impure → pure and never the other way.
@@ -216,6 +217,9 @@ export type SearchReport = {
   fetched: Record<string, number>;
   matched: number;
   rows: SearchRow[];
+  // Why nothing matched, when nothing did and there was something to blame.
+  // Null for a search that matched, and for one with no terms at all.
+  diagnosis: NoMatchDiagnosis | null;
 };
 
 // Which parent's subtests to restrict to. Only the repository and the id
@@ -260,6 +264,12 @@ export function buildSearchReport(input: SearchInput): SearchReport {
 
   const scoped = parentKey === null ? input.rows : input.rows.filter((row) => row.parentKey === parentKey);
   const matched = scoped.filter((row) => matchesRow(row, input.filter));
+  // Only for an empty result: on a search that matched, the answer is the
+  // answer, and this is several scans of up to thirty thousand rows.
+  const diagnosis =
+    matched.length === 0 && (input.filter.chips.length > 0 || input.filter.text.trim() !== '')
+      ? diagnoseNoMatch(scoped, input.filter)
+      : null;
   const sorted = input.sort ? [...matched].sort((a, b) => compareRows(a, b, input.sort)) : matched;
   const shown = sorted.slice(0, Math.max(0, input.limit));
 
@@ -273,6 +283,7 @@ export function buildSearchReport(input: SearchInput): SearchReport {
     parentFound,
     fetched: Object.fromEntries(input.fetched),
     matched: matched.length,
+    diagnosis,
     rows: shown.map((row) => {
       const activity = input.activity?.get(row.key);
       const counted = activity && !('error' in activity) ? activity : null;
