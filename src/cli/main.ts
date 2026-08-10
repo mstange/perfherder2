@@ -63,6 +63,7 @@ import {
 import {
   attachCommits,
   buildChangesReport,
+  buildClusterReport,
   buildCommitsReport,
   buildCompareReport,
   buildLocateReport,
@@ -77,6 +78,7 @@ import {
 } from './reports';
 import {
   renderChanges,
+  renderCluster,
   renderCommits,
   renderCompare,
   renderLocate,
@@ -307,9 +309,9 @@ const changes: Command = {
   summary: "steps this app detects and alerts perfherder raised, on one timeline",
   usage: [
     'perfherder-cli changes <ref...> [--range <dur>] [--commits] [--commit-limit <n>]',
-    '                            [--commit-grep <pattern>] [--brief]',
+    '                            [--commit-grep <pattern>] [--brief] [--cluster]',
   ],
-  booleans: ['commits', 'brief'],
+  booleans: ['commits', 'brief', 'cluster'],
   valued: [...RANGE_VALUED, 'commit-limit', 'commit-grep'],
   details: [
     'Two independent analyses of the same series, merged into one row per event:',
@@ -336,12 +338,19 @@ const changes: Command = {
     'graph URL. That is the readable form past about three refs, and the URLs are all still in',
     '--json. A commit list asked for with --commits is kept, since that is the answer the extra',
     'fetch was for.',
+    '',
+    '--cluster makes the row a landing rather than a series: events from all the refs are grouped',
+    'by the push interval each brackets, so one change seen by four platforms on four different',
+    'revisions is one row saying so. The window printed is where the members agree, which is',
+    'narrower than any single series carries. This is the form to ask "what happened to this',
+    'suite over six months" in.',
   ],
   async run(parsed, ctx) {
     const refs = requireRefs(parsed.positionals, 'changes');
     const span = resolveRange(rangeOptions(parsed), ctx.now);
     const withCommits = flagBoolean(parsed.flags, 'commits');
     const brief = flagBoolean(parsed.flags, 'brief');
+    const cluster = flagBoolean(parsed.flags, 'cluster');
     const commitOptions = {
       limit: flagNumber(parsed.flags, 'commit-limit', 15),
       grep: compileGrep(flagString(parsed.flags, 'commit-grep'), 'commit-grep'),
@@ -393,7 +402,14 @@ const changes: Command = {
       }
 
       reports.push(report);
-      lines.push(...renderChanges(report, i === 0, brief));
+      // A clustered run renders once, at the end, from all of the reports: the
+      // per-series text is what it exists to replace.
+      if (!cluster) lines.push(...renderChanges(report, i === 0, brief));
+    }
+
+    if (cluster) {
+      const clustered = buildClusterReport(reports, all, span, ctx.appBase);
+      return { report: clustered, lines: renderCluster(clustered), exitCode: exitCodeFor(all) };
     }
 
     return {

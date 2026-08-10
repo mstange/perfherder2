@@ -73,6 +73,7 @@ import {
 } from '../lib/shared/stats';
 import { EMPTY_VIEW_STATE, serializeViewState, type SeriesEntryState, type ViewState } from '../lib/urlState';
 import type { Span } from './args';
+import { clusterLandings, type Landing, type LandingEvent } from './cluster';
 import { compareModes, describeModeComparison, type ModeComparison } from './modes';
 import { diagnoseNoMatch, type NoMatchDiagnosis } from './suggest';
 
@@ -562,6 +563,11 @@ export type ChangeEntry = {
   revision: string;
   prevPushId: number | null;
   prevRevision: string | null;
+  // The instant of the push on the other side of the change; null when that
+  // push is not in the fetched range. With `atMs` this is the interval the
+  // change is bracketed by — the only thing about a bar's position that is not
+  // an estimate.
+  prevAtMs: number | null;
   // Which analysis produced this row. `both` is the case worth having: this app
   // and perfherder independently marking one push.
   source: 'detected' | 'alert' | 'both';
@@ -742,6 +748,12 @@ function describeEntry(
     revision: after?.revision ?? row.alert?.revision ?? '',
     prevPushId: beforePush?.pushId ?? row.alert?.prevPushId ?? null,
     prevRevision: beforePush?.revision ?? row.alert?.prevRevision ?? null,
+    // The instant of the push on the *other* side of the change, so that a row
+    // carries the interval it brackets and not only the point it was placed at.
+    // A bar has no interval of its own (see `locate`), and (prevAtMs, atMs] is
+    // the one thing about it that is not an estimate: whatever landed, landed in
+    // there. `cluster.ts` intersects these across series.
+    prevAtMs: beforePush?.x ?? null,
     source: row.change && row.alert ? 'both' : row.change ? 'detected' : 'alert',
     isRegression,
     detected: row.change
@@ -973,6 +985,76 @@ function chipText(attrs: SeriesAttrs | null): string {
   return attrChips(attrs)
     .map((chip) => chip.value)
     .join(' · ');
+}
+
+// ---------------------------------------------------------------------------
+// changes --cluster
+// ---------------------------------------------------------------------------
+//
+// The per-series reports of one `changes` run, regrouped so that a row is a
+// landing rather than a series. See cluster.ts for why the grouping is on
+// intervals; this function's whole job is to hand it labelled events and to name
+// what the series had in common, which is `splitCommonAttrs` — the same factoring
+// `step` and the app's series list use, so a four-platform table reads as one
+// line per platform here too.
+
+export type ClusterReport = {
+  span: Span;
+  url: string;
+  // What every series in the run shares, for the header.
+  common: string;
+  // How many series contributed, and how many of them had anything to contribute.
+  seriesCount: number;
+  seriesWithEvents: number;
+  // Series whose fetch failed. A landing that only three of four platforms show
+  // is a different finding depending on whether the fourth was quiet or missing.
+  seriesFailed: number;
+  landings: Landing[];
+};
+
+export function buildClusterReport(
+  reports: readonly ChangesReport[],
+  loaded: readonly LoadedSeries[],
+  span: Span,
+  base: string,
+): ClusterReport {
+  const split = splitCommonAttrs(loaded.map((one) => attrsForEntry(one.ref, one.meta)));
+  const useSplit = loaded.length > 1 && split.mode === 'multi';
+
+  const events: LandingEvent[] = [];
+  reports.forEach((report, i) => {
+    const label = useSplit ? chipText(split.distinct[i]) : describeHeader(report.series);
+    for (const entry of report.entries) {
+      events.push({
+        ref: report.series.ref,
+        label: label || describeHeader(report.series),
+        repository: report.series.repository,
+        atMs: entry.atMs,
+        prevAtMs: entry.prevAtMs,
+        revision: entry.revision,
+        prevRevision: entry.prevRevision,
+        isRegression: entry.isRegression,
+        relativeChange: entry.detected?.relativeChange ?? null,
+        source: entry.source,
+        alertSummaryId: entry.alert?.summaryId ?? null,
+        bugNumber: entry.alert?.bugNumber ?? null,
+      });
+    }
+  });
+
+  return {
+    span,
+    url: graphUrl(base, loaded.map((one) => one.ref), span),
+    common: useSplit && split.hasCommon ? chipText(split.common) : '',
+    seriesCount: reports.length,
+    seriesWithEvents: reports.filter((r) => r.entries.length > 0).length,
+    seriesFailed: reports.filter((r) => r.series.error !== null).length,
+    landings: clusterLandings(events),
+  };
+}
+
+function describeHeader(series: SeriesHeader): string {
+  return [series.suite, series.test, series.platform].filter(Boolean).join(' · ');
 }
 
 function stepEntry(

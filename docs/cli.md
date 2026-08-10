@@ -16,7 +16,8 @@ build:
 2. *Was that regression the modes moving, or the same modes with a different
    share of the samples?* → `changes` to find the step, `compare` across it.
 3. *How has IndexedDB open performance changed in six months, and what caused
-   each move?* → `changes --commits`.
+   each move?* → `changes --commits`, and `--cluster` when the answer spans more
+   series than a reader can hold at once.
 
 ## Usage
 
@@ -38,6 +39,7 @@ installing one binary of the same name — see "The published package" below.
 | `search <term...>` | the Add-series picker |
 | `series <ref...>` | the series list's summary, plus a level comparison |
 | `changes <ref...>` | the alert triangles and the detected-change bars |
+| `changes <ref...> --cluster` | no UI equivalent — see "`--cluster` makes the row a landing instead of a series" |
 | `step <ref...> --at` | no UI equivalent — see "Measuring a step the detector didn't mark" |
 | `locate <ref> --at` | no UI equivalent — see "Ranking the pushes a step could be on" |
 | `compare <a> <b>` | the details pane's comparison card |
@@ -357,6 +359,55 @@ Their percentages still differ, and both are right; the output says why
 the step it located). Invalid alerts are dropped, because a sheriff has already
 said they mean nothing — the same single exclusion `alerts.ts` makes.
 
+### `--cluster` makes the row a landing instead of a series
+
+`changes` answers about one series, and the question that prompted this tool's
+third worked example — *how has IndexedDB open performance changed in six
+months* — is about 21 of them. A trial ran it over four batches of refs and then
+wrote a script to flatten 99 events, sort them, and group them by push. That
+grouping was the finding: nine events across three platforms on 2026-07-15 are
+one landing, bug 1899194. The tool made the reader build the answer.
+
+`--cluster` is that grouping, and `--across` is the precedent — assembling the
+*input* list by hand cost more commands than the analysis did, and this was the
+same complaint about the output.
+
+**Events group by the interval they bracket, not by the push they were placed
+on.** A bar's position is an estimate, which is why `locate` exists, and two
+platforms do not run the same pushes — so one landing is placed on a different
+revision by each series that saw it. `(prevAtMs, atMs]` is the part that is not
+an estimate: whatever moved the graph landed in there. Overlapping brackets are
+therefore the honest join, and **their intersection is a narrower window than any
+single series carries.** On the nine cursor signatures it collapses to nothing at
+all: eight of them bracket `00e66d720953..4d11378e3f07` and the ninth brackets
+`4d11378e3f07..67861311e985`, the two meet on one push, and the report says
+"pinned to one push" — which is the push bug 1899194 landed on. Reaching that by
+hand took `locate` and then `commits`.
+
+Three things the shape is careful about:
+
+- **Direction is not part of the key.** A regression on one metric and an
+  improvement on another at one instant is a trade-off, not a coincidence, and
+  splitting on it would file the two halves of alert #51136 —
+  idb-open-many-seq +10.8%, `delete_duration` −35%, one push, one bug — as
+  unrelated. Both counts are on the row instead.
+- **A group whose members chained without sharing an instant is marked `~`.** A
+  overlaps B and B overlaps C while A and C do not: still one group, but its
+  window is a union and a weaker claim than an intersection, and printing the two
+  the same way would be the "truncated answer shaped like a complete one" rule
+  broken at a subtler level. In practice the flag earns its keep — over twelve
+  idb-open signatures, steps on six consecutive days stayed six landings and only
+  2026-07-16 chained.
+- **PEAK is the largest move by magnitude, not the mean.** One platform at +500%
+  and two at +8% is a +500% event with partial reach; averaging it to +172%
+  describes nothing that happened.
+
+Grouping is per repository, because a push id and the moment a merge reached
+another branch are different clocks: two events at one instant on autoland and
+mozilla-central are one change *landing twice*, and one row with two revisions
+would be a claim about a single event. "Did the other branch see it" is `step`'s
+question.
+
 ### `--pool` widens a comparison from a push to a window
 
 `compare`'s mode analysis rested on one push's 25–75 replicates, and on a real
@@ -616,6 +667,8 @@ is testable without a network.
   row, the ruler, word wrap.
 - [modes.ts](../src/cli/modes.ts) — **pure**. The mode comparison and its
   sentence. See above.
+- [cluster.ts](../src/cli/cluster.ts) — **pure**. Change events from several
+  series, grouped into the landings that caused them. See above.
 - [siblings.ts](../src/cli/siblings.ts) — **pure**. One row's counterparts
   across one attribute — `--like` and `--across`. See above.
 - [suggest.ts](../src/cli/suggest.ts) — **pure**. Why a search matched nothing,

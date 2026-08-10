@@ -602,6 +602,7 @@ function changeEntryStub(): ChangeEntry {
     revision: 'after0000000',
     prevPushId: 1,
     prevRevision: 'before000000',
+    prevAtMs: BASE_TIME - 3600_000,
     source: 'detected',
     isRegression: true,
     detected: null,

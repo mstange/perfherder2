@@ -37,11 +37,13 @@ import {
   wrap,
   type Align,
 } from './format';
+import { peakChange, type Landing } from './cluster';
 import { commitsHeading } from './reports';
 import type {
   AcrossDescriptor,
   ChangeEntry,
   ChangesReport,
+  ClusterReport,
   CommitsReport,
   CompareReport,
   CompareSideReport,
@@ -872,6 +874,125 @@ function commitLines(entry: ChangeEntry): string[] {
     out.push(...indent(renderCommitTable(entry.commits), '    '));
   }
   if (entry.commitsCaveat) out.push(`  ! ${entry.commitsCaveat}`);
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+// changes --cluster
+// ---------------------------------------------------------------------------
+
+// One row per landing, and under it the series that saw it. "How far did this
+// reach" is the column a reader scans first — a step on one platform of three and
+// a step on all three are different findings — and the per-series form of this
+// report makes them count it by hand.
+export function renderCluster(report: ClusterReport): string[] {
+  const out: string[] = [];
+  out.push(
+    `${report.landings.length} ${report.landings.length === 1 ? 'landing' : 'landings'} across ` +
+      `${report.seriesCount} series (${report.seriesWithEvents} with any change)`,
+  );
+  if (report.common) out.push(`all series: ${report.common}`);
+  out.push(`${formatSpan(report.span.start, report.span.end)} (UTC)`);
+  if (report.seriesFailed > 0) {
+    // A landing that three of four platforms show is a different finding
+    // depending on whether the fourth was quiet or never arrived.
+    out.push(
+      `! ${report.seriesFailed} of ${report.seriesCount} series could not be fetched, so a landing`,
+      '  absent from them is missing rather than absent.',
+    );
+  }
+  out.push('');
+
+  if (report.landings.length === 0) {
+    out.push('No steps detected and no perfherder alerts on any of these series in this range.');
+    out.push('');
+    out.push(report.url);
+    return out;
+  }
+
+  out.push(
+    ...table(
+      ['WINDOW', 'HOURS', 'SERIES', 'REG', 'IMP', 'PEAK', 'BUGS'],
+      report.landings.map((landing) => {
+        const peak = peakChange(landing);
+        return [
+          `${formatUtc(landing.startMs)}${landing.intersects ? '' : ' ~'}`,
+          formatWindowHours(landing),
+          String(landing.events.length),
+          landing.regressions > 0 ? String(landing.regressions) : NONE,
+          landing.improvements > 0 ? String(landing.improvements) : NONE,
+          peak === null ? NONE : formatSignedPercent(peak),
+          landing.bugs.length > 0 ? landing.bugs.join(',') : NONE,
+        ];
+      }),
+      ['left', 'right', 'right', 'right', 'right', 'right', 'left'],
+    ),
+  );
+  out.push('');
+  out.push(
+    'WINDOW is where the members agree the landing is: the intersection of the push intervals each',
+    'of them brackets it with, which is narrower than any one series carries. HOURS is how wide',
+    'that window is. A ~ marks a landing whose members chained into one group without sharing a',
+    'common instant, so its window is their union and a weaker claim. PEAK is the largest move by',
+    'magnitude rather than the average — one platform at +500% and two at +8% is a +500% event',
+    'with partial reach, not a +172% one.',
+  );
+  out.push('');
+
+  for (const landing of report.landings) {
+    out.push(...renderLanding(landing));
+  }
+
+  out.push(report.url);
+  return out;
+}
+
+function formatWindowHours(landing: Landing): string {
+  const hours = (landing.endMs - landing.startMs) / 3_600_000;
+  // Exactly zero is a landing pinned to one push, which is the strongest thing
+  // this table says; a window of four minutes is not the same claim and must not
+  // round into looking like it.
+  if (hours === 0) return '0';
+  if (hours < 0.1) return '<0.1';
+  return hours < 10 ? hours.toFixed(1) : String(Math.round(hours));
+}
+
+function renderLanding(landing: Landing): string[] {
+  const out: string[] = [];
+  const hours = (landing.endMs - landing.startMs) / 3_600_000;
+  out.push(
+    `${formatUtc(landing.startMs)} → ${formatUtc(landing.endMs)} · ` +
+      `${landing.events.length} ${landing.events.length === 1 ? 'series' : 'series'} · ` +
+      (!landing.intersects
+        ? `${hours.toFixed(1)} h union — the members do not share an instant`
+        : hours === 0
+          ? // The best case, and worth naming: the brackets meet on one push, so
+            // the landing is that push and not a window around it.
+            'pinned to one push'
+          : `${formatWindowHours(landing)} h window`),
+  );
+  out.push(
+    ...indent(
+      table(
+        ['SERIES', 'WHEN', 'BETWEEN', 'CHANGE', 'VERDICT', 'SOURCE'],
+        landing.events.map((event) => [
+          truncate(event.label, 40),
+          formatUtc(event.atMs),
+          event.prevRevision
+            ? `${event.prevRevision.slice(0, 12)}..${event.revision.slice(0, 12)}`
+            : event.revision.slice(0, 12),
+          event.relativeChange === null ? NONE : formatSignedPercent(event.relativeChange),
+          event.isRegression ? 'regression' : 'improvement',
+          event.alertSummaryId
+            ? `${event.source}, alert #${event.alertSummaryId}${event.bugNumber ? ` bug ${event.bugNumber}` : ''}`
+            : event.source,
+        ]),
+        ['left', 'left', 'left', 'right', 'left', 'left'],
+      ),
+      '  ',
+    ),
+  );
+  out.push('');
   return out;
 }
 

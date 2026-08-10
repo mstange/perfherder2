@@ -12,66 +12,45 @@ friction was concentrated in a place the earlier trials never reached: **many
 series at once, over a long range, where the finding is a landing rather than a
 series.**
 
+## Done
+
+- **A landing is the unit of the answer.** `changes --cluster` groups the events
+  of every ref in the run by the push interval each brackets, so one change seen
+  by nine signatures on three platforms is one row saying so. The window printed
+  is the intersection of those brackets, which is narrower than any single series
+  carries — on the nine cursor signatures it collapses to a single push, the one
+  bug 1899194 landed on, which by hand took `locate` and then `commits`.
+  `cluster.ts` (+ tests). See [cli.md](cli.md), "`--cluster` makes the row a
+  landing instead of a series".
+
+- **Both narrowings of a commit list are counted.** `--commit-limit` used to
+  slice while `commitsLabel` went on counting the range, so eight rows sat under
+  "36 commits". And `--commit-grep <pattern>` is the filter the trial ran by hand
+  through `rg`, on `changes` and on `commits`, matching title, author or bug —
+  with the excluded count reported, since a filter that hides the culprit must
+  not look like a range that never held one.
+
+- **The commit table's headers name the fields the JSON has**: `BUGS` and
+  `TITLE`, for `bugs` and `title`. `BUG` and `SUMMARY` cost a session a column of
+  `undefined` and a fallback to grepping text. All of a commit's bugs print, not
+  just the first.
+
+- **`changes --json` is always an array.** It used to be a bare report for one
+  ref and an array for two, which made the shape of the output a function of the
+  length of the input. The rule, now that it holds everywhere: *a report's shape
+  must not depend on how many refs were asked for.*
+
+- **`changes --brief`** prints the event table without the per-event paragraphs
+  or the URLs, which is the readable form past about three refs. It keeps a
+  commit list asked for with `--commits`, since suppressing that would make
+  `--brief --commits` do the fetching and none of the reporting.
+
+- **`url` writes its range in whole UTC days**, widened outward, instead of
+  thirteen digits of millisecond precision in a string meant to be pasted into a
+  bug. Only in `url`: `resolveRange` feeds the fetches, and snapping it there
+  would change which pushes are in the window.
+
 ## Next
-
-- [ ] **A landing is the unit of the answer, and no command reports one.**
-      The trial's real question — "has IndexedDB regressed" — is 21 signatures,
-      and every command is per-series. Answering it took `changes --json` over
-      four ref batches, then a hand-written script to flatten 99 events, sort
-      them by date, and group them by push. That grouping *is* the finding: nine
-      events across three platforms on 2026-07-15 are one landing (bug 1899194),
-      and the report that says so is the report the user wanted. `--across`
-      exists because assembling a ref list by hand took more commands than the
-      analysis did; this is the same complaint one level up, about the results
-      rather than the inputs.
-      Wants a pure module that merges the entries of several `ChangesReport`s by
-      push proximity — the `MERGE_PUSH_DISTANCE` reasoning already in reports.ts,
-      applied across series instead of across the two analyses — and one row per
-      landing listing the series it hit.
-
-- [ ] **`--commit-limit` truncates silently, and truncation is the one thing
-      this tool does not do silently.** `attachCommits` slices to the limit but
-      `commitsLabel` is `pushlogLabel(range)`, computed from the *unsliced*
-      range: `--commit-limit 8` over a 36-commit range prints "36 commits:" above
-      eight rows with nothing to say the other 28 exist. cli.md already states
-      the rule this breaks ("a truncated answer must never be shaped like a
-      complete one") and credits `pushlogLabel` with keeping it.
-
-- [ ] **Attribution has no filter, which is what makes a busy push unanswerable.**
-      "What caused this step" over a 20-commit merge means reading 20 unrelated
-      commits, and the trial's actual move was
-      `perfherder-cli commits … | rg -i 'quota|indexeddb|idb|storage'` — which is
-      how both the cursor improvement and the quota-manager regression were
-      found. A `--commit-grep <pattern>` (matching title, author and bug) with the
-      non-matching count reported, so the filter cannot hide the same way the
-      limit does.
-
-- [ ] **`changes --json` changes shape with the number of refs.**
-      `report: reports.length === 1 ? reports[0] : reports` (main.ts) — one ref
-      gives a bare `ChangesReport`, two give an array of them. A script written
-      against either breaks on the other, silently, because both are valid JSON
-      with the right field names one level off. Every other multi-ref command
-      already has the answer: `series` and `step` return one envelope with
-      `entries[]` whatever the ref count. The rule worth writing down is that
-      **a report's shape must not depend on how many refs were asked for.**
-
-- [ ] **The commit table's headers name fields the JSON does not have.**
-      `BUG` / `SUMMARY` in the text; `bugs: number[]` / `title` in the object.
-      Guessing `x.bug` and `x.summary` from the headers produced a column of
-      `undefined` and cost a fallback to grepping text output — the same class of
-      trap as the `APP` header for `application` that cli.md records, and the
-      same fix: make the header say what the field is called. `BUG` also prints
-      `bugs[0]` alone, so a two-bug commit drops one without saying so.
-
-- [ ] **Multi-ref text output is unreadable past about three refs, so the
-      reader leaves for `--json` and does the rendering by hand.** Twelve refs
-      over six months emitted a paragraph per event — pushlog URL and graph URL
-      repeated for every one of 99. Piping to `tail` was the natural move and
-      loses the top, which is the defect cli.md already recorded for `series`
-      labelling its rows `fenix → fenix`. A `--brief` that prints the event table
-      across all series and holds the per-event blocks for `--json`. Note this
-      cuts with the grain of the loudest complaint from the earlier four trials,
-      that there is already too much prose.
 
 - [ ] **Net drift over a window takes two invocations and arithmetic in another
       language.** "Where was this in February against now" was
@@ -79,13 +58,6 @@ series.**
       turned out to be the most quoted part of the answer (every idb-open series
       slower than February, +5.6% to +42%). A `--drift` that prints the first and
       last window's level and the delta.
-
-- [ ] **`url --range 6mo` bakes absolute millisecond timestamps.** Pinning is
-      right for a link pasted into a bug and the trial said so in its report, but
-      there is no rolling form and the precision is noise —
-      `range=1770824167527,1786376167527` for a window whose ends are days.
-      Round to the day; consider a `--rolling` that emits the duration if the app
-      will take one.
 
 ## Open questions / deferred
 
@@ -114,7 +86,12 @@ series.**
 ## Not doing
 
 - **A `guide` subcommand.** Rejected once already, in cli.md, and this trial
-  supports the rejection from a new direction: none of the eight items above is
-  a failure of explanation. Six are behaviour, one is a missing feature, and the
-  one that *is* about words (the commit headers) is fixed by changing the words
-  in the output, not by adding more of them elsewhere.
+  supports the rejection from a new direction: none of the eight items it raised
+  was a failure of explanation. Six were behaviour, one was a missing feature,
+  and the one that *was* about words — the commit headers — got fixed by changing
+  the words in the output rather than by adding more of them elsewhere.
+
+- **A rolling `--range` in the links `url` emits.** The trial asked for one, and
+  the app cannot express it on purpose: `urlState.ts` stores absolute bounds
+  rather than "last N days" so that a shared link keeps showing the point it was
+  shared for. `url --help` says so now, since the question will recur.
