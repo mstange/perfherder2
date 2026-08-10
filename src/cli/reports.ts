@@ -81,6 +81,11 @@ export type LoadedSeries = {
   meta: SeriesMeta;
   data: SeriesData;
   found: boolean;
+  // Why this series has no data, when the reason is that asking for it failed
+  // rather than that there is none. Null for both kinds of success — a series
+  // that came back, and one the endpoint answered about with nothing. See
+  // `loadSeriesOrError`.
+  error: string | null;
 };
 
 // ---------------------------------------------------------------------------
@@ -104,6 +109,9 @@ export type SeriesHeader = {
   unit: string;
   lowerIsBetter: boolean;
   found: boolean;
+  // Carried on the header so that every command reports a failed fetch the same
+  // way, and so `--json` distinguishes an empty series from an unasked one.
+  error: string | null;
 };
 
 export function seriesHeader(loaded: LoadedSeries): SeriesHeader {
@@ -124,6 +132,7 @@ export function seriesHeader(loaded: LoadedSeries): SeriesHeader {
     unit: meta.measurementUnit,
     lowerIsBetter: meta.lowerIsBetter,
     found: loaded.found,
+    error: loaded.error,
   };
 }
 

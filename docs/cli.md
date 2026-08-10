@@ -79,6 +79,28 @@ the *same object*, from [reports.ts](../src/cli/reports.ts), so the two can't
 describe different things. That is the failure mode of every tool that formats
 twice.
 
+### A failed fetch is one row's problem
+
+`series`, `changes` and `step` all say that several refs at once is the point,
+and a 502 on one of twenty-eight used to throw the process out and lose the
+twenty-seven that worked. A failure is a property of one row, so
+`loadSeriesOrError` puts it on that row: `LoadedSeries.error` and
+`SeriesHeader.error`, printed by every command in the same words, and present in
+`--json`.
+
+This is the missing-versus-empty rule one level up. "This series could not be
+fetched" and "this series has no data in the range" are different answers, and
+the second is the more dangerous mistake — a network failure would otherwise
+read as a quiet graph, which is precisely the misreading `step` exists to
+prevent. A series that never arrived also has no metadata, so its unit,
+direction and alerting floor are `placeholderMeta`'s defaults and are printed
+as absent rather than as facts.
+
+**The exit code is zero when some refs succeeded and one when none did.** A run
+that answered partially did answer, and a non-zero code invites a script to
+discard twenty-seven good rows to punish the twenty-eighth. `compare` is
+unchanged and still fails hard: it has exactly two sides, neither optional.
+
 ### A missing thing and an empty thing print differently
 
 "No alerts in this range" is a finding. "The alerts request failed" is not, and

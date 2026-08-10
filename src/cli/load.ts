@@ -33,6 +33,7 @@ import {
   type SeriesRef,
 } from '../lib/graphs/graphData';
 import { commitsInRange, type PushlogRange } from '../lib/graphs/pushlog';
+import { HttpError, SchemaError } from '../lib/shared/http';
 import { buildActivities, chunkIds, MAX_IDS_PER_REQUEST, type Activity } from '../lib/picker/activity';
 import { fetchActivityData } from '../lib/picker/activityApi';
 import { toSeries, type Series } from '../lib/picker/series';
@@ -44,6 +45,48 @@ import {
 } from '../lib/picker/signaturesApi';
 import type { SeriesArg, Span } from './args';
 import type { LoadedSeries } from './reports';
+
+// One ref's fetch, with a failure of it kept out of everybody else's way.
+//
+// The commands that take a list of refs say that several at once is the point,
+// and until now a 502 on one of twenty-eight threw the process out and took
+// twenty-seven successful fetches with it. A failure is a property of one row,
+// so it is reported on that row — the same missing-versus-empty rule the rest of
+// the tool follows, one level up: "this series could not be fetched" is not the
+// same answer as "this series has no data", and a run must not print the second
+// when it means the first.
+//
+// `compare` deliberately doesn't use this. It has exactly two sides and neither
+// is optional, so a failure there has nothing to report and should stop.
+export async function loadSeriesOrError(arg: SeriesArg, span: Span): Promise<LoadedSeries> {
+  try {
+    return await loadSeries(arg, span);
+  } catch (error) {
+    const ref: SeriesRef = {
+      repository: arg.repository,
+      signatureId: arg.signatureId,
+      frameworkId: arg.frameworkId ?? 0,
+    };
+    return {
+      ref,
+      meta: placeholderMeta(ref),
+      data: EMPTY_SERIES_DATA,
+      found: false,
+      error: describeFetchFailure(error),
+    };
+  }
+}
+
+// One line, because it goes in a row beside twenty-seven that worked. The URL
+// is on it: a 404 and a 502 want different actions, and neither is diagnosable
+// without knowing what was asked for.
+export function describeFetchFailure(error: unknown): string {
+  if (error instanceof HttpError) return `${error.message} — ${error.url}`;
+  if (error instanceof SchemaError) {
+    return `treeherder sent something unrecognised (${error.message}) — ${error.url}`;
+  }
+  return error instanceof Error ? error.message : String(error);
+}
 
 // `LoadedSeries.ref.frameworkId` is resolved here: taken from the response when
 // the caller's reference didn't carry one. `found` is false when the summary
@@ -66,14 +109,20 @@ export async function loadSeries(arg: SeriesArg, span: Span): Promise<LoadedSeri
       // `SeriesRef.frameworkId` nullable app-wide for a case only this hits.
       frameworkId: arg.frameworkId ?? 0,
     };
-    return { ref, meta: placeholderMeta(ref), data: EMPTY_SERIES_DATA, found: false };
+    return { ref, meta: placeholderMeta(ref), data: EMPTY_SERIES_DATA, found: false, error: null };
   }
   const ref: SeriesRef = {
     repository: arg.repository,
     signatureId: arg.signatureId,
     frameworkId: summary.framework_id,
   };
-  return { ref, meta: metaFromSummary(summary), data: buildSeriesData(summary), found: true };
+  return {
+    ref,
+    meta: metaFromSummary(summary),
+    data: buildSeriesData(summary),
+    found: true,
+    error: null,
+  };
 }
 
 // The floor change detection holds this series to: its own threshold, its

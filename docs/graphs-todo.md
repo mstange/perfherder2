@@ -96,10 +96,6 @@ Living checklist. Update in the same commit as the work it describes.
     choices of push pair on one real series. `step` pools 24 pushes a side and
     reports no modes; `compare` reports modes and will not pool. The capability
     needed sits in the gap between two commands that each have half of it.
-  - *One failed fetch aborts a whole multi-ref run.* A 502 on one of 28 series
-    lost 27 successful fetches. For a command whose stated purpose is "several
-    refs at once is the point", a per-series failure should be a row saying so —
-    the same missing-vs-empty rule the rest of the tool follows.
   - *No way to ask which of two candidate pushes is the step.* `changes` gives a
     point estimate with no interval, and on one series it picked a push five
     hours before the one a sheriff's independent alert lands on. There is no

@@ -4,7 +4,9 @@ import type { RawDatum, RawSummary } from '../lib/graphs/graphApi';
 import {
   buildSeriesData,
   DEFAULT_ALERT_THRESHOLD,
+  EMPTY_SERIES_DATA,
   metaFromSummary,
+  placeholderMeta,
 } from '../lib/graphs/graphData';
 import type { PushlogRange } from '../lib/graphs/pushlog';
 import type { Series } from '../lib/picker/series';
@@ -88,6 +90,7 @@ function loadedOf(summary: RawSummary): LoadedSeries {
     meta: metaFromSummary(summary),
     data: buildSeriesData(summary),
     found: true,
+    error: null,
   };
 }
 
@@ -687,6 +690,24 @@ describe('buildStepReport', () => {
     expect(report.common).toContain('bench');
     expect(report.entries[0].label).toBe('linux2404-64-shippable');
     expect(report.entries[1].label).toBe('windows11-64-24h2-shippable');
+  });
+
+  it('carries a fetch failure onto the row instead of losing the run', () => {
+    // A 502 on one of twenty-eight series used to take the other twenty-seven
+    // with it. The failed row has to be tellable from an empty one: both have
+    // no pushes, and only one of them is a finding.
+    const failed: LoadedSeries = {
+      ref: { repository: 'autoland', signatureId: 99, frameworkId: 13 },
+      meta: placeholderMeta({ repository: 'autoland', signatureId: 99, frameworkId: 13 }),
+      data: EMPTY_SERIES_DATA,
+      found: false,
+      error: 'HTTP 502 Bad Gateway — https://treeherder.mozilla.org/api/…',
+    };
+    const report = build([stepped(100, 110, 0.5, 1, 'linux2404-64-shippable'), failed]);
+    expect(report.entries).toHaveLength(2);
+    expect(report.entries[0].test).not.toBeNull();
+    expect(report.entries[1].series.error).toContain('502');
+    expect(report.entries[1].before.pushCount).toBe(0);
   });
 
   it('leaves a single series unlabelled — there is nothing to distinguish it from', () => {

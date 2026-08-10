@@ -47,6 +47,7 @@ import {
   loadRepository,
   loadRevisionTime,
   loadSeries,
+  loadSeriesOrError,
   loadSignatures,
   loadThreshold,
 } from './load';
@@ -79,7 +80,15 @@ type Context = {
   now: number;
 };
 
-type Result = { report: unknown; lines: string[] };
+type Result = {
+  report: unknown;
+  lines: string[];
+  // Non-zero only when the command produced no answer at all. A run where
+  // *some* series failed did produce one — that is the whole point of reporting
+  // a failure as a row — and exiting non-zero would invite a script to throw
+  // away twenty-seven good rows to punish the twenty-eighth.
+  exitCode?: number;
+};
 
 type Command = {
   summary: string;
@@ -229,12 +238,12 @@ const series: Command = {
   async run(parsed, ctx) {
     const refs = requireRefs(parsed.positionals, 'series');
     const span = resolveRange(rangeOptions(parsed), ctx.now);
-    const loaded = await Promise.all(refs.map((ref) => loadSeries(ref, span)));
+    const loaded = await Promise.all(refs.map((ref) => loadSeriesOrError(ref, span)));
     const pushLimit = flagBoolean(parsed.flags, 'pushes')
       ? flagNumber(parsed.flags, 'limit', 20)
       : null;
     const report = buildSeriesReport(loaded, span, ctx.appBase, pushLimit);
-    return { report, lines: renderSeries(report) };
+    return { report, lines: renderSeries(report), exitCode: exitCodeFor(loaded) };
   },
 };
 
@@ -276,10 +285,12 @@ const changes: Command = {
 
     const lines: string[] = [];
     const reports: unknown[] = [];
+    const all: LoadedSeries[] = [];
 
     for (const [i, ref] of refs.entries()) {
       if (i > 0) lines.push('', '─'.repeat(60), '');
-      const loaded = await loadSeries(ref, span);
+      const loaded = await loadSeriesOrError(ref, span);
+      all.push(loaded);
       const [threshold, alerts, repoLink] = await Promise.all([
         loadThreshold(loaded),
         // A failed alerts fetch is null, not empty: "we could not ask" and
@@ -321,7 +332,11 @@ const changes: Command = {
       lines.push(...renderChanges(report, i === 0));
     }
 
-    return { report: reports.length === 1 ? reports[0] : reports, lines };
+    return {
+      report: reports.length === 1 ? reports[0] : reports,
+      lines,
+      exitCode: exitCodeFor(all),
+    };
   },
 };
 
@@ -368,7 +383,7 @@ const step: Command = {
       throw new UsageError('--window must be a positive whole number of pushes');
     }
 
-    const loaded = await Promise.all(refs.map((ref) => loadSeries(ref, span)));
+    const loaded = await Promise.all(refs.map((ref) => loadSeriesOrError(ref, span)));
     const { atMs, revision, revisionRepository } = await resolveSplit(at, refs);
     if (atMs < span.start || atMs > span.end) {
       throw new UsageError(
@@ -392,7 +407,7 @@ const step: Command = {
       span,
       base: ctx.appBase,
     });
-    return { report, lines: renderStep(report) };
+    return { report, lines: renderStep(report), exitCode: exitCodeFor(loaded) };
   },
 };
 
@@ -628,6 +643,11 @@ function rangeOptions(parsed: ReturnType<typeof parseArgv>) {
   };
 }
 
+// Nothing came back for any of them, so there is no report to have produced.
+function exitCodeFor(loaded: readonly LoadedSeries[]): number | undefined {
+  return loaded.length > 0 && loaded.every((one) => one.error !== null) ? 1 : undefined;
+}
+
 function requireRefs(positionals: readonly string[], command: string): SeriesArg[] {
   if (positionals.length === 0) {
     throw new UsageError(`${command} needs at least one series reference`);
@@ -770,7 +790,7 @@ export async function run(argv: readonly string[]): Promise<number> {
         `(${megabytes} MB)${cache.dir ? ` · ${cache.dir}` : ' · cache off'}\n`,
     );
   }
-  return 0;
+  return result.exitCode ?? 0;
 }
 
 function print(lines: readonly string[]): void {

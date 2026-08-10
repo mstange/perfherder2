@@ -65,7 +65,21 @@ export function describeSeries(series: SeriesHeader): string {
   return parts.filter(Boolean).join(' · ') || `signature ${series.signatureId}`;
 }
 
+// A series whose fetch failed, said the same way by every command.
+//
+// The distinction it protects is the one this file is built around: "could not
+// ask" and "asked, and there is nothing" are different answers, and a row that
+// prints the second when it means the first is the more dangerous of the two —
+// a 502 on one of twenty-eight series would otherwise read as a quiet graph.
+function fetchFailureLines(series: SeriesHeader): string[] {
+  return [`! could not be fetched: ${series.error}`, '  (this row is missing, not empty)'];
+}
+
+// Only ever printed for a series that came back. `placeholderMeta` fills the
+// unit with '' and the direction with a default, and "no unit · lower is
+// better" reads as a fact about the metric rather than as the absence of one.
 function measurementLine(series: SeriesHeader): string {
+  if (!series.found) return 'no metadata';
   const bits = [series.unit || 'no unit', series.lowerIsBetter ? 'lower is better' : 'higher is better'];
   return bits.join(' · ');
 }
@@ -247,7 +261,7 @@ export function renderStep(report: StepReport): string[] {
   const anyLabel = report.entries.some((e) => e.label);
   const rows = report.entries.map((entry) => {
     const cells = anyLabel ? [truncate(entry.label || entry.series.suite, 40)] : [];
-    if (!metric) cells.push(metricOf(entry.series));
+    if (!metric) cells.push(entry.series.found ? metricOf(entry.series) : NONE);
     const b = entry.before.summary;
     const a = entry.after.summary;
     cells.push(
@@ -320,8 +334,15 @@ export function renderStep(report: StepReport): string[] {
   }
 
   for (const entry of report.entries) {
+    const name = entry.label || describeSeries(entry.series);
+    if (entry.series.error) {
+      // Before the empty-side note below, and instead of it: a series that was
+      // never fetched has no pushes on either side of anything, and saying so
+      // would blame the range for a network failure.
+      out.push(`! ${name} could not be fetched: ${entry.series.error}`);
+      continue;
+    }
     if (entry.before.pushCount === 0 || entry.after.pushCount === 0) {
-      const name = entry.label || describeSeries(entry.series);
       out.push(
         `! ${name} has no pushes ${entry.before.pushCount === 0 ? 'before' : 'after'} the split` +
           ' — widen --range, or check the split point is inside it.',
@@ -342,10 +363,13 @@ function metricOf(series: SeriesHeader): string {
 // The metric every series in the run shares, or empty when they don't share
 // one. A header can only carry what is common; direction is not a shared
 // attribute of a suite's subtests, and `splitCommonAttrs` doesn't consider it.
+// A series that never arrived has a placeholder's metric, which is nobody's,
+// so it neither supplies the shared answer nor prevents one.
 function sharedMetric(report: StepReport): string {
-  if (report.entries.length === 0) return '';
-  const first = metricOf(report.entries[0].series);
-  return report.entries.every((e) => metricOf(e.series) === first) ? first : '';
+  const known = report.entries.filter((e) => e.series.found);
+  if (known.length === 0) return '';
+  const first = metricOf(known[0].series);
+  return known.every((e) => metricOf(e.series) === first) ? first : '';
 }
 
 // Percent for the table. The mean delta, matching what BEFORE and AFTER show
@@ -375,6 +399,11 @@ export function renderSeries(report: SeriesReport): string[] {
   for (const entry of report.entries) {
     out.push(describeSeries(entry.series));
     out.push(`  ${entry.series.ref} · ${measurementLine(entry.series)}`);
+    if (entry.series.error) {
+      out.push(...indent(fetchFailureLines(entry.series)));
+      out.push('');
+      continue;
+    }
     if (!entry.series.found) {
       out.push('  no such signature, or no data in this range');
       out.push('');
@@ -503,11 +532,18 @@ export function renderChanges(report: ChangesReport, legend = true): string[] {
   out.push(describeSeries(report.series));
   out.push(`${report.series.ref} · ${measurementLine(report.series)}`);
   out.push(
-    `${formatSpan(report.span.start, report.span.end)} (UTC) · ${report.pushCount} pushes · ` +
-      `floor ${describeThreshold(report)}`,
+    `${formatSpan(report.span.start, report.span.end)} (UTC) · ${report.pushCount} pushes` +
+      // The floor is resolved from the signature's own threshold, and a series
+      // that never arrived has a default standing in for one. Printing it would
+      // state a policy for a signature nothing is known about.
+      (report.series.found ? ` · floor ${describeThreshold(report)}` : ''),
   );
   out.push('');
 
+  if (report.series.error) {
+    out.push(...fetchFailureLines(report.series));
+    return out;
+  }
   if (!report.series.found) {
     out.push('No such signature, or no data in this range.');
     return out;
