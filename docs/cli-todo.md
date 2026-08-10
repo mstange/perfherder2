@@ -50,14 +50,16 @@ series.**
   bug. Only in `url`: `resolveRange` feeds the fetches, and snapping it there
   would change which pushes are in the window.
 
+- **`series --drift`** prints the first window of the range against the last,
+  which is the question segmentation cannot answer and which produced the trial's
+  most-quoted table. 24 pushes a side, the same window `step` and `changes` use,
+  so the figures are comparable; both windows' dates are printed, since "February
+  against now" is a claim the reader has to be able to check.
+
 ## Next
 
-- [ ] **Net drift over a window takes two invocations and arithmetic in another
-      language.** "Where was this in February against now" was
-      `series --from/--to` twice plus a median diff in node, for the table that
-      turned out to be the most quoted part of the answer (every idb-open series
-      slower than February, +5.6% to +42%). A `--drift` that prints the first and
-      last window's level and the delta.
+- [ ] Nothing outstanding from the fifth trial. The two items below were looked
+      at and deliberately left.
 
 ## Open questions / deferred
 

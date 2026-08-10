@@ -47,6 +47,7 @@ import type {
   CommitsReport,
   CompareReport,
   CompareSideReport,
+  DriftSummary,
   LocateReport,
   PushRow,
   SearchReport,
@@ -595,6 +596,7 @@ export function renderSeries(report: SeriesReport): string[] {
     if (entry.pushMeans.length > 1) {
       out.push(`  ${describeSparkline(entry.pushMeans, entry.series.unit)}`);
     }
+    if (entry.drift) out.push(...indent(driftLines(entry.drift, entry.series)));
     if (entry.recentPushes && entry.recentPushes.length > 0) {
       out.push('');
       out.push(...indent(renderPushTable(entry.recentPushes)));
@@ -875,6 +877,31 @@ function commitLines(entry: ChangeEntry): string[] {
   }
   if (entry.commitsCaveat) out.push(`  ! ${entry.commitsCaveat}`);
   return out;
+}
+
+// Where the series started against where it ended. Two lines, because the
+// figure means nothing without the windows it came from: a reader has to be able
+// to see that "February" is 24 pushes and not the whole month.
+function driftLines(drift: DriftSummary, series: SeriesHeader): string[] {
+  const unit = series.unit ? ` ${series.unit}` : '';
+  const delta =
+    drift.deltaFraction === null
+      ? NONE
+      : formatSignedPercent(drift.deltaFraction);
+  const direction =
+    drift.deltaFraction === null || drift.deltaFraction === 0
+      ? ''
+      : ` ${(drift.deltaFraction > 0) === series.lowerIsBetter ? 'worse' : 'better'}`;
+  return [
+    `drift ${formatValue(drift.first.median)} → ${formatValue(drift.last.median)}${unit} · ` +
+      `${delta}${direction}` +
+      (drift.test ? ` · p ${formatPValue(drift.test.pValue)}` : ''),
+    `  ${drift.windowPushes} pushes a side — ` +
+      `${drift.first.startMs === null ? '?' : formatUtcDate(drift.first.startMs)}…` +
+      `${drift.first.endMs === null ? '?' : formatUtcDate(drift.first.endMs)} against ` +
+      `${drift.last.startMs === null ? '?' : formatUtcDate(drift.last.startMs)}…` +
+      `${drift.last.endMs === null ? '?' : formatUtcDate(drift.last.endMs)}`,
+  ];
 }
 
 // ---------------------------------------------------------------------------

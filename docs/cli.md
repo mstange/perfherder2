@@ -38,6 +38,7 @@ installing one binary of the same name — see "The published package" below.
 | --- | --- |
 | `search <term...>` | the Add-series picker |
 | `series <ref...>` | the series list's summary, plus a level comparison |
+| `series <ref...> --drift` | no UI equivalent — see "`series --drift` answers the question the detector cannot" |
 | `changes <ref...>` | the alert triangles and the detected-change bars |
 | `changes <ref...> --cluster` | no UI equivalent — see "`--cluster` makes the row a landing instead of a series" |
 | `step <ref...> --at` | no UI equivalent — see "Measuring a step the detector didn't mark" |
@@ -358,6 +359,29 @@ Their percentages still differ, and both are right; the output says why
 (perfherder averages a 12–24 push window, the detector averages either side of
 the step it located). Invalid alerts are dropped, because a sheriff has already
 said they mean nothing — the same single exclusion `alerts.ts` makes.
+
+### `series --drift` answers the question the detector cannot
+
+Segmentation looks for steps, and a series that slides 8% over three months has
+no step in it — graphs-todo.md has carried that as a known limitation for as long
+as the detector has existed ("Gradual drift is invisible by construction"). The
+trial's most-quoted table was exactly this shape: every idb-open series slower
+than February, +5.6% to +42%, with no single landing accounting for most of it.
+Producing it meant running `series --from/--to` twice and diffing the medians in
+another language.
+
+`--drift` prints the first window of the range against the last. **The window is
+`WINDOW_PUSHES` a side**, imported from changes.ts rather than chosen here, so a
+drift figure and a `step` or `changes` figure are on one scale — and medians
+rather than means, matching the level line's headline and for the reason
+changes.ts keeps raising, that one bad push drags a mean.
+
+Two things it is careful to say. Both windows' own dates are printed, because
+"February against now" is a claim a reader has to be able to check — 24 pushes on
+autoland is three days, not a month. And the p-value is labelled as what it is:
+the ends are at different levels, which is not the same claim as a step having
+happened between them. Below twelve pushes there is no figure at all rather than
+a ratio of three against three; six a side is the detector's own minimum.
 
 ### `--cluster` makes the row a landing instead of a series
 

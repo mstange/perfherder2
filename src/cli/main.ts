@@ -274,8 +274,11 @@ const search: Command = {
 
 const series: Command = {
   summary: 'summarize one or more series over a range, and compare their levels',
-  usage: ['perfherder-cli series <ref...> [--range <dur>] [--from <date>] [--to <date>] [--pushes]'],
-  booleans: ['pushes'],
+  usage: [
+    'perfherder-cli series <ref...> [--range <dur>] [--from <date>] [--to <date>] [--pushes]',
+    '                           [--drift]',
+  ],
+  booleans: ['pushes', 'drift'],
   valued: [...RANGE_VALUED, 'limit'],
   details: [
     'A ref is <repo>,<signatureId>[,<frameworkId>] — the framework is optional, since the',
@@ -287,6 +290,12 @@ const series: Command = {
     'push on one side with a push on the other.',
     '',
     '--pushes lists the most recent pushes per series (--limit, default 20).',
+    '',
+    '--drift compares the first pushes of the range with the last, which is the question the',
+    'change detector cannot answer: segmentation looks for steps, and a series that slides 8% over',
+    'three months has no step in it. The window is 24 pushes a side, the same one `step` and',
+    '`changes` use, so the figures are on one scale. It says the ends are at different levels, not',
+    'that anything stepped between them.',
   ],
   async run(parsed, ctx) {
     const refs = requireRefs(parsed.positionals, 'series');
@@ -295,7 +304,13 @@ const series: Command = {
     const pushLimit = flagBoolean(parsed.flags, 'pushes')
       ? flagNumber(parsed.flags, 'limit', 20)
       : null;
-    const report = buildSeriesReport(loaded, span, ctx.appBase, pushLimit);
+    const report = buildSeriesReport(
+      loaded,
+      span,
+      ctx.appBase,
+      pushLimit,
+      flagBoolean(parsed.flags, 'drift'),
+    );
     return { report, lines: renderSeries(report), exitCode: exitCodeFor(loaded) };
   },
 };

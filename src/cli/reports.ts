@@ -15,6 +15,7 @@ import {
   clearsFloor,
   detectChanges,
   detectionFloor,
+  WINDOW_PUSHES,
   type DetectedChange,
 } from '../lib/graphs/changes';
 import {
@@ -377,7 +378,85 @@ export type SeriesLevel = {
   level: PoolSummary | null;
   // Push means in time order, for the sparkline.
   pushMeans: number[];
+  // Where the series started against where it ended, when `--drift` asked. Null
+  // when it did not, and also when the range holds too few pushes to say.
+  drift: DriftSummary | null;
 };
+
+// ---------------------------------------------------------------------------
+// series --drift
+// ---------------------------------------------------------------------------
+//
+// Where a series was at the start of the range against where it is at the end.
+//
+// This answers a question the change detector cannot, and deliberately so:
+// segmentation looks for steps, and a series that slides 8% over three months
+// has no step in it (graphs-todo.md, "Gradual drift is invisible by
+// construction"). The trial's most-quoted table was exactly this — every
+// idb-open series slower than February, +5.6% to +42% — and getting it meant
+// running `series --from/--to` twice and diffing the medians in another
+// language.
+//
+// **The window is `WINDOW_PUSHES` a side**, imported rather than chosen, so a
+// drift figure and a `step` or `changes` figure are on one scale. Medians rather
+// than means, matching the level line's headline and for the reason changes.ts
+// keeps raising: one bad push drags a mean.
+
+export type DriftWindow = {
+  pushCount: number;
+  startMs: number | null;
+  endMs: number | null;
+  median: number;
+};
+
+export type DriftSummary = {
+  // How many pushes each side actually got. Below `WINDOW_PUSHES` when the range
+  // holds too few to give both sides a full one.
+  windowPushes: number;
+  first: DriftWindow;
+  last: DriftWindow;
+  // (last − first) / first. Null when the first median is zero.
+  deltaFraction: number | null;
+  // A rank test on the two windows' push means. It says the ends are at
+  // different levels; it says nothing about there being a step between them,
+  // which is the whole point of reporting drift separately.
+  test: MannWhitneyResult | null;
+};
+
+// Null rather than a figure when the range cannot support one: six pushes a side
+// is the detector's own minimum for saying anything about a level, and a drift
+// computed from three would be a number with no claim behind it.
+export function buildDrift(pushes: readonly PushGroup[]): DriftSummary | null {
+  const MIN_SIDE = 6;
+  if (pushes.length < 2 * MIN_SIDE) return null;
+  // Never overlapping: with 30 pushes the windows are 15 a side, not 24.
+  const windowPushes = Math.min(WINDOW_PUSHES, Math.floor(pushes.length / 2));
+  const first = pushes.slice(0, windowPushes);
+  const last = pushes.slice(pushes.length - windowPushes);
+
+  const firstMeans = first.map((p) => p.mean);
+  const lastMeans = last.map((p) => p.mean);
+  const firstMedian = median(firstMeans);
+  const lastMedian = median(lastMeans);
+
+  return {
+    windowPushes,
+    first: {
+      pushCount: first.length,
+      startMs: first[0]?.x ?? null,
+      endMs: first[first.length - 1]?.x ?? null,
+      median: firstMedian,
+    },
+    last: {
+      pushCount: last.length,
+      startMs: last[0]?.x ?? null,
+      endMs: last[last.length - 1]?.x ?? null,
+      median: lastMedian,
+    },
+    deltaFraction: firstMedian === 0 ? null : (lastMedian - firstMedian) / firstMedian,
+    test: mannWhitneyU(firstMeans, lastMeans),
+  };
+}
 
 export type LevelComparison = {
   baseLabel: string;
@@ -412,6 +491,7 @@ export function buildSeriesReport(
   base: string,
   // How many of the most recent pushes to list per series; null for none.
   pushLimit: number | null = null,
+  withDrift = false,
 ): SeriesReport {
   const entries = loaded.map((one): SeriesLevel => {
     const pushMeans = one.data.pushes.map((p) => p.mean);
@@ -439,6 +519,7 @@ export function buildSeriesReport(
             }),
       level: summarize(pushMeans),
       pushMeans,
+      drift: withDrift ? buildDrift(one.data.pushes) : null,
     };
   });
 
