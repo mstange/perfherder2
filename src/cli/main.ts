@@ -16,6 +16,7 @@
 
 import { HttpError, SchemaError } from '../lib/shared/http';
 import { DEFAULT_REPOS, PINNED_REPOS } from '../lib/picker/pickerOptions';
+import { FILTER_FIELDS } from '../lib/picker/filter';
 import type { PushGroup } from '../lib/graphs/graphData';
 import { WINDOW_PUSHES } from '../lib/graphs/changes';
 import {
@@ -126,7 +127,14 @@ const search: Command = {
     'The first column is the reference every other command takes.',
   ],
   async run(parsed, ctx) {
-    const filter = parseFilterTerms(parsed.positionals);
+    const { filter, suspectFields } = parseFilterTerms(parsed.positionals);
+    for (const suspect of suspectFields) {
+      warn(
+        `"${suspect.term}" is being searched as plain text — "${suspect.field}" is not a filter ` +
+          `field.${suspect.suggestion ? ` Did you mean ${suspect.suggestion}:?` : ''} ` +
+          `The fields are ${FILTER_FIELDS.join(', ')}.`,
+      );
+    }
     const parentFlag = flagString(parsed.flags, 'parent');
     const parentArg = parentFlag ? parseSeriesArg(parentFlag) : null;
     const parent = parentArg
@@ -310,7 +318,7 @@ const changes: Command = {
       }
 
       reports.push(report);
-      lines.push(...renderChanges(report));
+      lines.push(...renderChanges(report, i === 0));
     }
 
     return { report: reports.length === 1 ? reports[0] : reports, lines };
@@ -339,8 +347,11 @@ const step: Command = {
     'Mann-Whitney U over the push means — and, where the move is real but unmarked, which of',
     'the detector\'s two bars it failed: α = 0.01, or the signature\'s own size floor.',
     '',
-    '--at takes a revision (looked up in whichever of the repositories has it, so it works on',
-    'a series with no data on that push — which is exactly the cross-platform case) or a date.',
+    '--at takes a revision — looked up in the repositories of the refs given and then in the',
+    'rest of the pinned set, so a revision that landed on autoland works for a series on',
+    'mozilla-central, and a series with no data on that push works too, which is exactly the',
+    'cross-platform case. A date works as well, and is the fallback when a revision cannot be',
+    'found.',
     '--window is pushes a side, defaulting to the 24 the detector uses, so the numbers here',
     'and the numbers in a `changes` row are on one scale.',
     '',
@@ -394,11 +405,18 @@ async function resolveSplit(
   if (!/^[0-9a-f]{6,40}$/i.test(at) || /^\d+$/.test(at)) {
     return { atMs: parseDate(at), revision: null, revisionRepository: null };
   }
-  const repositories = [...new Set(refs.map((ref) => ref.repository))];
+  // The refs' own repositories first, then the rest of the pinned set. A
+  // revision lives on exactly one repository, and it is routinely not one of
+  // the repositories being asked about — the whole point of the command is
+  // "this landed on autoland; did mozilla-central's Chrome series see it?".
+  // Restricting the lookup to the refs' repos made the help's promise false,
+  // which a live trial caught.
+  const owned = [...new Set(refs.map((ref) => ref.repository))];
+  const repositories = [...owned, ...PINNED_REPOS.filter((repo) => !owned.includes(repo))];
   const found = await loadRevisionTime(repositories, at.toLowerCase());
   if (!found) {
     throw new UsageError(
-      `no push ${at} in ${repositories.join(' or ')} — check the revision, or pass a date instead`,
+      `no push ${at} in ${repositories.join(', ')} — check the revision, or pass a date instead`,
     );
   }
   return { atMs: found.atMs, revision: at.toLowerCase(), revisionRepository: found.repository };

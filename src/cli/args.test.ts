@@ -6,6 +6,7 @@ import {
   parseArgv,
   parseDate,
   parseDuration,
+  nearestField,
   parseFilterTerms,
   parseList,
   parseSeriesArg,
@@ -185,16 +186,45 @@ describe('parseSeriesArg', () => {
 
 describe('parseFilterTerms', () => {
   it('turns a known field into a chip and leaves everything else as text', () => {
-    const filter = parseFilterTerms(['speedometer3', 'platform:android', 'framework:13']);
+    const { filter } = parseFilterTerms(['speedometer3', 'platform:android', 'framework:13']);
     expect(filter.chips).toEqual([{ field: 'platform', value: 'android' }]);
-    // "framework" is not a filter field, so it stays visible as free text
-    // rather than being silently dropped — a typo should narrow to nothing
-    // loudly, not widen quietly.
+    // An unknown field still falls back to free text — a test name may contain
+    // a colon and the picker relies on that.
     expect(filter.text).toBe('speedometer3 framework:13');
   });
 
   it('de-duplicates identical chips', () => {
-    expect(parseFilterTerms(['repo:autoland', 'repo:autoland']).chips).toHaveLength(1);
+    expect(parseFilterTerms(['repo:autoland', 'repo:autoland']).filter.chips).toHaveLength(1);
+  });
+
+  it('reports a term shaped like a chip whose field is unknown', () => {
+    // The failure this exists for: `app:firefox` searched as literal text,
+    // matched nothing, and the no-match hint then talked about wrong *values*.
+    const { suspectFields } = parseFilterTerms(['app:firefox', 'NewsSite-Next']);
+    expect(suspectFields).toEqual([
+      { term: 'app:firefox', field: 'app', suggestion: 'application' },
+    ]);
+  });
+
+  it('does not mistake a colon inside a value for an attempted chip', () => {
+    // Only a bare word before the colon looks like a chip; a test name or a URL
+    // must not produce a warning telling the user their field is wrong.
+    expect(parseFilterTerms(['https://example.com/x']).suspectFields).toEqual([]);
+    expect(parseFilterTerms(['foo/bar:baz']).suspectFields).toEqual([]);
+  });
+
+  it('offers no suggestion for a word that resembles no field', () => {
+    const { suspectFields } = parseFilterTerms(['banana:split']);
+    expect(suspectFields[0].suggestion).toBeNull();
+  });
+});
+
+describe('nearestField', () => {
+  it('matches an abbreviation in either direction and nothing else', () => {
+    expect(nearestField('app')).toBe('application');
+    expect(nearestField('plat')).toBe('platform');
+    expect(nearestField('applications')).toBe('application');
+    expect(nearestField('banana')).toBeNull();
   });
 });
 

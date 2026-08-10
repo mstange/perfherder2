@@ -298,6 +298,84 @@ has no such flag*. Rejecting at parse time reported the wrong problem:
 declared flag that was given no value still gets "--x needs a value", from
 `flagString`.
 
+## What four fresh sessions found
+
+The tool was trialled by handing four questions to four agents with no context
+beyond the repository, and asking each for a blunt account of the friction. All
+four drove it from `--help` alone; three never opened the source, and the fourth
+read thirty lines of `filter.ts` only because of the chip-field trap below. That
+is the good news, and it comes with a caveat two of them raised unprompted: the
+worked examples in `--help` and in this file describe the very questions they
+were asked, one of them quoting the July 2026 investigation with its real
+figures. As one put it — *"I did not solve this problem; I followed a documented
+recipe for this exact problem. Assume my time-to-answer is not representative."*
+
+**A `guide` subcommand was considered and rejected.** Not one of the failures
+below is a failure of explanation, and every one of them would have survived a
+guide:
+
+- the field was accepted in silence (a behaviour bug),
+- the feature is called `idb` and the reader typed `indexeddb` (a vocabulary
+  problem in the data, not the docs),
+- the labels in a summary table did not distinguish its rows (a rendering bug),
+- assembling a ref list across platforms took more commands than the analysis
+  did (a missing feature).
+
+Meanwhile the loudest complaint, from all four, was that there is *already too
+much prose*: the column legends reprinted once per series rather than once per
+invocation. Adding a command whose output is more prose, to a tool whose help is
+already carrying the load, would treat the symptom of nothing. The worked
+examples are the guide, and they are in the right place — extend those.
+
+### The defects it found, and what they were
+
+- **`commits` did not exclude the base push given a short revision.** The filter
+  was an exact string compare; the API returns 40-character revisions and 12 is
+  how a revision is written everywhere a person can type one. So the range
+  blamed the reference build for the change it is the reference for, while the
+  header went on asserting the base push had been excluded. Fixed in
+  `pushlog.ts::sameRevision`, which prefix-matches in either direction. The
+  worst of the four, because the output was confidently wrong rather than merely
+  unhelpful.
+- **An unknown chip field was silently demoted to free text.** `app:firefox` —
+  the field is `application` — became a substring search for the literal string,
+  matched nothing, and the no-match hint then explained that a chip is an exact
+  match on its *value*, sending the reader hunting for a wrong value. Eight
+  commands. The trap was self-inflicted twice over: the results table's column
+  header said `APP`, and this file boasts that a misspelled *flag* is an error
+  rather than a silent difference while applying none of that reasoning to
+  fields. The fallback stays — a test name may contain a colon — but the silence
+  is gone, and the header now says `APPLICATION`.
+- **`series` labelled its comparison rows `fenix → fenix`.** Two Fenix configs
+  differing only by `fission`, in the table whose entire job is to be the
+  summary, with the one distinguishing attribute omitted. It cost a wrong
+  reading and a duplicate query, because piping a long report to `tail` is the
+  natural move and the table could not be read on its own. Now labelled by
+  `splitCommonAttrs`, the same split `step` uses.
+- **A mode pair was labelled `reweighted` when its share only moved because
+  another mode vanished.** With one side down a mode, the survivors' shares must
+  add back to 100% without it, so 87% → 100% is arithmetic. A reader took it for
+  the finding; the finding was the lost mode on the line above. The flag is now
+  gated on both sides having the same mode count, and the sentence says so.
+- **The KDE bandwidth was never printed**, though "moved" and "in place" are
+  defined by it. A `563.01 → 563.01, +0.00%, in place` row read as snapped
+  rather than measured, and there was no way to check. Both bandwidths and the
+  resolution are now printed under the mode summary.
+- **`step --at <revision>` looked the revision up only in the repositories of
+  the refs given**, while the help promised otherwise — and the promise is the
+  useful behaviour, since "this landed on autoland, did mozilla-central see it?"
+  is the question. It now falls back to the rest of the pinned set.
+- **Column legends printed once per series.** Six times in one `changes` run.
+  Once per invocation now.
+
+### Known gaps it found that are not yet closed
+
+See graphs-todo.md; the ones worth naming here are the inverse of `--parent`
+(one subtest across every platform, which is where most of the ref-wrangling
+went), pooling replicates across a window so `compare`'s mode analysis is not
+resting on a single push's 25–75 values, and a partial failure in a multi-ref
+run printing as a row rather than aborting the process.
+
 ## Code map
 
 Dependencies run impure → pure, so everything that decides what an answer *is*

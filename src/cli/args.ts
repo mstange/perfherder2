@@ -7,7 +7,15 @@
 // snapped to `pickerOptions.ts::TIME_RANGES`, because those are the only
 // intervals the signatures endpoint is asked for anywhere else.
 
-import { parseChip, SORT_COLUMNS, type Filter, type SortColumn, type SortState } from '../lib/picker/filter';
+import {
+  FILTER_FIELDS,
+  isFilterField,
+  parseChip,
+  SORT_COLUMNS,
+  type Filter,
+  type SortColumn,
+  type SortState,
+} from '../lib/picker/filter';
 import { TIME_RANGES } from '../lib/picker/pickerOptions';
 
 // Anything the user could have typed differently. Carries no stack worth
@@ -278,20 +286,68 @@ function parsePointSelector(tail: string | null, whole: string): PointSelector |
 // ---------------------------------------------------------------------------
 
 // Free text and `field:value` chips, with exactly the picker's grammar — a term
-// that names a known field becomes a chip and everything else stays free text,
-// so a typo is visible in the output rather than silently dropped.
-export function parseFilterTerms(terms: readonly string[]): Filter {
+// that names a known field becomes a chip and everything else stays free text.
+//
+// **A term shaped like a chip whose field is unknown is reported, not silently
+// demoted.** Falling back to free text is right — a test name may contain a
+// colon, and the picker relies on that — but in a text box the residue stays
+// under the user's eye, and here it does not. `app:firefox` became a substring
+// search for the literal string "app:firefox", matched nothing, and the
+// no-match hint then explained that a chip is an exact match on its *value*,
+// which sent the reader hunting for a wrong value when the field was wrong.
+// Eight commands, in a live trial. The tool's own output had taught the wrong
+// name: the results table's column header said APP.
+//
+// So the fallback stays and the *silence* goes. `suspectFields` is what
+// `main.ts` warns about; the search still runs, because a genuine colon in a
+// test name must not be a fatal error.
+export type ParsedTerms = {
+  filter: Filter;
+  // Terms of the form `word:value` whose `word` is not a filter field, paired
+  // with the closest field name if one is obviously meant.
+  suspectFields: { term: string; field: string; suggestion: string | null }[];
+};
+
+export function parseFilterTerms(terms: readonly string[]): ParsedTerms {
   const chips: Filter['chips'] = [];
   const text: string[] = [];
+  const suspectFields: ParsedTerms['suspectFields'] = [];
+
   for (const term of terms) {
     const chip = parseChip(term);
     if (chip) {
       if (!chips.some((c) => c.field === chip.field && c.value === chip.value)) chips.push(chip);
-    } else if (term.trim()) {
-      text.push(term.trim());
+      continue;
     }
+    const trimmed = term.trim();
+    if (!trimmed) continue;
+    // Only a bare word before the colon looks like an attempted chip. A test
+    // name carrying one (`foo/bar:baz`) fails on the slash in the field part,
+    // and a URL is excluded by the `//` — "https" is otherwise a perfectly
+    // good bare word and would be reported as a mistyped field.
+    const match = /^([a-z][a-z_-]*):(?!\/\/)(.+)$/i.exec(trimmed);
+    if (match && !isFilterField(match[1].toLowerCase())) {
+      suspectFields.push({
+        term: trimmed,
+        field: match[1],
+        suggestion: nearestField(match[1].toLowerCase()),
+      });
+    }
+    text.push(trimmed);
   }
-  return { chips, text: text.join(' ') };
+
+  return { filter: { chips, text: text.join(' ') }, suspectFields };
+}
+
+// The field a mistyped one obviously meant, or null. Deliberately dumb: an
+// abbreviation of a real field, or a real field abbreviated to it. That covers
+// `app`/`application` and `plat`/`platform`, which is the whole observed
+// failure mode, and it never guesses at something unrelated.
+export function nearestField(word: string): string | null {
+  for (const field of FILTER_FIELDS) {
+    if (field.startsWith(word) || word.startsWith(field)) return field;
+  }
+  return null;
 }
 
 // "platform" or "platform:desc".

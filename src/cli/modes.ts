@@ -106,10 +106,10 @@ export function compareModes(base: ModeSide, next: ModeSide): ModeComparison {
     };
   }
 
-  const matches =
-    baseCount === nextCount
-      ? Array.from({ length: baseCount }, (_, i) => [i, i] as [number, number])
-      : nearestMatches(base.modes.peakLocs, next.modes.peakLocs, resolution * MATCH_WINDOW_BANDWIDTHS);
+  const sameStructure = baseCount === nextCount;
+  const matches = sameStructure
+    ? Array.from({ length: baseCount }, (_, i) => [i, i] as [number, number])
+    : nearestMatches(base.modes.peakLocs, next.modes.peakLocs, resolution * MATCH_WINDOW_BANDWIDTHS);
 
   const pairs: ModePair[] = matches.map(([bi, ni]) => {
     const baseLoc = base.modes.peakLocs[bi];
@@ -129,7 +129,13 @@ export function compareModes(base: ModeSide, next: ModeSide): ModeComparison {
       nextShare,
       shareDelta,
       moved: Math.abs(shift) > resolution,
-      reweighted: Math.abs(shareDelta) >= SHARE_DELTA_THRESHOLD,
+      // **Only meaningful when both sides have the same modes.** When one side
+      // has a mode the other doesn't, the survivors' shares must add back up to
+      // 1 without it, so a pair goes 87% → 100% by arithmetic and not by
+      // anything moving between modes. Flagging that as "reweighted" read as
+      // the finding — a live trial reported exactly that misreading, on a case
+      // where the real finding was the *lost* mode sitting a line above.
+      reweighted: sameStructure && Math.abs(shareDelta) >= SHARE_DELTA_THRESHOLD,
     };
   });
 
@@ -297,8 +303,10 @@ export function describeModeComparison(cmp: ModeComparison, fmt: ModeFormat): st
         );
       }
       parts.push(
-        'A mode appearing or disappearing is a change in what the test does, not in how fast it does it — ' +
-          'check the replicate counts below before reading the delta as a slowdown.',
+        `A mode appearing or disappearing is a change in what the test does, not in how fast it does it — ` +
+          `check the replicate counts below before reading the delta as a slowdown. The surviving ` +
+          `modes' shares necessarily add back up to 100% without the lost one, so a share moving here ` +
+          `is arithmetic rather than a second finding. (${res}.)`,
       );
       return parts.join(' ');
     }

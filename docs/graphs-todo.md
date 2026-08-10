@@ -81,6 +81,43 @@ Living checklist. Update in the same commit as the work it describes.
 
 ## Next
 
+- [ ] **CLI gaps a live trial found, in the order they cost time.** See
+      cli.md, "What four fresh sessions found", for the exercise and for the
+      defects that *were* fixed.
+  - *The inverse of `search --parent`: one subtest across every platform.*
+    `--parent` gives the vertical slice; there is no horizontal one, and
+    assembling "the same row on four platforms" meant `search --json | python3`
+    pivots that took more commands than the analysis did — and produced three
+    mechanical errors, one of which silently mixed three benchmark suites into
+    one table. `step --across platform`, or letting `step` take a search query
+    instead of a ref list, is the shape.
+  - *`compare` cannot pool a window.* Its mode analysis rests on one push's
+    25–75 replicates, and the mode *count* flipped between two legitimate
+    choices of push pair on one real series. `step` pools 24 pushes a side and
+    reports no modes; `compare` reports modes and will not pool. The capability
+    needed sits in the gap between two commands that each have half of it.
+  - *One failed fetch aborts a whole multi-ref run.* A 502 on one of 28 series
+    lost 27 successful fetches. For a command whose stated purpose is "several
+    refs at once is the point", a per-series failure should be a row saying so —
+    the same missing-vs-empty rule the rest of the tool follows.
+  - *No absolute delta.* `step` prints percentages, and "which subtests *drove*
+    a suite-level move" is the milliseconds question; ranking by the two gives
+    different answers. A Δ column, or a share-of-suite-total column, is missing.
+  - *Sparklines carry no scale.* A ~10% dip on a series whose printed `range`
+    spans outliers was read as a large improvement, because `▁` is relative to
+    the sparkline's own min/max and nothing says what those are.
+  - *`search` cannot suggest.* `indexeddb` matches nothing; the tests are
+    `idb-*`. Two of one session's first five commands went on that, and the
+    no-match hint talks about chips when the reader used none.
+  - *Direction is per-row but stated per-header.* A multi-ref `step` can print
+    `+0.53% improvement` and `-1.5% improvement` in adjacent rows — correct,
+    since one is a score and the others are ms, but the header only carries
+    shared attributes and direction is not one of them.
+  - *No way to ask which of two candidate pushes is the step.* `changes` gives a
+    point estimate with no interval, and on one series it picked a push five
+    hours before the one a sheriff's independent alert lands on. There is no
+    bisect, no "rank the candidates in this window".
+
 - [ ] A full repaint of the detail graph at 100k+ dots takes ~60ms, which is
       one dropped frame on a discrete action like resetting the zoom.
       Decimating the overview by pixel column would be the first thing to

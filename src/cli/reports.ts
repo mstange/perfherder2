@@ -396,9 +396,15 @@ export function buildSeriesReport(
     };
   });
 
+  // Row labels come from the same split `step` uses, so two series that share
+  // an application are still told apart. They used to be `application ||
+  // platform || name`, which printed the row "fenix → fenix" for two Fenix
+  // configs differing only by `fission` — omitting the one attribute that
+  // distinguished them, in the table whose entire job is to be the summary.
+  const labels = distinguishingLabels(loaded);
   const comparisons: LevelComparison[] = [];
   for (let i = 1; i < loaded.length; i++) {
-    const cmp = buildLevelComparison(loaded[0], loaded[i]);
+    const cmp = buildLevelComparison(loaded[0], loaded[i], labels[0], labels[i]);
     if (cmp) comparisons.push(cmp);
   }
 
@@ -426,6 +432,8 @@ export function buildSeriesReport(
 export function buildLevelComparison(
   base: LoadedSeries,
   next: LoadedSeries,
+  baseLabelOverride?: string,
+  nextLabelOverride?: string,
 ): LevelComparison | null {
   const baseValues = base.data.pushes.map((p) => p.mean);
   const nextValues = next.data.pushes.map((p) => p.mean);
@@ -441,8 +449,8 @@ export function buildLevelComparison(
   const directionsDiffer = base.meta.lowerIsBetter !== next.meta.lowerIsBetter;
   const test = mannWhitneyU(baseValues, nextValues);
 
-  const baseLabel = levelLabel(base);
-  const nextLabel = levelLabel(next);
+  const baseLabel = baseLabelOverride || levelLabel(base);
+  const nextLabel = nextLabelOverride || levelLabel(next);
   let betterLabel: string | null = null;
   if (!unitsDiffer && !directionsDiffer && test?.significant) {
     const nextIsHigher = nextSummary.median > baseSummary.median;
@@ -470,8 +478,21 @@ export function buildLevelComparison(
   };
 }
 
-// The shortest thing that distinguishes one series from another in a list of
-// them: the application if it has one, else the platform, else the test name.
+// One label per series, each holding only what that series does not share with
+// the others — `seriesSummary.ts`'s split, which is also what `step` labels its
+// rows with. Falls back to `levelLabel` where the split has nothing to say: one
+// series, or metadata that never arrived.
+export function distinguishingLabels(loaded: readonly LoadedSeries[]): string[] {
+  const split = splitCommonAttrs(loaded.map((one) => attrsForEntry(one.ref, one.meta)));
+  return loaded.map((one, i) => {
+    if (loaded.length < 2 || split.mode !== 'multi') return levelLabel(one);
+    return chipText(split.distinct[i]) || levelLabel(one);
+  });
+}
+
+// The fallback: the shortest thing that names a series on its own. Only good
+// enough when there is nothing to contrast it with — see `distinguishingLabels`
+// for why it is not good enough when there is.
 function levelLabel(loaded: LoadedSeries): string {
   const { meta, ref } = loaded;
   return meta.application || meta.platform || seriesLabel(meta) || `signature ${ref.signatureId}`;

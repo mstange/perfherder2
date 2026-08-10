@@ -117,7 +117,10 @@ export function renderSearch(report: SearchReport): string[] {
   }
 
   const withRuns = report.rows.some((r) => r.runs !== null);
-  const headers = ['REF', 'SUITE', 'TEST', 'APP', 'PLATFORM', 'OPTIONS', 'UNIT'];
+  // "APPLICATION", not "APP": the column header is where a reader learns the
+  // chip name, and an abbreviated one taught `app:` — which is not a field, and
+  // which used to be accepted in silence as free text.
+  const headers = ['REF', 'SUITE', 'TEST', 'APPLICATION', 'PLATFORM', 'OPTIONS', 'UNIT'];
   const aligns: Align[] = ['left', 'left', 'left', 'left', 'left', 'left', 'left'];
   if (withRuns) {
     headers.push('RUNS');
@@ -370,7 +373,11 @@ function renderPushTable(pushes: readonly PushRow[]): string[] {
 // changes
 // ---------------------------------------------------------------------------
 
-export function renderChanges(report: ChangesReport): string[] {
+// `legend` is false for every series after the first in a multi-ref run. The
+// paragraph below explains the columns, which do not change between series, and
+// printing it six times in one invocation was the single most common complaint
+// in a live trial of this tool.
+export function renderChanges(report: ChangesReport, legend = true): string[] {
   const out: string[] = [];
   out.push(describeSeries(report.series));
   out.push(`${report.series.ref} · ${measurementLine(report.series)}`);
@@ -427,14 +434,16 @@ export function renderChanges(report: ChangesReport): string[] {
     ),
   );
   out.push('');
-  out.push(
-    'BEFORE/AFTER and CHANGE are the detected step where there is one — a difference of means',
-    'over up to 24 pushes a side — and the alert\'s own numbers otherwise. Where both exist they',
-    'will differ, and both are right: perfherder averages a 12–24 push window, this one averages',
-    'the window either side of the step it located. P is this app\'s rank test; perfherder has no',
-    'comparable figure.',
-  );
-  out.push('');
+  if (legend) {
+    out.push(
+      'BEFORE/AFTER and CHANGE are the detected step where there is one — a difference of means',
+      'over up to 24 pushes a side — and the alert\'s own numbers otherwise. Where both exist they',
+      'will differ, and both are right: perfherder averages a 12–24 push window, this one averages',
+      'the window either side of the step it located. P is this app\'s rank test; perfherder has no',
+      'comparable figure.',
+    );
+    out.push('');
+  }
 
   for (const entry of report.entries) {
     out.push(...renderChangeDetail(entry));
@@ -610,6 +619,15 @@ export function renderCompare(report: CompareReport): string[] {
   if (report.modeSummary) {
     out.push('Modes');
     out.push(...indent(wrap(report.modeSummary, 92)));
+    if (report.modes && report.modes.resolution > 0) {
+      // The load-bearing number: "moved" and "in place" are defined by it, and
+      // without it a `+0.00%` row reads as snapped rather than measured.
+      out.push(
+        `  KDE bandwidths ${formatValue(report.base.bandwidth)} / ${formatValue(report.next.bandwidth)}` +
+          `${report.unit ? ` ${report.unit}` : ''}; a peak has to move more than ` +
+          `${formatValue(report.modes.resolution)} to count.`,
+      );
+    }
     if (report.modes && report.modes.pairs.length > 0) {
       out.push('');
       const rows = report.modes.pairs.map((p) => [
@@ -620,7 +638,9 @@ export function renderCompare(report: CompareReport): string[] {
         p.moved ? 'moved' : 'in place',
         `${Math.round(p.baseShare * 100)}%`,
         `${Math.round(p.nextShare * 100)}%`,
-        p.reweighted ? 'reweighted' : 'held',
+        // Blank rather than "held" when the mode sets differ: neither word is
+        // true of a share that changed only because another mode vanished.
+        report.modes?.verdict === 'restructured' ? '' : p.reweighted ? 'reweighted' : 'held',
       ]);
       out.push(
         ...indent(
