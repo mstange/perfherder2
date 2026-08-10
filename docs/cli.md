@@ -367,6 +367,14 @@ examples are the guide, and they are in the right place — extend those.
   is the question. It now falls back to the rest of the pinned set.
 - **Column legends printed once per series.** Six times in one `changes` run.
   Once per invocation now.
+- **`step` printed only percentages, and only one direction.** Two defects with
+  one fix, both in the table a suite's subtests are read from. "Which subtests
+  *drove* this move" is the milliseconds question and ranking by percentage
+  answers a different one, so there is now a Δ column beside CHANGE. And a run
+  that mixes a score with three timings printed `+0.53% improvement` above
+  `-1.5% improvement` — both right — because direction was only ever stated in
+  the header, which by construction carries what the series *share*. It is now a
+  per-row METRIC column, collapsing to one header line when every series agrees.
 - **A sparkline carried no scale.** `▁` is the row's own minimum and eight block
   characters have no axis, so a ~10% dip read as a large improvement: the only
   numbers beside it were a `range` widened by outliers, which the row does not

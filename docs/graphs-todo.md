@@ -100,16 +100,9 @@ Living checklist. Update in the same commit as the work it describes.
     lost 27 successful fetches. For a command whose stated purpose is "several
     refs at once is the point", a per-series failure should be a row saying so —
     the same missing-vs-empty rule the rest of the tool follows.
-  - *No absolute delta.* `step` prints percentages, and "which subtests *drove*
-    a suite-level move" is the milliseconds question; ranking by the two gives
-    different answers. A Δ column, or a share-of-suite-total column, is missing.
   - *`search` cannot suggest.* `indexeddb` matches nothing; the tests are
     `idb-*`. Two of one session's first five commands went on that, and the
     no-match hint talks about chips when the reader used none.
-  - *Direction is per-row but stated per-header.* A multi-ref `step` can print
-    `+0.53% improvement` and `-1.5% improvement` in adjacent rows — correct,
-    since one is a score and the others are ms, but the header only carries
-    shared attributes and direction is not one of them.
   - *No way to ask which of two candidate pushes is the step.* `changes` gives a
     point estimate with no interval, and on one series it picked a push five
     hours before the one a sheriff's independent alert lands on. There is no

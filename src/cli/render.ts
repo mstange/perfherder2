@@ -13,7 +13,12 @@
 //     finding; "alerts could not be fetched" is not. Same for a series with no
 //     data in the range versus one that doesn't exist.
 
-import { formatPValue, formatSignedPercent, formatValue } from '../lib/shared/chart';
+import {
+  formatPValue,
+  formatSignedPercent,
+  formatSignedValue,
+  formatValue,
+} from '../lib/shared/chart';
 import { bugUrl } from '../lib/shared/links';
 import {
   axisLines,
@@ -167,17 +172,26 @@ export function renderStep(report: StepReport): string[] {
     : formatUtc(report.atMs);
   out.push(`step at ${at} · up to ${report.windowPushes} pushes a side`);
   if (report.common) out.push(`all series: ${report.common}`);
+  // Direction belongs beside the number it qualifies. A run over a suite's
+  // subtests can hold a score and three timings, and then "+0.53% improvement"
+  // sits directly above "-1.5% improvement" — both correct, and unreadable
+  // unless each row says which way its own metric runs. Where every series
+  // agrees, one header line says it once and the column is dropped.
+  const metric = sharedMetric(report);
+  if (metric) out.push(`measured in ${metric}`);
   out.push('');
 
   const anyLabel = report.entries.some((e) => e.label);
   const rows = report.entries.map((entry) => {
     const cells = anyLabel ? [truncate(entry.label || entry.series.suite, 40)] : [];
+    if (!metric) cells.push(metricOf(entry.series));
     const b = entry.before.summary;
     const a = entry.after.summary;
     cells.push(
       `${entry.before.pushCount}/${entry.after.pushCount}`,
       b ? formatValue(b.mean) : NONE,
       a ? formatValue(a.mean) : NONE,
+      entry.meanDelta === null ? NONE : formatSignedValue(entry.meanDelta),
       entry.medianDeltaFraction === null && entry.meanDelta === null
         ? NONE
         : formatSignedPercent(relativeOf(entry)),
@@ -190,8 +204,12 @@ export function renderStep(report: StepReport): string[] {
 
   const headers = anyLabel ? ['SERIES'] : [];
   const aligns: Align[] = anyLabel ? ['left'] : [];
-  headers.push('N', 'BEFORE', 'AFTER', 'CHANGE', 'P', 'EFFECT', 'VERDICT');
-  aligns.push('right', 'right', 'right', 'right', 'right', 'left', 'left');
+  if (!metric) {
+    headers.push('METRIC');
+    aligns.push('left');
+  }
+  headers.push('N', 'BEFORE', 'AFTER', 'Δ', 'CHANGE', 'P', 'EFFECT', 'VERDICT');
+  aligns.push('right', 'right', 'right', 'right', 'right', 'right', 'left', 'left');
 
   out.push(...table(headers, rows, aligns));
   out.push('');
@@ -199,6 +217,14 @@ export function renderStep(report: StepReport): string[] {
     'N is pushes before/after. BEFORE and AFTER are means over push means — the unit of',
     'analysis the change detector uses, so these numbers sit on the same scale as a `changes`',
     'row. P is the two-sided Mann-Whitney U over those push means.',
+  );
+  // Δ and CHANGE are the same move in two units and they rank differently: the
+  // percentage says which subtest moved most, the absolute says which one moved
+  // the suite. "Which subtests drove this" is the second question, and it used
+  // to be unanswerable from this table.
+  out.push(
+    'Δ is AFTER − BEFORE in the metric\'s own unit, and CHANGE is the same difference relative',
+    'to BEFORE. Rank by Δ for what drove a suite-level move; by CHANGE for what moved most.',
   );
   out.push('');
 
@@ -242,6 +268,21 @@ export function renderStep(report: StepReport): string[] {
 
   out.push(report.url);
   return out;
+}
+
+// "ms, lower is better" — the unit a row's numbers are in and which way that
+// unit runs, which VERDICT's "improvement" is meaningless without.
+function metricOf(series: SeriesHeader): string {
+  return `${series.unit || 'no unit'}, ${series.lowerIsBetter ? 'lower' : 'higher'} is better`;
+}
+
+// The metric every series in the run shares, or empty when they don't share
+// one. A header can only carry what is common; direction is not a shared
+// attribute of a suite's subtests, and `splitCommonAttrs` doesn't consider it.
+function sharedMetric(report: StepReport): string {
+  if (report.entries.length === 0) return '';
+  const first = metricOf(report.entries[0].series);
+  return report.entries.every((e) => metricOf(e.series) === first) ? first : '';
 }
 
 // Percent for the table. The mean delta, matching what BEFORE and AFTER show
