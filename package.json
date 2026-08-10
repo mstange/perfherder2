@@ -5,7 +5,7 @@
   "license": "MPL-2.0",
   "type": "module",
   "bin": {
-    "perfherder": "bin/perfherder"
+    "perfherder-cli": "bin/perfherder-cli"
   },
   "scripts": {
     "dev": "vite",

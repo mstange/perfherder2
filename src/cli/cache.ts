@@ -53,9 +53,9 @@ export function defaultCacheDir(): string {
   const explicit = process.env.PERFHERDER_CLI_CACHE_DIR;
   if (explicit) return explicit;
   const xdg = process.env.XDG_CACHE_HOME;
-  if (xdg) return join(xdg, 'perfherder2-cli');
+  if (xdg) return join(xdg, 'perfherder-cli');
   const home = homedir();
-  return home ? join(home, '.cache', 'perfherder2-cli') : join(tmpdir(), 'perfherder2-cli');
+  return home ? join(home, '.cache', 'perfherder-cli') : join(tmpdir(), 'perfherder-cli');
 }
 
 function entryPath(dir: string, url: string): string {

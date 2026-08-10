@@ -8,11 +8,11 @@ its second table lists the changes that have gone wrong before and the section
 that explains each. It has the *why* behind non-obvious choices, and every
 non-trivial change should be checked against it.
 
-## Answering performance questions: use `bin/perfherder`, not the source
+## Answering performance questions: use `bin/perfherder-cli`, not the source
 
 **When you are asked a question *about Firefox performance data* — how two
 browsers compare, when something regressed, what caused a step, what a
-distribution looks like — run `./bin/perfherder`. Do not read this codebase to
+distribution looks like — run `./bin/perfherder-cli`. Do not read this codebase to
 work out what URL the UI would build, and do not hand-write `curl` calls
 against treeherder.** The CLI is built from the same `src/lib` modules the app
 runs, so its answers are the app's answers, and it does the parts that are easy
@@ -20,29 +20,29 @@ to get wrong (which alerts to hide, which threshold a subtest inherits, why a
 push mean is not a pooled replicate) already.
 
 ```sh
-./bin/perfherder --help              # commands and worked examples
-./bin/perfherder <command> --help    # one command's options
+./bin/perfherder-cli --help              # commands and worked examples
+./bin/perfherder-cli <command> --help    # one command's options
 ```
 
 Typical shape of an investigation:
 
 ```sh
 # 1. Find the signature. The first column is the ref every other command takes.
-./bin/perfherder search speedometer3 android --repo mozilla-central
+./bin/perfherder-cli search speedometer3 android --repo mozilla-central
 
 # 2. Levels over a window — this is the "A vs B" answer.
-./bin/perfherder series mozilla-central,270490 mozilla-central,230167 --range 60d
+./bin/perfherder-cli series mozilla-central,270490 mozilla-central,230167 --range 60d
 
 # 3. When did it move, and what landed?
-./bin/perfherder changes autoland,5350953 --range 6mo --commits
+./bin/perfherder-cli changes autoland,5350953 --range 6mo --commits
 
 # 4. What kind of change was it? Statistics, distributions, and whether the
 #    modes moved or just their weights.
-./bin/perfherder compare autoland,5350953@<beforeRev> <afterRev> --range 6mo
+./bin/perfherder-cli compare autoland,5350953@<beforeRev> <afterRev> --range 6mo
 
 # 5. Which subtests drove a suite-level move, and did other platforms see it?
-./bin/perfherder search --parent autoland,5352597 --limit 100
-./bin/perfherder step <subtest refs...> --at <rev> --range 60d
+./bin/perfherder-cli search --parent autoland,5352597 --limit 100
+./bin/perfherder-cli step <subtest refs...> --at <rev> --range 60d
 ```
 
 **`step` is the one to reach for when `changes` says nothing on a platform you

@@ -1,4 +1,4 @@
-// perfherder — a command-line front end to the same code the app runs on.
+// perfherder-cli — a command-line front end to the same code the app runs on.
 //
 // Built from src/lib, not beside it: every projection, statistic and API quirk
 // this prints is the app's own, so an answer given here and the same answer read
@@ -124,7 +124,7 @@ const RANGE_VALUED = ['range', 'from', 'to'] as const;
 const search: Command = {
   summary: 'find signatures — the Add-series picker, as a query',
   usage: [
-    'perfherder search <term...> [--repo <list>] [--interval <dur>] [--subtests]',
+    'perfherder-cli search <term...> [--repo <list>] [--interval <dur>] [--subtests]',
     '                            [--parent <ref>] [--like <ref>] [--across <field>]',
     '                            [--limit <n>] [--sort <col[:desc]>] [--activity]',
   ],
@@ -257,7 +257,7 @@ const search: Command = {
 
 const series: Command = {
   summary: 'summarize one or more series over a range, and compare their levels',
-  usage: ['perfherder series <ref...> [--range <dur>] [--from <date>] [--to <date>] [--pushes]'],
+  usage: ['perfherder-cli series <ref...> [--range <dur>] [--from <date>] [--to <date>] [--pushes]'],
   booleans: ['pushes'],
   valued: [...RANGE_VALUED, 'limit'],
   details: [
@@ -291,7 +291,7 @@ const series: Command = {
 const changes: Command = {
   summary: "steps this app detects and alerts perfherder raised, on one timeline",
   usage: [
-    'perfherder changes <ref...> [--range <dur>] [--commits] [--commit-limit <n>]',
+    'perfherder-cli changes <ref...> [--range <dur>] [--commits] [--commit-limit <n>]',
   ],
   booleans: ['commits'],
   valued: [...RANGE_VALUED, 'commit-limit'],
@@ -383,7 +383,7 @@ const changes: Command = {
 const step: Command = {
   summary: 'measure the change at one point, across several series at once',
   usage: [
-    'perfherder step <ref...> --at <revision|date> [--window <n>] [--range <dur>]',
+    'perfherder-cli step <ref...> --at <revision|date> [--window <n>] [--range <dur>]',
     '                         [--across <field>] [--repo <list>]',
   ],
   booleans: [],
@@ -468,7 +468,7 @@ const step: Command = {
 const locate: Command = {
   summary: 'rank the pushes a step could be on, by the detector\'s own criterion',
   usage: [
-    'perfherder locate <ref> --at <revision|date> [--window <n>] [--top <k>] [--range <dur>]',
+    'perfherder-cli locate <ref> --at <revision|date> [--window <n>] [--top <k>] [--range <dur>]',
   ],
   booleans: [],
   valued: [...RANGE_VALUED, 'at', 'window', 'top'],
@@ -573,7 +573,7 @@ async function resolveSplit(
 const compare: Command = {
   summary: 'compare two pushes: statistics, distributions, and whether the modes moved',
   usage: [
-    'perfherder compare <ref@where> <ref@where|where> [--range <dur>] [--pool <n>]',
+    'perfherder-cli compare <ref@where> <ref@where|where> [--range <dur>] [--pool <n>]',
     '',
     '  <where> is a revision, a push id, or first / last.',
     '  The second argument may be a bare <where>, meaning the same series.',
@@ -633,7 +633,7 @@ const compare: Command = {
     if (pool > 1 && basePush.pushId === nextPush.pushId) {
       throw new UsageError(
         'the two points are on one push, so there is no window to pool either side of — ' +
-          '`perfherder series` compares two series over a whole range',
+          '`perfherder-cli series` compares two series over a whole range',
       );
     }
     // Which side reaches back and which reaches forward is decided by time, not
@@ -724,7 +724,7 @@ function rangeHint(what: string, pushes: readonly PushGroup[]): string {
 
 const commits: Command = {
   summary: 'what landed between two revisions',
-  usage: ['perfherder commits <repo> <fromRevision> <toRevision>'],
+  usage: ['perfherder-cli commits <repo> <fromRevision> <toRevision>'],
   booleans: [],
   valued: [],
   details: [
@@ -755,7 +755,7 @@ const commits: Command = {
 
 const url: Command = {
   summary: 'the app URL that shows these series over this range',
-  usage: ['perfherder url <ref...> [--range <dur>] [--from <date>] [--to <date>] [--base <url>]'],
+  usage: ['perfherder-cli url <ref...> [--range <dur>] [--from <date>] [--to <date>] [--base <url>]'],
   booleans: [],
   valued: [...RANGE_VALUED],
   details: [
@@ -771,7 +771,7 @@ const url: Command = {
     if (missing.length > 0) {
       throw new UsageError(
         `these refs need a framework id: ${missing.map((r) => `${r.repository},${r.signatureId}`).join(' ')} — ` +
-          'run `perfherder search` to get the three-field form, or use `perfherder series`, which looks it up',
+          'run `perfherder-cli search` to get the three-field form, or use `perfherder-cli series`, which looks it up',
       );
     }
     const link = graphUrl(
@@ -932,9 +932,9 @@ function warn(message: string): void {
 function topLevelHelp(): string[] {
   const width = Math.max(...Object.keys(COMMANDS).map((n) => n.length));
   return [
-    'perfherder — query treeherder performance data.',
+    'perfherder-cli — query treeherder performance data.',
     '',
-    'Usage: perfherder <command> [args] [--json] [--no-cache] [--verbose]',
+    'Usage: perfherder-cli <command> [args] [--json] [--no-cache] [--verbose]',
     '',
     'Commands:',
     ...Object.entries(COMMANDS).map(([name, c]) => `  ${name.padEnd(width)}  ${c.summary}`),
@@ -945,7 +945,7 @@ function topLevelHelp(): string[] {
     '  --verbose       print timing and cache statistics to stderr',
     '  --base <url>    the app to build links against ' +
       `(default ${DEFAULT_APP_BASE}, or $PERFHERDER2_BASE_URL)`,
-    '  --cache-dir <d> where to cache responses (default $XDG_CACHE_HOME/perfherder2-cli)',
+    '  --cache-dir <d> where to cache responses (default $XDG_CACHE_HOME/perfherder-cli)',
     '',
     'Ranges are given as --range 90d / 6mo / 1y / 36h, or as --from and --to with',
     `YYYY-MM-DD dates. The default is ${DEFAULT_RANGE_SECONDS / 86400} days, and every command prints the range it`,
@@ -954,35 +954,35 @@ function topLevelHelp(): string[] {
     'Worked examples:',
     '',
     '  # Firefox against Chrome on Android, over a month.',
-    '  perfherder search speedometer3 android --activity',
-    '  perfherder series autoland,1234567 autoland,7654321 --range 30d',
+    '  perfherder-cli search speedometer3 android --activity',
+    '  perfherder-cli series autoland,1234567 autoland,7654321 --range 30d',
     '',
     '  # A regression: when did it happen, and did the modes move or just their weights?',
-    '  perfherder changes autoland,1234567 --range 60d',
-    '  perfherder compare autoland,1234567@<before> <after> --pool 24',
+    '  perfherder-cli changes autoland,1234567 --range 60d',
+    '  perfherder-cli compare autoland,1234567@<before> <after> --pool 24',
     '',
     '  # Which push is the step really on, and does perfherder agree?',
-    '  perfherder locate autoland,1234567 --at <revision> --range 60d',
+    '  perfherder-cli locate autoland,1234567 --at <revision> --range 60d',
     '',
     '  # Six months of a metric, and what caused each step.',
-    '  perfherder changes autoland,1234567 --range 6mo --commits',
+    '  perfherder-cli changes autoland,1234567 --range 6mo --commits',
     '',
     '  # Which subtests drove a suite-level move, and did other platforms see it?',
-    '  perfherder search --parent autoland,1234567 --limit 100',
-    '  perfherder step <subtest refs…> --at <revision> --range 60d',
-    '  perfherder step autoland,1234567 --across platform --at <revision> --range 60d',
+    '  perfherder-cli search --parent autoland,1234567 --limit 100',
+    '  perfherder-cli step <subtest refs…> --at <revision> --range 60d',
+    '  perfherder-cli step autoland,1234567 --across platform --at <revision> --range 60d',
     '',
     '  # The same row somewhere else: every platform, or Firefox against Chrome.',
-    '  perfherder search --like autoland,1234567 --across platform',
-    '  perfherder search --like autoland,1234567 --across platform,application',
+    '  perfherder-cli search --like autoland,1234567 --across platform',
+    '  perfherder-cli search --like autoland,1234567 --across platform,application',
     '',
-    'Run `perfherder <command> --help` for a command\'s own options.',
+    'Run `perfherder-cli <command> --help` for a command\'s own options.',
   ];
 }
 
 function commandHelp(name: string, command: Command): string[] {
   return [
-    `perfherder ${name} — ${command.summary}`,
+    `perfherder-cli ${name} — ${command.summary}`,
     '',
     ...command.usage,
     '',
@@ -1002,7 +1002,7 @@ export async function run(argv: readonly string[]): Promise<number> {
     const target = name === 'help' ? argv[1] : undefined;
     const command = target ? COMMANDS[target] : undefined;
     if (target && !command) {
-      process.stderr.write(`perfherder: no such command "${target}"\n`);
+      process.stderr.write(`perfherder-cli: no such command "${target}"\n`);
       print(topLevelHelp());
       return 2;
     }
@@ -1013,7 +1013,7 @@ export async function run(argv: readonly string[]): Promise<number> {
   const command = COMMANDS[name];
   if (!command) {
     process.stderr.write(
-      `perfherder: unknown command "${name}". Try one of: ${Object.keys(COMMANDS).join(', ')}\n`,
+      `perfherder-cli: unknown command "${name}". Try one of: ${Object.keys(COMMANDS).join(', ')}\n`,
     );
     return 2;
   }
@@ -1037,7 +1037,7 @@ export async function run(argv: readonly string[]): Promise<number> {
   if (stray.length > 0) {
     throw new UsageError(
       `${name} does not take ${stray.map((f) => `--${f}`).join(', ')}. ` +
-        'Run `perfherder ' + name + ' --help`.',
+        'Run `perfherder-cli ' + name + ' --help`.',
     );
   }
 
@@ -1110,6 +1110,6 @@ run(process.argv.slice(2))
   })
   .catch((error: unknown) => {
     const { message, code } = describeError(error);
-    process.stderr.write(`perfherder: ${message}\n`);
+    process.stderr.write(`perfherder-cli: ${message}\n`);
     process.exitCode = code;
   });

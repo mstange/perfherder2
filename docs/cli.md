@@ -1,6 +1,6 @@
 # The CLI — design and usage
 
-`bin/perfherder` is a command-line front end to this app, built from the same
+`bin/perfherder-cli` is a command-line front end to this app, built from the same
 `src/lib` modules the browser runs. Companion to [design.md](design.md); read
 its "Which document" map if you're not sure which file answers your question.
 
@@ -21,8 +21,8 @@ build:
 ## Usage
 
 ```sh
-./bin/perfherder --help              # commands and worked examples
-./bin/perfherder <command> --help    # one command's options
+./bin/perfherder-cli --help              # commands and worked examples
+./bin/perfherder-cli <command> --help    # one command's options
 ```
 
 The wrapper rebuilds `dist-cli/perfherder.mjs` when it is missing or older than
@@ -119,7 +119,7 @@ one page of ten (graphs-todo.md).
 
 ### Responses are cached on disk
 
-Under `$XDG_CACHE_HOME/perfherder2-cli`, keyed by request URL, pruned at 24
+Under `$XDG_CACHE_HOME/perfherder-cli`, keyed by request URL, pruned at 24
 hours. TTLs by how fast the thing behind them changes: a day for frameworks,
 option collections and the repository list; an hour for signature lists; ten
 minutes for performance data, alerts and pushes. `--no-cache` bypasses it.

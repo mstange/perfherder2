@@ -881,7 +881,7 @@ export function renderCompare(report: CompareReport): string[] {
     out.push(
       '! These are two different series on two different pushes, so the delta below is a',
       "  difference between two builds as much as between two series. Give both sides the same",
-      '  revision to compare them on one build, or use `perfherder series` to compare their',
+      '  revision to compare them on one build, or use `perfherder-cli series` to compare their',
       '  levels over a whole range.',
       '',
     );

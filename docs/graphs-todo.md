@@ -69,7 +69,7 @@ Living checklist. Update in the same commit as the work it describes.
   on pin so the count is there to show, pinned-only so a hover doesn't fetch a
   range per dot. See [comparison.md](comparison.md), "The inline pushlog"
 
-- `bin/perfherder`, a CLI over the same modules — `src/cli/` (+ tests for its
+- `bin/perfherder-cli`, a CLI over the same modules — `src/cli/` (+ tests for its
   pure halves), built by `vite.cli.config.ts`. Commands mirroring the
   UI: `search`, `series`, `changes`, `compare`, `commits`, `url`. It adds two
   things the app doesn't have, both because a CLI has no reader to lend a

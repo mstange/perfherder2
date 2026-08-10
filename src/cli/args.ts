@@ -32,7 +32,7 @@ export class UsageError extends Error {
 // ---------------------------------------------------------------------------
 
 export type ParsedArgv = {
-  // '' when argv started with a flag, which is how `perfherder --help` reaches
+  // '' when argv started with a flag, which is how `perfherder-cli --help` reaches
   // the top-level help instead of erroring on a missing command.
   command: string;
   positionals: string[];
