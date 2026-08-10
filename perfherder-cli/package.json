@@ -1,6 +1,6 @@
 {
   "name": "@mstange/perfherder-cli",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Query Firefox performance data from the command line: search signatures, detect steps, compare pushes, and attribute a regression to what landed",
   "type": "module",
   "bin": {

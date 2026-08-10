@@ -25,7 +25,9 @@ picture is one nobody should act on.
 | --- | --- |
 | `search <term...>` | which signature do I mean? |
 | `series <ref...>` | what level is it at, and how do two of them compare? |
+| `series <ref...> --drift` | it never stepped — how far has it slid since February? |
 | `changes <ref...>` | where did it move, and what landed there? |
+| `changes <ref...> --cluster` | which *landings* moved these twenty series, not which series moved? |
 | `step <ref...> --at` | how big is the move *here*, on each of these series? |
 | `locate <ref> --at` | which push is the step actually on? |
 | `compare <a> <b>` | statistics, distributions, and whether the modes moved |
@@ -54,10 +56,13 @@ perfherder-cli compare autoland,5350953@<beforeRev> <afterRev> --pool 24
 
 # 5. Did the other platforms see it, even where no bar was drawn?
 perfherder-cli step autoland,5350953 --across platform --at <rev> --range 60d
+
+# …and over a whole suite at once: which landings moved it, six months back?
+perfherder-cli changes <refs...> --range 6mo --cluster --brief
 ```
 
-Two commands have no counterpart in the app, and both exist because silence is
-not evidence:
+Four things here have no counterpart in the app. Two exist because silence is not
+evidence:
 
 - **`step`** measures a change at a point you name and says which of the
   detector's two bars a real-but-unmarked move failed. A platform running a
@@ -65,9 +70,20 @@ not evidence:
   the per-push noise — so the same real step is certified on one graph and
   invisible on the other. Reading that as "it didn't happen here" is the mistake
   this prevents.
+- **`series --drift`** prints the first window of a range against the last, for a
+  series that slid 8% over three months without ever stepping. Segmentation looks
+  for steps and there is no step in that shape, so no bar is drawn and nothing is
+  wrong.
+
+And two because a point estimate is not an interval, and a series is not a cause:
+
 - **`locate`** ranks every push a step could be on, by the criterion the detector
-  itself uses to place a bar, and marks the one Perfherder alerted on. A bar is a
-  point estimate; this is the interval it doesn't carry.
+  itself uses to place a bar, and marks the one Perfherder alerted on.
+- **`changes --cluster`** groups the events of a whole ref list into the landings
+  behind them, joining on the interval each event brackets rather than on the push
+  it was placed on. Nine events across three platforms become one row — and the
+  intersection of their brackets is often narrower than any single series carries,
+  sometimes a single push.
 
 ## Notes that save a round trip
 
