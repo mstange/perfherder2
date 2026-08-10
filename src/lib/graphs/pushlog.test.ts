@@ -7,6 +7,7 @@ import {
   commitTitle,
   pushlogCaveat,
   pushlogLabel,
+  sameRevision,
   type PushlogRange,
 } from "./pushlog";
 
@@ -300,5 +301,47 @@ describe("pushlogCaveat", () => {
     expect(
       pushlogCaveat({ ...base, hiddenRevisions: 5, truncated: true }),
     ).toMatch(/newest 200 pushes/);
+  });
+});
+
+describe('sameRevision', () => {
+  const FULL = '09e41de24fb319475ff1b0c3c366c0fbf6e40387';
+
+  it('matches a short revision against the full one, either way round', () => {
+    expect(sameRevision(FULL, '09e41de24fb3')).toBe(true);
+    expect(sameRevision('09e41de24fb3', FULL)).toBe(true);
+    expect(sameRevision(FULL, FULL)).toBe(true);
+  });
+
+  it('does not match a different revision', () => {
+    expect(sameRevision(FULL, '080629dcb120')).toBe(false);
+    expect(sameRevision('', FULL)).toBe(false);
+    expect(sameRevision(FULL, '')).toBe(false);
+  });
+});
+
+describe('commitsInRange drops the base push given a short revision', () => {
+  // The bug: the filter was an exact string compare, the API returns 40-char
+  // revisions, and 12 characters is how a revision is written everywhere a
+  // person can type one. The base push survived, so the range blamed the
+  // reference build for the change it is the reference for — while the header
+  // went on saying the base push had been excluded.
+  const push = (revision: string, id: number): Push => ({
+    id,
+    revision,
+    author: 'Someone <s@example.com>',
+    push_timestamp: 1_700_000_000 + id,
+    revisions: [{ revision, author: 'Someone <s@example.com>', comments: `commit ${id}` }],
+    revision_count: 1,
+  });
+  const base = push('09e41de24fb319475ff1b0c3c366c0fbf6e40387', 1);
+  const tip = push('080629dcb120ae30ebd74611281754d70a566671', 2);
+
+  it('excludes it for the short and the full form alike', () => {
+    for (const given of ['09e41de24fb3', '09e41de24fb319475ff1b0c3c366c0fbf6e40387']) {
+      const range = commitsInRange([tip, base], given, false);
+      expect(range.pushCount).toBe(1);
+      expect(range.commits.map((c) => c.revision)).toEqual([tip.revision]);
+    }
   });
 });

@@ -75,12 +75,28 @@ export function authorName(author: string): string {
 //     14 of 30 sampled pushes were merges, the largest naming 20 of its 164
 //     commits. Counting the gap is what lets the card say "20 of 164" instead
 //     of quietly presenting a fifth of a merge as all of it.
+//
+// **The base revision is matched by prefix**, and that is not a nicety. It was
+// an exact comparison, which is correct for every caller inside the app —
+// their revisions come out of the data, full length, on both sides. The CLI
+// made the short form reachable: 12 characters is how `shortRevision` writes a
+// revision, how this file's own output prints one, and what the push endpoint
+// itself accepts. Given one, the exact test never matched, the base push
+// survived the filter, and the range was reported with the header still saying
+// the base push had been excluded — so the output blamed the reference build
+// for the change it is the reference for *while asserting that it hadn't*.
+// Either side may be the shorter, since nothing here guarantees which.
+export function sameRevision(a: string, b: string): boolean {
+  if (!a || !b) return false;
+  return a.length <= b.length ? b.startsWith(a) : a.startsWith(b);
+}
+
 export function commitsInRange(
   pushes: readonly Push[],
   baseRevision: string,
   truncated: boolean,
 ): PushlogRange {
-  const inRange = pushes.filter((p) => p.revision !== baseRevision);
+  const inRange = pushes.filter((p) => !sameRevision(p.revision, baseRevision));
   const commits: Commit[] = [];
   let hiddenRevisions = 0;
   for (const push of inRange) {
