@@ -306,9 +306,9 @@ const changes: Command = {
   summary: "steps this app detects and alerts perfherder raised, on one timeline",
   usage: [
     'perfherder-cli changes <ref...> [--range <dur>] [--commits] [--commit-limit <n>]',
-    '                            [--commit-grep <pattern>]',
+    '                            [--commit-grep <pattern>] [--brief]',
   ],
-  booleans: ['commits'],
+  booleans: ['commits', 'brief'],
   valued: [...RANGE_VALUED, 'commit-limit', 'commit-grep'],
   details: [
     'Two independent analyses of the same series, merged into one row per event:',
@@ -330,11 +330,17 @@ const changes: Command = {
     'so --commit-grep <pattern> keeps the ones whose title, author or bug number match — a',
     'case-insensitive regular expression. What it excluded is counted in the heading, since a',
     'filter that hides the culprit must not look like a range that never held one.',
+    '',
+    '--brief prints the event table and nothing else: no statistics paragraph, no pushlog or',
+    'graph URL. That is the readable form past about three refs, and the URLs are all still in',
+    '--json. A commit list asked for with --commits is kept, since that is the answer the extra',
+    'fetch was for.',
   ],
   async run(parsed, ctx) {
     const refs = requireRefs(parsed.positionals, 'changes');
     const span = resolveRange(rangeOptions(parsed), ctx.now);
     const withCommits = flagBoolean(parsed.flags, 'commits');
+    const brief = flagBoolean(parsed.flags, 'brief');
     const commitOptions = {
       limit: flagNumber(parsed.flags, 'commit-limit', 15),
       grep: compileGrep(flagString(parsed.flags, 'commit-grep'), 'commit-grep'),
@@ -386,7 +392,7 @@ const changes: Command = {
       }
 
       reports.push(report);
-      lines.push(...renderChanges(report, i === 0));
+      lines.push(...renderChanges(report, i === 0, brief));
     }
 
     return {

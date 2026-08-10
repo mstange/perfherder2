@@ -688,7 +688,13 @@ function renderPushTable(pushes: readonly PushRow[]): string[] {
 // paragraph below explains the columns, which do not change between series, and
 // printing it six times in one invocation was the single most common complaint
 // in a live trial of this tool.
-export function renderChanges(report: ChangesReport, legend = true): string[] {
+// `brief` drops the per-event paragraphs and keeps the table. Twelve refs over
+// six months emitted a block per event — 99 of them, each repeating a pushlog
+// URL and a graph URL — and the reader's move was to pipe it to `tail`, which
+// loses the top of the report: the same defect the `fenix → fenix` labels had,
+// reached by the same route. The URLs are all still in `--json`, which is where
+// a reader who wants 99 of them is going anyway.
+export function renderChanges(report: ChangesReport, legend = true, brief = false): string[] {
   const out: string[] = [];
   out.push(describeSeries(report.series));
   out.push(`${report.series.ref} · ${measurementLine(report.series)}`);
@@ -764,7 +770,11 @@ export function renderChanges(report: ChangesReport, legend = true): string[] {
   }
 
   for (const entry of report.entries) {
-    out.push(...renderChangeDetail(entry));
+    // `--brief` keeps a commit list. It is the answer to "what caused this", the
+    // reader paid a pushlog fetch per event for it, and dropping it would make
+    // `--brief --commits` do all of the fetching and none of the reporting.
+    if (brief) out.push(...renderChangeCommits(entry));
+    else out.push(...renderChangeDetail(entry));
   }
 
   out.push(report.url);
@@ -828,6 +838,20 @@ function renderChangeDetail(entry: ChangeEntry): string[] {
   out.push(...commitLines(entry));
   if (entry.pushlogUrl) out.push(`  pushlog: ${entry.pushlogUrl}`);
   if (entry.url) out.push(`  graph:   ${entry.url}`);
+  out.push('');
+  return out;
+}
+
+// `--brief` with `--commits`: which event, and what landed on it. No statistics
+// paragraph — the table above carries the numbers — and no URLs.
+function renderChangeCommits(entry: ChangeEntry): string[] {
+  if (!entry.commits) return [];
+  const out = [
+    `${formatUtc(entry.atMs)}  ${entry.revision.slice(0, 12)}  ${
+      entry.isRegression ? 'regression' : 'improvement'
+    }`,
+  ];
+  out.push(...commitLines(entry));
   out.push('');
   return out;
 }
