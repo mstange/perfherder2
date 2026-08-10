@@ -24,6 +24,7 @@ import {
   axisLines,
   columnFor,
   densityRow,
+  formatDurationMs,
   formatSpan,
   formatUtc,
   formatUtcDate,
@@ -43,6 +44,7 @@ import type {
   CommitsReport,
   CompareReport,
   CompareSideReport,
+  LocateReport,
   PushRow,
   SearchReport,
   SeriesHeader,
@@ -430,6 +432,119 @@ function verdictOf(entry: StepEntry): string {
   if (entry.wouldDetect) return entry.direction === 'none' ? 'change' : entry.direction;
   if (!entry.clearsAlpha) return 'not significant';
   return `${entry.direction === 'none' ? 'change' : entry.direction}, under floor`;
+}
+
+// ---------------------------------------------------------------------------
+// locate
+// ---------------------------------------------------------------------------
+
+export function renderLocate(report: LocateReport): string[] {
+  const out: string[] = [];
+  out.push(describeSeries(report.series));
+  out.push(`${report.series.ref} · ${measurementLine(report.series)}`);
+  const at = report.revision
+    ? `${formatUtc(report.atMs)} (${report.revision.slice(0, 12)}${
+        report.revisionRepository ? ` on ${report.revisionRepository}` : ''
+      })`
+    : formatUtc(report.atMs);
+  out.push(
+    `candidates around ${at} · ${report.windowPushCount} pushes ` +
+      `(±${report.windowPushes} of the split)`,
+  );
+  out.push('');
+
+  if (report.series.error) {
+    out.push(...fetchFailureLines(report.series));
+    return out;
+  }
+  if (report.candidates.length === 0) {
+    out.push(
+      report.windowPushCount < 4
+        ? `Only ${report.windowPushCount} pushes in the window — nothing to rank. Widen --range.`
+        : 'No split in this window has pools big enough for the rank test to reach α = 0.01.',
+    );
+    out.push('');
+    out.push(report.url);
+    return out;
+  }
+
+  const rows = report.candidates.map((c) => [
+    String(c.rank),
+    formatUtc(c.atMs),
+    c.revision.slice(0, 12),
+    `${c.nBefore}/${c.nAfter}`,
+    formatValue(c.beforeValue),
+    formatValue(c.afterValue),
+    c.relativeChange === null ? NONE : formatSignedPercent(c.relativeChange),
+    formatPValue(c.pValue),
+    c.score.toFixed(3),
+    // What the detector would do with this split, which is the column the reader
+    // is really after: the top row is where a bar would go, and a row that fails
+    // a bar is a candidate the detector could not have marked at all.
+    c.clearsAlpha && c.clearsFloor ? 'would mark' : !c.clearsAlpha ? 'under α' : 'under floor',
+    c.alert === null ? NONE : c.alert ? 'alert here' : '',
+  ]);
+
+  out.push(
+    ...table(
+      ['#', 'WHEN', 'REVISION', 'N', 'BEFORE', 'AFTER', 'CHANGE', 'P', 'SCORE', 'DETECTOR', 'PERFHERDER'],
+      rows,
+      ['right', 'left', 'left', 'right', 'right', 'right', 'right', 'right', 'right', 'left', 'left'],
+    ),
+  );
+  out.push('');
+  out.push(
+    'SCORE is |Cliff\'s δ| less one standard error of it — the detector\'s own criterion for where',
+    'a step goes (src/lib/graphs/changes.ts, `relocateBoundary`), so row 1 is the push a bar',
+    'would land on and the rest are what it was chosen over. Ranking on anything else would be a',
+    'second opinion about the app\'s own answer.',
+  );
+  if (report.candidates.length < report.totalCandidates) {
+    out.push('');
+    out.push(
+      `Showing ${report.candidates.length} of ${report.totalCandidates} splits the test could ` +
+        'reach α at — raise --top for the rest.',
+    );
+  }
+  if (report.spanMs !== null && report.spanPushes !== null && report.spanPushes > 0) {
+    out.push('');
+    out.push(
+      `These ${report.candidates.length} candidates span ${report.spanPushes} pushes and ` +
+        `${formatDurationMs(report.spanMs)}, and the top two differ by ` +
+        `${Math.abs(report.candidates[0].score - report.candidates[1].score).toFixed(3)} of score.`,
+    );
+    out.push(
+      '  That spread is the interval a bar does not carry. Candidates whose scores are close are',
+      '  not separated by the data, so an alert a few rows from the top is the same finding seen',
+      '  twice, while one well down the list is a different claim about where the step is.',
+    );
+  }
+  // The comparison the command exists for, spelled out rather than left to the
+  // reader to compute from two rows: how much worse the push perfherder chose
+  // scores than the one the detector would.
+  const alerted = report.candidates.filter((c) => c.alert);
+  if (report.alertsLoaded && alerted.length > 0) {
+    out.push('');
+    const best = report.candidates[0];
+    for (const c of alerted) {
+      out.push(
+        c.rank === 1
+          ? `Perfherder alerted on ${c.revision.slice(0, 12)}, which is row 1 — the two analyses ` +
+            'agree about the push.'
+          : `Perfherder alerted on ${c.revision.slice(0, 12)}: row ${c.rank} of ` +
+            `${report.totalCandidates}, score ${c.score.toFixed(3)} against ` +
+            `${best.score.toFixed(3)} at row 1, ${formatDurationMs(Math.abs(c.atMs - best.atMs))} ` +
+            'apart.',
+      );
+    }
+  } else if (!report.alertsLoaded) {
+    out.push('');
+    out.push("! Perfherder's alerts could not be fetched, so the PERFHERDER column is blank");
+    out.push('  everywhere rather than empty where there is no alert.');
+  }
+  out.push('');
+  out.push(report.url);
+  return out;
 }
 
 // ---------------------------------------------------------------------------

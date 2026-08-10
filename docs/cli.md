@@ -35,6 +35,7 @@ explicitly.
 | `series <ref...>` | the series list's summary, plus a level comparison |
 | `changes <ref...>` | the alert triangles and the detected-change bars |
 | `step <ref...> --at` | no UI equivalent — see "Measuring a step the detector didn't mark" |
+| `locate <ref> --at` | no UI equivalent — see "Ranking the pushes a step could be on" |
 | `compare <a> <b>` | the details pane's comparison card |
 | `commits <repo> <from> <to>` | the comparison card's inline pushlog |
 | `url <ref...>` | a shareable link, without fetching anything |
@@ -204,6 +205,31 @@ a different configuration shows up there rather than nowhere.
 the same option set as Fenix: `--across application` alone answers "just this
 row" for the very question the first worked example asks, and
 `--across platform,application` is that question.
+
+### Ranking the pushes a step could be on
+
+A bar is a point estimate with no interval, and so is a perfherder alert. When
+the two name pushes five hours apart — which happened on autoland signature
+5352791 around 2026-05-26 — nothing in either output says whether they are
+arguing or agreeing within the noise.
+
+`locate <ref> --at <revision|date>` answers it. Every split in the window is
+scored by `boundaryCandidates`, **exported from changes.ts for this and not
+reimplemented**: it is the scoring `relocateBoundary` uses to decide where a bar
+goes, so row 1 is the push a bar would land on and the rest are what it was
+chosen over. A ranking on any other statistic would be this tool holding a second
+opinion about the app's own answer, which is the one thing it must not do.
+
+What the ranking buys, on that series: the detector's choice scores 0.352, the
+runner-up 0.296 two pushes earlier, and the push perfherder alerted on is row 13
+of 43 at 0.116 — so those two really are different claims, and the output says so
+in those terms rather than leaving the reader to compare two commands' output.
+The spread of the top rows is the interval the bar never had; where an alert sits
+a row or two down with a comparable score, it is the same finding seen twice.
+
+Each row also says whether the detector *could* have marked that split — α and
+the signature's floor, the same two bars `step` reports — because a candidate that
+fails one is not somewhere a bar could ever go.
 
 ### Measuring a step the detector didn't mark
 
@@ -503,11 +529,13 @@ examples are the guide, and they are in the right place — extend those.
   line above already carries the raw spread. Where the two disagree, that
   disagreement is the outliers, and is worth seeing.
 
-### Known gaps it found that are not yet closed
+### All eight are now closed
 
-See graphs-todo.md. What is left there is pooling replicates across a window, so
-`compare`'s mode analysis is not resting on a single push's 25–75 values, and a
-way to ask which of two candidate pushes a step is really on.
+The three output defects are in the list above. The rest needed new capability or
+new structure, and each has its own section: `--across` for the horizontal slice,
+`--pool` for a mode analysis with more than one push behind it, `locate` for
+which push a step is on, `suggest.ts` for a search that matched nothing, and
+`loadSeriesOrError` for a fetch failure that used to end the run.
 
 ## Code map
 

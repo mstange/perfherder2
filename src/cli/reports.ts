@@ -10,6 +10,7 @@
 
 import { alertStatusLabel, summaryStatusLabel, type SeriesAlert } from '../lib/graphs/alerts';
 import {
+  boundaryCandidates,
   CHANGE_ALPHA,
   clearsFloor,
   detectChanges,
@@ -979,6 +980,158 @@ function sideOf(pushes: readonly PushGroup[], values: readonly number[]): StepSi
     firstPushMs: pushes[0]?.x ?? null,
     lastPushMs: pushes[pushes.length - 1]?.x ?? null,
     summary: summarize(values),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// locate
+// ---------------------------------------------------------------------------
+//
+// "Which of these pushes is the step on?" — a question neither the app nor any
+// other command here answers. A bar is a point estimate with no interval, and on
+// one real series it sat five hours before the push a sheriff's independent
+// alert landed on, with nothing to say whether the two were arguing or agreeing
+// within the noise.
+//
+// So this ranks every split in a window by the detector's *own* criterion —
+// `boundaryCandidates`, which is the scoring `relocateBoundary` uses to place a
+// bar — and prints the top few with the push each one names. Reusing that score
+// is the whole point: a ranking on any other statistic would be a second opinion
+// about where a bar goes, from the tool whose claim is that it agrees with the
+// app. The top row is where the detector would put the mark; how far behind the
+// second row is, and how much time the top rows span, is the interval the bar
+// never had.
+
+export type LocateCandidate = {
+  rank: number;
+  index: number;
+  pushId: number;
+  revision: string;
+  atMs: number;
+  // The push before this cut — the other end of the "somewhere between these
+  // two" the candidate really names.
+  prevRevision: string | null;
+  prevAtMs: number | null;
+  nBefore: number;
+  nAfter: number;
+  beforeValue: number;
+  afterValue: number;
+  relativeChange: number | null;
+  pValue: number;
+  cliffsDelta: number;
+  effectSize: string;
+  // |δ| less one standard error of it: what the ranking is by.
+  score: number;
+  clearsAlpha: boolean;
+  clearsFloor: boolean;
+  // A perfherder alert sits on this push. Null when alerts could not be fetched.
+  alert: boolean | null;
+};
+
+export type LocateReport = {
+  series: SeriesHeader;
+  span: Span;
+  url: string;
+  // The point the caller named, and the window taken around it.
+  atMs: number;
+  revision: string | null;
+  revisionRepository: string | null;
+  windowPushes: number;
+  windowStartMs: number | null;
+  windowEndMs: number | null;
+  windowPushCount: number;
+  floor: AlertThreshold;
+  alertsLoaded: boolean;
+  // Candidates by score, best first, cut to the caller's --top.
+  candidates: LocateCandidate[];
+  totalCandidates: number;
+  // How far apart the shown candidates put the step. The interval a bar lacks:
+  // descriptive, not a confidence statement.
+  spanMs: number | null;
+  spanPushes: number | null;
+};
+
+export type LocateInput = {
+  loaded: LoadedSeries;
+  threshold: AlertThreshold;
+  alerts: SeriesAlert[] | null;
+  atMs: number;
+  revision: string | null;
+  revisionRepository: string | null;
+  windowPushes: number;
+  top: number;
+  span: Span;
+  base: string;
+};
+
+export function buildLocateReport(input: LocateInput): LocateReport {
+  const pushes = input.loaded.data.pushes;
+  const values = pushes.map((p) => p.mean);
+  // The same split rule `step` uses: a push exactly at the instant is the first
+  // one *after* it, matching `DetectedChange.index`.
+  const boundary = pushes.findIndex((p) => p.x >= input.atMs);
+  const centre = boundary === -1 ? pushes.length : boundary;
+  const windowStart = Math.max(0, centre - input.windowPushes);
+  const windowEnd = Math.min(pushes.length, centre + input.windowPushes);
+
+  const alertPushIds = new Set((input.alerts ?? []).map((alert) => alert.pushId));
+  const scored = boundaryCandidates(values, windowStart, windowEnd)
+    .map((candidate) => {
+      const beforeValue = mean(values.slice(windowStart, candidate.cut));
+      const afterValue = mean(values.slice(candidate.cut, windowEnd));
+      const relative = relativeChange(beforeValue, afterValue);
+      const push = pushes[candidate.cut];
+      const previous = pushes[candidate.cut - 1];
+      return {
+        rank: 0,
+        index: candidate.cut,
+        pushId: push.pushId,
+        revision: push.revision,
+        atMs: push.x,
+        prevRevision: previous?.revision ?? null,
+        prevAtMs: previous?.x ?? null,
+        nBefore: candidate.nBefore,
+        nAfter: candidate.nAfter,
+        beforeValue,
+        afterValue,
+        relativeChange: relative,
+        pValue: candidate.test.pValue,
+        cliffsDelta: candidate.test.cliffsDelta,
+        effectSize: candidate.test.effectSize,
+        score: candidate.score,
+        clearsAlpha: candidate.test.pValue < CHANGE_ALPHA,
+        clearsFloor:
+          relative !== null && clearsFloor(input.threshold, beforeValue, afterValue, relative),
+        alert: input.alerts === null ? null : alertPushIds.has(push.pushId),
+      };
+    })
+    // Best first, and on a tie the earlier push — the same preference
+    // `relocateBoundary` expresses by keeping the nearest cut, reduced to
+    // something a table can be ordered by.
+    .sort((a, b) => b.score - a.score || a.index - b.index)
+    .map((candidate, i) => ({ ...candidate, rank: i + 1 }));
+
+  const shown = scored.slice(0, Math.max(1, input.top));
+  const times = shown.map((c) => c.atMs);
+  const indices = shown.map((c) => c.index);
+
+  return {
+    series: seriesHeader(input.loaded),
+    span: input.span,
+    url: graphUrl(input.base, [input.loaded.ref], input.span),
+    atMs: input.atMs,
+    revision: input.revision,
+    revisionRepository: input.revisionRepository,
+    windowPushes: input.windowPushes,
+    windowStartMs: pushes[windowStart]?.x ?? null,
+    windowEndMs: pushes[windowEnd - 1]?.x ?? null,
+    windowPushCount: Math.max(0, windowEnd - windowStart),
+    floor: detectionFloor(input.threshold),
+    alertsLoaded: input.alerts !== null,
+    candidates: shown,
+    totalCandidates: scored.length,
+    spanMs: times.length > 1 ? Math.max(...times) - Math.min(...times) : null,
+    spanPushes: indices.length > 1 ? Math.max(...indices) - Math.min(...indices) : null,
   };
 }
 

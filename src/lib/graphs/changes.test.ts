@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { candidateBoundaries, detectChanges, relocateBoundary } from './changes';
+import {
+  boundaryCandidates,
+  candidateBoundaries,
+  detectChanges,
+  relocateBoundary,
+} from './changes';
 import { DEFAULT_ALERT_THRESHOLD, type AlertThreshold, type PushGroup } from './graphData';
 import wandering from '../fixtures/push-means-wandering.json';
 
@@ -95,6 +100,22 @@ describe('candidateBoundaries', () => {
 
   it('does not recurse forever on a flat series', () => {
     expect(cuts(new Array(100).fill(7))).toEqual([]);
+  });
+});
+
+describe('boundaryCandidates', () => {
+  it('scores every split the test could clear α at, and the best is the relocation', () => {
+    // The scoring `relocateBoundary` reads, exposed so the CLI can rank the
+    // runners-up: a bar is a point estimate and this is the only thing that says
+    // what it was chosen over.
+    const values = step(100, 110, 24);
+    const scored = boundaryCandidates(values, 0, 48);
+    expect(scored.length).toBeGreaterThan(20);
+    const best = scored.reduce((a, b) => (b.score > a.score ? b : a));
+    expect(best.cut).toBe(relocateBoundary(values, 0, 48, 24));
+    // Pool sizes too lopsided for the rank test to reach α are not candidates at
+    // all — the same bound the relocation obeys.
+    expect(scored.every((c) => c.nBefore >= 3 && c.nAfter >= 3)).toBe(true);
   });
 });
 

@@ -70,7 +70,7 @@ Living checklist. Update in the same commit as the work it describes.
   range per dot. See [comparison.md](comparison.md), "The inline pushlog"
 
 - `bin/perfherder`, a CLI over the same modules — `src/cli/` (+ tests for its
-  four pure halves), built by `vite.cli.config.ts`. Six commands mirroring the
+  pure halves), built by `vite.cli.config.ts`. Commands mirroring the
   UI: `search`, `series`, `changes`, `compare`, `commits`, `url`. It adds two
   things the app doesn't have, both because a CLI has no reader to lend a
   picture to: `modes.ts`, which says in words whether the modes moved or their
@@ -79,15 +79,20 @@ Living checklist. Update in the same commit as the work it describes.
   the question a quiet graph on an under-sampled platform raises and `changes`
   cannot answer. See [cli.md](cli.md)
 
-## Next
+- The eight gaps a four-session live trial of the CLI found, closed. Three were
+  output defects — a sparkline with no scale, `step` printing percentages but no
+  absolute Δ, and direction stated in a header that by construction cannot carry
+  it. Three were missing capability: `siblings.ts` and `--like` / `--across` for
+  the horizontal slice that `--parent` had no inverse of, `compare --pool` for a
+  mode analysis resting on more than one push's replicates, and `locate` for
+  "which of these pushes is the step on", which ranks every split in a window by
+  `boundaryCandidates` — the detector's own criterion, newly exported — and marks
+  the row perfherder alerted on. One was robustness: a failed fetch is now a row
+  rather than the end of the run. And one was a vocabulary problem in the data
+  rather than in the docs, `suggest.ts`, which answers `indexeddb` with `idb`.
+  See [cli.md](cli.md), "What four fresh sessions found"
 
-- [ ] **CLI gaps a live trial found, in the order they cost time.** See
-      cli.md, "What four fresh sessions found", for the exercise and for the
-      defects that *were* fixed.
-  - *No way to ask which of two candidate pushes is the step.* `changes` gives a
-    point estimate with no interval, and on one series it picked a push five
-    hours before the one a sheriff's independent alert lands on. There is no
-    bisect, no "rank the candidates in this window".
+## Next
 
 - [ ] A full repaint of the detail graph at 100k+ dots takes ~60ms, which is
       one dropped frame on a discrete action like resetting the zoom.

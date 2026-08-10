@@ -555,6 +555,47 @@ function deltaStandardError(n1: number, n2: number): number {
 // perfectly, and two splits that both do and have the same pool sizes score
 // identically, so there is nothing in the data to choose between them and the
 // proposal's opinion is as good as any.
+// Every split in the window that could be where the step is, each with the
+// score above. Exported because "which of these pushes is it?" is a question
+// with no answer in the app — a bar is a point estimate and carries no
+// interval — and on one real series the detector's estimate sat five hours
+// before the push a sheriff's independent alert landed on. The CLI's `locate`
+// ranks these, and it has to rank them by *this* score rather than by one of
+// its own, or it would be answering a different question from the one the bars
+// answer.
+export type BoundaryCandidate = {
+  // Index of the first push *after* the split, as `DetectedChange.index` is.
+  cut: number;
+  nBefore: number;
+  nAfter: number;
+  test: MannWhitneyResult;
+  // |Cliff's δ| less one null standard error of it. See above for both halves.
+  score: number;
+};
+
+export function boundaryCandidates(
+  values: readonly number[],
+  windowStart: number,
+  windowEnd: number,
+): BoundaryCandidate[] {
+  const out: BoundaryCandidate[] = [];
+  for (let cut = windowStart + 1; cut < windowEnd; cut++) {
+    const nBefore = cut - windowStart;
+    const nAfter = windowEnd - cut;
+    if (!canReachAlpha(nBefore, nAfter)) continue;
+    const test = mannWhitneyU(values.slice(windowStart, cut), values.slice(cut, windowEnd));
+    if (!test) continue;
+    out.push({
+      cut,
+      nBefore,
+      nAfter,
+      test,
+      score: Math.abs(test.cliffsDelta) - deltaStandardError(nBefore, nAfter),
+    });
+  }
+  return out;
+}
+
 export function relocateBoundary(
   values: readonly number[],
   windowStart: number,
@@ -567,12 +608,12 @@ export function relocateBoundary(
     return Math.abs(test.cliffsDelta) - deltaStandardError(cut - windowStart, windowEnd - cut);
   };
   // The candidate is the incumbent, which is what settles a tie at any distance
-  // from it — including a tie with itself.
+  // from it — including a tie with itself. It is scored directly rather than
+  // looked up among the candidates, because the proposal may sit at pool sizes
+  // `canReachAlpha` rejects and it still has to be the fallback.
   let bestCut = candidate;
   let best = separation(candidate);
-  for (let cut = windowStart + 1; cut < windowEnd; cut++) {
-    if (!canReachAlpha(cut - windowStart, windowEnd - cut)) continue;
-    const score = separation(cut);
+  for (const { cut, score } of boundaryCandidates(values, windowStart, windowEnd)) {
     if (
       score > best ||
       (score === best && Math.abs(cut - candidate) < Math.abs(bestCut - candidate))

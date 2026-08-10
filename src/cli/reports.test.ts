@@ -16,6 +16,7 @@ import {
   buildCommitsReport,
   buildCompareReport,
   buildLevelComparison,
+  buildLocateReport,
   buildSearchReport,
   buildStepReport,
   graphUrl,
@@ -365,6 +366,72 @@ describe('buildChangesReport', () => {
     });
     expect(report.entries).toEqual([]);
     expect(report.pushCount).toBe(5);
+  });
+});
+
+describe('buildLocateReport', () => {
+  // A clean step between index 23 and 24, one run a push.
+  const stepped = loadedOf(
+    summaryOf([...noisy(100, 24, 1), ...noisy(110, 24, 1, 31)].map((v) => [v])),
+  );
+  const pushes = stepped.data.pushes;
+
+  const build = (alerts: SeriesAlert[] | null, top = 5) =>
+    buildLocateReport({
+      loaded: stepped,
+      threshold: DEFAULT_ALERT_THRESHOLD,
+      alerts,
+      atMs: pushes[24].x,
+      revision: pushes[24].revision,
+      revisionRepository: 'autoland',
+      windowPushes: 24,
+      top,
+      span: SPAN,
+      base: 'http://localhost:5173/',
+    });
+
+  it('ranks by the detector\'s own score, best first', () => {
+    const report = build([]);
+    expect(report.candidates[0].rank).toBe(1);
+    expect(report.candidates[0].index).toBe(24);
+    for (let i = 1; i < report.candidates.length; i++) {
+      expect(report.candidates[i].score).toBeLessThanOrEqual(report.candidates[i - 1].score);
+    }
+  });
+
+  it('says how many candidates it is not showing', () => {
+    // A truncated answer must not be shaped like a complete one.
+    const report = build([], 3);
+    expect(report.candidates).toHaveLength(3);
+    expect(report.totalCandidates).toBeGreaterThan(3);
+  });
+
+  it('reports the spread of the shown candidates, which is the missing interval', () => {
+    const report = build([]);
+    expect(report.spanPushes).toBeGreaterThan(0);
+    expect(report.spanMs).toBeGreaterThan(0);
+  });
+
+  it('marks the push perfherder alerted on, and tells that from not asking', () => {
+    const alerted = build([{ pushId: pushes[26].pushId } as SeriesAlert], 48);
+    const row = alerted.candidates.find((c) => c.pushId === pushes[26].pushId)!;
+    expect(row.alert).toBe(true);
+    expect(alerted.candidates.filter((c) => c.alert === true)).toHaveLength(1);
+    expect(alerted.alertsLoaded).toBe(true);
+
+    // Null everywhere, not false: "we could not ask" is not "there is no alert
+    // here".
+    const unasked = build(null);
+    expect(unasked.alertsLoaded).toBe(false);
+    expect(unasked.candidates.every((c) => c.alert === null)).toBe(true);
+  });
+
+  it('says whether each candidate is one the detector could have marked', () => {
+    const report = build([]);
+    expect(report.candidates[0].clearsAlpha).toBe(true);
+    expect(report.candidates[0].clearsFloor).toBe(true);
+    // A quarter of perfherder's global 2% default.
+    expect(report.floor).toEqual({ kind: 'percentage', value: 0.5 });
   });
 });
 

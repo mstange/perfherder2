@@ -64,6 +64,7 @@ import {
   buildChangesReport,
   buildCommitsReport,
   buildCompareReport,
+  buildLocateReport,
   buildSearchReport,
   buildSeriesReport,
   buildStepReport,
@@ -76,6 +77,7 @@ import {
   renderChanges,
   renderCommits,
   renderCompare,
+  renderLocate,
   renderSearch,
   renderSeries,
   renderStep,
@@ -459,6 +461,85 @@ const step: Command = {
   },
 };
 
+// ---------------------------------------------------------------------------
+// locate
+// ---------------------------------------------------------------------------
+
+const locate: Command = {
+  summary: 'rank the pushes a step could be on, by the detector\'s own criterion',
+  usage: [
+    'perfherder locate <ref> --at <revision|date> [--window <n>] [--top <k>] [--range <dur>]',
+  ],
+  booleans: [],
+  valued: [...RANGE_VALUED, 'at', 'window', 'top'],
+  details: [
+    'A detected change and a perfherder alert routinely name pushes a few hours apart, and',
+    'neither carries an interval, so there is no way to tell whether the two are arguing or',
+    'agreeing within the noise. On one real series the detector picked a push five hours before',
+    'the one a sheriff\'s alert landed on, and nothing in the output said how close the runner-up',
+    'had been.',
+    '',
+    'So: every split in the window, scored the way the detector scores them when it decides',
+    'where to put a bar — |Cliff\'s δ| less one standard error of it (changes.ts,',
+    '`relocateBoundary`) — and ranked. Row 1 is where a bar would land; the rest are what it was',
+    'chosen over, and the spread of the top few is the interval the bar never had. Where a',
+    'perfherder alert sits inside the window, its row is marked, which answers "did we disagree,',
+    'or is this the same finding?" directly.',
+    '',
+    'The ranking is deliberately not a statistic of this tool\'s own: a second opinion about',
+    'where the app puts its own bars would be worse than no opinion.',
+  ],
+  async run(parsed, ctx) {
+    const refs = requireRefs(parsed.positionals, 'locate');
+    if (refs.length !== 1) {
+      throw new UsageError(
+        'locate takes one series — it ranks the pushes *within* one graph, so a second series ' +
+          'would be a second table with nothing to compare',
+      );
+    }
+    const span = resolveRange(rangeOptions(parsed), ctx.now);
+    const at = flagString(parsed.flags, 'at');
+    if (!at) throw new UsageError('locate needs --at <revision|date>');
+    const windowPushes = flagNumber(parsed.flags, 'window', WINDOW_PUSHES);
+    if (!Number.isInteger(windowPushes) || windowPushes < 1) {
+      throw new UsageError('--window must be a positive whole number of pushes');
+    }
+    const top = flagNumber(parsed.flags, 'top', 8);
+    if (!Number.isInteger(top) || top < 1) {
+      throw new UsageError('--top must be a positive whole number');
+    }
+
+    const loaded = await loadSeriesOrError(refs[0], span);
+    const { atMs, revision, revisionRepository } = await resolveSplit(at, refs);
+    if (loaded.found && (atMs < span.start || atMs > span.end)) {
+      throw new UsageError(
+        `the point ${formatUtcDate(atMs)} is outside the range ` +
+          `${formatUtcDate(span.start)} → ${formatUtcDate(span.end)} — widen it with --range`,
+      );
+    }
+    const [threshold, alerts] = await Promise.all([
+      loadThreshold(loaded),
+      // As in `changes`: a failed fetch is null, not empty, so the column can say
+      // "not asked" rather than "no alert here".
+      loadAlerts(loaded, span).catch(() => null),
+    ]);
+
+    const report = buildLocateReport({
+      loaded,
+      threshold,
+      alerts,
+      atMs,
+      revision,
+      revisionRepository,
+      windowPushes,
+      top,
+      span,
+      base: ctx.appBase,
+    });
+    return { report, lines: renderLocate(report), exitCode: exitCodeFor([loaded]) };
+  },
+};
+
 // `--at` is a revision or a date, and the two are told apart the same way a
 // series reference's `@` selector tells them apart.
 async function resolveSplit(
@@ -715,6 +796,7 @@ const COMMANDS: Record<string, Command> = {
   series,
   changes,
   step,
+  locate,
   compare,
   commits,
   url,
@@ -877,7 +959,10 @@ function topLevelHelp(): string[] {
     '',
     '  # A regression: when did it happen, and did the modes move or just their weights?',
     '  perfherder changes autoland,1234567 --range 60d',
-    '  perfherder compare autoland,1234567@<before> <after>',
+    '  perfherder compare autoland,1234567@<before> <after> --pool 24',
+    '',
+    '  # Which push is the step really on, and does perfherder agree?',
+    '  perfherder locate autoland,1234567 --at <revision> --range 60d',
     '',
     '  # Six months of a metric, and what caused each step.',
     '  perfherder changes autoland,1234567 --range 6mo --commits',
