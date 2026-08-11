@@ -100,6 +100,12 @@ Living checklist. Update in the same commit as the work it describes.
   rather than in the docs, `suggest.ts`, which answers `indexeddb` with `idb`.
   See [cli.md](cli.md), "What four fresh sessions found"
 
+- Every bug a commit cites is linked in `CommitList.svelte`, not just
+  `bugs[0]`. `pushlog.ts` restricts `bugs` to the summary line and says why, so
+  a second entry means the summary really did name two bugs — and the CLI's
+  commit table already printed them all, which made this two views of one field
+  disagreeing.
+
 ## Next
 
 - [ ] **Group the bars of the loaded series into landings, and say so.** With
@@ -127,14 +133,6 @@ Living checklist. Update in the same commit as the work it describes.
       `src/cli` → `src/lib` and never back. It moves to `src/lib/graphs/` first,
       which is also the honest home for it: app logic the CLI reuses, rather than
       the reverse.
-
-- [ ] **`CommitList.svelte` shows only the first bug a commit cites.**
-      `commit.bugs[0]`, labelled "Bug N", while `bugs` is a list. `pushlog.ts`
-      already restricts it to the summary line and says why, so two entries means
-      the summary really did name two bugs and the card drops one silently. The
-      CLI's table prints all of them as of change `ssmtuzwt`, so this is now two
-      views of one `pushlog.ts` field disagreeing — the drift cli.md warns about,
-      and a one-line fix.
 
 - [ ] A full repaint of the detail graph at 100k+ dots takes ~60ms, which is
       one dropped frame on a discrete action like resetting the zoom.

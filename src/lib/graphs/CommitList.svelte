@@ -8,9 +8,15 @@
   // and its own truncation rule, and only one of them had the truncation rule
   // right. Two rows that answer the same question should not be able to drift.
   //
-  // Rows are two lines: the bug badge and title, then the revision and author.
+  // Rows are two lines: the bug links and title, then the revision and author.
   // The title wraps rather than truncating — a commit summary cut off at the
   // pane's width loses the half that says what changed.
+  //
+  // *Every* bug the summary names is linked, not just the first. `pushlog.ts`
+  // already restricts `bugs` to the summary line and says why, so a second
+  // entry means the summary really did name two bugs — dropping it would hide
+  // half of what the commit says it is, and the CLI's commit table prints them
+  // all, which would leave two views of one field disagreeing.
 
   import { bugUrl, revisionUrl, shortRevision } from '../shared/links';
   import type { RepoLinkInfo } from '../shared/links';
@@ -24,12 +30,14 @@
   {#each commits as commit (commit.revision)}
     <li>
       <div class="commit-summary">
-        {#if commit.bugs.length > 0}<a
+        {#each commit.bugs as bug, i (bug)}{#if i > 0}{', '}{/if}<a
             class="commit-bug"
-            href={bugUrl(commit.bugs[0])}
+            href={bugUrl(bug)}
             target="_blank"
-            rel="noopener">Bug {commit.bugs[0]}</a
-          >{' '}{/if}<span title={commit.body || undefined}>{commitTitle(commit)}</span>
+            rel="noopener">Bug {bug}</a
+          >{/each}{#if commit.bugs.length > 0}{' '}{/if}<span
+          title={commit.body || undefined}>{commitTitle(commit)}</span
+        >
       </div>
       <div class="commit-meta muted">
         {#if repoLink}<a
