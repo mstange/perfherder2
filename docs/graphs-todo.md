@@ -100,6 +100,20 @@ Living checklist. Update in the same commit as the work it describes.
   rather than in the docs, `suggest.ts`, which answers `indexeddb` with `idb`.
   See [cli.md](cli.md), "What four fresh sessions found"
 
+- The bars of the loaded series, grouped into the landings that caused them, and
+  said in the pane: **Same landing — "seen in 9 of 9 plotted series · pinned to
+  one push"**, the window, and one clickable row per member. `cluster.ts` moved
+  from `src/cli` to `src/lib/graphs/` (dependencies run `src/cli` → `src/lib` and
+  never back) and grew `barEvents`, so the app and `changes --cluster` group the
+  same way and word a window the same way. Verified against production: the block
+  and the CLI report the same nine members and the same "pinned to one push" for
+  bug 1899194's landing. See graphs.md, "One landing, not nine bars".
+
+  The cost argument is the one under "Common alerts — decided against" below,
+  coming out the other way: that feature needed 29 MB of alert summaries to ask
+  "who else moved on this push", while for the series already plotted the changes
+  are computed, the push times are in memory, and the grouping is arithmetic.
+
 - Every bug a commit cites is linked in `CommitList.svelte`, not just
   `bugs[0]`. `pushlog.ts` restricts `bugs` to the summary line and says why, so
   a second entry means the summary really did name two bugs — and the CLI's
@@ -107,32 +121,6 @@ Living checklist. Update in the same commit as the work it describes.
   disagreeing.
 
 ## Next
-
-- [ ] **Group the bars of the loaded series into landings, and say so.** With
-      twelve signatures on one graph the bars are per-series, each card gets its
-      own count ("3 changes", `SeriesList.svelte`), and nothing says that nine of
-      them are one event. The CLI hit this from the other side and grew
-      `changes --cluster` for it (change `mlkznsuu`, [cli.md](cli.md),
-      "`--cluster` makes the row a landing instead of a series"): events group by
-      the push interval each brackets, and the intersection of those brackets is a
-      **narrower** window than any one series carries — on nine cursor signatures
-      it collapsed to the single push bug 1899194 landed on.
-
-      The cost argument is the one already written down under "Common alerts —
-      decided against" below, and it comes out the other way here. That feature
-      was killed because "who else moved on this push" meant 29 MB of alert
-      summaries for a framework. **For the series already plotted this is free**:
-      the changes are computed, the push times are in memory, and the grouping is
-      arithmetic. The note that closes that item says the underlying question is
-      now answered by the bars *"for the series in front of you rather than for
-      its siblings"* — this is the rest of that sentence, for the siblings the
-      user has already chosen to load.
-
-      [src/cli/cluster.ts](../src/cli/cluster.ts) is pure and would do it
-      unchanged, but it lives under `src/cli`, and dependencies run
-      `src/cli` → `src/lib` and never back. It moves to `src/lib/graphs/` first,
-      which is also the honest home for it: app logic the CLI reuses, rather than
-      the reverse.
 
 - [ ] A full repaint of the detail graph at 100k+ dots takes ~60ms, which is
       one dropped frame on a discrete action like resetting the zoom.
@@ -256,9 +244,22 @@ Living checklist. Update in the same commit as the work it describes.
     series moved here and nobody said so" — is now answered directly by the
     detected-change bars, which cost one local dynamic program rather than 29 MB
     and answer it for the series in front of you rather than for its siblings.
-    The +2.0% macOS step is exactly what they are tuned to keep.
+    The +2.0% macOS step is exactly what they are tuned to keep. **And for the
+    siblings the user has loaded, the pane's Landing block answers the rest of
+    it** — "seen in 9 of 9 plotted series" — for the same nothing, since those
+    series' changes are already computed (graphs.md, "One landing, not nine
+    bars").
 - **Detected changes: what's left.** The detector and its bars are done (see
-  graphs.md); four things it doesn't do.
+  graphs.md); five things it doesn't do.
+  - *A landing is only visible after a click.* The pane says "seen in 9 of 9
+    plotted series" once a bar is selected; the graph itself gives no sign that
+    nine bars in a column are one event until then. Highlighting the other
+    members when one is hovered or selected is the obvious form — a third `kind`
+    in `drawChangeHighlight`, and the hits are already in `landings`. It is left
+    for now because a selected bar already runs a full-height guide up its
+    column, and at the zooms where a landing is interesting the members sit in
+    that column: the marginal thing the highlight adds is small next to a third
+    kind of bar decoration to keep in step with the other two.
   - *No keyboard path.* Alerts have <kbd>A</kbd> / <kbd>shift-A</kbd> to step
     between them; the bars are pointer-only. The same stepper over
     `visibleChanges` would be a few lines, and the reason it isn't there yet is

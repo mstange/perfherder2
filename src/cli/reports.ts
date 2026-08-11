@@ -43,12 +43,7 @@ import {
   type SeriesMeta,
   type SeriesRef,
 } from '../lib/graphs/graphData';
-import {
-  attrChips,
-  attrsForEntry,
-  splitCommonAttrs,
-  type SeriesAttrs,
-} from '../lib/graphs/seriesSummary';
+import { attrsForEntry, chipText, splitCommonAttrs } from '../lib/graphs/seriesSummary';
 import type { Commit, PushlogRange } from '../lib/graphs/pushlog';
 import { commitTitle, pushlogCaveat, pushlogLabel } from '../lib/graphs/pushlog';
 import type { Activity } from '../lib/picker/activity';
@@ -74,7 +69,7 @@ import {
 } from '../lib/shared/stats';
 import { EMPTY_VIEW_STATE, serializeViewState, type SeriesEntryState, type ViewState } from '../lib/urlState';
 import type { Span } from './args';
-import { clusterLandings, type Landing, type LandingEvent } from './cluster';
+import { clusterLandings, type Landing, type LandingEvent } from '../lib/graphs/cluster';
 import { compareModes, describeModeComparison, type ModeComparison } from './modes';
 import { diagnoseNoMatch, type NoMatchDiagnosis } from './suggest';
 
@@ -1061,13 +1056,6 @@ export function buildStepReport(input: StepInput): StepReport {
   };
 }
 
-function chipText(attrs: SeriesAttrs | null): string {
-  if (!attrs) return '';
-  return attrChips(attrs)
-    .map((chip) => chip.value)
-    .join(' · ');
-}
-
 // ---------------------------------------------------------------------------
 // changes --cluster
 // ---------------------------------------------------------------------------
@@ -1119,6 +1107,9 @@ export function buildClusterReport(
         source: entry.source,
         alertSummaryId: entry.alert?.summaryId ?? null,
         bugNumber: entry.alert?.bugNumber ?? null,
+        // Nothing to carry: the report is the fields above. The app fills this
+        // in with the entry and change a click needs — see cluster.ts.
+        payload: undefined,
       });
     }
   });

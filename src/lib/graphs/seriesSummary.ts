@@ -323,3 +323,14 @@ export function attrChips(attrs: SeriesAttrs): AttrChip[] {
   if (attrs.platform !== '') chips.push({ field: 'platform', value: attrs.platform });
   return chips;
 }
+
+// The same chips as one string, for the places that name a series inside a line
+// of running text rather than as styled spans: the CLI's tables, and the app's
+// Landing block. The separator is the "·" the cards draw between chips, so a
+// series reads the same wherever it is named.
+export function chipText(attrs: SeriesAttrs | null): string {
+  if (!attrs) return '';
+  return attrChips(attrs)
+    .map((chip) => chip.value)
+    .join(' · ');
+}

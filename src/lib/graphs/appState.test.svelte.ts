@@ -92,6 +92,25 @@ const STEP = summary(
   ),
 );
 
+// The same step on a second platform, and the shape the landing grouping is
+// for: its pushes are its own — half an hour after STEP's, with their own ids —
+// so the two series place one landing on two different revisions, and only the
+// intervals they bracket overlap.
+const STEP_OTHER: RawSummary = {
+  ...summary(
+    6,
+    Array.from({ length: 60 }, (_, i) =>
+      datum({
+        id: 600 + i,
+        value: (i < 30 ? 100 : 130) + (i % 2),
+        push_id: 600 + i,
+        push_timestamp: `2026-06-${String(1 + Math.floor(i / 2)).padStart(2, '0')}T0${i % 2}:30:00`,
+      }),
+    ),
+  ),
+  platform: 'windows11-64-24h2-shippable',
+};
+
 // Detail payloads have to be schema-valid now, not just truthy: the fetch
 // layer validates every response (see http.ts), so `{}` would be rejected the
 // same way a treeherder shape change would be.
@@ -176,8 +195,10 @@ let fetchMock: ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
   fetchMock = vi.fn(async (url: string) => {
-    // Signature 2 is the long stepped series; everything else gets SAMPLE.
+    // Signature 2 is the long stepped series, 6 is the same step on another
+    // platform; everything else gets SAMPLE.
     if (url.includes('/performance/summary/')) {
+      if (url.includes('signature=6&')) return json([STEP_OTHER]);
       return json([url.includes('signature=2&') ? STEP : SAMPLE]);
     }
     if (url.includes('/performance/alertsummary/')) return json(alertPage([]));
@@ -1220,6 +1241,79 @@ describe('AppState detected changes', () => {
       expect(app.series[0].changes).toHaveLength(1);
       app.removeSeries(app.series[0].ref);
       expect(app.series).toEqual([]);
+    }));
+});
+
+// One event, seen twice. What the grouping is worth is in cluster.test.ts; this
+// is the wiring — which series go in, what comes back out, and what the pane
+// asks for.
+describe('AppState landings', () => {
+  const BOTH = '?series=autoland,2,1&series=autoland,6,1';
+
+  it('groups two series that step between the same pair of pushes', () =>
+    withApp(BOTH, async (app) => {
+      await settle();
+      expect(app.series[0].changes).toHaveLength(1);
+      expect(app.series[1].changes).toHaveLength(1);
+      expect(app.landings).toHaveLength(1);
+      // Two series, two revisions, one landing — and the window is the
+      // intersection of the two brackets rather than either of them.
+      const landing = app.landings[0];
+      expect(landing.events.map((e) => e.payload.series.ref.signatureId)).toEqual([2, 6]);
+      expect(landing.endMs - landing.startMs).toBeLessThan(
+        landing.events[0].atMs - (landing.events[0].prevAtMs ?? 0),
+      );
+    }));
+
+  it('names each member by what distinguishes it from the others', () =>
+    withApp(BOTH, async (app) => {
+      await settle();
+      // The series-list card's own text: everything the two share is hoisted
+      // out, and the platform is what is left.
+      expect(app.landings[0].events.map((e) => e.label)).toEqual([
+        'linux2404-64-shippable',
+        'windows11-64-24h2-shippable',
+      ]);
+    }));
+
+  it('leaves a hidden series out, because its bars are not on the graph', () =>
+    withApp(BOTH, async (app) => {
+      await settle();
+      app.toggleSeriesVisibility(app.series[1].ref);
+      await settle();
+      expect(app.landings).toHaveLength(1);
+      expect(app.landings[0].events).toHaveLength(1);
+    }));
+
+  it('has none while change detection is off', () =>
+    withApp(`${BOTH}&cd=0`, async (app) => {
+      await settle();
+      expect(app.landings).toEqual([]);
+    }));
+
+  it('hands the pane the landing the selected bar is in', () =>
+    withApp(BOTH, async (app) => {
+      await settle();
+      const entry = app.series[0];
+      app.selectChange(entry.ref, entry.changes[0]);
+      await settle();
+      expect(app.selectedLanding).toBe(app.landings[0]);
+      expect(app.selectedLanding?.events).toHaveLength(2);
+    }));
+
+  it('has no landing to show for a build nothing was detected on', () =>
+    withApp(BOTH, async (app) => {
+      await settle();
+      const entry = app.series[0];
+      app.selectPoint({
+        repository: 'autoland',
+        signatureId: 2,
+        datumId: entry.data.pushes[0].runs[0].datumId,
+        replicateIndex: MEAN_REPLICATE,
+      });
+      await settle();
+      expect(app.selectedChange).toBeNull();
+      expect(app.selectedLanding).toBeNull();
     }));
 });
 

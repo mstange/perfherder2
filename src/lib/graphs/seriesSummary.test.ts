@@ -4,6 +4,7 @@ import {
   attrChips,
   attrsForEntry,
   attrsFromMeta,
+  chipText,
   commonAttrs,
   commonFilterChips,
   commonMeasurement,
@@ -397,6 +398,20 @@ describe('attrChips', () => {
 
   it('is empty for empty attributes', () => {
     expect(attrChips(NO_ATTRS)).toEqual([]);
+  });
+});
+
+describe('chipText', () => {
+  it('joins the chips the way the cards separate them', () => {
+    expect(chipText(attrs({ test: 'Speedometer3' }))).toBe(
+      'mozilla-central · speedometer3 · Speedometer3 · firefox · opt · macosx1500-aarch64-shippable',
+    );
+  });
+
+  it('is empty for a series with no metadata yet', () => {
+    // `attrsForEntry` hands back null there, and a caller naming a series in
+    // running text needs something to fall back on rather than "null".
+    expect(chipText(null)).toBe('');
   });
 });
 

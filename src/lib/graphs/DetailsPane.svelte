@@ -33,6 +33,7 @@
     taskUrl,
   } from '../shared/links';
   import CommitList from './CommitList.svelte';
+  import { landingSeriesCount, landingWindowLabel } from './cluster';
   import { commitsOfPush } from './pushlog';
 
   type Props = { app: AppState };
@@ -65,6 +66,9 @@
 
   const alert = $derived(app.selectedAlert);
   const change = $derived(app.selectedChange);
+  // The other series that step where this one does, if any — see the Landing
+  // block in the change card.
+  const landing = $derived(app.selectedLanding);
 
   // Only whether there is a spread worth listing. The chart built from this pool
   // lives in ComparisonSection now, as the one-row form of the one chart the
@@ -272,6 +276,73 @@
             <dt title="Cliff's delta, interpreted with the Romano thresholds">Effect</dt>
             <dd>{change.effectSize}</dd>
           </dl>
+          <!-- The same step, as the other plotted series saw it. Twelve
+               signatures on one graph produce twelve sets of bars and no
+               statement that nine of them are one event; this is that
+               statement, and it is free — the changes are computed, the push
+               times are in memory, and the grouping is arithmetic (cluster.ts).
+
+               It sits inside the Detected-change card because it is a fact
+               about *this* bar rather than a section of its own, and below the
+               statistics because the reader wants to know what moved before
+               they want to know who else saw it. -->
+          {#if landing && landingSeriesCount(landing) > 1}
+            <h4>Same landing</h4>
+            <p class="cmp-sub muted">
+              <!-- Two claims, and the second is the one the grouping buys: each
+                   series brackets the step between the two pushes either side
+                   of its bar, and the intersection of those brackets is
+                   narrower than any one of them — often a single push. See
+                   cluster.ts. -->
+              Seen in {landingSeriesCount(landing)} of {app.visibleSeries.length} plotted
+              series · {landingWindowLabel(landing)}
+              {#if landing.regressions > 0 && landing.improvements > 0}
+                <!-- Both directions at one instant is a trade-off rather than a
+                     coincidence, which is why direction is not part of the
+                     grouping key. Only said when it happens. -->
+                · {landing.regressions} regressions, {landing.improvements} improvements
+              {/if}
+            </p>
+            <p class="cmp-sub muted window">
+              {formatTimestamp(landing.startMs)}
+              {#if landing.endMs !== landing.startMs}
+                {' → '}{formatTimestamp(landing.endMs)}
+              {/if}
+            </p>
+            <ul class="landing">
+              {#each landing.events as event (event.ref + event.atMs)}
+                {@const member = event.payload.series}
+                {@const current = event.payload.change === change}
+                <li>
+                  <!-- A click moves the selection to that series' bar, the same
+                       thing clicking the bar on the graph does. The current
+                       member is still a button: pressing it is a no-op, and
+                       disabling one row in a list of otherwise identical rows
+                       reads as "this one is broken" rather than "you are here",
+                       which is what `aria-current` and the mark are for. -->
+                  <button
+                    type="button"
+                    class="member"
+                    class:current
+                    aria-current={current ? 'true' : undefined}
+                    onclick={() => app.selectChange(member.ref, event.payload.change)}
+                  >
+                    <span
+                      class="swatch {member.symbol.shape}"
+                      style:background={member.color}
+                      aria-hidden="true"
+                    ></span>
+                    <span class="member-label">{event.label}</span>
+                    <span class="member-change {event.isRegression ? 'regression' : 'improvement'}">
+                      {event.relativeChange === null
+                        ? ''
+                        : formatSignedPercent(event.relativeChange)}
+                    </span>
+                  </button>
+                </li>
+              {/each}
+            </ul>
+          {/if}
           <p class="cmp-sub muted">
             Found in the data by this app, not by perfherder — there may be no
             alert for it.
@@ -797,5 +868,65 @@
   }
   section.change-card .cmp-sub:last-child {
     margin-top: 6px;
+  }
+  .window {
+    font-variant-numeric: tabular-nums;
+  }
+  /* One row per series that saw the landing. Modelled on `.run-mean` above: a
+     list row that happens to be clickable, so it wears no button chrome until
+     the pointer is on it — a dozen bordered buttons stacked in a card would
+     read as a toolbar, and this is a list of findings. */
+  .landing {
+    list-style: none;
+    margin: 4px 0 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .member {
+    display: grid;
+    /* Swatch, name, number. The number is last and right-aligned so a column of
+       percentages can be compared down the list. */
+    grid-template-columns: 10px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    padding: 2px 4px;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    background: none;
+    color: inherit;
+    font: inherit;
+    font-size: 11px;
+    text-align: left;
+    cursor: pointer;
+  }
+  /* The pane's `.swatch` is sized for the series header, where it sits beside a
+     two-line block; here the row centres it. */
+  .member .swatch {
+    margin: 0;
+  }
+  .member:hover {
+    border-color: var(--border-default);
+    background: var(--bg-hover);
+  }
+  /* "You are here", in the same accent the selected replicate and the selected
+     run mean wear. */
+  .member.current {
+    border-color: var(--accent-emphasis);
+    background: var(--accent-subtle);
+  }
+  .member-label {
+    overflow-wrap: anywhere;
+  }
+  .member-change {
+    font-variant-numeric: tabular-nums;
+  }
+  .member-change.regression {
+    color: var(--danger-fg);
+  }
+  .member-change.improvement {
+    color: var(--success-fg);
   }
 </style>

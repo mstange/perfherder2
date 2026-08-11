@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { clusterLandings, peakChange, type LandingEvent } from './cluster';
+import {
+  barEvents,
+  clusterLandings,
+  formatWindowHours,
+  landingSeriesCount,
+  landingWindowLabel,
+  peakChange,
+  type LandingEvent,
+} from './cluster';
 
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
@@ -19,6 +27,7 @@ function event(overrides: Partial<LandingEvent> = {}): LandingEvent {
     source: 'detected',
     alertSummaryId: null,
     bugNumber: null,
+    payload: undefined,
     ...overrides,
   };
 }
@@ -174,5 +183,124 @@ describe('peakChange', () => {
   it('is null when every member is an alert with no detected step', () => {
     const [landing] = clusterLandings([event({ relativeChange: null, source: 'alert' })]);
     expect(peakChange(landing)).toBeNull();
+  });
+});
+
+describe('landingSeriesCount', () => {
+  it('counts series, not events', () => {
+    // Two consecutive bars in one series bracket intervals that meet at the
+    // push between them, so they join one landing. That landing reaches two
+    // series, and saying three would overstate it.
+    const [landing] = clusterLandings([
+      event({ ref: 'autoland,1,13', prevAtMs: T0, atMs: T0 + HOUR }),
+      event({ ref: 'autoland,1,13', prevAtMs: T0 + HOUR, atMs: T0 + 2 * HOUR }),
+      event({ ref: 'autoland,2,13', prevAtMs: T0, atMs: T0 + 2 * HOUR }),
+    ]);
+    expect(landing.events).toHaveLength(3);
+    expect(landingSeriesCount(landing)).toBe(2);
+  });
+});
+
+describe('landingWindowLabel', () => {
+  it('names a landing pinned to one push as such', () => {
+    // The strongest thing the grouping says, and the reason it is worth doing:
+    // two series that bracket different intervals agree on a single push.
+    const [landing] = clusterLandings([
+      event({ ref: 'a', prevAtMs: T0 - 3 * HOUR, atMs: T0 }),
+      event({ ref: 'b', prevAtMs: T0, atMs: T0 + 5 * HOUR }),
+    ]);
+    expect(landing.intersects).toBe(true);
+    expect(landingWindowLabel(landing)).toBe('pinned to one push');
+    expect(formatWindowHours(landing)).toBe('0');
+  });
+
+  it('reports a window in hours', () => {
+    const [landing] = clusterLandings([
+      event({ ref: 'a', prevAtMs: T0, atMs: T0 + 6 * HOUR }),
+      event({ ref: 'b', prevAtMs: T0 + 2 * HOUR, atMs: T0 + 8 * HOUR }),
+    ]);
+    expect(landingWindowLabel(landing)).toBe('4.0 h window');
+  });
+
+  it('says a union is not a common window', () => {
+    // A overlaps B and B overlaps C, but A and C do not: the group's window is
+    // their union, which is a weaker claim and must not be worded like one.
+    const [landing] = clusterLandings([
+      event({ ref: 'a', prevAtMs: T0, atMs: T0 + 2 * HOUR }),
+      event({ ref: 'b', prevAtMs: T0 + HOUR, atMs: T0 + 4 * HOUR }),
+      event({ ref: 'c', prevAtMs: T0 + 3 * HOUR, atMs: T0 + 5 * HOUR }),
+    ]);
+    expect(landing.intersects).toBe(false);
+    expect(landingWindowLabel(landing)).toContain('do not share an instant');
+  });
+
+  it('does not round a few minutes into a pinned push', () => {
+    const [landing] = clusterLandings([
+      event({ ref: 'a', prevAtMs: T0, atMs: T0 + 4 * 60_000 }),
+      event({ ref: 'b', prevAtMs: T0, atMs: T0 + 6 * HOUR }),
+    ]);
+    expect(formatWindowHours(landing)).toBe('<0.1');
+  });
+});
+
+describe('barEvents', () => {
+  const CHANGE = {
+    beforePushId: 10,
+    afterPushId: 20,
+    changeX: T0 + 6 * HOUR,
+    relativeChange: 0.11,
+    isRegression: true,
+  };
+  const PUSHES = new Map([
+    [10, { x: T0, revision: 'before000000' }],
+    [20, { x: T0 + 6 * HOUR, revision: 'after0000000' }],
+  ]);
+
+  function source(overrides: Record<string, unknown> = {}) {
+    return {
+      key: 'autoland,1',
+      repository: 'autoland',
+      label: 'macosx1470',
+      changes: [CHANGE],
+      pushById: PUSHES,
+      payload: 'entry-1',
+      ...overrides,
+    };
+  }
+
+  it('brackets a bar with the two pushes either side of it, not with its window', () => {
+    // The bar spans two dozen pushes — the window the test compared — and
+    // clustering on that would join everything to everything. What the bar
+    // establishes is (beforePush, afterPush].
+    const [e] = barEvents([source()]);
+    expect(e.prevAtMs).toBe(T0);
+    expect(e.atMs).toBe(T0 + 6 * HOUR);
+    expect(e.prevRevision).toBe('before000000');
+    expect(e.revision).toBe('after0000000');
+  });
+
+  it('hands the series and the change back on the event', () => {
+    const [e] = barEvents([source()]);
+    expect(e.payload.series).toBe('entry-1');
+    expect(e.payload.change).toBe(CHANGE);
+  });
+
+  it('leaves prevAtMs null when the push before the step is outside the data', () => {
+    // Then the event brackets nothing and can only join a landing by being
+    // inside one — it can never widen a window.
+    const [e] = barEvents([
+      source({ pushById: new Map([[20, { x: T0 + 6 * HOUR, revision: 'after0000000' }]]) }),
+    ]);
+    expect(e.prevAtMs).toBeNull();
+    expect(e.prevRevision).toBeNull();
+  });
+
+  it('groups two series that step between the same pair of pushes', () => {
+    const landings = clusterLandings(
+      barEvents([source(), source({ key: 'autoland,2', payload: 'entry-2', label: 'win11' })]),
+    );
+    expect(landings).toHaveLength(1);
+    expect(landingSeriesCount(landings[0])).toBe(2);
+    expect(landings[0].events.map((e) => e.label)).toEqual(['macosx1470', 'win11']);
   });
 });

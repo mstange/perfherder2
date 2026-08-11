@@ -40,7 +40,7 @@ installing one binary of the same name — see "The published package" below.
 | `series <ref...>` | the series list's summary, plus a level comparison |
 | `series <ref...> --drift` | no UI equivalent — see "`series --drift` answers the question the detector cannot" |
 | `changes <ref...>` | the alert triangles and the detected-change bars |
-| `changes <ref...> --cluster` | no UI equivalent — see "`--cluster` makes the row a landing instead of a series" |
+| `changes <ref...> --cluster` | the details pane's Landing block, which groups the same way from the same module — see "`--cluster` makes the row a landing instead of a series" |
 | `step <ref...> --at` | no UI equivalent — see "Measuring a step the detector didn't mark" |
 | `locate <ref> --at` | no UI equivalent — see "Ranking the pushes a step could be on" |
 | `compare <a> <b>` | the details pane's comparison card |
@@ -432,6 +432,15 @@ mozilla-central are one change *landing twice*, and one row with two revisions
 would be a claim about a single event. "Did the other branch see it" is `step`'s
 question.
 
+**The app now groups its bars with the same module**, which is why `cluster.ts`
+lives under `src/lib/graphs` rather than beside this file — see graphs.md, "One
+landing, not nine bars". Two consequences worth knowing here: the phrase
+describing a landing's window ("pinned to one push", "4.5 h window", the union
+warning) is `landingWindowLabel` and is shared, so the two views cannot word one
+grouping two ways; and the SERIES column counts *distinct series* rather than
+events, since two consecutive bars in one series bracket intervals that meet at
+the push between them and so join one landing.
+
 ### `--pool` widens a comparison from a push to a window
 
 `compare`'s mode analysis rested on one push's 25–75 replicates, and on a real
@@ -691,8 +700,11 @@ is testable without a network.
   row, the ruler, word wrap.
 - [modes.ts](../src/cli/modes.ts) — **pure**. The mode comparison and its
   sentence. See above.
-- [cluster.ts](../src/cli/cluster.ts) — **pure**. Change events from several
-  series, grouped into the landings that caused them. See above.
+- [cluster.ts](../src/lib/graphs/cluster.ts) — **pure**, and **under `src/lib`**,
+  though it was written for `--cluster`: the app now groups the bars of its
+  plotted series with it too (graphs.md, "One landing, not nine bars"), and
+  dependencies run `src/cli` → `src/lib` and never back. Change events from
+  several series, grouped into the landings that caused them. See above.
 - [siblings.ts](../src/cli/siblings.ts) — **pure**. One row's counterparts
   across one attribute — `--like` and `--across`. See above.
 - [suggest.ts](../src/cli/suggest.ts) — **pure**. Why a search matched nothing,

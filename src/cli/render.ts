@@ -37,7 +37,13 @@ import {
   wrap,
   type Align,
 } from './format';
-import { peakChange, type Landing } from './cluster';
+import {
+  formatWindowHours,
+  landingSeriesCount,
+  landingWindowLabel,
+  peakChange,
+  type Landing,
+} from '../lib/graphs/cluster';
 import { commitsHeading } from './reports';
 import type {
   AcrossDescriptor,
@@ -945,7 +951,7 @@ export function renderCluster(report: ClusterReport): string[] {
         return [
           `${formatUtc(landing.startMs)}${landing.intersects ? '' : ' ~'}`,
           formatWindowHours(landing),
-          String(landing.events.length),
+          String(landingSeriesCount(landing)),
           landing.regressions > 0 ? String(landing.regressions) : NONE,
           landing.improvements > 0 ? String(landing.improvements) : NONE,
           peak === null ? NONE : formatSignedPercent(peak),
@@ -974,29 +980,15 @@ export function renderCluster(report: ClusterReport): string[] {
   return out;
 }
 
-function formatWindowHours(landing: Landing): string {
-  const hours = (landing.endMs - landing.startMs) / 3_600_000;
-  // Exactly zero is a landing pinned to one push, which is the strongest thing
-  // this table says; a window of four minutes is not the same claim and must not
-  // round into looking like it.
-  if (hours === 0) return '0';
-  if (hours < 0.1) return '<0.1';
-  return hours < 10 ? hours.toFixed(1) : String(Math.round(hours));
-}
-
 function renderLanding(landing: Landing): string[] {
   const out: string[] = [];
-  const hours = (landing.endMs - landing.startMs) / 3_600_000;
   out.push(
     `${formatUtc(landing.startMs)} → ${formatUtc(landing.endMs)} · ` +
-      `${landing.events.length} ${landing.events.length === 1 ? 'series' : 'series'} · ` +
-      (!landing.intersects
-        ? `${hours.toFixed(1)} h union — the members do not share an instant`
-        : hours === 0
-          ? // The best case, and worth naming: the brackets meet on one push, so
-            // the landing is that push and not a window around it.
-            'pinned to one push'
-          : `${formatWindowHours(landing)} h window`),
+      `${landingSeriesCount(landing)} series · ` +
+      // The three cases — a landing pinned to one push, a window, a union — are
+      // worded in cluster.ts so that the app's Landing block says them the same
+      // way.
+      landingWindowLabel(landing),
   );
   out.push(
     ...indent(

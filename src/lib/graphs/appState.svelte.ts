@@ -77,10 +77,13 @@ import { MIN_CURVE_VALUES, stableScales, type StableScales } from './distributio
 import { EMPTY_FILTER, isFilterActive, sameFilter, type Filter } from '../picker/filter';
 import {
   attrsForEntry,
+  chipText,
   commonAttrs,
   commonFilterChips,
   documentTitle,
+  splitCommonAttrs,
 } from './seriesSummary';
+import { barEvents, clusterLandings, type Landing } from './cluster';
 import { theme } from '../shared/theme.svelte';
 import { clampSpan, defaultSpan, presetSpan, roundSpan, type Span } from '../shared/timeRange';
 import {
@@ -123,6 +126,11 @@ export type SeriesEntry = {
   // one frame behind the dots, not a fetch.
   changes: readonly DetectedChange[];
 };
+
+// One landing, as the app clusters them: every event carries the series entry
+// and the bar it came from, so the pane can name the other series a change was
+// seen in and a click on one can select its bar.
+export type SeriesLanding = Landing<{ series: SeriesEntry; change: DetectedChange }>;
 
 // Shared so that every un-fetched series' `alerts` is the same array, and a
 // `$derived` recomputation doesn't look like a change to anything downstream.
@@ -661,6 +669,48 @@ export class AppState {
     const sel = this.selection;
     if (!sel) return null;
     return sel.entry.changes.find((c) => c.afterPushId === sel.push.pushId) ?? null;
+  });
+
+  // The bars of every visible series, grouped into the landings that caused
+  // them — one row for the change nine signatures on three platforms all saw,
+  // instead of nine (cluster.ts).
+  //
+  // **Visible series only, because the grouping is about the bars on the
+  // graph.** A hidden series is not drawn and neither are its bars, so counting
+  // it among a landing's members would have the pane say "seen in 9 series"
+  // over a graph with six lines on it.
+  //
+  // Labelled with each series' *distinguishing* attributes, factored over the
+  // whole list rather than the visible part of it, so a landing's member list
+  // names a series exactly as its card in the series list does.
+  landings = $derived.by((): SeriesLanding[] => {
+    const split = splitCommonAttrs(this.series.map((e) => attrsForEntry(e.ref, e.meta)));
+    const labels = new Map<string, string>();
+    this.series.forEach((entry, i) => {
+      labels.set(entry.key, chipText(split.distinct[i]) || `signature ${entry.ref.signatureId}`);
+    });
+    return clusterLandings(
+      barEvents(
+        this.visibleSeries.map((entry) => ({
+          key: entry.key,
+          repository: entry.ref.repository,
+          label: labels.get(entry.key) ?? '',
+          changes: entry.changes,
+          pushById: entry.data.pushById,
+          payload: entry,
+        })),
+      ),
+    );
+  });
+
+  // The landing the selected change belongs to, or null when nothing with a bar
+  // is selected. One landing at most: an event belongs to exactly one group.
+  selectedLanding = $derived.by((): SeriesLanding | null => {
+    const change = this.selectedChange;
+    if (!change) return null;
+    // By change identity, not by push: `changeCache` hands the same object to
+    // `series` and to `landings`, and two series can have a bar on one push.
+    return this.landings.find((l) => l.events.some((e) => e.payload.change === change)) ?? null;
   });
 
   // The push immediately before the selected one in the same series — the

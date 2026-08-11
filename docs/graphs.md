@@ -806,6 +806,48 @@ the five worth knowing here:
   of means over up to 24 pushes a side; the comparison is these two builds. Each
   says which it is.
 
+#### One landing, not nine bars
+
+Twelve signatures on one graph produce twelve sets of bars, twelve per-card
+counts in the series list, and no statement anywhere that nine of them are one
+event. The pane's Detected-change card carries that statement: **Same landing —
+"seen in 9 of 9 plotted series · pinned to one push"**, then the window, then
+one clickable row per member with its swatch and its own percentage.
+
+- **The grouping is [cluster.ts](../src/lib/graphs/cluster.ts), the module the
+  CLI's `changes --cluster` uses** — moved under `src/lib/graphs` for this,
+  since dependencies run `src/cli` → `src/lib` and never back, and app logic the
+  CLI reuses is the honest arrangement rather than the reverse. Both views
+  therefore group identically and word a window identically
+  (`landingWindowLabel`); checked against production, the pane's block and
+  `changes --cluster` report the same nine members and the same "pinned to one
+  push" for bug 1899194's landing on 2026-07-15.
+- **Events group by the interval each brackets, not by the push each was placed
+  on.** A bar's position is an estimate — that is what the notch and the bar's
+  width are about — and no two platforms run the same pushes, so one landing is
+  placed on a different revision by each series that saw it. What is not an
+  estimate is `(pushBefore, pushAfter]`. `barEvents` therefore takes the bracket
+  from the pair of pushes the bar sits between and **not from the bar's own
+  `x0`…`x1`**, which is the two-dozen-push window the test compared and would
+  join everything to everything.
+- **The intersection is narrower than any member's bracket**, which is the whole
+  payoff: nine series each saying "somewhere in these three hours", of nine
+  different sets of three hours, agree on one push.
+- **Free for the series already plotted.** This is the same question "Common
+  alerts" was killed over in graphs-todo.md — that one needed 29 MB of a
+  framework's alert summaries to ask "who else moved here". Here the changes are
+  computed, the push times are in memory, and the grouping is arithmetic.
+- **Visible series only**, because the claim is about the bars on the graph.
+  Hiding a series takes its bars off the plot and its row out of the block.
+- **Bars only — perfherder's alerts are not merged in.** Deciding that an alert
+  and a bar are one finding is `reports.ts::mergeFindings`, which the app has no
+  equivalent of; a landing that listed one move twice would overstate its reach.
+  So the block never carries a bug number, and the CLI's does.
+- **A member row is a click to that series' bar**, the same `selectChange` the
+  bar itself calls, so "who else saw this" leads straight to "show me theirs".
+  The row you are on is marked rather than disabled: one dead row in a list of
+  live ones reads as broken.
+
 #### On by default
 
 `changeDetection` starts on, which departs from how this app usually treats
@@ -865,6 +907,10 @@ Recovery is the explicit Retry button.
 - [changes.ts](../src/lib/graphs/changes.ts) — **pure**. Segmentation and the
   confirmation test; a series' pushes and its `AlertThreshold` → the steps in it.
   See "Detected changes".
+- [cluster.ts](../src/lib/graphs/cluster.ts) — **pure**. Change events from
+  several series → the landings that caused them, plus `barEvents`, which is how
+  the app's bars become events. Shared with the CLI's `changes --cluster`; see
+  "One landing, not nine bars".
 - [annotations.ts](../src/lib/graphs/annotations.ts) — **pure**. The marks in the
   plot's margins: row packing, pixel layout and hit tests for both the alert
   triangles and the change bars. Both of its layouts are computed once by
