@@ -233,9 +233,16 @@ comparisons here (two runs, two series) aren't expressible in its terms.
   documentation describes.
 - **CLES** (common-language effect size) — P(new < base), which is the same
   quantity again in the form "how often is new faster". Reported because it's
-  the one number in the group that a non-statistician can act on.
+  the one number in the group that a non-statistician can act on — **on the same
+  row as Cliff's delta**, since δ = 2·cles − 1 and two rows for one number read
+  as two pieces of evidence. The `Values n vs n` row that used to close the
+  table went with it: the chart's legend prints `n=` for each side, immediately
+  above.
 - **Median and mean deltas**, absolute and percent. Median leads, since a
-  multi-modal cloud's mean sits between its modes where no measurement is.
+  multi-modal cloud's mean sits between its modes where no measurement is. In
+  the headline the *percent* leads and the absolute follows in parentheses,
+  which is the shape all three of the pane's change cards share — see graphs.md,
+  "The three change cards say it the same way".
 - **Improvement or regression** comes from the base series' `lowerIsBetter`,
   never from the sign of the delta alone — and only for the `push` kind, the one
   case that is a single thing measured twice. Windows being slower than macOS on

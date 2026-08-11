@@ -40,13 +40,8 @@
   // rearrange the pane; hovering may not.
 
   import type { AppState } from './appState.svelte';
-  import {
-    formatPValue,
-    formatSignedPercent,
-    formatSignedValue,
-    formatTimestamp,
-    formatValue,
-  } from '../shared/chart';
+  import { formatPValue, formatTimestamp, formatValue } from '../shared/chart';
+  import ChangeHeadline from './ChangeHeadline.svelte';
   import {
     comparisonLinks,
     hasDistribution,
@@ -222,16 +217,17 @@
       <span class="muted">shift-click to pin</span>
     {/if}
   </div>
-  <p class="value">
-    {c ? formatSignedValue(c.medianDelta) : '0'}
-    {#if c?.unit}<span class="unit">{c.unit}</span>{/if}
-    {#if c && c.medianDeltaFraction !== null}
-      <span class="muted">({formatSignedPercent(c.medianDeltaFraction)})</span>
-    {/if}
-    {#if c && c.direction !== 'none'}
-      <span class="verdict {c.direction}">{c.direction}</span>
-    {/if}
-  </p>
+  <!-- One headline shape across the three change cards — see
+       ChangeHeadline.svelte. The percentage leads here too, where the absolute
+       used to: with the alert card and the detected-change card able to sit
+       right below this one, three orders for one kind of statement was three
+       things to re-read. -->
+  <ChangeHeadline
+    percent={c ? c.medianDeltaFraction : null}
+    delta={c ? c.medianDelta : null}
+    unit={c?.unit ?? ''}
+    verdict={c && c.direction !== 'none' ? c.direction : null}
+  />
   <!-- Clipped to one line rather than wrapped. The labels are revisions and
        platform strings, so their length is not ours to predict, and a line
        that sometimes becomes two would put the jump straight back. The
@@ -338,31 +334,33 @@
         <dd>
           p = {formatPValue(t.pValue)} —
           {t.significant ? `significant at ${SIGNIFICANCE_ALPHA}` : 'not significant'}
+          {#if t.smallSample}
+            <!-- The test is a normal approximation; below a handful of values a
+                 side it is conservative rather than wrong, but "not
+                 significant" then says very little. On the verdict it
+                 qualifies, rather than on a row of its own: the pool sizes it
+                 was attached to are in the chart's legend, `n=` per side. -->
+            {' '}<span class="muted">— too few for a confident verdict</span>
+          {/if}
         </dd>
+        <!-- Cliff's delta and CLES, on one row, because they are the same
+             number twice: `stats.ts` computes δ = 2·cles − 1, so the two can
+             never disagree and two rows read as two pieces of evidence. Two
+             decimals always, since δ runs from -1 to 1 and trimming "1.00" to
+             "1" loses the only scale it has. The plain-language half names one
+             side only: with two platform strings for labels,
+             "P(windows11-64-24h2-shippable < macosx1500-aarch64-shippable)" is
+             wider than the pane.
+
+             The `Values n vs n` row that used to close this table is gone with
+             them — the chart's legend prints `n=` for each side, right above. -->
         <dt
-          title="Cliff's delta: how often a value from one side beats one from the other, on a scale from -1 to 1"
+          title="Cliff's delta: how often a value from one side beats one from the other, on a scale from -1 to 1. The percentage is the same number in plain language — draw one value from each side at random, and this is how often the second is the lower of the two"
           >Effect</dt
         >
-        <!-- Two decimals always: δ runs from -1 to 1, so trimming "1.00"
-             to "1" loses the only scale the number has. -->
-        <dd>{t.effectSize} (δ {t.cliffsDelta.toFixed(2)})</dd>
-        <!-- CLES. Named on one side only: with two platform strings for
-             labels, "P(windows11-64-24h2-shippable <
-             macosx1500-aarch64-shippable)" is wider than the pane. -->
-        <dt
-          title="Common-language effect size: draw one value from each side at random, and this is how often the second is the lower of the two"
-          >Lower</dt
-        >
-        <dd>{cmp.next.label} in {Math.round(t.cles * 100)}% of pairs</dd>
-        <dt>Values</dt>
         <dd>
-          {t.nBase} vs {t.nNext}
-          {#if t.smallSample}
-            <!-- The test is a normal approximation; below a handful of
-                 values a side it is conservative rather than wrong, but
-                 "not significant" then says very little. -->
-            <span class="muted">— too few for a confident verdict</span>
-          {/if}
+          {t.effectSize} (δ {t.cliffsDelta.toFixed(2)}) — {cmp.next.label} lower in
+          {Math.round(t.cles * 100)}% of pairs
         </dd>
       </dl>
     {/if}
@@ -609,10 +607,6 @@
     border-radius: 6px;
     font-size: 11px;
   }
-  .cmp-lede .value {
-    margin: 2px 0 0;
-    font-size: 18px;
-  }
   .cmp-lede .cmp-sub {
     margin: 0;
   }
@@ -660,23 +654,6 @@
   .cmp-sub {
     margin: 0 0 8px;
     font-size: 11px;
-  }
-  .verdict {
-    font-size: 11px;
-    font-weight: 600;
-    padding: 1px 6px;
-    border-radius: 10px;
-    text-transform: uppercase;
-    letter-spacing: 0.03em;
-    vertical-align: 2px;
-  }
-  .verdict.improvement {
-    background: var(--success-subtle);
-    color: var(--success-strong-fg);
-  }
-  .verdict.regression {
-    background: var(--danger-subtle);
-    color: var(--danger-strong-fg);
   }
   .warn {
     margin: 0 0 8px;

@@ -249,3 +249,36 @@ export function alertsByPush(alerts: readonly SeriesAlert[]): Map<number, Series
   for (const alert of alerts) map.set(alert.pushId, alert);
   return map;
 }
+
+// ---------------------------------------------------------------------------
+// The alert as a change, in the same terms as everything else
+// ---------------------------------------------------------------------------
+//
+// Perfherder reports a magnitude and a direction separately: `amount_pct` is
+// always positive and `is_regression` says whether that was bad. The pane's two
+// other change cards report a signed measurement and a verdict badge, so the
+// alert card printed "2%" where they printed "-2 ms" — and on a
+// higher-is-better metric those describe the same regression. These two put the
+// alert in the same terms, which is what lets one component draw all three
+// headlines (ChangeHeadline.svelte).
+//
+// **The sign comes from the alert's own pair of values, not from
+// `isRegression`.** A regression on a score *is* a drop; taking the sign from
+// the verdict would print "+2%" for it and contradict the values on the line
+// below.
+
+// `newValue - prevValue`, in the metric's units. Both are window averages —
+// 12–24 pushes back against 12 forward — so this is a delta between those
+// windows and not between two builds; the card says so underneath.
+export function alertDelta(alert: SeriesAlert): number {
+  return alert.newValue - alert.prevValue;
+}
+
+// `amountPct` as a signed fraction, ready for `formatSignedPercent`.
+//
+// Perfherder's own figure rather than one recomputed from the two values: it is
+// what the alert summary shows and what a sheriff quotes. Only the sign is ours.
+export function signedAmountFraction(alert: SeriesAlert): number {
+  const magnitude = alert.amountPct / 100;
+  return alertDelta(alert) < 0 ? -magnitude : magnitude;
+}

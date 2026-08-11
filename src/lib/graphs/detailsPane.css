@@ -66,3 +66,35 @@
   font-family: var(--font-mono);
   font-size: 12px;
 }
+
+/* The regression / improvement badge, on whichever of the three change cards is
+   showing. Here rather than in one of them because all three read it through
+   ChangeHeadline.svelte — it used to be declared inside ComparisonSection,
+   where Svelte's scoping meant the other two cards wrote `class="verdict"` and
+   got nothing but the headline's inherited bold. */
+.details .verdict {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  vertical-align: 2px;
+}
+.details .verdict.improvement {
+  background: var(--success-subtle);
+  color: var(--success-strong-fg);
+}
+.details .verdict.regression {
+  background: var(--danger-subtle);
+  color: var(--danger-strong-fg);
+}
+
+/* The comparison's headline sits tight under its own head row rather than
+   carrying the standalone spacing the other two cards want. Here rather than in
+   ComparisonSection because the element belongs to ChangeHeadline now, and a
+   scoped rule cannot reach into a child component. The font size is the shared
+   `.value` one; only the margin is local. */
+.details .cmp-lede .value {
+  margin: 2px 0 0;
+}

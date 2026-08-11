@@ -120,6 +120,19 @@ Living checklist. Update in the same commit as the work it describes.
   commit table already printed them all, which made this two views of one field
   disagreeing.
 
+- One headline shape across the three change cards, and a shorter pane.
+  `ChangeHeadline.svelte` draws all three: percent first, absolute in
+  parentheses, both signed arithmetically, badge for the verdict. The alert card
+  was printing an unsigned magnitude beside two signed numbers — a regression on
+  a higher-is-better metric read "2%" over one reading "−2 ms" — so
+  `signedAmountFraction` takes the sign from the alert's own values rather than
+  from `isRegression`. With it, four cuts that take the crowded case (alert,
+  detected change and a pinned comparison, all on signature 5350953) from
+  **2,098px to 1,546px**: two stats rows that were one number twice, a fold on
+  "Values on this push" past three runs, the job type's platform prefix, and one
+  `Triage` row for the two alert statuses. See graphs.md, "The three change
+  cards say it the same way" and "Keeping the pane readable".
+
 ## Next
 
 - [ ] A full repaint of the detail graph at 100k+ dots takes ~60ms, which is

@@ -110,6 +110,78 @@ which would put the twenty-commit pushlog above the value you asked about.
    card along with the delta and the statistics, so the link was a trip out to
    hg for a subset of one keypress.
 
+#### The three change cards say it the same way
+
+Between 2 and 3 sit the two cards that are not about the dot at all — the Alert
+and the Detected change — and all three can be on screen together, since
+perfherder alerting on a push this app also found a step on is the *agreement*
+case, and clicking either mark pins the comparison. Measured on signature
+5350953 at alert #51136, that is 989px of change cards in a 910px pane.
+
+Three cards is fine. Three *dialects* was not, and they had drifted into three:
+
+| | before | after |
+| --- | --- | --- |
+| Comparison | `+306.1 ms (+4.9%)` | `+4.9% (+306.1 ms)` |
+| Alert | `10.95%` | `+11% (+659.17 ms)` |
+| Detected change | `+8.9% (+535.71 ms)` | `+8.9% (+535.71 ms)` |
+
+[ChangeHeadline.svelte](../src/lib/graphs/ChangeHeadline.svelte) is now the only
+one of these, and the rule is: **the percentage leads, the absolute follows in
+parentheses, both signed arithmetically, and the badge carries the verdict.**
+
+- *Percent first* because it is the number that compares across series and the
+  one people quote. The absolute stays because the percentage is not always the
+  number that means anything — a signature whose alerting threshold is absolute
+  (installer size sets 100 KB) shows a real 340 KB regression as −0.19%.
+- *Signed arithmetically*, so the sign always means "the measurement went up".
+  The alert card was the odd one out: `amount_pct` is a magnitude and
+  `is_regression` carries the direction, so it printed `2%` where the cards
+  under it printed `−2 ms` for the same move. `alerts.ts::signedAmountFraction`
+  takes the sign from the alert's own two values — **not** from `isRegression`,
+  since a regression on a higher-is-better metric *is* a drop and signing by the
+  verdict would contradict the values on the line below. The magnitude stays
+  perfherder's own, because that is the figure a sheriff quotes.
+- *The badge carries regression/improvement* because the sign cannot: −2 ms is
+  an improvement on a duration and a regression on a score. It also had to move
+  to [detailsPane.css](../src/lib/graphs/detailsPane.css) — it was declared
+  inside ComparisonSection, so Svelte's scoping meant the other two cards wrote
+  `class="verdict"` and got nothing but the headline's inherited bold.
+
+The three still print *different numbers*, and each says why on the line under
+its headline: perfherder's window averages (12–24 pushes back against 12
+forward), this app's up to 24 a side, and the comparison's two builds. That is
+the point of having all three — a reader who took them for one figure would
+think two of them were wrong.
+
+#### Keeping the pane readable
+
+Same case, measured before and after: **2,098px → 1,546px** in a 910px viewport.
+Four cuts, none of which removes a fact from the app:
+
+- **The stats table lost two rows.** `Values 8 vs 7` is `n=8` and `n=7` from the
+  chart legend directly above it, and `Lower: after in 13% of pairs` is `Effect:
+  δ −0.75` restated — `stats.ts` computes δ = 2·cles − 1, so they cannot
+  disagree, and two rows read as two pieces of evidence. CLES now finishes the
+  Effect row; the small-sample caveat moved onto Significance, the verdict it
+  qualifies.
+- **"Values on this push" folds past three runs** (386px → 38px on a
+  seven-retrigger push, unchanged on the one-run push that is the common case).
+  The summary carries what the fold hides — the run count and the push mean —
+  and the distribution above already draws the whole cloud with the clicked run
+  haloed, which is the question a retriggered build raises. Three runs is still
+  341px unfolded: the height is driven by replicate chips, not by run count.
+- **The job type drops the prefix the pane has already spelled out.**
+  `test-windows11-64-24h2-shippable/opt-browsertime-…` is four wrapped
+  monospace lines whose first two thirds are the platform and build config from
+  the top of the pane. Only an exact `test-<platform>/` is stripped, since the
+  platform comes from the same job row and matching it is a comparison rather
+  than a guess ([job.ts](../src/lib/graphs/job.ts)); the whole string stays in
+  the row's `title`, because that is what gets pasted into a `./mach try`.
+- **One `Triage` row for the two alert statuses.** They are still two different
+  facts — this series' alert against the whole push's summary — and both are
+  still named. What they are not is two findings.
+
 ### Profiles
 
 The Run section links the selected job's profiles straight into
@@ -928,12 +1000,16 @@ Recovery is the explicit Retry button.
   [DistributionChart.svelte](../src/lib/graphs/DistributionChart.svelte) — the
   details pane's distributions and comparison mode. All pure except the last
   two. See [comparison.md](comparison.md).
+- [job.ts](../src/lib/graphs/job.ts) — **pure**. A job row's duration, and its
+  type with the platform prefix the pane has already said stripped off.
 - [SeriesList.svelte](../src/lib/graphs/SeriesList.svelte),
   [GraphPane.svelte](../src/lib/graphs/GraphPane.svelte),
   [DetailsPane.svelte](../src/lib/graphs/DetailsPane.svelte) — the three panes.
   The details pane delegates its comparison card to
-  [ComparisonSection.svelte](../src/lib/graphs/ComparisonSection.svelte) and
-  shares its text styles with it through
+  [ComparisonSection.svelte](../src/lib/graphs/ComparisonSection.svelte), its
+  three change headlines to
+  [ChangeHeadline.svelte](../src/lib/graphs/ChangeHeadline.svelte), and shares
+  its text styles with both through
   [detailsPane.css](../src/lib/graphs/detailsPane.css).
 
 **Do not put a `SeriesData` inside a `$state` object or array.** Svelte 5

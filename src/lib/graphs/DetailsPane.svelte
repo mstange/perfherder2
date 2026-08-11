@@ -6,12 +6,16 @@
   // pane, top to bottom".
 
   import './detailsPane.css';
-  import { alertStatusLabel, summaryStatusLabel } from './alerts';
-  import type { AppState } from './appState.svelte';
+  import {
+    alertDelta,
+    alertStatusLabel,
+    signedAmountFraction,
+    summaryStatusLabel,
+  } from './alerts';
+  import type { AppState, Selection } from './appState.svelte';
   import {
     formatPValue,
     formatSignedPercent,
-    formatSignedValue,
     formatTimestamp,
     formatValue,
   } from '../shared/chart';
@@ -32,8 +36,10 @@
     shortRevision,
     taskUrl,
   } from '../shared/links';
+  import ChangeHeadline from './ChangeHeadline.svelte';
   import CommitList from './CommitList.svelte';
   import { landingSeriesCount, landingWindowLabel } from './cluster';
+  import { jobDuration, shortJobType } from './job';
   import { commitsOfPush } from './pushlog';
 
   type Props = { app: AppState };
@@ -75,14 +81,102 @@
   // pane draws; `pushValues` explains why the pool is the whole push.
   const pushPool = $derived(sel ? pushValues(sel.push) : []);
 
-  function jobDuration(startS: number | null, endS: number | null): string {
-    if (!startS || !endS || endS < startS) return '';
-    const total = endS - startS;
-    const m = Math.floor(total / 60);
-    const s = total % 60;
-    return m > 0 ? `${m}m ${s}s` : `${s}s`;
-  }
+  // Where "Values on this push" stops being a list and starts being a wall.
+  // Measured on autoland signature 299010: one run 114px, three 341px, and the
+  // seven-retrigger push that prompted this 386px — a fifth of the whole pane
+  // for a spread the chart above already draws with the clicked run haloed.
+  // More runs than this and the section folds. The height is really driven by
+  // replicate chips rather than by run count, so three unfolded is still not
+  // short; the run count is what a reader can see coming.
+  const MANY_RUNS = 3;
 </script>
+
+<!-- Every run of the push, not just the selected one: the pane used to list the
+     clicked run's values alone, which made a retriggered build look like it
+     recorded five numbers when it recorded fifteen, and left the other runs'
+     values reachable only by hunting for their dots on the graph. Listed
+     whether or not the dots are drawn — with replicates hidden this is the only
+     way to see the spread — and ascending, since there's no execution order to
+     show instead.
+
+     A snippet because it is rendered from two places now, folded and not. -->
+{#snippet runList(sel: Selection)}
+  <ul class="runs">
+    {#each runGroups as group (group.run.datumId)}
+      <li class:selected={group.selectedRun}>
+        <div class="run-head">
+          <span class="run-name">
+            {runGroups.length > 1
+              ? `Run ${group.ordinal} of ${runGroups.length}`
+              : 'Replicates'}
+          </span>
+          <!-- Only worth a link when there's more than one run; with a
+               single one this would repeat the Run section right below. -->
+          {#if runGroups.length > 1 && group.run.jobId !== null}
+            <a
+              href={jobsUrl(repo, sel.push.revision, group.run.jobId)}
+              target="_blank"
+              rel="noopener">job {group.run.jobId}</a
+            >
+          {/if}
+          {#if group.run.values.length > 1}
+            <!-- Selectable, not just printed. A run's mean is a point the
+                 app has — it's what the `means` drawing mode plots, and
+                 what a `sel=…,-1` link names — but with replicates drawn
+                 its dot isn't on the graph, so clicking a chip below used
+                 to be a one-way door: nothing in the pane led back to the
+                 run as a whole. It stays in the head rather than joining
+                 the chip row, because a mean sitting in a row of measured
+                 values is a different kind of number wearing the same
+                 clothes. -->
+            <button
+              type="button"
+              class="run-mean"
+              class:selected={group.selectedRun && meanSelected}
+              aria-pressed={group.selectedRun && meanSelected}
+              title="Select this run's mean"
+              onclick={() =>
+                app.selectPoint({
+                  repository: repo,
+                  signatureId: sel.entry.ref.signatureId,
+                  datumId: group.run.datumId,
+                  replicateIndex: MEAN_REPLICATE,
+                })}
+            >
+              mean {formatValue(group.run.mean)}
+            </button>
+          {/if}
+        </div>
+        <!-- Values only. The chips used to lead with the replicate's
+             index, which cost about a quarter of each chip's width — two
+             fewer per line — to print a number that means nothing: it's a
+             rank over values we sorted ourselves (see `Run.values`), so it
+             names no trial and no order the harness ran in. An `<ol>`
+             still, because ascending *is* the order, and assistive tech
+             can number the items itself if it wants to. -->
+        <ol class="replicates" title={REPLICATE_ORDER_HINT}>
+          {#each group.run.values as v, i}
+            <li class:selected={i === group.selectedIndex}>
+              <button
+                type="button"
+                class="btn"
+                onclick={() =>
+                  app.selectPoint({
+                    repository: repo,
+                    signatureId: sel.entry.ref.signatureId,
+                    datumId: group.run.datumId,
+                    replicateIndex: i,
+                  })}
+              >
+                {formatValue(v)}
+              </button>
+            </li>
+          {/each}
+        </ol>
+      </li>
+    {/each}
+  </ul>
+{/snippet}
 
 <aside class="details">
   <header><h2>Selection</h2></header>
@@ -164,12 +258,16 @@
               #{alert.summaryId} on perfherder
             </a>
           </div>
-          <p class="value">
-            {alert.amountPct.toFixed(2)}<span class="unit">%</span>
-            <span class="verdict {alert.isRegression ? 'regression' : 'improvement'}">
-              {alert.isRegression ? 'regression' : 'improvement'}
-            </span>
-          </p>
+          <!-- `amountPct` is a magnitude and `is_regression` carries the
+               direction, so this was the card printing an unsigned number
+               beside two signed ones. `alerts.ts` puts it in the same terms as
+               the others; the sign is the one the values below it show. -->
+          <ChangeHeadline
+            percent={signedAmountFraction(alert)}
+            delta={alertDelta(alert)}
+            unit={sel.entry.meta?.measurementUnit ?? ''}
+            verdict={alert.isRegression ? 'regression' : 'improvement'}
+          />
           <p class="cmp-sub muted">
             {formatValue(alert.prevValue)} → {formatValue(alert.newValue)}
             {#if sel.entry.meta?.measurementUnit}{' '}{sel.entry.meta.measurementUnit}{/if}
@@ -185,7 +283,15 @@
             perfherder's window averages, 12–24 pushes before against 12 after
           </p>
           <dl>
-            <dt title="Perfherder's own status for this series' alert">Alert</dt>
+            <!-- One row for the two triage states. They are different facts —
+                 this series' alert against the whole push's summary — so both
+                 are still here and the second is still named; what they are not
+                 is two findings, and two labelled rows in a card this size read
+                 as two. -->
+            <dt
+              title="Perfherder's status for this series' alert, then the triage state of the whole push's alert summary"
+              >Triage</dt
+            >
             <!-- A reassigned alert is drawn on the push it was reassigned *to*,
                  so the marker is deliberately not on the push perfherder's
                  analysis flagged — which this has to name, or the card and the
@@ -208,9 +314,8 @@
                   rel="noopener">#{other}</a
                 >
               {/if}
+              <span class="muted">· summary {summaryStatusLabel(alert.summaryStatus)}</span>
             </dd>
-            <dt title="The triage state of the whole push's alert summary">Summary</dt>
-            <dd>{summaryStatusLabel(alert.summaryStatus)}</dd>
             {#if alert.tValue !== null}
               <!-- Perfherder's own t, not the Mann-Whitney U this pane computes
                    for a comparison. Named as theirs so the two aren't read as
@@ -240,25 +345,12 @@
       {#if change}
         <section class="change-card">
           <div class="cmp-head"><h3>Detected change</h3></div>
-          <p class="value">
-            {formatSignedPercent(change.relativeChange)}
-            <!-- And the delta beside it, in the metric's own units, because the
-                 percentage is not always the number that means anything: a
-                 signature whose alerting threshold is an absolute one (installer
-                 size sets 100 KB) has its floor measured in those units, so a
-                 real 340 KB regression appears here as −0.19% and reads as noise
-                 unless the KB are on the card too. The comparison card below
-                 shows the same pair the other way round. -->
-            <span class="muted">
-              ({formatSignedValue(change.afterValue - change.beforeValue)}{sel.entry.meta
-                ?.measurementUnit
-                ? ` ${sel.entry.meta.measurementUnit}`
-                : ''})
-            </span>
-            <span class="verdict {change.isRegression ? 'regression' : 'improvement'}">
-              {change.isRegression ? 'regression' : 'improvement'}
-            </span>
-          </p>
+          <ChangeHeadline
+            percent={change.relativeChange}
+            delta={change.afterValue - change.beforeValue}
+            unit={sel.entry.meta?.measurementUnit ?? ''}
+            verdict={change.isRegression ? 'regression' : 'improvement'}
+          />
           <p class="cmp-sub muted">
             {formatValue(change.beforeValue)} → {formatValue(change.afterValue)}
             {#if sel.entry.meta?.measurementUnit}{' '}{sel.entry.meta.measurementUnit}{/if}
@@ -401,97 +493,34 @@
                the chart ComparisonSection now holds, which is what stops it
                vanishing and reappearing 250px up the pane every time the
                pointer crosses a dot. This section keeps the numbers. -->
-          <!-- Every run of the push, not just the selected one: the pane used to
-               list the clicked run's values alone, which made a retriggered build
-               look like it recorded five numbers when it recorded fifteen, and
-               left the other runs' values reachable only by hunting for their
-               dots on the graph. Listed whether or not the dots are drawn — with
-               replicates hidden this is the only way to see the spread — and
-               ascending, since there's no execution order to show instead. -->
-          <ul class="runs">
-            {#each runGroups as group (group.run.datumId)}
-              <li class:selected={group.selectedRun}>
-                <div class="run-head">
-                  <span class="run-name">
-                    {runGroups.length > 1
-                      ? `Run ${group.ordinal} of ${runGroups.length}`
-                      : 'Replicates'}
-                  </span>
-                  <!-- Only worth a link when there's more than one run; with a
-                       single one this would repeat the Run section right below. -->
-                  {#if runGroups.length > 1 && group.run.jobId !== null}
-                    <a
-                      href={jobsUrl(repo, sel.push.revision, group.run.jobId)}
-                      target="_blank"
-                      rel="noopener">job {group.run.jobId}</a
-                    >
-                  {/if}
-                  {#if group.run.values.length > 1}
-                    <!-- Selectable, not just printed. A run's mean is a point the
-                         app has — it's what the `means` drawing mode plots, and
-                         what a `sel=…,-1` link names — but with replicates drawn
-                         its dot isn't on the graph, so clicking a chip below used
-                         to be a one-way door: nothing in the pane led back to the
-                         run as a whole. It stays in the head rather than joining
-                         the chip row, because a mean sitting in a row of measured
-                         values is a different kind of number wearing the same
-                         clothes. -->
-                    <button
-                      type="button"
-                      class="run-mean"
-                      class:selected={group.selectedRun && meanSelected}
-                      aria-pressed={group.selectedRun && meanSelected}
-                      title="Select this run's mean"
-                      onclick={() =>
-                        app.selectPoint({
-                          repository: repo,
-                          signatureId: sel.entry.ref.signatureId,
-                          datumId: group.run.datumId,
-                          replicateIndex: MEAN_REPLICATE,
-                        })}
-                    >
-                      mean {formatValue(group.run.mean)}
-                    </button>
-                  {/if}
-                </div>
-                <!-- Values only. The chips used to lead with the replicate's
-                     index, which cost about a quarter of each chip's width — two
-                     fewer per line — to print a number that means nothing: it's a
-                     rank over values we sorted ourselves (see `Run.values`), so it
-                     names no trial and no order the harness ran in. An `<ol>`
-                     still, because ascending *is* the order, and assistive tech
-                     can number the items itself if it wants to. -->
-                <ol class="replicates" title={REPLICATE_ORDER_HINT}>
-                  {#each group.run.values as v, i}
-                    <li class:selected={i === group.selectedIndex}>
-                      <button
-                        type="button"
-                        class="btn"
-                        onclick={() =>
-                          app.selectPoint({
-                            repository: repo,
-                            signatureId: sel.entry.ref.signatureId,
-                            datumId: group.run.datumId,
-                            replicateIndex: i,
-                          })}
-                      >
-                        {formatValue(v)}
-                      </button>
-                    </li>
-                  {/each}
-                </ol>
-              </li>
-            {/each}
-          </ul>
-          <!-- The value the connecting line passes through, which is why the line
-               can sit off a retriggered push's individual dots. Only worth
-               spelling out when there is more than one run; otherwise it just
-               repeats the run mean above. -->
-          {#if runGroups.length > 1}
-            <dl class="push-mean">
-              <dt>Push mean</dt>
-              <dd>{formatValue(sel.push.mean)}</dd>
-            </dl>
+          <!-- Heavily retriggered pushes are where this section stops being
+               readable: seven runs is 386px, a fifth of the whole pane, for a
+               spread the chart above already draws with the clicked run haloed.
+               Past MANY_RUNS it folds, and the summary carries what the fold
+               hides — how many runs, and the push mean the connecting line
+               passes through. Nothing changes on the common one-run push, and
+               nothing here loads or moves on its own: the fold only ever opens
+               because someone opened it. -->
+          {#if runGroups.length > MANY_RUNS}
+            <details class="run-fold">
+              <summary>
+                {runGroups.length} runs
+                <span class="muted">· push mean {formatValue(sel.push.mean)}</span>
+              </summary>
+              {@render runList(sel)}
+            </details>
+          {:else}
+            {@render runList(sel)}
+            <!-- The value the connecting line passes through, which is why the
+                 line can sit off a retriggered push's individual dots. Only
+                 worth spelling out when there is more than one run; otherwise it
+                 repeats the run mean above. Folded, it is in the summary. -->
+            {#if runGroups.length > 1}
+              <dl class="push-mean">
+                <dt>Push mean</dt>
+                <dd>{formatValue(sel.push.mean)}</dd>
+              </dl>
+            {/if}
           {/if}
         </section>
       {/if}
@@ -517,8 +546,14 @@
           </dd>
           {#if app.selectedJob}
             {@const job = app.selectedJob}
+            <!-- Shortened, with the whole of it on hover. The full name opens
+                 with the platform and the build config — four wrapped lines of
+                 monospace here, and both already spelled out at the top of this
+                 pane. See job.ts for what is and isn't safe to strip. -->
             <dt>Type</dt>
-            <dd class="mono">{job.job_type_name}</dd>
+            <dd class="mono" title={job.job_type_name}>
+              {shortJobType(job.job_type_name, job.platform)}
+            </dd>
             <dt>Machine</dt>
             <dd class="mono">{job.machine_name}</dd>
             <dt>Started</dt>
@@ -796,6 +831,27 @@
   }
   .push-mean {
     margin-top: 8px;
+  }
+  /* Same disclosure idiom as the comparison card's pushlog: no native marker,
+     a triangle that turns, and a summary line whose height doesn't change with
+     its state. */
+  .run-fold > summary {
+    cursor: pointer;
+    list-style: none;
+    user-select: none;
+    line-height: 18px;
+  }
+  .run-fold > summary::-webkit-details-marker {
+    display: none;
+  }
+  .run-fold > summary::before {
+    content: '▸';
+    display: inline-block;
+    width: 12px;
+    color: var(--fg-subtle);
+  }
+  .run-fold[open] > summary::before {
+    content: '▾';
   }
   /* One profile per line. A run has one or two of these and their labels are
      test names, so a wrapped inline run of them would read as one phrase —

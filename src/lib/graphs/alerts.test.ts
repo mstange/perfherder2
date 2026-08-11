@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
+  alertDelta,
   alertsByPush,
   alertsForSeries,
   alertStatusLabel,
   reassignmentTargetIds,
+  signedAmountFraction,
   summaryStatusLabel,
 } from './alerts';
 import type { Alert, AlertSummary } from './alertsApi';
@@ -361,6 +363,50 @@ describe('alertsByPush', () => {
     const alerts = alertsForSeries([summary({ id: 900, push_id: 7 })], SIGNATURE, data);
     expect(alertsByPush(alerts).get(7)?.summaryId).toBe(900);
     expect(alertsByPush(alerts).get(8)).toBeUndefined();
+  });
+});
+
+describe('the alert as a signed change', () => {
+  function one(o: Partial<Alert>) {
+    const data = seriesData([datum({ id: 1, value: 10, push_id: 7 })]);
+    return alertsForSeries(
+      [summary({ id: 900, push_id: 7, alerts: [alert({ id: 1, ...o })] })],
+      SIGNATURE,
+      data,
+    )[0];
+  }
+
+  it('signs a rise upward and a fall downward', () => {
+    expect(signedAmountFraction(one({ prev_value: 100, new_value: 120, amount_pct: 20 }))).toBe(
+      0.2,
+    );
+    expect(alertDelta(one({ prev_value: 100, new_value: 120 }))).toBe(20);
+    expect(
+      signedAmountFraction(one({ prev_value: 120, new_value: 100, amount_pct: 16.67 })),
+    ).toBeCloseTo(-0.1667, 6);
+    expect(alertDelta(one({ prev_value: 120, new_value: 100 }))).toBe(-20);
+  });
+
+  it('takes the sign from the values, not from the verdict', () => {
+    // A regression on a higher-is-better metric is a *drop*. Signing by
+    // `is_regression` would print "+16.7%" over a line reading "120 → 100",
+    // which is the disagreement this exists to remove.
+    const dropped = one({
+      prev_value: 120,
+      new_value: 100,
+      amount_pct: 16.67,
+      is_regression: true,
+    });
+    expect(dropped.isRegression).toBe(true);
+    expect(signedAmountFraction(dropped)).toBeLessThan(0);
+  });
+
+  it('keeps the magnitude perfherder reported rather than recomputing one', () => {
+    // `amount_pct` is what the alert summary shows and what a sheriff quotes.
+    // It is computed over the analysis windows, so it does not have to agree
+    // with `new/prev - 1` — here 20% against the 21.4% the two values imply.
+    const a = one({ prev_value: 98, new_value: 119, amount_pct: 20 });
+    expect(signedAmountFraction(a)).toBe(0.2);
   });
 });
 
