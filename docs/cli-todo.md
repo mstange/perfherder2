@@ -56,10 +56,20 @@ series.**
   so the figures are comparable; both windows' dates are printed, since "February
   against now" is a claim the reader has to be able to check.
 
+- **A pool that came up short says so.** `compare --pool 24 <ref>@first last`
+  produced a 1-vs-1 comparison and then "too few values for a density estimate",
+  with nothing connecting the missing modes to a `--pool` that never landed. The
+  behaviour is right — the windows reach outward from the push named, so the range's
+  edges have nothing outside them — but silence about it made a degraded answer look
+  like a complete one, which is the rule this tool breaks least often and cares about
+  most. `CompareReport.poolShortfall` (+ tests) now carries the request beside what
+  each side reached, and the note points at `series --drift` for the ends-of-range
+  question. Found while using the band work's mode analysis, not by a trial.
+
 ## Next
 
-- [ ] Nothing outstanding from the fifth trial. The two items below were looked
-      at and deliberately left.
+- [ ] Nothing outstanding. The two items below were looked at and deliberately
+      left.
 
 ## Open questions / deferred
 

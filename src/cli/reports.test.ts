@@ -535,6 +535,98 @@ describe('buildCompareReport', () => {
     expect(report.base.revision).toBe(pushes[9].revision);
   });
 
+  it('says when a pool could not reach what was asked for', () => {
+    // The case a live run hit: `--pool 24` against `@first` and `@last`. Pooling
+    // reaches outward, the range edges have nothing outside them, so both sides get
+    // one push — and the silent version of this looked exactly like a pool that
+    // worked, right down to "too few values for a density estimate".
+    const stepped = loadedOf(
+      summaryOf([
+        ...noisy(100, 10, 1).map((v) => [v, v + 1]),
+        ...noisy(140, 10, 1, 31).map((v) => [v, v + 1]),
+      ]),
+    );
+    const pushes = stepped.data.pushes;
+    const first = poolPushes(pushes, pushes[0], 24, 'backward');
+    const last = poolPushes(pushes, pushes[pushes.length - 1], 24, 'forward');
+    expect(first.pooled).toHaveLength(1);
+    expect(last.pooled).toHaveLength(1);
+
+    const report = buildCompareReport({
+      base: { loaded: stepped, push: first.push, pooled: first.pooled },
+      next: { loaded: stepped, push: last.push, pooled: last.pooled },
+      span: SPAN,
+      appBase: 'http://localhost:5173/',
+      repoLink: null,
+      poolRequested: 24,
+    })!;
+    expect(report.poolShortfall).toEqual({ requested: 24, baseGot: 1, nextGot: 1 });
+    // And the rest of the report is unchanged by saying so: one push a side is not
+    // pooling, so the test is still over replicates.
+    expect(report.pool).toBeNull();
+    expect(report.testBasis).toBe('replicates');
+  });
+
+  it('reports both counts when only one side fell short', () => {
+    // "5 and 1" is the diagnosis — one anchor was too near an edge. "1" alone would
+    // not say whether the range was too short instead.
+    const stepped = loadedOf(
+      summaryOf([
+        ...noisy(100, 10, 1).map((v) => [v, v + 1]),
+        ...noisy(140, 10, 1, 31).map((v) => [v, v + 1]),
+      ]),
+    );
+    const pushes = stepped.data.pushes;
+    const base = poolPushes(pushes, pushes[9], 5, 'backward');
+    const next = poolPushes(pushes, pushes[pushes.length - 1], 5, 'forward');
+    const report = buildCompareReport({
+      base: { loaded: stepped, push: base.push, pooled: base.pooled },
+      next: { loaded: stepped, push: next.push, pooled: next.pooled },
+      span: SPAN,
+      appBase: 'http://localhost:5173/',
+      repoLink: null,
+      poolRequested: 5,
+    })!;
+    expect(report.poolShortfall).toEqual({ requested: 5, baseGot: 5, nextGot: 1 });
+    // Still a pooled comparison, because one side did widen.
+    expect(report.pool).toMatchObject({ basePushes: 5, nextPushes: 1 });
+    expect(report.testBasis).toBe('push means');
+  });
+
+  it('says nothing when every side got what it asked for', () => {
+    const stepped = loadedOf(
+      summaryOf([
+        ...noisy(100, 10, 1).map((v) => [v, v + 1]),
+        ...noisy(140, 10, 1, 31).map((v) => [v, v + 1]),
+      ]),
+    );
+    const pushes = stepped.data.pushes;
+    const base = poolPushes(pushes, pushes[9], 5, 'backward');
+    const next = poolPushes(pushes, pushes[10], 5, 'forward');
+    const report = buildCompareReport({
+      base: { loaded: stepped, push: base.push, pooled: base.pooled },
+      next: { loaded: stepped, push: next.push, pooled: next.pooled },
+      span: SPAN,
+      appBase: 'http://localhost:5173/',
+      repoLink: null,
+      poolRequested: 5,
+    })!;
+    expect(report.poolShortfall).toBeNull();
+  });
+
+  it('cannot fall short when --pool was never asked for', () => {
+    // Without the flag every side is one push by definition, which is not a
+    // shortfall and must not be reported as one.
+    const report = buildCompareReport({
+      base: { loaded, push: before, pooled: null },
+      next: { loaded, push: after, pooled: null },
+      span: SPAN,
+      appBase: 'http://localhost:5173/',
+      repoLink: null,
+    })!;
+    expect(report.poolShortfall).toBeNull();
+  });
+
   it('leaves an unpooled comparison exactly as it was', () => {
     const report = buildCompareReport({
       base: { loaded, push: before, pooled: [before] },

@@ -1023,12 +1023,40 @@ export function renderCompare(report: CompareReport): string[] {
   const out: string[] = [];
   out.push(
     `comparison: ${report.headline}` +
+      // The noun agrees with the second number, which is the one it sits beside:
+      // "24 and 1 pushes" was reachable before and is common now that a side falling
+      // short of `--pool` is reported rather than silent.
       (report.pool
-        ? ` · pooled over ${report.pool.basePushes} and ${report.pool.nextPushes} pushes`
+        ? ` · pooled over ${report.pool.basePushes} and ${report.pool.nextPushes} ` +
+          `${report.pool.nextPushes === 1 ? 'push' : 'pushes'}`
         : ''),
   );
   if (report.swapped) {
     out.push('(the sides were put in time order, so the baseline is not the one given first)');
+  }
+  // Directly under the header, before the numbers it explains: everything below is
+  // computed over the pushes that were reached, so the reader has to know that is
+  // not what they asked for before reading any of it.
+  if (report.poolShortfall) {
+    const { requested, baseGot, nextGot } = report.poolShortfall;
+    out.push(
+      `! --pool ${requested} reached ${baseGot} ${baseGot === 1 ? 'push' : 'pushes'} for ` +
+        `${report.base.label} and ${nextGot} for ${report.next.label}`,
+    );
+    // Only the counts and the labels go on the line above; the explanation stays
+    // label-free. A `series` comparison's labels are distinguishing series names,
+    // which are long and variable, and interpolating one into a hand-wrapped
+    // paragraph makes the wrap ragged at exactly the width it was set for.
+    out.push(
+      '  Pooling reaches outward from the push named — the earlier side back, the later side',
+    );
+    out.push(
+      `  forward — so a push within ${requested} of that end of the range has nothing to reach,`,
+    );
+    out.push(
+      '  and @first / @last have nothing at all. Name pushes further in, widen the range,',
+    );
+    out.push('  or ask `series --drift` for the two ends of a range.');
   }
   // For a two-push comparison both sides name one series, and spelling it out
   // twice is half the header saying nothing.

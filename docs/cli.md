@@ -484,6 +484,22 @@ same window.
 `--pool` needs the two points to be on different pushes. For two series over a
 window, `series` is the command — its whole subject is levels over a range.
 
+**A pool that could not reach `n` says so, in the line under the header.** Because
+the windows reach *outward* from the push named, a push within `n` of that end of
+the range has nothing to reach — and `@first` / `@last` have nothing at all, so
+`compare --pool 24 <ref>@first last` pools one push a side. That is the design
+working, not a bug, but for a while it was silent: the run produced a 1-vs-1
+comparison and then "too few values for a density estimate", with nothing anywhere
+connecting the missing modes to the request that never landed. It is the
+"a truncated answer must never be shaped like a complete one" rule, one command
+late. `CompareReport.poolShortfall` carries it, both sides' counts are printed
+because "24 and 1" is the diagnosis and "1" alone is not, and the note points at
+`series --drift`, which is the command whose actual subject is the two ends of a
+range.
+
+`step` had this right all along — "up to 24 pushes a side" in its header, and the
+counts it really got on each row — which is where the wording came from.
+
 ### The mode analysis
 
 [modes.ts](../src/cli/modes.ts) is the one place the CLI computes something the

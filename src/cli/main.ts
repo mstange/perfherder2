@@ -727,6 +727,9 @@ const compare: Command = {
       span,
       appBase: ctx.appBase,
       repoLink,
+      // What was asked for, not what the windows reached: the report compares the
+      // two and says when they differ (`CompareReport.poolShortfall`).
+      poolRequested: pool,
     });
     if (!report) {
       throw new UsageError('those two arguments name the same point — there is nothing to compare');

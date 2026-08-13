@@ -1331,6 +1331,26 @@ export type CompareReport = {
     nextLevel: number;
     levelFraction: number | null;
   } | null;
+  // Set when `--pool n` could not reach `n` pushes on a side.
+  //
+  // **This is the report saying so rather than a failure**: the comparison is still
+  // a real comparison of the two builds named, resting on fewer pushes than asked
+  // for. It needs saying because the silent version looked exactly like a pool that
+  // worked — `compare --pool 24 <ref>@first last` produced a 1-vs-1 comparison and
+  // then "too few values for a density estimate", with nothing anywhere connecting
+  // the missing modes to the request that never landed. `step` has always got this
+  // right: it says "up to 24 pushes a side" and prints the counts it actually got.
+  //
+  // One cause, and it is `poolPushes`'s design rather than a bug: pooling reaches
+  // *outward* from the push named — the earlier side backward, the later side
+  // forward, so the two windows meet at the step instead of straddling it — so a
+  // push within `n` of that end of the range has nothing to reach, and `@first` /
+  // `@last` have nothing at all.
+  poolShortfall: {
+    requested: number;
+    baseGot: number;
+    nextGot: number;
+  } | null;
   // Null for a `replicate` comparison, which has no distribution.
   modes: ModeComparison | null;
   modeSummary: string | null;
@@ -1362,6 +1382,10 @@ export type CompareInput = {
   span: Span;
   appBase: string;
   repoLink: RepoLinkInfo | null;
+  // What `--pool` asked for, so the report can say when a side could not reach it —
+  // see `CompareReport.poolShortfall`. `1` (or absent) means it was not asked for,
+  // and no shortfall is possible.
+  poolRequested?: number;
 };
 
 // A window of pushes as one `PushGroup`, so the mode analysis has a pool worth
@@ -1478,7 +1502,17 @@ export function buildCompareReport(input: CompareInput): CompareReport | null {
   // read against each other.
   const basePooled = pointFor(comparison.base).pooled;
   const nextPooled = pointFor(comparison.next).pooled;
-  const pooling = (basePooled?.length ?? 1) > 1 || (nextPooled?.length ?? 1) > 1;
+  const baseGot = basePooled?.length ?? 1;
+  const nextGot = nextPooled?.length ?? 1;
+  const pooling = baseGot > 1 || nextGot > 1;
+  // Both sides, whenever either fell short, because "24 and 1" is the diagnosis and
+  // "1" on its own is not: it does not say whether the range is too short or one
+  // anchor was too near an edge.
+  const requested = input.poolRequested ?? 1;
+  const poolShortfall =
+    requested > 1 && (baseGot < requested || nextGot < requested)
+      ? { requested, baseGot, nextGot }
+      : null;
   const baseMeans = (basePooled ?? []).map((p) => p.mean);
   const nextMeans = (nextPooled ?? []).map((p) => p.mean);
   const pooledTest = pooling ? mannWhitneyU(baseMeans, nextMeans) : null;
@@ -1512,13 +1546,14 @@ export function buildCompareReport(input: CompareInput): CompareReport | null {
     testBasis: pooling ? 'push means' : 'replicates',
     pool: pooling
       ? {
-          basePushes: basePooled?.length ?? 1,
-          nextPushes: nextPooled?.length ?? 1,
+          basePushes: baseGot,
+          nextPushes: nextGot,
           baseLevel: mean(baseMeans),
           nextLevel: mean(nextMeans),
           levelFraction: relativeChange(mean(baseMeans), mean(nextMeans)),
         }
       : null,
+    poolShortfall,
     modes,
     modeSummary: modes
       ? describeModeComparison(modes, {
