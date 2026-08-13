@@ -185,6 +185,32 @@ Living checklist. Update in the same commit as the work it describes.
 
 ## Next
 
+- [ ] **The band's curves do not say what they are.** Nothing on the plot states the
+      window is 24 pushes, or that the middle line is a rolling *median* rather than
+      a fit or a moving average. The checkbox tooltip now says both, and the first
+      person to use the feature still asked "what is that line?" — with two correct
+      observations attached (on AWSY it sits on neither visible band, and it reacts
+      too fast for a moving average) that took a histogram of push means and a
+      median-vs-mean comparison to answer. A feature whose first question needs an
+      offline analysis to answer is under-labelled. The answers are now in graphs.md,
+      "The median line is the least trustworthy of the three", but a doc is not where
+      that reader was.
+
+      **A hover readout is the obvious form**: at the pointer's push, something like
+      *"median 564.4 MB · middle half 559.0–575.9 · over 24 pushes"*. It would make
+      the curves self-describing, and it is the one place the window size can be
+      stated without adding another control.
+
+      **What to settle before writing it is where it goes**, and it is a real
+      tension rather than a detail. The graphs have no tooltip at all today, and that
+      absence is deliberate — see "Retrigger / delta-vs-previous readouts" below,
+      which declined one for the delta-against-previous case. A tooltip for the band
+      alone would be the first, and would immediately invite the growth that item
+      turned down. The details pane is the alternative and costs no new surface, but
+      it describes the *selection*, and the band is about a window rather than a
+      point, so it would be the first pane block keyed on the pointer instead. Either
+      choice sets a precedent worth choosing on purpose.
+
 - [ ] A full repaint of the detail graph at 100k+ dots takes ~60ms, which is
       one dropped frame on a discrete action like resetting the zoom.
       Decimating the overview by pixel column would be the first thing to
