@@ -164,10 +164,13 @@ Living checklist. Update in the same commit as the work it describes.
   run through the gap between two modes, a value almost nothing ever measured. In
   all three cases the badge's percentage is about double the movement of the typical
   run. What changes in these series is the distribution's shape, which two edges can
-  show and one line cannot. AWSY's `Explicit Memory` (5141330), which alternates
-  push-by-push between ~535 MB and ~585 MB, is the case that keeps the median line
-  honest: the band is wide from end to end, and that width is what tells the reader
-  not to trust the middle.
+  show and one line cannot. AWSY's `Explicit Memory` (5141330) is the case that keeps
+  the median line honest: its push means sit in at least four clusters (~540, 558, 585,
+  612 MB), so the median hops between them as the mixture shifts and lands in a sparse
+  gap when a window splits near 50/50 — the band being wide from end to end is what
+  tells the reader not to trust the middle. Its rank-statistic behaviour is also why
+  the line **steps** where a moving average would glide: measured there, one push
+  entering the window moves the median up to 18.6 MB against the mean's 3.5.
 
   Checked on four real graphs, and two things changed because of what they showed:
   the quartiles are **stroked as well as filled** (a faint fill under the series' own

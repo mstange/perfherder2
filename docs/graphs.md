@@ -1047,18 +1047,43 @@ this:
 - **A narrow band sliding** — 5350963. The band stays tight around 28k and steps up
   to ~31.5k from June, which is what a real level change looks like and matches the
   mode analysis above: peak moved, shares held.
-- **A permanently wide band** — 5141330, AWSY. Wide from end to end, because the
-  series alternates between two levels push by push, and sliding upward from
-  February. "No typical value here, and it got worse anyway."
+- **A permanently wide band** — 5141330, AWSY. Wide from end to end, because
+  consecutive pushes land in different clusters of a multi-modal mixture, and sliding
+  upward over the year. "No typical value here, and it got worse anyway." See the
+  next section: this is the series where the median line needs the band read with it.
 
 #### The median line is the least trustworthy of the three, and the band says so
 
-AWSY's `Explicit Memory` on macOS (signature 5141330) alternates push by push
-between roughly 535 MB and 585 MB, so the raw plot is a wall of vertical zigzag
-and 16 change bars fire over a year. There, p25 tracks the lower level, p75 the
-upper, and **the median sits in the empty middle**. That reads correctly *because*
-the band is wide: a wide band means "there is no typical value here", which is the
-truth about that series and something no single line can say about itself.
+**All three curves are quantiles of a mixture, and a quantile of a mixture is not a
+level of anything.** The median answers "where does the middle-ranked push of these
+24 sit", which coincides with a mode only while one mode holds a clear majority of
+the window.
+
+AWSY's `Explicit Memory` on macOS (signature 5141330) is the case that shows it, and
+it is worth loading with `trend=1` before touching this code. Its raw plot is a wall
+of vertical zigzag and it collects 16 change bars over a year. Its push means over
+Aug–Nov 2025 fall in **at least four clusters — roughly 540, 558, 585 and 612 MB**,
+with sparse gaps between them (a 2 MB-binned histogram of 400 pushes has 0–2 pushes
+per bin across 568–577 and 596–607). So:
+
+- The median **hops between clusters** as the mixture shifts over months, and where
+  the window splits near 50/50 it lands **in a gap** — at 576.7 MB in one window,
+  a value almost no push ever took. That is why it can look "close to the lower band
+  but on neither band": it is often sitting on a middle cluster the year-long view is
+  too dense to resolve.
+- It **steps rather than glides**. Measured on that series: one push entering the
+  window moves this median by up to **18.6 MB where a 24-push moving mean moves at
+  most 3.5** — 5× — and over ten pushes it swung 32.8 MB against the mean's 5.2. That
+  is the median being a rank statistic. It is also the answer to "why does this react
+  faster than a moving average", which is the first thing a user asks about it.
+- A jump therefore means **the majority of the window changed cluster**, which is a
+  real event but not the one a reader will assume ("it got 30 MB slower") unless they
+  read the band with it.
+
+All of which reads correctly *because* the band is wide: a wide band means "there is
+no typical value here", which is the truth about that series and something no single
+line can say about itself. On a series with one mode and stable spread the same three
+curves collapse to a tight ribbon around a line that does mean what it looks like.
 
 #### Decisions
 

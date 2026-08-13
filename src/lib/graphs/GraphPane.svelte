@@ -238,9 +238,12 @@
       </label>
       <!-- The shape of a drift the series-list badge states as one number. Off by
            default, unlike the two above — see AppState.showTrend. -->
+      <!-- Concrete about the window and the statistic, because the first question
+           anyone asked about this feature was "what is that line?" — and the honest
+           answer is short: a rolling median, not a fit and not a moving average. -->
       <label
         class="draw-option"
-        title="Draw a rolling quartile band: the middle half of the pushes around each point, and their median"
+        title="Draw a rolling quartile band: for each push, the median and the middle half (p25–p75) of the 24 pushes centred on it. A rolling median, so it steps between levels rather than gliding like a moving average."
       >
         <input
           type="checkbox"

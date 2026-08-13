@@ -29,12 +29,29 @@
 // that slides rigidly is a real level change.
 //
 // **The median line is drawn but is the least trustworthy of the three**, and the
-// band is what says so. On a series that alternates push-by-push between two
-// levels — AWSY's Explicit Memory does exactly this, ~535 MB against ~585 MB, so
-// the plot is a wall of vertical zigzag — p25 tracks the lower level, p75 the
-// upper, and the median sits in the empty middle. That reads correctly *because*
-// the band is wide: a wide band means "there is no typical value here", which is
-// the truth about that series and something no single line can say about itself.
+// band is what says so. All three curves are *quantiles of a mixture*, and a
+// quantile of a mixture is not a level of anything — it is "where the k-th ranked
+// push of these 24 sits", which coincides with a mode only while one mode holds a
+// clear majority of the window.
+//
+// AWSY's Explicit Memory (signature 5141330) is the case that shows it. Its push
+// means over Aug–Nov 2025 fall in at least four clusters — roughly 540, 558, 585
+// and 612 MB, with sparse gaps between them — so as the mixture shifts over months
+// the median hops from cluster to cluster, and where the window splits near 50/50 it
+// lands in a *gap*, on a value few pushes ever took. Two consequences a reader has
+// to be told about, both measured on that series:
+//
+//   - **It steps rather than glides.** One push entering the window moves this
+//     median by up to 18.6 MB where a 24-push moving *mean* moves by at most 3.5 —
+//     5× — and over ten pushes it swung 32.8 MB against the mean's 5.2. That is the
+//     median being a rank statistic, not a bug and not smoothing gone wrong.
+//   - **Its position tracks the mixture ratio, not a level.** A jump means the
+//     majority of the window changed cluster, which is a real event and not the one
+//     the reader will assume ("it got 30 MB slower") unless the band is read with it.
+//
+// Both read correctly *because* the band is wide: a wide band means "there is no
+// typical value here", which is the truth about that series and something no single
+// line can say about itself.
 
 import { WINDOW_PUSHES } from './changes';
 import type { PushGroup } from './graphData';
