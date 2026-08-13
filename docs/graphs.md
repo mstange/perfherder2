@@ -999,6 +999,109 @@ never back.
   table show +10%, +45%, +29%, +14% and +7.7% on their cards — the same figures
   `series --drift` prints for them, which is what sharing the module buys.
 
+### The trend band
+
+The drift badge says the ends of the range differ and deliberately says nothing
+about the path between them. The band is that path: **a p25–p75 ribbon with a
+median line through it**, over the same `WINDOW_PUSHES` window, one vertex per
+push. `trend=1`, or the "Trend band" checkbox.
+[trend.ts](../src/lib/graphs/trend.ts) computes it.
+
+**Its first and last median are the drift badge's two numbers, by
+construction** — same window rule, so the badge is literally the endpoints of
+this curve and the two cannot disagree. That invariant is a test.
+
+#### Why quartiles and not a moving average
+
+perf.webkit.org offers three moving averages and this app had none, and the
+obvious next step was to add one. The data talked us out of it. Pooling 24 pushes
+at each end of the six-month window and running the mode analysis over three of
+the drifting idb-open signatures:
+
+| Signature | Badge | What the typical run did | Modes |
+| --- | --- | --- | --- |
+| 5350975 | +45% | fast mode 623 → 642 ms, **in place** | 1 → 2: a **new mode at 917 ms taking 67%** |
+| 5350957 | +10% | 6428 → 6831 ms, **less than the KDE can resolve** | unimodal, shares held |
+| 5350963 | +14% | 28158 → 29874 ms, **+6.1%, genuinely moved** | unimodal, shares held |
+
+The +45% series never got slower. Its fast path is as fast as it was in February;
+a second, slower path appeared and now takes two thirds of the runs. **A single
+smoothed line there climbs 622 → 900 ms through the gap *between* the two modes —
+a value almost no measurement ever took.** And in all three cases the badge's
+percentage is roughly double the movement of the typical run, because a median
+over push means absorbs a growing tail.
+
+So the thing that changes in these series is the *shape of the distribution*, and
+one line cannot carry that while two edges and a middle can. What the four graphs
+actually look like with the band on, which is worth loading before changing any of
+this:
+
+- **Floor holds, ceiling climbs** — 5350975. p25 sits flat at ~620 ms from February
+  to August while p75 goes 640 → 920. That is the mode takeover, drawn: the fast
+  path never moved, and everything the badge's +45% reports happened above it.
+- **Both edges rise and the band widens** — 5350957. p25 goes ~5500 → ~6400 and p75
+  ~6500 → ~8300. Two things happened at once, and only the band separates them: the
+  frequent *downward* dips of February stopped, which lifts the floor, and the upward
+  tail grew, which lifts the ceiling much further. The median moves 6350 → 7000, the
+  +10% the badge reports.
+- **A narrow band sliding** — 5350963. The band stays tight around 28k and steps up
+  to ~31.5k from June, which is what a real level change looks like and matches the
+  mode analysis above: peak moved, shares held.
+- **A permanently wide band** — 5141330, AWSY. Wide from end to end, because the
+  series alternates between two levels push by push, and sliding upward from
+  February. "No typical value here, and it got worse anyway."
+
+#### The median line is the least trustworthy of the three, and the band says so
+
+AWSY's `Explicit Memory` on macOS (signature 5141330) alternates push by push
+between roughly 535 MB and 585 MB, so the raw plot is a wall of vertical zigzag
+and 16 change bars fire over a year. There, p25 tracks the lower level, p75 the
+upper, and **the median sits in the empty middle**. That reads correctly *because*
+the band is wide: a wide band means "there is no typical value here", which is the
+truth about that series and something no single line can say about itself.
+
+#### Decisions
+
+- **Centred windows, not trailing.** A trailing window lags by half a window, which
+  would put the curve's kink twelve pushes to the right of the change bar marking
+  the same event. Two marks disagreeing about when something happened is worse than
+  one mark fewer.
+- **Clamped at the ends, not shortened.** The first and last windows slide inward
+  rather than shrinking, so no point is noisier than any other — and the end windows
+  are then exactly the drift figure's two.
+- **Off by default**, which is the opposite call from the change bars and does not
+  contradict them. The bars are on because the gap they close is invisible until
+  something draws it; that gap is now closed for drift too, by the badge, which costs
+  no switch and no ink. The band adds the *shape* of something the reader has already
+  been told about, and nine ribbons unasked-for would be a different graph.
+- **Ribbon under the dots, the three curves over them.** The ribbon is a fill covering
+  a quarter of the plot on a noisy series, and over the dots it would grey out the data
+  it is summarising; the curves are what a reader follows, and under 20,000 translucent
+  dots a 1–2px line disappears.
+- **The quartiles are stroked as well as filled**, which the first version did not do
+  and which the screenshots forced. At a fill alpha low enough to survive nine
+  overlapping ribbons, and in the series' own colour under the series' own dots, a
+  ribbon narrower than ~30px reads as a smudge: on 5350975 it was invisible, and on
+  5350957 the two edges that *are* the finding could not be seen. The fill says
+  *region*, the 1px edges say *where*, and the median is drawn last so it still wins
+  where a narrow band puts all three within a pixel.
+- **Both in the series' own colour**, since on a nine-series graph a band has to say
+  whose it is and the list's swatch is the only key there is. The ribbon's alpha is
+  low enough to survive nine of itself overlapping.
+- **The third checkbox costs 27px of plot height at one window width**, and that is
+  accepted rather than fixed. Measured by hiding it and re-measuring at nine widths:
+  identical everywhere except between roughly 1230px and 1330px, where the header
+  takes an extra row. Shortening the label does not help — "Trend", "Band" and
+  "Quartiles" all give the same 104px, because it is the third item's checkbox and gap
+  that overflow, not its text. It is a static cost at a narrow range of widths, not
+  something that moves while the user is working, so it does not trade against
+  "Layout stability" in design.md; restructuring the header's groups to reclaim it
+  would be a bigger change than the row is worth.
+- **Cached per `(series, range)` and pruned with the data**, like the change bars and
+  for the same reason: a quartile of 24 values *per push* is 2,700 sorts on a year of
+  autoland, and `series` recomputes for reasons that have nothing to do with the data.
+  Nothing is computed at all while the switch is off.
+
 ### Caching and failure
 
 Series data is cached under `(repo, signature, rangeStart, rangeEnd)` — the
@@ -1043,6 +1146,12 @@ Recovery is the explicit Retry button.
   range against each other, for the series segmentation has nothing to say about,
   plus the two bars that decide whether the card mentions it. Shared with the
   CLI's `series --drift`; see "The drift figure, for the series with no bars".
+- [trend.ts](../src/lib/graphs/trend.ts) — **pure**. The same statistic as drift.ts
+  evaluated at every push instead of at the two ends: a rolling p25 / median / p75.
+  See "The trend band" — including why it is quartiles and not a moving average.
+  **"Band" in this module means the trend ribbon**; the comparison card's density
+  band is a different thing (comparison.md), which is why nothing here is named
+  `band`.
 - [annotations.ts](../src/lib/graphs/annotations.ts) — **pure**. The marks in the
   plot's margins: row packing, pixel layout and hit tests for both the alert
   triangles and the change bars. Both of its layouts are computed once by
@@ -1333,6 +1442,7 @@ The whole view is in the query string:
 | `cmp` | Pinned comparison point, same shape as `sel`; set by shift-clicking a dot. Only written alongside a `sel`, since a comparison needs two ends. See [comparison.md](comparison.md) |
 | `reps` | `0` to draw one dot per run at its mean instead of every replicate. Omitted when on, which is the default |
 | `cd` | `0` to stop drawing the steps this app detects for itself. Omitted when on, which is the default — see "Detected changes" |
+| `trend` | `1` to draw the rolling quartile band. **The one drawing switch written when *on*** rather than off, its default being the other way round — see "The trend band" |
 | `picker` | `1` when the Add-series panel is open |
 | `pf` | Picker filter free text |
 | `pc` | Picker filter chips, `field:value` repeated |

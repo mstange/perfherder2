@@ -152,6 +152,34 @@ Living checklist. Update in the same commit as the work it describes.
   still open is *detecting* the shape, which is a different question and is still
   parked where it was.
 
+- The trend band: a rolling p25 / median / p75 over the drift figure's own window,
+  `trend.ts` (+ tests), `trend=1`, off by default. The badge says the ends of the
+  range differ; this is the shape of the path between them, and its two end medians
+  *are* the badge's two numbers by construction.
+
+  **It is quartiles rather than a moving average because the data said so.** Mode
+  analysis over three of the drifting idb-open signatures found that 5350975's +45%
+  is not a climb at all — its fast mode never moved (623 → 642 ms, in place) and a
+  new mode at 917 ms took 67% of the runs — so a single smoothed line there would
+  run through the gap between two modes, a value almost nothing ever measured. In
+  all three cases the badge's percentage is about double the movement of the typical
+  run. What changes in these series is the distribution's shape, which two edges can
+  show and one line cannot. AWSY's `Explicit Memory` (5141330), which alternates
+  push-by-push between ~535 MB and ~585 MB, is the case that keeps the median line
+  honest: the band is wide from end to end, and that width is what tells the reader
+  not to trust the middle.
+
+  Checked on four real graphs, and two things changed because of what they showed:
+  the quartiles are **stroked as well as filled** (a faint fill under the series' own
+  dots is invisible below ~30px of width — on 5350975 the whole finding is the two
+  edges, and they could not be seen), and one shape claim in the docs was wrong until
+  the picture corrected it. The four readings — floor-holds, both-edges-rise,
+  narrow-and-sliding, permanently-wide — are listed in graphs.md, "The trend band".
+
+  Names: **"band" in the code means the comparison card's density band**
+  (comparison.md), which already owned the word — hence `trend.ts`, `TrendPoint`,
+  `showTrend`.
+
 ## Next
 
 - [ ] A full repaint of the detail graph at 100k+ dots takes ~60ms, which is
@@ -172,13 +200,20 @@ Living checklist. Update in the same commit as the work it describes.
   window about as well as a step does, say "drifting +4% over 30 pushes" and draw one
   span instead of six notches.
 
-  **The "way to say it in the UI" this was parked behind now exists** — the drift
-  badge under Done, which states the figure without claiming to know the shape. What
-  is still open is the detection: the bars are unchanged, so signature 5350963 still
-  shows five notches for one net climb, and a reader now gets "+14% drift" beside
-  them rather than instead of them. Whether that is enough is the thing to learn from
-  use; if it isn't, the next step is the slope fit above, and the badge is where its
-  verdict would go.
+  **The "way to say it in the UI" this was parked behind now exists twice** — the
+  drift badge, which states the figure without claiming to know the shape, and the
+  trend band, which shows the shape without naming it (both under Done). What is
+  still open is the *detection*: the bars are unchanged, so signature 5350963 still
+  shows five notches for one net climb, and a reader now gets "+14% drift" and a
+  rising band beside them rather than instead of them.
+
+  Two things the band changed about this item. It is now cheap to *see* whether a
+  window is a slope or a staircase, which is the input a slope fit would need anyway
+  — so the fit, if it happens, can be checked against a picture. And the shape it
+  reveals in the four macOS rows is not the clean ramp this item assumed: 5350975's
+  band fans open rather than sliding, because a second mode arrived. A slope fitted
+  to that would report a ramp that never happened, so "recognise the shape" has to
+  mean at least three shapes — ramp, widening, staircase — not two.
 
   **It is no longer only synthetic — load these.** A six-month CLI trial over the
   idb-open family found every one of twelve signatures slower at the end of the
@@ -379,16 +414,23 @@ Living checklist. Update in the same commit as the work it describes.
   bars can't, at the cost of another control and another line on a plot that
   already draws every replicate. Worth it only if the drift case comes up.
 
-  **It came up, and the cheaper form shipped instead.** Twelve of twelve idb-open
-  signatures drifted over six months, four of them shown in the table under "A
-  smooth drift is reported as a run of steps", and one of those is a 10% regression
-  with no bar and no alert. That was the condition this item was parked behind, so
-  the question became which form — and the answer was the one that costs no control
-  and no ink on the plot: the drift badge on the series-list card (see Done). A
-  moving average is still the version to reach for **if** reading the slope off the
-  plot turns out to be what people want once the figure is in front of them, and
-  that is now a question with a cheap thing to compare against rather than a
-  hypothetical.
+  **It came up, and what shipped is not a moving average — deliberately.** Twelve of
+  twelve idb-open signatures drifted over six months, four of them shown in the table
+  under "A smooth drift is reported as a run of steps", and one of those is a 10%
+  regression with no bar and no alert. That was the condition this item was parked
+  behind. Two things then shipped instead of the three menu items perf.webkit.org
+  has: the drift badge, which costs no control and no ink, and the trend band, which
+  is the *shape* — both under Done.
+
+  **The moving averages are now not-doing rather than deferred.** The mode analysis
+  recorded in the band's Done entry is the argument: on a series whose slow mode is
+  taking over, a mean or an EMA draws a confident line through the gap between two
+  modes, and on a series that alternates push-by-push it draws one through the empty
+  middle. A quartile band degrades gracefully in both cases — it gets wide, which is
+  the honest report. If someone still wants a single line after using the band, the
+  cheap version is to draw the band's median alone, which already exists; adding
+  simple/cumulative/exponential variants of a statistic we have reason to distrust
+  would be three more ways to say the same wrong thing.
 - **Retrigger / delta-vs-previous readouts.** Treeherder's tooltip shows the
   delta from the previous data point and a retrigger count. We show the
   retrigger count, and hovering any dot gives the delta against the *selected*

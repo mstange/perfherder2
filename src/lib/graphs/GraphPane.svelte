@@ -236,6 +236,19 @@
         />
         Detected changes
       </label>
+      <!-- The shape of a drift the series-list badge states as one number. Off by
+           default, unlike the two above — see AppState.showTrend. -->
+      <label
+        class="draw-option"
+        title="Draw a rolling quartile band: the middle half of the pushes around each point, and their median"
+      >
+        <input
+          type="checkbox"
+          checked={app.showTrend}
+          onchange={(e) => app.setShowTrend(e.currentTarget.checked)}
+        />
+        Trend band
+      </label>
     </div>
     <div class="zoom-state">
       <!-- The loading slot is always present so the header doesn't reflow

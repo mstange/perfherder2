@@ -235,6 +235,7 @@
         symbol: s.symbol,
         points: s.plot.points,
         pushes: s.data.pushes,
+        trend: s.trend,
       })),
       alertSlots,
       changeSlots,

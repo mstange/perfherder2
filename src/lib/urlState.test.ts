@@ -287,6 +287,18 @@ describe('serializeViewState', () => {
     expect(parseViewState('?cd=false').changeDetection).toBe(true);
   });
 
+  // The one drawing switch whose default is off, so the param is written when it
+  // is *on* — see the comment on ViewState.showBand.
+  it('writes the trend flag only when the band is on', () => {
+    expect(serializeViewState(state({ showTrend: false }))).toBe('');
+    expect(serializeViewState(state({ showTrend: true }))).toBe('trend=1');
+    expect(parseViewState('').showTrend).toBe(false);
+    expect(parseViewState('?trend=1').showTrend).toBe(true);
+    // And only an explicit "1" turns it on, so a hand-written `trend=true` fails
+    // visibly rather than half-working.
+    expect(parseViewState('?trend=true').showTrend).toBe(false);
+  });
+
   it('round-trips free text containing spaces', () => {
     const s = open({ filter: { chips: [], text: 'a b  c' } });
     expect(parseViewState(`?${serializeViewState(s)}`).picker.filter.text).toBe('a b  c');

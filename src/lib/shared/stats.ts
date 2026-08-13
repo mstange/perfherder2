@@ -36,6 +36,22 @@ export function median(values: readonly number[]): number {
   return s.length % 2 === 0 ? (s[mid - 1] + s[mid]) / 2 : s[mid];
 }
 
+// A quantile by linear interpolation between order statistics — R's type 7, and
+// numpy's default. `median(v)` and `quantile(v, 0.5)` agree by construction.
+//
+// The interpolation matters at the sizes this is used on: a quarter of 24 values
+// falls between the 6th and 7th, and taking the nearer one would make a band edge
+// jump by a whole order statistic as the window slides one push.
+export function quantile(values: readonly number[], q: number): number {
+  if (values.length === 0) return NaN;
+  const s = [...values].sort((a, b) => a - b);
+  if (s.length === 1) return s[0];
+  const pos = (s.length - 1) * Math.min(1, Math.max(0, q));
+  const lo = Math.floor(pos);
+  const hi = Math.ceil(pos);
+  return lo === hi ? s[lo] : s[lo] + (pos - lo) * (s[hi] - s[lo]);
+}
+
 export function mean(values: readonly number[]): number {
   if (values.length === 0) return NaN;
   let sum = 0;

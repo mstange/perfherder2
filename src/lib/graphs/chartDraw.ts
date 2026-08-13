@@ -29,6 +29,7 @@ import {
   type ChangeSlot,
 } from './annotations';
 import type { PushGroup, SeriesPoint } from './graphData';
+import type { TrendPoint } from './trend';
 import type { ChartPalette } from '../shared/theme';
 
 export type DrawSeries = {
@@ -40,6 +41,10 @@ export type DrawSeries = {
   // The connecting line goes through the per-push means whichever point set is
   // being drawn, so it needs the pushes regardless.
   pushes: PushGroup[];
+  // The rolling quartile band (trend.ts), or empty when the switch is off or the
+  // range is too short to have one. Empty rather than optional so a series that
+  // cannot have a band and one whose switch is off draw identically.
+  trend: readonly TrendPoint[];
 };
 
 export type DrawOptions = {
@@ -136,10 +141,19 @@ export function drawChart(ctx: CanvasRenderingContext2D, o: DrawOptions): void {
   ctx.beginPath();
   ctx.rect(geom.x0, geom.y0, geom.plotWidth, geom.plotHeight);
   ctx.clip();
+  // Under everything: the band is background against which the dots are read, so
+  // it goes below both the connecting line and the dots. Its ribbon is a fill
+  // covering a quarter of the plot's height on a noisy series, and over the dots
+  // that fill would grey out the data it is summarising.
+  for (const s of o.series) drawTrendRibbon(ctx, o, s);
   if (o.showLines) {
     for (const s of o.series) drawPushLine(ctx, o, s);
   }
   for (const s of o.series) drawDots(ctx, o, s);
+  // The three quartile curves go *over* the dots, unlike their own ribbon: they are
+  // what a reader follows across the plot, and under 20,000 translucent dots a 1–2px
+  // line disappears.
+  for (const s of o.series) drawTrendLines(ctx, o, s);
   // Over the dots: a mark is about a build, so it has to be findable without
   // first finding the build's cloud.
   drawChangeBars(ctx, o);
@@ -231,6 +245,95 @@ function drawPushLine(ctx: CanvasRenderingContext2D, o: DrawOptions, s: DrawSeri
   }
   ctx.stroke();
   ctx.globalAlpha = 1;
+}
+
+// The band: a p25–p75 ribbon and a median line through it (trend.ts).
+//
+// Both in the series' own color, because on a graph with nine series a band has
+// to say *whose* it is, and the swatch in the series list is the only key there
+// is. So the ribbon is the series color at low alpha and the median is the same
+// color at full strength — the two read as one object without needing a legend.
+//
+// Alphas rather than a palette entry: this is the series color, which is already
+// the documented exception to "no hardcoded colors" (see graphs.md, "Theming").
+// The ribbon has to survive nine of itself overlapping, which is what keeps it
+// this faint — at 0.3 two overlapping ribbons are darker than either series' dots
+// and the plot reads as though the bands were the data.
+// **The fill alone was not enough, measured on three real series.** At this alpha,
+// under the series' own dots and in the series' own colour, a ribbon narrower than
+// about 30px reads as a smudge rather than as an edge: on signature 5350975 it was
+// invisible, and on 5350957 — where the whole finding is "the floor held and the
+// ceiling climbed" — the two edges that carry that finding could not be seen. So the
+// quartiles are stroked as well as filled, thin and over the dots, and the fill is
+// left faint enough to survive nine of itself overlapping. The fill says *region*,
+// the edges say *where*.
+const TREND_FILL_ALPHA = 0.14;
+const TREND_EDGE_ALPHA = 0.5;
+const TREND_MEDIAN_ALPHA = 0.95;
+const TREND_MEDIAN_WIDTH = 2;
+
+// The band's x span, clipped to the domain the same way `drawPushLine` does it:
+// one vertex beyond each edge, so the ribbon enters and leaves the plot instead
+// of stopping short of it.
+function trendRange(o: DrawOptions, trend: readonly TrendPoint[]): [number, number] | null {
+  if (trend.length < 2) return null;
+  let lo = 0;
+  while (lo + 1 < trend.length && trend[lo + 1].x < o.xDomain.min) lo++;
+  let hi = trend.length - 1;
+  while (hi > lo + 1 && trend[hi - 1].x > o.xDomain.max) hi--;
+  return hi > lo ? [lo, hi] : null;
+}
+
+function drawTrendRibbon(ctx: CanvasRenderingContext2D, o: DrawOptions, s: DrawSeries): void {
+  const span = trendRange(o, s.trend);
+  if (!span) return;
+  const [lo, hi] = span;
+  const { geom } = o;
+  ctx.fillStyle = s.color;
+  ctx.globalAlpha = TREND_FILL_ALPHA;
+  ctx.beginPath();
+  // Out along the top edge, back along the bottom: one closed path, so the fill
+  // has no seam down the middle where two half-ribbons would meet.
+  for (let i = lo; i <= hi; i++) {
+    const x = geom.xScale.toPixel(s.trend[i].x);
+    const y = geom.yScale.toPixel(s.trend[i].p75);
+    if (i === lo) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  for (let i = hi; i >= lo; i--) {
+    ctx.lineTo(geom.xScale.toPixel(s.trend[i].x), geom.yScale.toPixel(s.trend[i].p25));
+  }
+  ctx.closePath();
+  ctx.fill();
+  ctx.globalAlpha = 1;
+}
+
+// The three curves, over the dots: p25 and p75 thin, the median at full weight.
+// One pass per curve, since each is its own polyline.
+function drawTrendLines(ctx: CanvasRenderingContext2D, o: DrawOptions, s: DrawSeries): void {
+  const span = trendRange(o, s.trend);
+  if (!span) return;
+  const [lo, hi] = span;
+  const { geom } = o;
+  ctx.strokeStyle = s.color;
+  const curve = (pick: (p: TrendPoint) => number, alpha: number, width: number) => {
+    ctx.globalAlpha = alpha;
+    ctx.lineWidth = width;
+    ctx.beginPath();
+    for (let i = lo; i <= hi; i++) {
+      const x = geom.xScale.toPixel(s.trend[i].x);
+      const y = geom.yScale.toPixel(pick(s.trend[i]));
+      if (i === lo) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  };
+  curve((p) => p.p25, TREND_EDGE_ALPHA, 1);
+  curve((p) => p.p75, TREND_EDGE_ALPHA, 1);
+  // Last, so it wins where a narrow band puts all three within a pixel or two.
+  curve((p) => p.median, TREND_MEDIAN_ALPHA, TREND_MEDIAN_WIDTH);
+  ctx.globalAlpha = 1;
+  ctx.lineWidth = 1;
 }
 
 // Alert markers: a triangle hanging from the top of the plot, with a faint

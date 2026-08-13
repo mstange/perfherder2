@@ -84,6 +84,10 @@ export type ViewState = {
   // like `showReplicates`, and on by default for the reasons recorded on
   // `AppState.changeDetection`.
   changeDetection: boolean;
+  // Whether the graph draws the rolling quartile band (trend.ts). Two-valued like
+  // the two above, and **off** by default — the one drawing switch that is, for the
+  // reasons recorded on `AppState.showTrend`.
+  showTrend: boolean;
   pickerOpen: boolean;
   picker: PickerViewState;
 };
@@ -96,6 +100,7 @@ export const EMPTY_VIEW_STATE: ViewState = {
   compared: null,
   showReplicates: true,
   changeDetection: true,
+  showTrend: false,
   pickerOpen: false,
   picker: EMPTY_PICKER_VIEW,
 };
@@ -236,6 +241,9 @@ export function parseViewState(search: string): ViewState {
     compared: parseSelected(p.get('cmp')),
     showReplicates: p.get('reps') !== '0',
     changeDetection: p.get('cd') !== '0',
+    // `=== '1'` rather than `!== '0'`, because this one's default is off: the
+    // param's presence turns it on, the way `picker` below works.
+    showTrend: p.get('trend') === '1',
     pickerOpen: p.get('picker') === '1',
     picker: {
       filter: {
@@ -276,6 +284,8 @@ export function serializeViewState(state: ViewState): string {
   // Only written when off, so the common case keeps links short.
   if (!state.showReplicates) p.set('reps', '0');
   if (!state.changeDetection) p.set('cd', '0');
+  // And this one only when on, its default being the other way round.
+  if (state.showTrend) p.set('trend', '1');
   // The panel's state only means anything while it's open — carrying it in the
   // URL of a closed panel would be noise in every shared graph link.
   if (state.pickerOpen) {

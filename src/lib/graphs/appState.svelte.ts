@@ -30,6 +30,7 @@ import {
 } from './alerts';
 import { detectChanges, type DetectedChange } from './changes';
 import { buildDrift, driftWorthReporting, type DriftSummary } from './drift';
+import { rollingTrend, type TrendPoint } from './trend';
 import {
   benchmarkComparison,
   profileLinks,
@@ -138,6 +139,10 @@ export type SeriesEntry = {
   // 5350957 climbs 10% with zero bars, so turning the bars off is not a reason
   // to also withdraw the only reading that saw it.
   drift: DriftSummary | null;
+  // The rolling quartile band (trend.ts) — the shape of the drift the badge
+  // states as a single number. Empty while `showTrend` is off, and empty until it
+  // has been computed, which is a frame behind the dots rather than a fetch.
+  trend: readonly TrendPoint[];
 };
 
 // One landing, as the app clusters them: every event carries the series entry
@@ -149,6 +154,7 @@ export type SeriesLanding = Landing<{ series: SeriesEntry; change: DetectedChang
 // `$derived` recomputation doesn't look like a change to anything downstream.
 const EMPTY_ALERTS: readonly SeriesAlert[] = [];
 const EMPTY_CHANGES: readonly DetectedChange[] = [];
+const EMPTY_TREND: readonly TrendPoint[] = [];
 
 // Everything the details pane needs about the current selection.
 export type Selection = {
@@ -221,6 +227,18 @@ export class AppState {
   // the same red/green vocabulary the alert markers already use, labelled
   // "detected" everywhere it is described so it never claims to be a verdict.
   changeDetection = $state(true);
+  // Draw the rolling quartile band (trend.ts).
+  //
+  // **Off by default**, which is the opposite call from `changeDetection` above
+  // and for a reason that does not contradict it. The bars are on because the gap
+  // they close — perfherder said nothing and something moved — is invisible until
+  // something draws it. That gap is now closed for drift too, by the figure on the
+  // series-list card, which needs no switch and no ink on the plot. What the band
+  // adds is the *shape* of a drift the reader has already been told about, and a
+  // reader who wants a shape can be asked to reach for it. It also costs a ribbon
+  // and a line per series on a plot that already draws every replicate — nine of
+  // those unasked-for would be a different graph, not a footnote on this one.
+  showTrend = $state(false);
   pickerOpen = $state(false);
   // The Add-series panel's own state. One object rather than five fields: it
   // arrives from the URL as a unit, the panel reports it back as a unit, and
@@ -257,6 +275,10 @@ export class AppState {
   // Never cleared when `changeDetection` goes off, only hidden: turning the
   // switch back on should not pay for the work again.
   private changeCache = $state(new Map<string, DetectedChange[]>());
+
+  // Rolling bands per series, keyed and pruned exactly like `changeCache`. Kept
+  // when the switch goes off, so toggling it back on doesn't pay again.
+  private trendCache = $state(new Map<string, TrendPoint[]>());
 
   // Alerting thresholds for signatures we never plot, keyed by `seriesKey` of the
   // *parent*: a subtest declares none of its own and inherits its parent's, which
@@ -352,6 +374,11 @@ export class AppState {
         // microseconds, against a segmentation that walks every push. So it
         // recomputes on a theme flip, and that is cheaper than a cache to prune.
         drift: loaded ? this.driftFor(ref, loaded) : null,
+        // Cached, unlike `drift` and for the same reason as `changes`: this is a
+        // quartile of 24 values per push rather than one window in total, so a
+        // year of autoland is 2,700 sorts per series and `series` recomputes for
+        // reasons that have nothing to do with the data.
+        trend: this.showTrend ? (this.trendCache.get(key) ?? EMPTY_TREND) : EMPTY_TREND,
       };
     }),
   );
@@ -857,6 +884,31 @@ export class AppState {
       this.changeCache = next;
     });
 
+    // The trend band for every loaded series we haven't run over yet.
+    //
+    // Same shape as the effect above and for the same reasons — reads
+    // `seriesCache` so a theme flip doesn't wake it, writes a cell it reads so
+    // Svelte settles on a second pass. Unlike detection it needs no alerting
+    // threshold, since a quartile has no floor to clear, so it can run as soon as
+    // the data is there.
+    $effect(() => {
+      if (!this.showTrend) return;
+      const span = this.range;
+      const cache = this.seriesCache;
+      const found: [string, TrendPoint[]][] = [];
+      for (const ref of this.seriesRefs) {
+        const key = dataKey(ref, span);
+        if (this.trendCache.has(key)) continue;
+        const loaded = cache.get(key);
+        if (!loaded || loaded.data.pushes.length === 0) continue;
+        found.push([key, rollingTrend(loaded.data.pushes)]);
+      }
+      if (found.length === 0) return;
+      const next = new Map(this.trendCache);
+      for (const [key, trend] of found) next.set(key, trend);
+      this.trendCache = next;
+    });
+
     // Fetch push + job detail for the selection, lazily.
     $effect(() => {
       const sel = this.selection;
@@ -1154,6 +1206,12 @@ export class AppState {
       if (wanted.has(key)) changes.set(key, value);
     }
     if (changes.size !== this.changeCache.size) this.changeCache = changes;
+
+    const trends = new Map<string, TrendPoint[]>();
+    for (const [key, value] of this.trendCache) {
+      if (wanted.has(key)) trends.set(key, value);
+    }
+    if (trends.size !== this.trendCache.size) this.trendCache = trends;
   }
 
   private async loadRepositories(): Promise<void> {
@@ -1282,6 +1340,12 @@ export class AppState {
   setChangeDetection(on: boolean): void {
     if (this.changeDetection === on) return;
     this.changeDetection = on;
+    this.syncUrl('push');
+  }
+
+  setShowTrend(on: boolean): void {
+    if (this.showTrend === on) return;
+    this.showTrend = on;
     this.syncUrl('push');
   }
 
@@ -1659,6 +1723,7 @@ export class AppState {
     compared: this.comparedPoint,
     showReplicates: this.showReplicates,
     changeDetection: this.changeDetection,
+    showTrend: this.showTrend,
     pickerOpen: this.pickerOpen,
     picker: this.pickerView,
   });
@@ -1688,6 +1753,7 @@ export class AppState {
       this.comparedPoint = state.compared;
       this.showReplicates = state.showReplicates;
       this.changeDetection = state.changeDetection;
+      this.showTrend = state.showTrend;
       this.pickerOpen = state.pickerOpen;
       this.pickerView = state.picker;
     } finally {

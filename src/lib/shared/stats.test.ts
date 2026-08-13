@@ -7,6 +7,7 @@ import {
   mean,
   median,
   normalCdf,
+  quantile,
   relativeChange,
   summarize,
 } from './stats';

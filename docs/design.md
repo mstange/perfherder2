@@ -14,7 +14,7 @@ is documented elsewhere.
 | --- | --- |
 | The picker: filtering, sorting, badges, virtual scrolling, run activity | this file |
 | Conventions: theming, buttons, layout stability, response validation, testing, measuring | this file, "Key design decisions" onward |
-| The graphs view: panes, fetch, the run/replicate hierarchy, canvas drawing, alerts, detected changes, the drift figure | [graphs.md](graphs.md) |
+| The graphs view: panes, fetch, the run/replicate hierarchy, canvas drawing, alerts, detected changes, the drift figure and trend band | [graphs.md](graphs.md) |
 | What the details pane does with a selection: distributions, comparison mode, statistics | [comparison.md](comparison.md) |
 | The `bin/perfherder-cli` CLI: its commands, its caching, the mode analysis it adds, and how it is published | [cli.md](cli.md) |
 | What's built, what's next, what was deliberately deferred and why | [graphs-todo.md](graphs-todo.md) for the app, [cli-todo.md](cli-todo.md) for the CLI |
