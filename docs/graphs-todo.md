@@ -114,6 +114,17 @@ Living checklist. Update in the same commit as the work it describes.
   "who else moved on this push", while for the series already plotted the changes
   are computed, the push times are in memory, and the grouping is arithmetic.
 
+- The two marks in the plot's margins say what they are on hover — direction and
+  signed percentage, the values with the window they are over, an alert's triage
+  states and bug or a change's p-value and effect size, and which series when more
+  than one is plotted. `graphTooltip.ts` (+ tests) for the wording,
+  `shared/tooltip.ts` (+ tests), `tooltipState.svelte.ts` and `Tooltip.svelte` for
+  the box, which follows the pointer and flips at the viewport's edges. The only
+  drawn tooltip in the app: a mark is canvas and has no element to carry a
+  `title`, and clicking to find out then meant hunting for the right card in the
+  pane. See graphs.md, "Alerts" and "Detected changes", and design.md, "Tooltips:
+  for what the canvas paints"
+
 - Every bug a commit cites is linked in `CommitList.svelte`, not just
   `bugs[0]`. `pushlog.ts` restricts `bugs` to the summary line and says why, so
   a second entry means the summary really did name two bugs — and the CLI's
@@ -201,15 +212,17 @@ Living checklist. Update in the same commit as the work it describes.
       the curves self-describing, and it is the one place the window size can be
       stated without adding another control.
 
-      **What to settle before writing it is where it goes**, and it is a real
-      tension rather than a detail. The graphs have no tooltip at all today, and that
-      absence is deliberate — see "Retrigger / delta-vs-previous readouts" below,
-      which declined one for the delta-against-previous case. A tooltip for the band
-      alone would be the first, and would immediately invite the growth that item
-      turned down. The details pane is the alternative and costs no new surface, but
-      it describes the *selection*, and the band is about a window rather than a
-      point, so it would be the first pane block keyed on the pointer instead. Either
-      choice sets a precedent worth choosing on purpose.
+      **Where it goes is now settled, and this is the remaining work.** The tension
+      this item recorded — that a tooltip for the band would be the graph's first —
+      is gone: the canvas has a tooltip layer (design.md, "Tooltips: for what the
+      canvas paints"), the alert triangles and the change bars use it, and the
+      marks' wording lives in `graphTooltip.ts` beside where the band's would. So the decision left is not
+      *whether* to open a box on the plot but what the band's hit test is: unlike a
+      triangle or a bar, the band has no target — the readout is about the pointer's
+      *column*, at every x, which is the one thing the marks' tooltips
+      deliberately are not (a dot gets no tooltip, because the details pane already
+      describes it). The shape to work out is how a column readout coexists with the
+      hover preview the pane draws for the dot under the same pointer.
 
 - [ ] A full repaint of the detail graph at 100k+ dots takes ~60ms, which is
       one dropped frame on a discrete action like resetting the zoom.
@@ -467,7 +480,12 @@ Living checklist. Update in the same commit as the work it describes.
   click — the pane's "Compare with the previous push", or <kbd>P</kbd> on the
   graph (see comparison.md) — which answers it with the whole comparison card
   rather than a single number in a tooltip. What's still missing is the delta
-  *without* selecting anything, which would mean a tooltip we don't have.
+  *without* selecting anything. A tooltip is no longer the obstacle it was when
+  this was written — the canvas has a layer now, and the marks use it — but the reason
+  to decline it stands: a box that opened on every dot the pointer crossed would
+  cover the plot it is about, and the pane's hover preview is the same answer with
+  room to be a distribution. It is the band's column readout (above) that would
+  settle the shape of a per-push box, and this would follow that, not lead it.
 - **History granularity.** Every discrete action pushes a history entry; a
   zoom drag and everything inside the Add-series panel replace. Whether that's
   the right granularity (should a repo toggle in the picker be undoable?) is

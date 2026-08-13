@@ -24,6 +24,8 @@
   } from './chartDraw';
   import type { SeriesEntry } from './appState.svelte';
   import { theme } from '../shared/theme.svelte';
+  import { tooltip } from '../shared/tooltipState.svelte';
+  import type { TooltipContent } from '../shared/tooltip';
 
   type Span = { start: number; end: number };
 
@@ -82,6 +84,13 @@
     // A detected-change bar was clicked. Like `onalertselect`, this resolves to
     // a pair of pushes rather than to a point, which only the caller can do.
     onchangeselect?: (hit: ChartChangeHit) => void;
+    // What to say about a hovered mark. The chart knows *that* the pointer is on
+    // one and where the pointer is — pixels, which is its job — and asks the
+    // caller for the words, the same division as `onalertselect`: an alert's
+    // triage state and a change's statistics are not things a scatter plot should
+    // know how to phrase. Returning null means "no tooltip for this one".
+    alertTip?: (hit: ChartAlertHit) => TooltipContent | null;
+    changeTip?: (hit: ChartChangeHit) => TooltipContent | null;
     // The point under the pointer, or null when there isn't one. Fires only on
     // change, so a mousemove inside one dot doesn't re-report it.
     //
@@ -124,6 +133,8 @@
     onselect,
     onalertselect,
     onchangeselect,
+    alertTip,
+    changeTip,
     onhover,
     onbrush,
     onkeymove,
@@ -171,6 +182,14 @@
   // the details pane and therefore belongs to AppState.
   let hoveredAlert = $state<ChartAlertHit | null>(null);
   let hoveredChange = $state<ChartChangeHit | null>(null);
+
+  // This chart's claim on the shared tooltip. An object per component instance,
+  // so the overview and the detail graph can't close each other's tooltip — and
+  // so nothing else can close ours. See tooltip.svelte.ts.
+  const tipOwner = {};
+  // A canvas has nothing to hang a `pointerleave` on that survives the component,
+  // so the box would otherwise outlive the graph it describes.
+  $effect(() => () => tooltip.hide(tipOwner));
 
   const geom = $derived(makeGeometry(width, height, pad, xDomain, yDomain));
   const effectiveBrush = $derived(pending ?? brush);
@@ -410,6 +429,25 @@
     return a.seriesIndex === b.seriesIndex && a.changeIndex === b.changeIndex;
   }
 
+  // Marks are drawn into a canvas, so a tooltip on one can't come from an
+  // attribute on an element — the whole reason this app has a tooltip layer.
+  // Called on every move rather than only on a change of mark, because that is
+  // what makes the box follow the cursor; `tooltip.show` treats a repeat with a
+  // new anchor as a move.
+  //
+  // A hovered *dot* deliberately gets nothing: the details pane already describes
+  // the point under the pointer, in far more depth than a tooltip could, and a box
+  // opening over the plot everywhere the pointer went would be unusable.
+  function updateTooltip(
+    alert: ChartAlertHit | null,
+    change: ChartChangeHit | null,
+    e: PointerEvent,
+  ): void {
+    const content = alert ? alertTip?.(alert) : change ? changeTip?.(change) : null;
+    if (content) tooltip.show(tipOwner, content, { x: e.clientX, y: e.clientY });
+    else tooltip.hide(tipOwner);
+  }
+
   // The last hit handed to `onhover`, so a mousemove that stays inside one dot
   // doesn't re-report it. Without this the parent's derived comparison — a KDE
   // and a rank-sum test — would recompute on every pointer event.
@@ -440,6 +478,7 @@
         const hit = alert || change ? null : hitAt(px, py);
         hovering = alert !== null || change !== null || hit !== null;
         reportHover(hit, e.shiftKey);
+        updateTooltip(alert, change, e);
       }
       return;
     }
@@ -464,6 +503,7 @@
       hoveredAlert = null;
       hoveredChange = null;
       reportHover(null);
+      tooltip.hide(tipOwner);
     }
     if (interaction === 'brush') onbrush?.(pending, true);
   }
@@ -515,12 +555,14 @@
     pending = null;
     hoveredAlert = null;
     hoveredChange = null;
+    tooltip.hide(tipOwner);
   }
 
   function onPointerLeave(): void {
     hovering = false;
     hoveredAlert = null;
     hoveredChange = null;
+    tooltip.hide(tipOwner);
     // The preview belongs to the pointer being over a dot; leaving the graph
     // ends it, or the pane keeps showing a comparison with nothing on screen to
     // explain where it came from.

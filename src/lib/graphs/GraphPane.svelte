@@ -2,9 +2,10 @@
   // Middle pane: a thin overview graph over the full time range, and below it
   // the (possibly zoomed) detail graph.
 
-  import type { AppState, Selection } from './appState.svelte';
+  import type { AppState, Selection, SeriesEntry } from './appState.svelte';
   import { hoverRingKind, type Highlight } from './chartDraw';
   import { jitterForSelection } from './graphData';
+  import { alertTooltip, changeTooltip, type MarkContext } from './graphTooltip';
   import ScatterChart, {
     type ChartAlertHit,
     type ChartChangeHit,
@@ -158,6 +159,21 @@
     const entry = app.visibleSeries[hit.seriesIndex];
     const change = entry?.changes[hit.changeIndex];
     if (entry && change) app.selectChange(entry.ref, change);
+  }
+
+  // What a mark's tooltip needs to know about the series it belongs to.
+  //
+  // **The series is named only when more than one is plotted.** With one series
+  // the question "which of these is it?" cannot arise, and the line would be a
+  // third of the box restating the header of the pane next door. The name itself
+  // is `AppState.seriesLabels` — the distinguishing attributes, so it reads as
+  // the series list's card for the same series.
+  function markContext(entry: SeriesEntry): MarkContext {
+    return {
+      unit: entry.meta?.measurementUnit ?? '',
+      label: app.visibleSeries.length > 1 ? (app.seriesLabels.get(entry.key) ?? null) : null,
+      color: entry.color,
+    };
   }
 
   function onDetailSelect(hit: ChartHit | null, modifiers: { shift: boolean }): void {
@@ -319,6 +335,16 @@
       onselect={onDetailSelect}
       onalertselect={onAlertSelect}
       onchangeselect={onChangeSelect}
+      alertTip={(hit) => {
+        const entry = app.visibleSeries[hit.seriesIndex];
+        const alert = entry?.alerts[hit.alertIndex];
+        return entry && alert ? alertTooltip(alert, markContext(entry)) : null;
+      }}
+      changeTip={(hit) => {
+        const entry = app.visibleSeries[hit.seriesIndex];
+        const change = entry?.changes[hit.changeIndex];
+        return entry && change ? changeTooltip(change, markContext(entry)) : null;
+      }}
       onhover={(hit, modifiers) => {
         shiftHeld = modifiers.shift;
         app.setHoveredPoint(pointFor(hit));

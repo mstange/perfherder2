@@ -745,6 +745,24 @@ export class AppState {
     return sel.entry.changes.find((c) => c.afterPushId === sel.push.pushId) ?? null;
   });
 
+  // How to name each series in one short string: its *distinguishing*
+  // attributes, exactly as its card in the series list carries them (see
+  // seriesSummary.ts). Two places name a series inside running text rather than
+  // as styled chips — a landing's member rows, and the tooltip on a mark in the
+  // graph's margins — and they have to agree with the card the reader will look
+  // at next.
+  //
+  // Factored over the **whole** list rather than the visible part of it, so
+  // hiding a series doesn't rename the others.
+  seriesLabels = $derived.by((): Map<string, string> => {
+    const split = splitCommonAttrs(this.series.map((e) => attrsForEntry(e.ref, e.meta)));
+    const labels = new Map<string, string>();
+    this.series.forEach((entry, i) => {
+      labels.set(entry.key, chipText(split.distinct[i]) || `signature ${entry.ref.signatureId}`);
+    });
+    return labels;
+  });
+
   // The bars of every visible series, grouped into the landings that caused
   // them — one row for the change nine signatures on three platforms all saw,
   // instead of nine (cluster.ts).
@@ -754,15 +772,10 @@ export class AppState {
   // it among a landing's members would have the pane say "seen in 9 series"
   // over a graph with six lines on it.
   //
-  // Labelled with each series' *distinguishing* attributes, factored over the
-  // whole list rather than the visible part of it, so a landing's member list
-  // names a series exactly as its card in the series list does.
+  // Labelled from `seriesLabels`, so a landing's member list names a series
+  // exactly as its card in the series list does.
   landings = $derived.by((): SeriesLanding[] => {
-    const split = splitCommonAttrs(this.series.map((e) => attrsForEntry(e.ref, e.meta)));
-    const labels = new Map<string, string>();
-    this.series.forEach((entry, i) => {
-      labels.set(entry.key, chipText(split.distinct[i]) || `signature ${entry.ref.signatureId}`);
-    });
+    const labels = this.seriesLabels;
     return clusterLandings(
       barEvents(
         this.visibleSeries.map((entry) => ({

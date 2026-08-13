@@ -537,6 +537,17 @@ passes. Markers win over dots inside that band, ties go to the nearest column
 (which is what keeps two overlapping markers separately clickable), and a marker
 the draw loop clipped for being off-screen isn't clickable either.
 
+**Hovering one also says what it is**, in a tooltip: the direction and the signed
+percentage, the two window averages with the reminder that they *are* window
+averages, the alert number with both triage states and the bug, and — with more
+than one series plotted — which series, with its swatch. Wording in
+[graphTooltip.ts](../src/lib/graphs/graphTooltip.ts), mechanism in design.md,
+"Tooltips". The triage line is why it earns its space: a triangle otherwise says
+"something was flagged here" and nothing else, when the answer a reader wants is
+often that a sheriff has already called it invalid, or that the bug is open in
+the next tab. Before this the only way to find out was to click, and then to find
+the Alert card among the pane's others.
+
 The hover highlight — a triangle 1.4× larger, and the guide from a hint to a
 line you can follow — is painted on the **overlay** canvas, not by repainting
 the markers. The markers ride the data layer with 100k+ dots on it; redrawing
@@ -867,6 +878,13 @@ the five worth knowing here:
   hugging the floor is a long way from the dots it is about; the guide is what
   connects them, and keeping it to the hover is what lets the resting bar stay
   quiet. Same device the alert markers use.
+- **Hover also says what the bar is**, which for these matters more than it does
+  for the triangles: a 5px strip along the floor reads as chrome, and the first
+  thing a reader needs to know is that it is *this page's* reading and not
+  perfherder's — which is what explains a bar where no triangle is, and why no
+  bug number will ever be attached to one. So the tooltip carries that sentence
+  along with the two window means, the p-value and the effect size
+  ([graphTooltip.ts](../src/lib/graphs/graphTooltip.ts)).
 - **A click sets up both ends of a comparison**, exactly as an alert marker
   does — the push after the step selected, the one before it pinned, one history
   entry (`AppState.selectPushPair`, shared by both). So a bar goes from "there
@@ -1181,6 +1199,12 @@ Recovery is the explicit Retry button.
   plot's margins: row packing, pixel layout and hit tests for both the alert
   triangles and the change bars. Both of its layouts are computed once by
   ScatterChart and read by the draw call, the overlay and the hit test alike.
+- [graphTooltip.ts](../src/lib/graphs/graphTooltip.ts) — **pure**. What those marks
+  say when you point at one. Separate from the components because the wording
+  carries the same sign and window conventions as the pane's cards, and a tooltip
+  that disagreed with the card a click leads to would be worse than none; the
+  chart asks for the words through a callback rather than composing them, the same
+  division as `onalertselect`. See design.md, "Tooltips".
 - [timeRange.ts](../src/lib/shared/timeRange.ts) — **pure**. Presets ↔ absolute
   bounds.
 - [urlState.ts](../src/lib/urlState.ts) — **pure**. Query string ↔ `ViewState`.
@@ -1315,11 +1339,16 @@ Decisions carried over from treeherder:
 
 Deliberate deviations:
 
-- **No tooltip and no hover/click arrow panel.** Clicking a dot fills the
-  right-hand pane instead. *Hovering* one fills the pane's comparison card as a
-  preview against the selection — which is the same information a tooltip would
+- **No tooltip on a dot, and no hover/click arrow panel.** Clicking a dot fills
+  the right-hand pane instead. *Hovering* one fills the pane's comparison card as
+  a preview against the selection — which is the same information a tooltip would
   carry, in a place where it has room to be a distribution and a rank-sum test.
-  See [comparison.md](comparison.md).
+  See [comparison.md](comparison.md). The *marks* are the other way round and do
+  have one: a triangle or a bar is a claim with no room to state itself, and the
+  pane only speaks once you have clicked. They are also the only thing in the app
+  with a drawn tooltip rather than a `title` — being canvas, they have no element
+  to put one on. See "Alerts" and "Detected changes" above, and design.md,
+  "Tooltips: for what the canvas paints".
 - **Smaller dots.** Treeherder uses `DOT_SIZE = 5`; at high point counts the
   plot turns into a solid blob. We use radius 3 in the detail graph and 1.25
   in the overview — big enough to read the symbol shapes below, small enough
