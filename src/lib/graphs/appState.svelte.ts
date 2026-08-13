@@ -29,6 +29,7 @@ import {
   type SeriesAlert,
 } from './alerts';
 import { detectChanges, type DetectedChange } from './changes';
+import { buildDrift, driftWorthReporting, type DriftSummary } from './drift';
 import {
   benchmarkComparison,
   profileLinks,
@@ -125,6 +126,18 @@ export type SeriesEntry = {
   // `changeDetection` is off, and empty until the detection has run — which is
   // one frame behind the dots, not a fetch.
   changes: readonly DetectedChange[];
+  // Where the two ends of the loaded range sit relative to each other, when
+  // that is worth saying at all (drift.ts). **Null covers three cases** — the
+  // series is flat, the range holds too few pushes to ask, or the climb is
+  // inside the series' own noise — and the card shows nothing for all three,
+  // because a badge that had to distinguish them would be a sentence. The CLI's
+  // `series --drift` separates them for anyone who needs it.
+  //
+  // Not gated on `changeDetection`. That switch governs marks on the plot, and
+  // the series this figure exists for is the one with no marks on it: signature
+  // 5350957 climbs 10% with zero bars, so turning the bars off is not a reason
+  // to also withdraw the only reading that saw it.
+  drift: DriftSummary | null;
 };
 
 // One landing, as the app clusters them: every event carries the series entry
@@ -261,6 +274,22 @@ export class AppState {
   private parentThresholds = $state(new Map<string, AlertThreshold | null>());
   private thresholdRequests = new Set<string>();
 
+  // The floor this series is held to, or null while a parent lookup it needs is
+  // still out. **One method because three callers ask**: the detection effect, the
+  // drift figure in `series`, and anything that follows them. They have to agree —
+  // a drift badge computed against the global 2% default beside bars computed
+  // against a parent's 0.1% would be two features disagreeing about what a real
+  // move is, on one card.
+  private thresholdFor(ref: SeriesRef, meta: SeriesMeta): AlertThreshold | null {
+    const parent = inheritsThresholdFrom(ref, meta);
+    // Still waiting on the lookup `loadParentThreshold` was asked for.
+    if (parent && !this.parentThresholds.has(seriesKey(parent))) return null;
+    return resolveAlertThreshold(
+      meta.alertThreshold,
+      parent ? (this.parentThresholds.get(seriesKey(parent)) ?? null) : null,
+    );
+  }
+
   pushCache = $state(new Map<string, Push>());
   jobCache = $state(new Map<string, Job>());
   // `${repo}|${jobId}` lookups that came back an error. A negative cache, so
@@ -318,9 +347,27 @@ export class AppState {
         changes: this.changeDetection
           ? (this.changeCache.get(key) ?? EMPTY_CHANGES)
           : EMPTY_CHANGES,
+        // Derived rather than cached, unlike `changes` above, because it is two
+        // medians and a rank test over 48 numbers however long the range is —
+        // microseconds, against a segmentation that walks every push. So it
+        // recomputes on a theme flip, and that is cheaper than a cache to prune.
+        drift: loaded ? this.driftFor(ref, loaded) : null,
       };
     }),
   );
+
+  // A series' drift, or null when there is nothing worth saying — see
+  // `SeriesEntry.drift` and `driftWorthReporting`.
+  private driftFor(ref: SeriesRef, loaded: LoadedSeries): DriftSummary | null {
+    const drift = buildDrift(loaded.data.pushes);
+    if (!drift) return null;
+    const threshold = this.thresholdFor(ref, loaded.meta);
+    // No floor yet means a parent lookup is out. Showing the figure now and
+    // withdrawing it when the real threshold lands would be a badge that
+    // flickers, so wait — the same call detection makes, for the same reason.
+    if (!threshold) return null;
+    return driftWorthReporting(drift, threshold) ? drift : null;
+  }
 
   // What the graphs actually draw. Everything downstream of here — domains,
   // hit-testing, the "no data" note — works off this, not off `series`.
@@ -793,20 +840,15 @@ export class AppState {
       if (!this.changeDetection) return;
       const span = this.range;
       const cache = this.seriesCache;
-      const thresholds = this.parentThresholds;
       const found: [string, DetectedChange[]][] = [];
       for (const ref of this.seriesRefs) {
         const key = dataKey(ref, span);
         if (this.changeCache.has(key)) continue;
         const loaded = cache.get(key);
         if (!loaded || loaded.data.pushes.length === 0) continue;
-        const parent = inheritsThresholdFrom(ref, loaded.meta);
-        // Still waiting on the lookup the effect above issued.
-        if (parent && !thresholds.has(seriesKey(parent))) continue;
-        const threshold = resolveAlertThreshold(
-          loaded.meta.alertThreshold,
-          parent ? (thresholds.get(seriesKey(parent)) ?? null) : null,
-        );
+        // Null while the lookup the effect above issued is still out.
+        const threshold = this.thresholdFor(ref, loaded.meta);
+        if (!threshold) continue;
         found.push([key, detectChanges(loaded.data.pushes, loaded.meta.lowerIsBetter, threshold)]);
       }
       if (found.length === 0) return;

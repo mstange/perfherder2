@@ -62,6 +62,7 @@ function entry(s: RawSummary, showReplicates = true): SeriesEntry {
     error: null,
     alerts: [],
     changes: [],
+    drift: null,
   };
 }
 

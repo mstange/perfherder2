@@ -14,7 +14,7 @@ is documented elsewhere.
 | --- | --- |
 | The picker: filtering, sorting, badges, virtual scrolling, run activity | this file |
 | Conventions: theming, buttons, layout stability, response validation, testing, measuring | this file, "Key design decisions" onward |
-| The graphs view: panes, fetch, the run/replicate hierarchy, canvas drawing, alerts, detected changes | [graphs.md](graphs.md) |
+| The graphs view: panes, fetch, the run/replicate hierarchy, canvas drawing, alerts, detected changes, the drift figure | [graphs.md](graphs.md) |
 | What the details pane does with a selection: distributions, comparison mode, statistics | [comparison.md](comparison.md) |
 | The `bin/perfherder-cli` CLI: its commands, its caching, the mode analysis it adds, and how it is published | [cli.md](cli.md) |
 | What's built, what's next, what was deliberately deferred and why | [graphs-todo.md](graphs-todo.md) for the app, [cli-todo.md](cli-todo.md) for the CLI |
@@ -37,7 +37,7 @@ change is wrong for a reason the code doesn't show:
 | How a row is identified | "Row identity: `Series.key`, composed at construction" |
 | A loading or empty state for subtests | "`has_subtests` is a claim, not a promise" — `has_subtests` does not mean a subtests=1 fetch will return any |
 | Canvas drawing | graphs.md "Rendering" and "Dots are translucent, and jittered sideways" |
-| The change detector's constants | graphs.md "Detected changes", and the reasoning and measurements recorded beside each constant in `changes.ts`. **Open the graph first**: graphs.md "The series behind the tuning" is a table of URLs, one per signature those constants were measured on, and every constant that has been wrong was wrong because it was reasoned about instead of loaded |
+| The change detector's constants | graphs.md "Detected changes", and the reasoning and measurements recorded beside each constant in `changes.ts`. **Open the graph first**: graphs.md "The series behind the tuning" is a table of URLs, one per signature those constants were measured on, and every constant that has been wrong was wrong because it was reasoned about instead of loaded. `drift.ts` borrows the floor and `CHANGE_ALPHA` too, so a change moves the series-list drift badge as well as the bars |
 | A statistic | comparison.md "Statistics" and "Deviations from PerfCompare" |
 | Anything under `src/lib` | cli.md — `bin/perfherder-cli` is built from the same modules, so a change here changes its answers too, and it is checked by a third tsconfig `npm run check` runs |
 
@@ -1055,6 +1055,13 @@ Several places take care to not shift the list under the user's cursor:
 - The list itself fills with placeholder rows while it loads, one
   `--row-height` each (see below), rather than showing one line of centered
   text in an otherwise empty table.
+- A series card's `.sub` row reserves both of its lines and clamps to them, so the
+  alert count (a second fetch), the change count and the drift figure (both after
+  detection) can appear without moving the cards under them. Two lines rather than
+  one because four badges do not fit on one — graphs.md, "The drift figure, for the
+  series with no bars", has the measurement. The reserve is `calc(2 * 1.35em)`
+  against a `line-height` of 1.35 rather than a pixel count, which is the next
+  paragraph's point applied where stacking doesn't fit.
 
 **When adding new UI, budget for the "loading" and "empty" states so they
 occupy the same space as the "loaded" state.** This is the single biggest

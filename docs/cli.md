@@ -38,7 +38,7 @@ installing one binary of the same name — see "The published package" below.
 | --- | --- |
 | `search <term...>` | the Add-series picker |
 | `series <ref...>` | the series list's summary, plus a level comparison |
-| `series <ref...> --drift` | no UI equivalent — see "`series --drift` answers the question the detector cannot" |
+| `series <ref...> --drift` | the drift badge on a series-list card, from the same module — and the unfiltered form of it, see "`series --drift` answers the question the detector cannot" |
 | `changes <ref...>` | the alert triangles and the detected-change bars |
 | `changes <ref...> --cluster` | the details pane's Landing block, which groups the same way from the same module — see "`--cluster` makes the row a landing instead of a series" |
 | `step <ref...> --at` | no UI equivalent — see "Measuring a step the detector didn't mark" |
@@ -370,9 +370,18 @@ than February, +5.6% to +42%, with no single landing accounting for most of it.
 Producing it meant running `series --from/--to` twice and diffing the medians in
 another language.
 
-`--drift` prints the first window of the range against the last. **The window is
-`WINDOW_PUSHES` a side**, imported from changes.ts rather than chosen here, so a
-drift figure and a `step` or `changes` figure are on one scale — and medians
+`--drift` prints the first window of the range against the last. The figure lives
+in [drift.ts](../src/lib/graphs/drift.ts) under `src/lib` rather than beside the
+reports, because **the app shows the same one** on its series-list cards — see
+graphs.md, "The drift figure, for the series with no bars". This command is the
+unfiltered view of it: the card holds the figure to the detector's floor and α
+before it will mention it uninvited, while `--drift` was asked for by name and so
+prints whatever it computed, p-value and all. A p of 0.4 beside +8% is itself the
+answer to "is this series drifting", and only the CLI will tell you that.
+
+**The window is `WINDOW_PUSHES` a side**, imported from changes.ts rather than
+chosen here, so a drift figure and a `step` or `changes` figure are on one scale
+— and medians
 rather than means, matching the level line's headline and for the reason
 changes.ts keeps raising, that one bad push drags a mean.
 

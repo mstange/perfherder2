@@ -16,7 +16,6 @@ import {
   buildChangesReport,
   buildCommitsReport,
   buildCompareReport,
-  buildDrift,
   buildLevelComparison,
   buildLocateReport,
   buildSearchReport,
@@ -630,49 +629,6 @@ function commit(summary: string, author: string, bugs: number[], id: number) {
     pushTimestamp: BASE_TIME / 1000,
   };
 }
-
-describe('buildDrift', () => {
-  const pushesOf = (values: readonly number[]) =>
-    loadedOf(summaryOf(values.map((v) => [v]))).data.pushes;
-
-  it('compares the ends of the range, which is the question a step cannot answer', () => {
-    // A linear climb has no step in it (graphs-todo.md, "Gradual drift is
-    // invisible by construction"), and this is the figure that describes it.
-    const climb = Array.from({ length: 60 }, (_, i) => 100 + i);
-    const drift = buildDrift(pushesOf(climb))!;
-    expect(drift.windowPushes).toBe(24);
-    expect(drift.first.median).toBeCloseTo(111.5, 5);
-    expect(drift.last.median).toBeCloseTo(147.5, 5);
-    expect(drift.deltaFraction).toBeCloseTo(36 / 111.5, 5);
-    expect(drift.test?.pValue).toBeLessThan(0.01);
-  });
-
-  it('keeps the windows from overlapping when the range is short', () => {
-    // 30 pushes is 15 a side, not 24 of 30 twice.
-    const drift = buildDrift(pushesOf(Array.from({ length: 30 }, () => 10)))!;
-    expect(drift.windowPushes).toBe(15);
-    expect(drift.first.pushCount).toBe(15);
-    expect(drift.last.pushCount).toBe(15);
-  });
-
-  it('refuses a range too short to say anything, rather than dividing three by three', () => {
-    // Six a side is the detector's own minimum for a level.
-    expect(buildDrift(pushesOf([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]))).toBeNull();
-    expect(buildDrift(pushesOf(Array.from({ length: 12 }, () => 5)))).not.toBeNull();
-  });
-
-  it('reports each window\'s own dates, so "February" can be checked', () => {
-    const drift = buildDrift(pushesOf(Array.from({ length: 60 }, () => 7)))!;
-    expect(drift.first.startMs).toBe(BASE_TIME);
-    expect(drift.last.endMs).toBe(BASE_TIME + 59 * 3_600_000);
-    expect(drift.first.endMs! < drift.last.startMs!).toBe(true);
-  });
-
-  it('leaves the delta null rather than dividing by zero', () => {
-    const flat = [...Array.from({ length: 24 }, () => 0), ...Array.from({ length: 24 }, () => 5)];
-    expect(buildDrift(pushesOf(flat))!.deltaFraction).toBeNull();
-  });
-});
 
 describe('attachCommits', () => {
   const range: PushlogRange = {

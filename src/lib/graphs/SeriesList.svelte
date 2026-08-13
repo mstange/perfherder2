@@ -7,6 +7,7 @@
 
   import { flip } from 'svelte/animate';
   import type { AppState } from './appState.svelte';
+  import { driftBadgeLabel, driftBadgeTitle } from './drift';
   import ThemeToggle from '../shared/ThemeToggle.svelte';
   import {
     autoScrollDelta,
@@ -354,9 +355,9 @@
             {#if entry.alerts.length > 0}
               <!-- The only place the alert markers are counted, and the only cue
                    that a series has any without looking at the graph. It lands
-                   after the dots do — a second fetch — so `.sub` clips rather
-                   than wraps: a row that grows a line when a late response
-                   arrives moves every card below it. -->
+                   after the dots do — a second fetch — which is why `.sub`
+                   reserves both its lines up front: a row that took a second one
+                   when a late response arrived would move every card below it. -->
               <span class="alerts" title="Perfherder alerts on this series in this range">
                 · {entry.alerts.length} alert{entry.alerts.length === 1 ? '' : 's'}
               </span>
@@ -367,6 +368,18 @@
                    the alert count, since it is this app's own reading. -->
               <span class="changes" title="Steps detected in this series in this range">
                 · {entry.changes.length} change{entry.changes.length === 1 ? '' : 's'}
+              </span>
+            {/if}
+            {#if entry.drift}
+              <!-- Last of the four, because it is the weakest claim: the ends of
+                   the range are at different levels, which is as true of a series
+                   that stepped once as of one that slid the whole way. Being last
+                   is also what made the row need a second line — see `.sub`,
+                   which is where the measurement is. `entry.drift` is already null
+                   when there is nothing worth saying, so this template makes no
+                   judgement of its own. -->
+              <span class="drift" title={driftBadgeTitle(entry.drift, entry.meta)}>
+                · {driftBadgeLabel(entry.drift)}
               </span>
             {/if}
           </div>
@@ -588,13 +601,40 @@
   .pending {
     color: var(--fg-muted);
   }
+  /* Two lines, both reserved from the start, wrapping between badges — the same
+     shape as `.key-detail` in DistributionChart.svelte and for the same reason.
+     It used to be one clipped line, which was right while the row held a point
+     count and at most two counts after it. The drift badge made it four items,
+     and four do not fit: measured at this pane width the row holds about 28
+     characters, and "1,271 points · 1 alert · 2 changes · +7.7% drift" is 49 —
+     so the busiest card lost the drift figure entirely and the middling ones
+     truncated it to "+4…", which reads as a rendering bug rather than as an
+     omission.
+
+     Two lines hold 56 characters, which covers the realistic worst case, and the
+     clamp ellipsizes rather than tears if a future badge overruns it.
+
+     **The height is reserved rather than grown into.** Alerts arrive on a second
+     fetch and the change count and drift figure land after detection, so a row
+     that took its second line when they arrived would move every card below it —
+     which is why the original chose clipping over wrapping. Reserving both lines
+     costs ~16px on every card, including the ones that never use the second, and
+     buys a list that never reflows. */
   .sub {
     color: var(--fg-muted);
     font-size: 12px;
-    /* Clipped, not wrapped — see the alert count in the markup. */
-    white-space: nowrap;
+    /* The reserve is two of this line-height, written as that and not as a pixel
+       count somebody measured — see design.md, "Prefer stacking the states to
+       measuring them". With the clamp at the same 2, the min and the max are the
+       same two lines whatever the font or the pane width does, so there is no
+       screenshot for this number to go stale against. */
+    line-height: 1.35;
+    min-height: calc(2 * 1.35em);
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
     overflow: hidden;
-    text-overflow: ellipsis;
   }
   .count {
     /* Reserved width: "loading…" becoming "12,345 points" must not reflow

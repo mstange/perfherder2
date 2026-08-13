@@ -44,6 +44,7 @@ import {
   peakChange,
   type Landing,
 } from '../lib/graphs/cluster';
+import type { DriftSummary } from '../lib/graphs/drift';
 import { commitsHeading } from './reports';
 import type {
   AcrossDescriptor,
@@ -53,7 +54,6 @@ import type {
   CommitsReport,
   CompareReport,
   CompareSideReport,
-  DriftSummary,
   LocateReport,
   PushRow,
   SearchReport,

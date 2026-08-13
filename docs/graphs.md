@@ -943,6 +943,62 @@ less than it did; it stays because the reasons for it were never mainly about th
 segmentation's cost. Turning the switch off hides the bars without dropping the
 cache; turning it back on doesn't pay again.
 
+### The drift figure, for the series with no bars
+
+Segmentation looks for steps, so a series that slides 10% over six months gets no
+bar — honestly, but silently. Signature 5350957 is the case that got this built:
+1,158 pushes, a climb plain in the sparkline, **no bar and no perfherder alert
+anywhere in six months**. Everything this app drew was silent about a real
+regression, and graphs-todo.md had carried that as a known hole for as long as the
+detector had existed.
+
+The answer is a figure on the series-list card, beside the alert and change
+counts: **"1,161 points · +10% drift"**. [drift.ts](../src/lib/graphs/drift.ts)
+computes it, `series --drift` prints the same object, and the module sits under
+`src/lib` for cluster.ts's reason — dependencies run `src/cli` → `src/lib` and
+never back.
+
+- **It is two medians, not a detection.** `WINDOW_PUSHES` a side, imported from
+  changes.ts so a drift figure and a `step` or `changes` figure are on one scale;
+  medians rather than means, because one bad push drags a mean. The rank test says
+  the ends are at different levels, which is *not* the claim that something
+  stepped between them — a series with one clean step in the middle drifts by
+  exactly that step. That is also why it is a number on a card and not a span
+  drawn across the plot: a span would claim to know the shape of the climb, and
+  this knows nothing about the shape.
+- **A badge that drew itself pays the bars' price.** `series --drift` was asked
+  for by name and prints whatever it computed; the card shows up uninvited on
+  every series, so `driftWorthReporting` holds it to two bars borrowed rather than
+  invented — the detector's floor (a quarter of the signature's own alerting
+  threshold) and `CHANGE_ALPHA` rather than `SIGNIFICANCE_ALPHA`, for the
+  multiple-comparisons reason changes.ts gives. Without the floor a rank test over
+  1,158 pushes will certify a 0.05% drift, which is true and useless; without α
+  every noisy series wobbles its way onto a card.
+- **Absence covers three things**: flat, too short a range to ask, and a climb
+  inside the series' own noise. The card shows nothing for all three, because a
+  badge that distinguished them would be a sentence. The CLI separates them.
+- **The percentage is in the badge and the rest is in the hover**: both medians
+  with their unit, both windows' dates, the p-value, and the reminder that the
+  ends differing is not a step. "February against now" is a claim the reader has
+  to be able to check, and 24 pushes on autoland is three days rather than a
+  month.
+- **Not gated on `cd`.** That switch governs marks on the plot, and the series
+  this figure exists for has no marks: turning the bars off is not a reason to
+  withdraw the only reading that saw the climb.
+- **It cost the row a second line.** Measured at the pane's width, `.sub` holds
+  about 28 characters, and a busy card wants 49 — "1,271 points · 1 alert · 2
+  changes · +7.7% drift". As one clipped line the busiest card lost the figure
+  outright and the middling ones truncated it to "+4…", which reads as a rendering
+  bug rather than as an omission. So `.sub` now wraps to two clamped lines with
+  **both reserved from the start**: alerts arrive on a second fetch and the change
+  count and drift figure land after detection, and a row that took its second line
+  when they arrived would move every card below it. Verified in a browser: the
+  cards are 87px whether they use one line or two, and card 5 gaining its alert
+  badge late moved nothing.
+- **Checked against production.** The five signatures in graphs-todo.md's drift
+  table show +10%, +45%, +29%, +14% and +7.7% on their cards — the same figures
+  `series --drift` prints for them, which is what sharing the module buys.
+
 ### Caching and failure
 
 Series data is cached under `(repo, signature, rangeStart, rangeEnd)` — the
@@ -983,6 +1039,10 @@ Recovery is the explicit Retry button.
   several series → the landings that caused them, plus `barEvents`, which is how
   the app's bars become events. Shared with the CLI's `changes --cluster`; see
   "One landing, not nine bars".
+- [drift.ts](../src/lib/graphs/drift.ts) — **pure**. The two ends of the loaded
+  range against each other, for the series segmentation has nothing to say about,
+  plus the two bars that decide whether the card mentions it. Shared with the
+  CLI's `series --drift`; see "The drift figure, for the series with no bars".
 - [annotations.ts](../src/lib/graphs/annotations.ts) — **pure**. The marks in the
   plot's margins: row packing, pixel layout and hit tests for both the alert
   triangles and the change bars. Both of its layouts are computed once by

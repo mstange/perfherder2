@@ -133,6 +133,25 @@ Living checklist. Update in the same commit as the work it describes.
   `Triage` row for the two alert statuses. See graphs.md, "The three change
   cards say it the same way" and "Keeping the pane readable".
 
+- A drift figure on the series-list card, for the series segmentation has nothing
+  to say about. `drift.ts` moved from `src/cli/reports.ts` to `src/lib/graphs/`
+  (cluster.ts's precedent: dependencies run `src/cli` → `src/lib` and never back),
+  so the card and `series --drift` print the same two medians. The five signatures
+  in the table below show **+10%, +45%, +29%, +14% and +7.7%** on their cards,
+  matching the CLI figure for figure — including 5350957, the 10% regression with
+  no bar and no alert that this was built for.
+
+  Two bars keep an uninvited badge honest, both borrowed from changes.ts rather
+  than invented: the detector's floor and `CHANGE_ALPHA`. And the row could not
+  hold a fourth item — measured, 28 characters against the 49 a busy card wants,
+  so the figure was being truncated to "+4…" — so `.sub` wraps to two clamped
+  lines with both reserved, and the cards are 87px whether they use one or two.
+  See graphs.md, "The drift figure, for the series with no bars".
+
+  This closes the UI half of the three items that pointed at it below. What is
+  still open is *detecting* the shape, which is a different question and is still
+  parked where it was.
+
 ## Next
 
 - [ ] A full repaint of the detail graph at 100k+ dots takes ~60ms, which is
@@ -151,8 +170,15 @@ Living checklist. Update in the same commit as the work it describes.
   so this is longstanding rather than new. What would fix it is recognising the shape
   instead of marking it: fit a slope to the window, and where a line explains the
   window about as well as a step does, say "drifting +4% over 30 pushes" and draw one
-  span instead of six notches. Wants a way to say that in the UI before it is worth
-  detecting.
+  span instead of six notches.
+
+  **The "way to say it in the UI" this was parked behind now exists** — the drift
+  badge under Done, which states the figure without claiming to know the shape. What
+  is still open is the detection: the bars are unchanged, so signature 5350963 still
+  shows five notches for one net climb, and a reader now gets "+14% drift" beside
+  them rather than instead of them. Whether that is enough is the thing to learn from
+  use; if it isn't, the next step is the slope fit above, and the badge is where its
+  verdict would go.
 
   **It is no longer only synthetic — load these.** A six-month CLI trial over the
   idb-open family found every one of twelve signatures slower at the end of the
@@ -179,12 +205,13 @@ Living checklist. Update in the same commit as the work it describes.
   whole of it. Segmentation is right about that one. The question is only what to
   do about the four above it.
 
-  **`series --drift` (change `xkpxpklo`) is one candidate answer to "a way to say
-  it".** It is deliberately not detection: two medians, both windows' dates
-  printed, and a p-value labelled as saying the ends differ rather than that
-  anything stepped. If that framing survives use, the UI form is a figure on the
-  series-list card next to the change count — not another line on a plot that
-  already draws every replicate.
+  **`series --drift` was the candidate answer to "a way to say it", and the
+  framing survived**: two medians, both windows' dates printed, and a p-value
+  labelled as saying the ends differ rather than that anything stepped. It is now
+  also the badge on the series-list card, which was the UI form predicted here —
+  a figure next to the change count, not another line on a plot that already draws
+  every replicate. The five rows above are the fixture it was checked against, so
+  load them again before changing anything in `drift.ts`.
 - **Index replicates by trial number once the API exposes one.**
   [Bug 1981623](https://bugzilla.mozilla.org/show_bug.cgi?id=1981623) tracks
   using the run numbers and machine identifiers the replicates/trials table
@@ -302,13 +329,15 @@ Living checklist. Update in the same commit as the work it describes.
 
     What it redirects effort to is the outlier mode, which is no longer a
     hypothetical: see "A push is summarised by its mean" below.
-  - *Gradual drift is invisible by construction.* Segmentation looks for steps.
-    A series that slides 8% over three months has no step in it and gets no bar,
-    which is honest but is also the case a trend line would answer — see the
-    next item. **No longer hypothetical**: signature 5350957 climbs 10% over six
-    months and 1,158 pushes with zero bars and zero perfherder alerts, and it is
-    the first row of the table under "A smooth drift is reported as a run of
-    steps" above. Load it before reasoning about this one.
+  - *Gradual drift is invisible to the bars by construction — but no longer to the
+    UI.* Segmentation looks for steps, so a series that slides 8% over three months
+    has no step in it and gets no bar. That is still true and still honest. What has
+    changed is that it is no longer silent: the series-list card carries a drift
+    figure (see Done), so signature 5350957 — 10% over six months and 1,158 pushes
+    with zero bars and zero perfherder alerts — now says "+10% drift" on its card
+    where it used to say only "1,161 points". It is the first row of the table under
+    "A smooth drift is reported as a run of steps" above. Load it before reasoning
+    about this one.
 - **A push is summarised by its mean.** `values = pushes.map(p => p.mean)`
   ([changes.ts](../src/lib/graphs/changes.ts)), and `push.mean` is the mean of its
   runs' means, each of which is the mean of its replicates. Two comments in
@@ -350,15 +379,16 @@ Living checklist. Update in the same commit as the work it describes.
   bars can't, at the cost of another control and another line on a plot that
   already draws every replicate. Worth it only if the drift case comes up.
 
-  **It came up.** Twelve of twelve idb-open signatures drifted over six months,
-  four of them shown in the table under "A smooth drift is reported as a run of
-  steps", and one of those is a 10% regression with no bar and no alert. That was
-  the condition this item was parked behind, so the question is no longer whether
-  but which form — and the cheaper form may not be a trend line at all. A drift
-  *figure* on the series-list card costs no control and no ink on the plot, which
-  is what `series --drift` does in the CLI; a moving average is the version to
-  reach for only if reading the slope off the plot turns out to be the thing
-  people want.
+  **It came up, and the cheaper form shipped instead.** Twelve of twelve idb-open
+  signatures drifted over six months, four of them shown in the table under "A
+  smooth drift is reported as a run of steps", and one of those is a 10% regression
+  with no bar and no alert. That was the condition this item was parked behind, so
+  the question became which form — and the answer was the one that costs no control
+  and no ink on the plot: the drift badge on the series-list card (see Done). A
+  moving average is still the version to reach for **if** reading the slope off the
+  plot turns out to be what people want once the figure is in front of them, and
+  that is now a question with a cheap thing to compare against rather than a
+  hypothetical.
 - **Retrigger / delta-vs-previous readouts.** Treeherder's tooltip shows the
   delta from the previous data point and a retrigger count. We show the
   retrigger count, and hovering any dot gives the delta against the *selected*
