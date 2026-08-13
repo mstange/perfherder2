@@ -8,6 +8,7 @@
   import DetailsPane from './lib/graphs/DetailsPane.svelte';
   import GraphPane from './lib/graphs/GraphPane.svelte';
   import SeriesList from './lib/graphs/SeriesList.svelte';
+  import Tooltip from './lib/shared/Tooltip.svelte';
   import { AppState } from './lib/graphs/appState.svelte';
   import type { Series } from './lib/picker/series';
 
@@ -98,6 +99,12 @@
     </div>
   </div>
 {/if}
+
+<!-- One box for the whole app, positioned from the pointer. Last, and outside
+     both the grid and the overlay: it is fixed and above everything, and it must
+     not be inside the `inert` wrapper — a tooltip describing the graph behind the
+     panel is still worth reading. See docs/design.md, "Tooltips". -->
+<Tooltip />
 
 <style>
   main {

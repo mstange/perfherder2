@@ -30,6 +30,7 @@ change is wrong for a reason the code doesn't show:
 | Markup with two adjacent badges | "Whitespace between adjacent badges (Svelte gotcha)" |
 | A color, anywhere | "Theming: one resolved attribute, one exception" — there are exactly two, and neither is new |
 | A button | "One button, defined once" |
+| A hover explanation | "Tooltips: for what the canvas paints". Ordinary controls use `title`; the drawn box is for the marks in the graph's canvas, which have no element to hang one on |
 | A percentage or a delta in the details pane | graphs.md, "The three change cards say it the same way" — one component draws all three headlines, and the sign is the measurement's, never the verdict's |
 | Anything that renders before its data arrives | "Layout stability" |
 | A fetch, or a new endpoint | "Validating API responses"; plus "Cache key" if the result is cached |
@@ -58,7 +59,8 @@ architecture breaks.**
 
 ```
 src/lib/
-  shared/   http, links, chart, stats, theme(+.svelte, ThemeToggle), timeRange
+  shared/   http, links, chart, stats, theme(+.svelte, ThemeToggle), timeRange,
+            tooltip(+State.svelte, Tooltip)
   picker/   the Add-series panel: signaturesApi, series, pickerOptions, filter,
             activity(+Api), pickerState.svelte, AddSeriesPicker, FilterInput
   graphs/   the graphs view and its two side panes: graphApi, graphData,
@@ -122,6 +124,13 @@ import graph rather than assumed:
   that can't live in CSS; see "Theming" below.
   [theme.svelte.ts](../src/lib/shared/theme.svelte.ts) is the reactive singleton
   around it.
+- [src/lib/shared/tooltip.ts](../src/lib/shared/tooltip.ts) — **pure logic**. What a
+  drawn tooltip says (`TooltipContent`) and where the box goes (`placeTooltip`),
+  including the width cap that has to be settled before the position is.
+  Unit-tested. [tooltipState.svelte.ts](../src/lib/shared/tooltipState.svelte.ts) is
+  the reactive singleton and [Tooltip.svelte](../src/lib/shared/Tooltip.svelte) the
+  one box on screen. **Only the graph's canvas marks use this**; see "Tooltips"
+  below.
 - [src/lib/picker/filter.ts](../src/lib/picker/filter.ts) — **pure logic**. Filter
   model (chips + free text), `matchesRow`, sort comparator, cache-key +
   fallback picker, child grouping. Unit-tested.
@@ -1037,6 +1046,78 @@ Sizes used in one place only stay in that component, composed on top of
 the series list's icon buttons, the details pane's inline `.unpin` /
 `.cmp-prev`, and the replicate chips, whose width is a measured value (see the
 comment above `.replicates`) rather than a size anyone else should reuse.
+
+### Tooltips: for what the canvas paints
+
+**`title` is still the app's hover explanation.** Badges, icon buttons, `dt`
+terms, clipped labels: all of them carry a `title`, and a new control should too.
+
+There is exactly one exception, and it is the reason
+[tooltip.ts](../src/lib/shared/tooltip.ts) exists: **an alert triangle and a
+detected-change bar are pixels in a canvas.** There is no element to hang an
+attribute on, so their explanation has to be drawn. Until it was, the only way to
+find out what one of those marks meant was to click it and read the details pane —
+where the answer is one card among several, and easy to miss.
+
+So there is one box for the whole app
+([Tooltip.svelte](../src/lib/shared/Tooltip.svelte), mounted once in App.svelte),
+one reactive singleton saying what is currently in it, and one caller:
+ScatterChart's hit test, which reports *that* a mark is under the pointer and asks
+[graphTooltip.ts](../src/lib/graphs/graphTooltip.ts) for the words. There is
+deliberately **no attachment or action for giving an element a tooltip** — that
+would be a second mechanism competing with `title` for the same job, and the
+canvas is what justified building anything at all.
+
+What to know before touching it:
+
+- **`TooltipContent` has four slots**, in reading order: a bold `title` (what the
+  thing *is*), `lines` (the facts), `source` (which series, with its plot color as
+  a swatch — only filled in when more than one is plotted), and a muted `hint`
+  (usually what a click would do). The swatch is the part `title` could not have
+  done at all.
+- **Size first, place second, and the width cap comes from the viewport alone**
+  (`tooltipMaxWidth`). Capping to the room left on the side the box lands on is
+  the obvious refinement and it is a feedback loop: a narrower cap rewraps the
+  text, which changes the height, which changes which side fits. With the cap
+  fixed, the measured box is a fact and `placeTooltip` only chooses a corner —
+  below-right of the cursor, flipping left and/or above independently per axis,
+  clamped to the margin when neither side fits.
+- **`width: max-content` on the box is load-bearing**, and cost a measurement to
+  find. A `position: fixed` box with `width: auto` is shrink-to-fit against the
+  gap between its `left` and the viewport's right edge, so placing it 1254px into
+  a 1500px window made it 246px wide and three lines tall — and *that* is the
+  size the measurement read. The flip was then decided from a size that only
+  existed at the position it was flipping away from.
+- **Measured once per content, not once per pointer move.** The controller keeps
+  `key` (the words, joined) separate from `content` and `anchor` for exactly this:
+  `getBoundingClientRect` forces layout, and a box that follows the cursor would
+  otherwise pay for one on every move to re-learn a size that hasn't changed.
+- **A rest delay of 350ms, with a 300ms warm window after one closes.** The marks
+  sit in two narrow bands across the plot, so a pointer crossing a band passes
+  several of them; opening instantly would flash a box per mark on the way past,
+  and paying the delay again at every stop while scanning along the row reads as
+  lag.
+- **Ownership is by token**, and `hide(owner)` no-ops unless the caller is the one
+  showing the box. That is what lets the chart call `hide` unconditionally
+  whenever its hit test comes back empty, and keeps the overview graph from
+  closing the detail graph's box.
+- **A `pointerdown` or a scroll closes it**, the latter from a *capturing*
+  listener on `document`: the series list and the details pane are their own
+  scrollers, and scroll events from them never reach `window` on the bubble path.
+- **`pointer-events: none`** — the box follows the cursor closely enough that a
+  hittable one would land under the pointer, take it off the mark being described,
+  and close itself.
+- **Touch does nothing**, since the marks are hover targets; a box a tap can't
+  dismiss, covering what was just tapped, is worse than none.
+- **No `aria-describedby` and no id on the box.** A mark in a canvas cannot be
+  focused, so there is nothing for a description to hang off; the keyboard path to
+  an alert is the graph's own <kbd>A</kbd> / <kbd>shift-A</kbd> stepper, which
+  moves the selection and answers in the details pane.
+
+What deliberately has *no* tooltip: a hovered dot. The details pane already
+describes the point under the pointer — in more depth than a box could, including
+a comparison against the selection — and a box opening everywhere the pointer went
+over a plot would be unusable. See graphs.md.
 
 ### Layout stability
 
