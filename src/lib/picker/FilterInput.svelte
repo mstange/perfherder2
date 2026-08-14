@@ -6,6 +6,7 @@
     type Filter,
     type FilterChip,
   } from './filter';
+  import CrossIcon from '../shared/CrossIcon.svelte';
 
   type Props = {
     filter: Filter;
@@ -215,7 +216,9 @@
         class="chip-remove"
         aria-label={`Remove ${chip.field}:${chip.value}`}
         onclick={() => removeChip(chip)}
-      >×</button>
+      >
+        <CrossIcon size={9} />
+      </button>
     </span>
   {/each}
   <input
@@ -308,15 +311,15 @@
     font-size: 12px;
   }
   .chip-remove {
+    display: grid;
+    place-items: center;
     padding: 0 6px;
     margin: 0;
     height: 18px;
-    line-height: 1;
     background: transparent;
     border: 0;
     color: var(--fg-muted);
     cursor: pointer;
-    font-size: 14px;
     border-radius: 999px;
   }
   .chip-remove:hover {

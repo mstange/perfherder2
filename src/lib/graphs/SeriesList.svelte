@@ -9,6 +9,7 @@
   import type { AppState } from './appState.svelte';
   import { driftBadgeLabel, driftBadgeTitle } from './drift';
   import ThemeToggle from '../shared/ThemeToggle.svelte';
+  import CrossIcon from '../shared/CrossIcon.svelte';
   import {
     autoScrollDelta,
     clampDy,
@@ -416,8 +417,10 @@
             class="btn icon remove"
             title="Remove series"
             aria-label="Remove series"
-            onclick={() => app.removeSeries(entry.ref)}>×</button
+            onclick={() => app.removeSeries(entry.ref)}
           >
+            <CrossIcon size={10} />
+          </button>
         </div>
       </div>
     {/each}
@@ -686,17 +689,15 @@
   }
   /* Chrome comes from `.btn` in app.css; only the square-icon size is local. */
   button.icon {
+    display: grid;
+    place-items: center;
     padding: 0;
     width: 20px;
     height: 18px;
     line-height: 1;
     font-size: 12px;
   }
-  /* An `<svg>` is inline, so it sits on the text baseline and leaves descender
-     space under itself; the grid centres it in the button instead. */
   button.eye {
-    display: grid;
-    place-items: center;
     color: var(--fg-muted);
   }
   button.eye:hover:not(:disabled) {

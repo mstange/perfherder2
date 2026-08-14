@@ -33,9 +33,11 @@ function render(filter: Filter, textDebounceMs = 0) {
   return {
     changes,
     input: () => target.querySelector('input.filter-text') as HTMLInputElement,
+    // The remove button contributes no text of its own — its cross is an
+    // `<svg>` — so a pill's `textContent` is exactly its field and value.
     chips: () =>
       [...target.querySelectorAll('.chip-pill')].map((el) =>
-        el.textContent!.replace(/×/g, '').replace(/\s+/g, ' ').trim(),
+        el.textContent!.replace(/\s+/g, ' ').trim(),
       ),
   };
 }
