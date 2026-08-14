@@ -276,7 +276,23 @@ import { TIME_RANGES } from './pickerOptions';
       </p>
     </div>
     {#if onclose}
-      <button type="button" class="btn close" onclick={onclose} aria-label="Close">×</button>
+      <!-- A drawn cross rather than "×": the glyph's own side bearings and its
+           position on the baseline are the font's business, so no amount of
+           line-height centres it in a square button across fonts. -->
+      <button type="button" class="btn close" onclick={onclose} aria-label="Close">
+        <svg
+          viewBox="0 0 16 16"
+          width="12"
+          height="12"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.5"
+          stroke-linecap="round"
+          aria-hidden="true"
+        >
+          <path d="M3.5 3.5 12.5 12.5M12.5 3.5 3.5 12.5" />
+        </svg>
+      </button>
     {/if}
   </header>
 
@@ -735,14 +751,16 @@ import { TIME_RANGES } from './pickerOptions';
     margin: 0 0 4px;
     font-size: 20px;
   }
-  /* Square, and sized rather than padded; the rest comes from `.btn`. */
+  /* Square, and sized rather than padded; the rest comes from `.btn`. An
+     `<svg>` is inline, so it sits on the text baseline and leaves descender
+     space under itself; the grid centres it in the square instead. */
   .close {
     flex: none;
+    display: grid;
+    place-items: center;
     width: 28px;
     height: 28px;
     padding: 0;
-    font-size: 18px;
-    line-height: 1;
   }
   .hint {
     margin: 0;
