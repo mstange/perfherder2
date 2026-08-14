@@ -224,6 +224,22 @@ Living checklist. Update in the same commit as the work it describes.
       describes it). The shape to work out is how a column readout coexists with the
       hover preview the pane draws for the dot under the same pointer.
 
+- [ ] **A graph of subtests opens the picker on collapsed parents.** Plot two
+      `perf_reftest_singletons` subtests, then "Filter to graph": the filter is
+      right and the list is one collapsed `perf_reftest_singletons` row per repo,
+      with the siblings you wanted behind the disclosure caret and no swatch to
+      show that two of its children are already plotted. The filter can't fix
+      this — the parents carry the same suite, platform and options, so they
+      match it on their own — and neither can `matchSubtests`, which only
+      auto-expands parents that qualified *via* a child (`filterResult` in
+      `pickerState.svelte.ts`). What fits is expanding a parent that *has* a
+      plotted child, and marking it: `plotted` is keyed by `Series.key`, and
+      `childrenByParent` already relates the two, but only once the subtests=1
+      payload is in — so this also has to decide whether the graph's context
+      alone is enough reason to pull it. Reported as "the filter isn't prefilled
+      because they're all subtests"; the prefill was a separate bug, now fixed,
+      and this is the half of the complaint that survives it.
+
 - [ ] A full repaint of the detail graph at 100k+ dots takes ~60ms, which is
       one dropped frame on a discrete action like resetting the zoom.
       Decimating the overview by pixel column would be the first thing to

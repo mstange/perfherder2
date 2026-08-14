@@ -17,7 +17,7 @@ import { type Series } from './series';
 import { DEFAULT_REPOS, PINNED_REPOS } from './pickerOptions';
 import type { FilterChip } from './filter';
 import { ACTIVITY_DEBOUNCE_MS, PickerState } from './pickerState.svelte';
-import { EMPTY_PICKER_VIEW, type PickerViewState } from '../urlState';
+import { EMPTY_PICKER_VIEW, type GraphContext, type PickerViewState } from '../urlState';
 
 let fetchMock: ReturnType<typeof vi.fn>;
 // The signatures payload each repo fetch answers with; tests that care about
@@ -250,6 +250,127 @@ describe('PickerState.seed', () => {
         // And the chip survives being unchecked, so the way back stays.
         expect(p.repoChips).toContain('mozilla-release');
         expect(p.selectedRepos.has('mozilla-release')).toBe(false);
+      },
+    ));
+});
+
+describe('PickerState.applyGraphContext', () => {
+  const context = (chips: FilterChip[], repos: string[] = []): GraphContext => ({
+    filter: { chips, text: '' },
+    repos,
+  });
+
+  it('replaces the filter, free text included', () =>
+    withPicker(
+      (p) => p.seed(filterView([{ field: 'suite', value: 'jetstream3' }], 'reftest single')),
+      (p) => {
+        p.applyGraphContext(context([{ field: 'suite', value: 'speedometer3' }]));
+        // The search that found the plotted series is spent once they're
+        // plotted, and a leftover token would narrow a filter that claims to be
+        // the graph's context.
+        expect(p.filter).toEqual({
+          chips: [{ field: 'suite', value: 'speedometer3' }],
+          text: '',
+        });
+      },
+    ));
+
+  it('descends into subtests when the context names a test', () =>
+    withPicker(
+      (p) => p.seed(view()),
+      (p) => {
+        p.applyGraphContext(context([{ field: 'test', value: 'fcp' }]));
+        // Same dead end as the seed nudge: no parent row has a `test`, so the
+        // button would otherwise empty the list it was meant to focus.
+        expect(p.matchSubtests).toBe(true);
+      },
+    ));
+
+  it('checks a repo the graph needs', () =>
+    withPicker(
+      (p) => p.seed(view({ repos: ['autoland'] })),
+      (p) => {
+        p.applyGraphContext(context([{ field: 'suite', value: 'sp3' }], ['mozilla-beta']));
+        // Without this the context filter would be pointed at rows the panel
+        // never fetched, which reads as "your filter matches nothing".
+        expect(p.selectedRepos.has('mozilla-beta')).toBe(true);
+      },
+    ));
+
+  it('never unchecks one', () =>
+    withPicker(
+      (p) => p.seed(view({ repos: ['autoland', 'try'] })),
+      (p) => {
+        p.applyGraphContext(context([{ field: 'suite', value: 'sp3' }], ['autoland']));
+        // Unchecking is how the user controls what gets fetched. This button is
+        // about the filter, and taking a repo away is not its business.
+        expect([...p.selectedRepos].sort()).toEqual(['autoland', 'try']);
+      },
+    ));
+
+  it('gives a repo outside the pinned four a chip of its own', () =>
+    withPicker(
+      (p) => p.seed(view()),
+      (p) => {
+        p.applyGraphContext(context([{ field: 'suite', value: 'sp3' }], ['mozilla-release']));
+        expect(p.repoChips).toEqual([...PINNED_REPOS, 'mozilla-release']);
+      },
+    ));
+
+  it('leaves the interval and sort alone', () =>
+    withPicker(
+      (p) => p.seed(view({ intervalSeconds: 7776000, sort: { column: 'unit', direction: 'asc' } })),
+      (p) => {
+        p.applyGraphContext(context([{ field: 'suite', value: 'sp3' }]));
+        // It is a filter control, mid-session. Re-sorting the table or moving
+        // the time range under the user would be a reset nobody asked for.
+        expect(p.timeRangeSeconds).toBe(7776000);
+        expect(p.sort).toEqual({ column: 'unit', direction: 'asc' });
+      },
+    ));
+});
+
+describe('PickerState.clearFilter', () => {
+  it('empties the chips and the text together', () =>
+    withPicker(
+      (p) => p.seed(filterView([{ field: 'suite', value: 'sp3' }], 'chrome')),
+      (p) => {
+        p.clearFilter();
+        expect(p.filter).toEqual({ chips: [], text: '' });
+        expect(p.filterActive).toBe(false);
+      },
+    ));
+
+  it('keeps the repos, interval and sort', () =>
+    withPicker(
+      (p) =>
+        p.seed(
+          view({
+            filter: { chips: [{ field: 'suite', value: 'sp3' }], text: '' },
+            repos: ['mozilla-beta'],
+            intervalSeconds: 7776000,
+            sort: { column: 'unit', direction: 'asc' },
+          }),
+        ),
+      (p) => {
+        p.clearFilter();
+        // The panel's scope, not its query. Clearing the repo set in particular
+        // would leave a blank slate with no rows on it to look at.
+        expect([...p.selectedRepos]).toEqual(['mozilla-beta']);
+        expect(p.timeRangeSeconds).toBe(7776000);
+        expect(p.sort).toEqual({ column: 'unit', direction: 'asc' });
+      },
+    ));
+
+  it('leaves subtest matching where it was', () =>
+    withPicker(
+      (p) => p.seed(view({ filter: { chips: [], text: 'fcp' }, matchSubtests: true })),
+      (p) => {
+        p.clearFilter();
+        // It only changes what an *active* filter matches, so with the filter
+        // gone it has nothing to do — and switching it off would silently
+        // discard the fatter subtests=1 data the panel already holds.
+        expect(p.matchSubtests).toBe(true);
       },
     ));
 });

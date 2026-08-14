@@ -8,6 +8,7 @@ import {
   compareRows,
   cycleSort,
   fieldValues,
+  graphContextState,
   groupChildrenByParent,
   hasChip,
   isFilterActive,
@@ -223,6 +224,38 @@ describe('chip mutations (add/remove/toggle/hasChip)', () => {
     // Order counts: this answers "is this still the filter we handed over?",
     // not "do these two select the same rows?".
     expect(sameFilter({ chips: [c1, c2], text: '' }, { chips: [c2, c1], text: '' })).toBe(false);
+  });
+});
+
+describe('graphContextState', () => {
+  const c1: FilterChip = { field: 'suite', value: 'speedometer3' };
+  const c2: FilterChip = { field: 'application', value: 'firefox' };
+  const context: Filter = { chips: [c1], text: '' };
+
+  it('offers to apply a context the filter differs from', () => {
+    expect(graphContextState(empty, context, true)).toBe('apply');
+    expect(graphContextState({ chips: [c2], text: '' }, context, true)).toBe('apply');
+    // Free text the context can't have counts as a difference: it is exactly
+    // the spent search the button exists to clear away.
+    expect(graphContextState({ chips: [c1], text: 'reftest' }, context, true)).toBe('apply');
+  });
+
+  it('has nothing to offer when the filter already is the context', () => {
+    expect(graphContextState({ chips: [c1], text: '' }, context, true)).toBe('same');
+  });
+
+  it('tells an empty graph from one whose metadata is still coming', () => {
+    // Both disable the button; only one of them will fix itself, and the
+    // tooltip has to say which.
+    expect(graphContextState(empty, empty, false)).toBe('none');
+    expect(graphContextState(empty, empty, true)).toBe('pending');
+  });
+
+  it('stays disabled for a graph with no shared attributes at all', () => {
+    // Series with nothing in common produce no chips, so there is no filter to
+    // apply — reporting `apply` here would offer to clear the user's filter and
+    // call it the graph's context.
+    expect(graphContextState({ chips: [c2], text: 'x' }, empty, true)).toBe('pending');
   });
 });
 

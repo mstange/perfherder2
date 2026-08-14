@@ -9,6 +9,7 @@ import {
   commonFilterChips,
   commonMeasurement,
   documentTitle,
+  graphContextFilter,
   isEmptyAttrs,
   measurementForEntry,
   measurementParts,
@@ -381,6 +382,34 @@ describe('commonFilterChips', () => {
 
   it('is empty when the series share nothing', () => {
     expect(commonFilterChips(NO_ATTRS)).toEqual([]);
+  });
+});
+
+describe('graphContextFilter', () => {
+  it('is the intersection of the plotted series, as a filter', () => {
+    expect(graphContextFilter([attrs({ application: 'chrome' }), attrs({ application: 'safari' })])).toEqual({
+      chips: [
+        { field: 'suite', value: 'speedometer3' },
+        { field: 'platform', value: 'macosx1500-aarch64-shippable' },
+        { field: 'option', value: 'opt' },
+      ],
+      text: '',
+    });
+  });
+
+  it('carries no free text', () => {
+    // There is no such thing as a derived search string: the text half of a
+    // filter is always something a human typed. Both callers replace the whole
+    // filter, so this empty string is what retires the search that found the
+    // series once they're on the graph.
+    expect(graphContextFilter([attrs({})]).text).toBe('');
+  });
+
+  it('is an inactive filter when there is nothing to derive from', () => {
+    // What the panel's "Filter to graph" button reads as "nothing to offer" —
+    // no series, or none whose metadata has arrived.
+    expect(graphContextFilter([])).toEqual({ chips: [], text: '' });
+    expect(graphContextFilter([null, null])).toEqual({ chips: [], text: '' });
   });
 });
 

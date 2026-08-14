@@ -76,13 +76,12 @@ import {
   type ComparisonSide,
 } from './compare';
 import { MIN_CURVE_VALUES, stableScales, type StableScales } from './distribution';
-import { EMPTY_FILTER, isFilterActive, sameFilter, type Filter } from '../picker/filter';
+import { isFilterActive } from '../picker/filter';
 import {
   attrsForEntry,
   chipText,
-  commonAttrs,
-  commonFilterChips,
   documentTitle,
+  graphContextFilter,
   splitCommonAttrs,
 } from './seriesSummary';
 import { barEvents, clusterLandings, type Landing } from './cluster';
@@ -92,6 +91,7 @@ import {
   EMPTY_PICKER_VIEW,
   parseViewState,
   serializeViewState,
+  type GraphContext,
   type PickerViewState,
   type SelectedPoint,
   type SeriesEntryState,
@@ -1661,57 +1661,49 @@ export class AppState {
     this.errorsByKey = new Map();
   }
 
-  // A picker starting point derived from the plotted series: what they have in
-  // common as a filter, plus the repositories they live in. Almost always the
-  // right place to start: a graph is nearly always one test sliced along one
-  // axis, and the series you want to add next is a sibling of the ones already
-  // on it. The repositories are part of it so the panel can actually show
-  // those siblings instead of whatever its own default happens to be.
+  // What the plotted series suggest the picker look at: what they have in common
+  // as a filter, plus the repositories they live in. Almost always the right
+  // place to start — a graph is nearly always one test sliced along one axis, so
+  // the series you want to add next is a sibling of the ones already on it — and
+  // the repositories are part of it so the panel can actually show those
+  // siblings instead of whatever its own default happens to be.
   //
   // Note the filter is the intersection over *one or more* series, not the
   // `splitCommonAttrs` version the series list renders — with a single series
   // plotted, that one series is exactly the context to search from.
   //
-  // The interval, subtest mode and sort are left unspecified: the panel's own
-  // defaults are the right answer, and leaving `matchSubtests` null is what
-  // lets a derived `test:` chip turn it on (see PickerState.seed).
-  private derivePickerView(): PickerViewState {
-    const sets = this.series.map((e) => attrsForEntry(e.ref, e.meta));
-    const chips = commonFilterChips(commonAttrs(sets));
-    const repos = [...new Set(this.seriesRefs.map((s) => s.repository))];
-    return {
-      ...EMPTY_PICKER_VIEW,
-      filter: chips.length > 0 ? { chips, text: '' } : EMPTY_FILTER,
-      // Empty means "nothing plotted to derive from", which is the panel's own
-      // default — not "check no repositories".
-      repos: repos.length > 0 ? repos : null,
-    };
-  }
-
-  // The last filter we derived, so we can tell an untouched prefill from one
-  // the user has edited. Not `$state`: nothing renders it.
-  private pickerFilterSeed: Filter | null = null;
+  // Derived rather than computed on open, because the panel's "Filter to graph"
+  // button reads it live: it has to become available the moment the metadata
+  // behind it lands, with the panel already open.
+  graphContext = $derived.by(
+    (): GraphContext => ({
+      filter: graphContextFilter(this.series.map((e) => attrsForEntry(e.ref, e.meta))),
+      repos: [...new Set(this.seriesRefs.map((s) => s.repository))],
+    }),
+  );
 
   setPickerOpen(open: boolean): void {
-    // Prefill on open, but never over the user's own work: we re-derive only
-    // when the filter is empty or is still exactly the prefill we last handed
-    // over. The second case is what keeps the prefill following the series
-    // list — add a series, reopen, and the filter reflects the new set — while
-    // a single edited chip pins it for good.
+    // Prefill on open, and only into a panel with no filter to show. That's the
+    // whole rule now: an active filter is never overwritten, whether it came
+    // from the user, from a link, or from an earlier prefill. The panel carries
+    // "Filter to graph" for asking again on purpose, which is what the guard
+    // this replaced was trying to guess — and guessed wrong for any filter it
+    // hadn't handed over itself, including the search that had just been used to
+    // find the series now on the graph. See docs/design.md.
     //
-    // The prefill replaces the whole view, so reopening an untouched panel also
-    // returns the interval, subtest mode and sort to their defaults. That's
-    // what a panel mounted fresh on every open did before any of this reached
-    // the URL, and it keeps "untouched" meaning one thing rather than five.
-    if (
-      open &&
-      (!isFilterActive(this.pickerView.filter) ||
-        (this.pickerFilterSeed !== null &&
-          sameFilter(this.pickerView.filter, this.pickerFilterSeed)))
-    ) {
-      const seed = this.derivePickerView();
-      this.pickerFilterSeed = seed.filter;
-      this.pickerView = seed;
+    // So the prefill fires on the first open of a fresh graph, and after Clear.
+    // The panel's interval and sort survive it: with the filter no longer
+    // standing for "the whole panel is untouched", resetting a time range the
+    // user picked would be a reset nobody asked for.
+    if (open && !isFilterActive(this.pickerView.filter)) {
+      const context = this.graphContext;
+      this.pickerView = {
+        ...this.pickerView,
+        filter: context.filter,
+        // Empty means "nothing plotted to derive from", which leaves whatever
+        // the panel already had — not "check no repositories".
+        repos: context.repos.length > 0 ? context.repos : this.pickerView.repos,
+      };
     }
     this.pickerOpen = open;
     this.syncUrl('push');

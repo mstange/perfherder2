@@ -1804,21 +1804,53 @@ describe('AppState picker prefill', () => {
     });
   });
 
-  it('re-derives an untouched prefill when the series change', () => {
+  it('leaves its own earlier prefill alone when the series change', () => {
     stubSummaries(TWO_BROWSERS);
     return withApp('?series=mozilla-central,1,1', async (app) => {
       await settle();
       app.setPickerOpen(true);
       expect(app.pickerView.filter.chips).toContainEqual({ field: 'application', value: 'chrome' });
-      // Adding a second series makes `application` differ, so it should drop
-      // out of the prefill on the next open rather than pinning the picker to
-      // a browser the set no longer shares.
+      // Adding a second series makes `application` differ, so the filter now
+      // says something the graph doesn't. It still stands: reopening never
+      // overwrites an active filter, whoever wrote it. `graphContext` is how the
+      // panel offers the new answer, and the user takes it by asking.
       app.setPickerOpen(false);
       app.addSeries([{ repository: 'mozilla-central', signatureId: 2, frameworkId: 1 }]);
       await settle();
       app.setPickerOpen(true);
-      expect(app.pickerView.filter.chips.some((c) => c.field === 'application')).toBe(false);
-      expect(app.pickerView.filter.chips).toContainEqual({ field: 'suite', value: 'speedometer3' });
+      expect(app.pickerView.filter.chips).toContainEqual({ field: 'application', value: 'chrome' });
+      expect(app.graphContext.filter.chips.some((c) => c.field === 'application')).toBe(false);
+      expect(app.graphContext.filter.chips).toContainEqual({
+        field: 'suite',
+        value: 'speedometer3',
+      });
+    });
+  });
+
+  it('prefills again after the filter is cleared', () => {
+    stubSummaries(TWO_BROWSERS);
+    return withApp('?series=mozilla-central,1,1', async (app) => {
+      await settle();
+      app.setPickerOpen(true);
+      app.setPickerOpen(false);
+      // What Clear leaves behind. An empty filter is the one state the prefill
+      // is allowed to write over, which is what makes Clear-then-reopen a way
+      // back to the graph's own context rather than a one-way trip.
+      app.setPickerView({ ...app.pickerView, filter: { chips: [], text: '' } });
+      app.setPickerOpen(true);
+      expect(app.pickerView.filter.chips).toContainEqual({ field: 'application', value: 'chrome' });
+    });
+  });
+
+  it('reports the graph context as pending while the metadata is in flight', () => {
+    stubSummaries(TWO_BROWSERS);
+    return withApp('?series=mozilla-central,1,1', (app) => {
+      // No `settle()`. The repo is known from the URL, so the panel can be
+      // pointed at it; the shared attributes are not, so there is no filter to
+      // offer yet. That pair is what tells the button to say "waiting" rather
+      // than "nothing on the graph".
+      expect(app.graphContext.repos).toEqual(['mozilla-central']);
+      expect(app.graphContext.filter.chips).toEqual([]);
     });
   });
 
@@ -1876,19 +1908,33 @@ describe('AppState picker prefill', () => {
     });
   });
 
-  it('resets an untouched panel to its defaults on reopen', () => {
+  it('keeps the interval the panel was left on', () => {
     stubSummaries(TWO_BROWSERS);
     return withApp('?series=mozilla-central,1,1', async (app) => {
       await settle();
       app.setPickerOpen(true);
       app.setPickerView({ ...app.pickerView, intervalSeconds: 7776000, sort: null });
       app.setPickerOpen(false);
-      // The filter is still the prefill, so the whole view is re-derived —
-      // the same thing a panel mounted fresh on every open used to do.
       app.setPickerOpen(true);
-      expect(app.pickerView.intervalSeconds).toBeNull();
+      // The prefill used to replace the whole view, resetting the time range on
+      // the grounds that an untouched filter meant an untouched panel. It no
+      // longer stands for that — it fires whenever the filter is empty — so a
+      // 90-day window the user chose has to survive a reopen.
+      expect(app.pickerView.intervalSeconds).toBe(7776000);
     });
   });
+
+  it('prefills into an empty-filtered panel without resetting its interval', () =>
+    withApp('', (app) => {
+      app.setPickerOpen(true);
+      app.setPickerView({ ...app.pickerView, intervalSeconds: 7776000 });
+      app.setPickerOpen(false);
+      // Nothing plotted, so the filter stays empty and the prefill fires on
+      // every open. It must still not be a way for the time range to reset
+      // itself repeatedly under a user who set it deliberately.
+      app.setPickerOpen(true);
+      expect(app.pickerView.intervalSeconds).toBe(7776000);
+    }));
 });
 
 describe('AppState picker URL state', () => {

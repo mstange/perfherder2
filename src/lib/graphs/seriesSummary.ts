@@ -7,7 +7,7 @@
 // every series shares into a single header and leaves each card with nothing
 // but its own distinguishing attributes.
 
-import type { FilterChip, FilterField } from '../picker/filter';
+import type { Filter, FilterChip, FilterField } from '../picker/filter';
 import type { SeriesMeta, SeriesRef } from './graphData';
 
 // The displayable attributes of one series, flattened.
@@ -271,6 +271,18 @@ export function commonFilterChips(common: SeriesAttrs): FilterChip[] {
   add('application', common.application);
   for (const option of common.options) add('option', option);
   return chips;
+}
+
+// The whole filter, not just its chips: the two places that apply it — the
+// prefill on open and the panel's "Filter to graph" button — both replace the
+// filter outright, free text included. Merging instead would be worse in both
+// directions: the text is usually the search that *found* the plotted series
+// and is spent once they're on the graph, and a leftover token silently
+// narrowing a filter whose chips claim to describe the graph is exactly the
+// "the box says one thing, the list shows another" failure docs/design.md warns
+// about for FilterInput.
+export function graphContextFilter(sets: readonly (SeriesAttrs | null)[]): Filter {
+  return { chips: commonFilterChips(commonAttrs(sets)), text: '' };
 }
 
 export const APP_NAME = 'Perfherder Graphs';

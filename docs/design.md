@@ -27,6 +27,7 @@ change is wrong for a reason the code doesn't show:
 | --- | --- |
 | A URL parameter | three sections that have to agree: "Architecture" below (`urlState.ts` owns the whole schema), graphs.md "URL state", comparison.md "URL state" |
 | `FilterInput.svelte`, or anything holding filter state | "The one component that owns state" — this has bitten us twice |
+| When the picker's filter gets written for the user | "Opening the picker prefills its filter" and "Taking the graph's filter, and clearing it" — deciding *when* to overwrite a filter by inspecting it has been wrong once already; the rule is now one `isFilterActive` check plus a button |
 | Markup with two adjacent badges | "Whitespace between adjacent badges (Svelte gotcha)" |
 | A color, anywhere | "Theming: one resolved attribute, one exception" — there are exactly two, and neither is new |
 | A button | "One button, defined once" |
@@ -78,8 +79,11 @@ import graph rather than assumed:
 
 - **Dependencies run feature → shared, and `graphs` → `picker` but never
   back.** The only two edges into the picker are `appState` and
-  `seriesSummary` reaching for `filter.ts`, which is the panel prefill (see
-  "Opening the picker prefills its filter"). There is exactly one edge the
+  `seriesSummary` reaching for `filter.ts`, which is the graph's context
+  reaching the panel — as a prefill on open and as its "Filter to graph"
+  button (see "Opening the picker prefills its filter"). The `GraphContext`
+  they meet over is declared in `urlState.ts` for exactly this reason:
+  either feature owning it would be an edge one way or the other. There is exactly one edge the
   wrong way: `shared/chart.ts` imports the `SeriesPoint` *type* from
   `graphs/graphData.ts`, because some of its helpers plot graph points while
   the rest (formatting, `padDomain`, `Range`) are generic and the details
@@ -663,16 +667,30 @@ share their suite, platform and options instead of on all 25,000.
 
 The rules that make this safe:
 
-- **Never over the user's own filter.** We re-derive only when the
-  filter is empty *or* still literally equal to the prefill we last
-  handed over (`sameFilter`, plus the remembered `pickerFilterSeed`).
-  So the prefill keeps following the series list — add a series, reopen,
-  and it reflects the new set — but one edited chip pins it for good.
-  The filter is the only field the test looks at, and the prefill
-  replaces the *whole* view when it fires: reopening an untouched panel
-  therefore also returns its interval, subtest mode and sort to their
-  defaults, which is what a panel mounted fresh on every open did before
-  any of this reached the URL. "Untouched" means one thing, not five.
+- **Only into a panel with no filter to show.** `isFilterActive` is the
+  whole guard: an active filter is never overwritten, whoever wrote it.
+  So the prefill fires on the first open of a fresh graph, and again
+  after Clear — and asking for the context at any other moment is a
+  button, not a guess (next section).
+
+  This replaced a guard that also re-derived a filter still *literally
+  equal* to the last prefill (`sameFilter` against a remembered
+  `pickerFilterSeed`), so that the prefill kept following the series
+  list while one edited chip pinned it. It was a provenance test done by
+  comparing content, and it could only recognise filters we had written
+  ourselves. Everything else it mistook for "the user's own work",
+  including the one filter that is *most* obviously spent: the search
+  someone typed on an empty graph to find the series they then added. It
+  pinned the panel to that search forever, and no reopen could recover.
+  Two more paths reached the same dead end — a filter that arrived in a
+  link (the seed is null after a load) and a reload of an untouched
+  prefill (the seed doesn't survive it).
+
+  The interval and sort now survive a firing prefill. They used to be
+  reset with it, on the grounds that an untouched filter stood for an
+  untouched panel; it no longer stands for that — it fires whenever the
+  filter is empty, including on a graph with nothing plotted — so a
+  90-day window the user chose has to outlive a reopen.
 - **The repository is a repo selection, not a chip.** The picker's
   checkbox row already *is* a repo filter, and it's what decides what
   gets fetched; a `repo:` chip would be a second mechanism that can't
@@ -704,6 +722,74 @@ The rules that make this safe:
 The prefill goes through the normal `pickerView` state, so it lands in the
 URL (`pc=` / `pr=` params) like anything else the panel shows and a shared
 link reopens on the same rows.
+
+### Taking the graph's filter, and clearing it
+
+Two buttons at the end of the filter row, and between them they replace
+everything the old prefill guard was trying to infer:
+
+- **Filter to graph** applies the same thing the prefill applies — what
+  the plotted series share — at any moment, on request. That is the
+  answer to every case an open-time guess gets wrong: a filter the user
+  typed, one that arrived in a link, one left over from finding the
+  series now on the graph, or a graph whose metadata landed after the
+  panel was already open.
+- **Clear** empties the chips and the free text together. The chips have
+  their own `×` for undoing one click; this is for eight chips and a
+  search you're done with. Clear plus a reopen is also the way back to
+  the graph's context, since an empty filter is what the prefill is
+  allowed to write into.
+
+What makes this cheap rather than another mechanism to keep in sync:
+
+- **One derivation, two consumers.** `AppState.graphContext` is a
+  `$derived` holding a `GraphContext` (`{ filter, repos }`); the prefill
+  reads it on open and the button reads it live. `graphContextFilter` in
+  `seriesSummary.ts` is where the filter comes from, so there is no
+  second definition of "what this graph is about" to drift.
+  `GraphContext` is declared in `urlState.ts` — not because it is URL
+  state, but because it is a contract between the two halves and that
+  module is already above both. Declaring it on either side would mean
+  the picker importing from `graphs/`, which the dependency rule in
+  "Architecture" forbids.
+- **`graphContextState` has four answers, not two** (`filter.ts`). Three
+  of them disable the button, and they disable it for reasons the user
+  can act on differently: `none` (nothing plotted), `pending` (plotted,
+  metadata still in flight — it will light up on its own), and `same`.
+  That last one is the most useful thing on the row: a disabled *because
+  your filter already is your graph's context* is the only place the
+  panel says the two agree. A single `disabled` boolean would have made
+  all three look like the same shrug.
+- **The button spells the filter out in its `title`**, chip by chip, as
+  `suite:x · platform:y`. It replaces the filter rather than adding to
+  it, so the text it is about to put in the box is the only honest
+  preview.
+- **Both stay mounted, with fixed labels.** Disabled is the only thing
+  that changes, so the row can't resize as series load or as the filter
+  changes — see "Layout stability".
+- **`applyGraphContext` is additive on repos and never subtractive.** It
+  checks a repo the graph needs (a plotted series in an unchecked repo
+  means a context filter that matches nothing — the same dead end as a
+  `test:` chip without `matchSubtests`) and gives an unpinned one a chip,
+  as `seed` does. It never unchecks: unchecking is how the user controls
+  what gets *fetched*, and this is a filter control. It carries the
+  `test:` chip nudge for the same reason `seed` does, and it leaves the
+  interval and sort alone — resetting a time range mid-session would be
+  a reset nobody asked for.
+- **Clear is the filter only.** Repos, interval and sort are the panel's
+  scope rather than its query, and an empty repo set in particular would
+  be a blank slate with no rows on it to look at. It doesn't touch
+  `matchSubtests` either: with no active filter that flag matches
+  nothing anyway, and switching it off would discard the fatter
+  subtests=1 data the panel already holds.
+
+Still missing, and worth knowing before you conclude the panel is done:
+a graph of *subtests* lands on collapsed parent rows. The context filter
+describes the parents too (they carry the same suite, platform and
+options), so they match on their own, and `matchSubtests` doesn't help —
+it only auto-expands parents that qualified *via* a child. What would fix
+it is expanding a parent that has a plotted child, which needs the
+subtests=1 data and so is its own change. See graphs-todo.md.
 
 ### The row's pick control: a verb, and it acts immediately
 

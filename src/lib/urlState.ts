@@ -64,6 +64,29 @@ export const EMPTY_PICKER_VIEW: PickerViewState = {
   sort: null,
 };
 
+// What the graph suggests the picker look at: the filter the plotted series
+// have in common, and the repositories they live in. Not URL state — it's
+// derived from the graph on every change — but it is a contract between the two
+// features, and this module is already the one that names both halves. Putting
+// it on either side would mean an import edge that docs/design.md rules out
+// (the picker must not reach into `graphs/`).
+//
+// Two consumers: the prefill that fires when the panel opens without a filter,
+// and the panel's own "Filter to graph" button. They apply the *same* thing, so
+// they read the same value rather than each deriving it.
+export type GraphContext = {
+  filter: Filter;
+  // Every repository with a plotted series, including ones whose metadata
+  // hasn't arrived — a repo is part of a series' identity, so it's known as
+  // soon as the URL is parsed, and it decides what the panel fetches.
+  repos: string[];
+};
+
+export const EMPTY_GRAPH_CONTEXT: GraphContext = {
+  filter: { chips: [], text: '' },
+  repos: [],
+};
+
 export type ViewState = {
   series: SeriesEntryState[];
   // Full range shown by the overview graph.

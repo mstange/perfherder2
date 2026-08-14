@@ -93,6 +93,7 @@
         onremove={handleRemove}
         onclose={() => app.setPickerOpen(false)}
         initialView={app.pickerView}
+        graphContext={app.graphContext}
         plotted={app.plottedColors}
         onviewchange={(v) => app.setPickerView(v)}
       />

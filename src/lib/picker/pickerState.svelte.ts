@@ -37,7 +37,7 @@ import {
   type SortColumn,
   type SortState,
 } from './filter';
-import type { PickerViewState } from '../urlState';
+import type { GraphContext, PickerViewState } from '../urlState';
 
 export type ExpansionOverride = 'user-open' | 'user-closed';
 
@@ -52,6 +52,15 @@ export const ACTIVITY_DEBOUNCE_MS = 150;
 // would mean writing to the cache during render, which isn't worth it for a
 // decoration; the cost is that scrolling far away and back refetches.
 const MAX_ACTIVITY_ENTRIES = 5000;
+
+// Whether this filter can only match anything with "Match inside subtests" on.
+// Parent rows carry no `test` of their own, so a `test:` chip matches nothing
+// unless the filter descends into subtests. Both places that install a filter
+// the *app* derived — `seed` on open and `applyGraphContext` on demand — check
+// this; a filter the user typed is left alone, since they can see the box.
+function needsSubtestMatching(filter: Filter): boolean {
+  return filter.chips.some((c) => c.field === 'test');
+}
 
 export class PickerState {
   // ---- User-visible controls --------------------------------------------
@@ -490,7 +499,7 @@ export class PickerState {
     this.sort = view.sort;
     if (view.matchSubtests !== null) {
       this.matchSubtests = view.matchSubtests;
-    } else if (view.filter.chips.some((c) => c.field === 'test')) {
+    } else if (needsSubtestMatching(view.filter)) {
       // Parent rows carry no `test` of their own, so a `test:` chip matches
       // nothing unless the filter descends into subtests — the same dead end
       // the `fromSubtest` nudge in `toggleFilterChip` exists to avoid. It's
@@ -506,6 +515,54 @@ export class PickerState {
       this.extraRepos = view.repos.filter((r) => !PINNED_REPOS.includes(r));
     }
     if (view.intervalSeconds !== null) this.timeRangeSeconds = view.intervalSeconds;
+  }
+
+  // "Filter to graph": replace the filter with what the plotted series share.
+  // The mid-session counterpart to the prefill `seed` applies on open, for the
+  // three cases the prefill can't reach — a filter the user typed themselves, a
+  // filter that arrived in a link, and a graph whose metadata landed after the
+  // panel was already open. Nothing here is remembered as "the app's idea", so
+  // it can't fight the user's next edit: the button is the whole mechanism, and
+  // it only ever acts when clicked.
+  applyGraphContext(context: GraphContext): void {
+    this.filter = context.filter;
+    // Same dead end as `seed`'s nudge, reached by a different door. A filter
+    // taken from subtest series that share their `test` carries a `test:` chip,
+    // and no parent row has a `test` of its own — so without this the button
+    // would empty the list it was meant to focus.
+    if (needsSubtestMatching(context.filter)) this.matchSubtests = true;
+    // Additive, and deliberately so: unchecking a repo is how the user narrows
+    // what gets *fetched*, and this button is about the filter. Checking one is
+    // still necessary — a plotted series in an unchecked repo means the context
+    // filter would match nothing, which is the same dead end as the `test:`
+    // chip above — but taking one away is never this button's business.
+    const missing = context.repos.filter((r) => !this.selectedRepos.has(r));
+    if (missing.length > 0) {
+      const next = new Set(this.selectedRepos);
+      for (const repo of missing) {
+        next.add(repo);
+        this.forgetFailures(repo);
+      }
+      this.selectedRepos = next;
+      // A repo outside the pinned four needs a chip, or it would be fetched and
+      // listed with nothing to explain where it came from — and no way back
+      // after unchecking it. Same reason `seed` builds `extraRepos`.
+      const unpinned = missing.filter(
+        (r) => !PINNED_REPOS.includes(r) && !this.extraRepos.includes(r),
+      );
+      if (unpinned.length > 0) this.extraRepos = [...this.extraRepos, ...unpinned];
+    }
+  }
+
+  // Back to a blank slate: every chip and the free text, in one action. The
+  // chips' own × buttons can do this one at a time, which is fine for undoing a
+  // click and tedious for eight chips and a search you no longer want.
+  //
+  // Only the filter. Repos, time range and sort are the panel's *scope* rather
+  // than its query: clearing them would refetch, and one of them (an empty repo
+  // set) would leave a panel with no rows at all to look at.
+  clearFilter(): void {
+    this.filter = EMPTY_FILTER;
   }
 
   // The counterpart to `seed`: everything the URL carries, resolved to the
@@ -528,16 +585,21 @@ export class PickerState {
     if (next.has(repo)) next.delete(repo);
     else {
       next.add(repo);
-      // Re-checking a repo is the retry: forget that its fetches failed so the
-      // effect will ask again. Without this, one transient failure leaves the
-      // repo permanently rowless for the life of the panel.
-      const failed = new Set(this.failedFetches);
-      for (const key of this.failedFetches) {
-        if (key.startsWith(`${repo}|`)) failed.delete(key);
-      }
-      this.failedFetches = failed;
+      this.forgetFailures(repo);
     }
     this.selectedRepos = next;
+  }
+
+  // Checking a repo is the retry: forget that its fetches failed so the effect
+  // will ask again. Without this, one transient failure leaves the repo
+  // permanently rowless for the life of the panel. Shared with
+  // `applyGraphContext`, which checks repos too and owes them the same retry.
+  private forgetFailures(repo: string): void {
+    const failed = new Set(this.failedFetches);
+    for (const key of this.failedFetches) {
+      if (key.startsWith(`${repo}|`)) failed.delete(key);
+    }
+    this.failedFetches = failed;
   }
 
   // Flip whichever state the row is currently showing. A single override

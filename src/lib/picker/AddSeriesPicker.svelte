@@ -3,9 +3,19 @@
   import { activityPath, activityTitle, maxBinCount } from './activity';
   import { type Series } from './series';
 import { TIME_RANGES } from './pickerOptions';
-  import { type FilterField, type SortColumn } from './filter';
+  import {
+    chipToString,
+    graphContextState,
+    type FilterField,
+    type SortColumn,
+  } from './filter';
   import { PickerState } from './pickerState.svelte';
-  import { EMPTY_PICKER_VIEW, type PickerViewState } from '../urlState';
+  import {
+    EMPTY_GRAPH_CONTEXT,
+    EMPTY_PICKER_VIEW,
+    type GraphContext,
+    type PickerViewState,
+  } from '../urlState';
   import FilterInput from './FilterInput.svelte';
 
   type Props = {
@@ -23,12 +33,26 @@ import { TIME_RANGES } from './pickerOptions';
     // so this is how its filter, repos, interval, subtest mode and sort
     // survive a reload.
     initialView?: PickerViewState;
+    // What the plotted series have in common, live. Not a seed and not the same
+    // thing as `initialView`, which is a snapshot taken on open: this one has to
+    // track the graph while the panel is open, because the "Filter to graph"
+    // button offers it at any moment — including after the metadata that decides
+    // what it says has finally arrived.
+    graphContext?: GraphContext;
     // Rows already on the graph: `${repository}|${signature id}` → the color
     // it's drawn in. Not a one-time seed like the above — see the effect below.
     plotted?: ReadonlyMap<string, string>;
     onviewchange?: (view: PickerViewState) => void;
   };
-  let { onadd, onremove, onclose, initialView, plotted, onviewchange }: Props = $props();
+  let {
+    onadd,
+    onremove,
+    onclose,
+    initialView,
+    graphContext = EMPTY_GRAPH_CONTEXT,
+    plotted,
+    onviewchange,
+  }: Props = $props();
 
   // All shared UI state lives on PickerState. This component is a thin
   // renderer over it. See pickerState.svelte.ts. Named `picker` (not
@@ -63,6 +87,28 @@ import { TIME_RANGES } from './pickerOptions';
   // `{@const}` in the markup: that tag has to be the immediate child of a
   // block, and the button sits in a plain <div>.
   const bulk = $derived(picker.bulkAction);
+
+  // "Filter to graph": what it can do, and what it says it will do. The chips
+  // are spelled out in full — `suite:speedometer3 · platform:…` — because this
+  // button replaces the filter rather than adding to it, and the exact text it
+  // is about to put in the box is the only honest preview of that.
+  const contextState = $derived(
+    graphContextState(picker.filter, graphContext.filter, graphContext.repos.length > 0),
+  );
+  const contextTitle = $derived.by(() => {
+    switch (contextState) {
+      case 'none':
+        return 'Nothing on the graph to take a filter from';
+      case 'pending':
+        return 'Waiting for the plotted series’ metadata';
+      case 'same':
+        return 'The filter already matches what the graph’s series share';
+      case 'apply':
+        return `Filter to what the graph’s series share: ${graphContext.filter.chips
+          .map(chipToString)
+          .join(' · ')}`;
+    }
+  });
 
   // ---- Virtual scrolling ------------------------------------------------
   // Broad filters can produce 25k rows; even one expanded parent adds a few
@@ -247,6 +293,28 @@ import { TIME_RANGES } from './pickerOptions';
           picker.filter = next;
         }}
       />
+      <!-- Both always mounted, both fixed-width labels: the row must not resize
+           as series load or as the filter changes. Disabled is the signal, and
+           for "Filter to graph" it carries information — disabled *because the
+           filter already is the graph's context* is the one place the panel says
+           the two agree. See docs/design.md, "Taking the graph's filter, and
+           clearing it". -->
+      <div class="filter-actions">
+        <button
+          type="button"
+          class="btn btn-compact"
+          disabled={contextState !== 'apply'}
+          title={contextTitle}
+          onclick={() => picker.applyGraphContext(graphContext)}>Filter to graph</button
+        >
+        <button
+          type="button"
+          class="btn btn-compact"
+          disabled={!picker.filterActive}
+          title="Clear every chip and the search text (keeps repos and time range)"
+          onclick={() => picker.clearFilter()}>Clear</button
+        >
+      </div>
       <div class="time-controls">
         <label class="inline-label" for="time-range-select">Time range</label>
         <select id="time-range-select" bind:value={picker.timeRangeSeconds}>
@@ -712,6 +780,15 @@ import { TIME_RANGES } from './pickerOptions';
     display: flex;
     align-items: center;
     gap: 10px;
+    padding-top: 4px;
+  }
+  /* `flex: none` so the filter input keeps the slack: these two labels are
+     fixed, and the box that grows should be the one holding the chips. */
+  .filter-actions {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: 6px;
     padding-top: 4px;
   }
   .inline-label {

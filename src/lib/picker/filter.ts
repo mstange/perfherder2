@@ -159,16 +159,45 @@ export function sameChip(a: FilterChip, b: FilterChip): boolean {
   return a.field === b.field && a.value === b.value;
 }
 
-// Literal equality: same text, same chips in the same order. Used to tell a
-// filter the app seeded from one the user has since edited (see
-// AppState.setPickerOpen), which is an identity question, not a semantic one —
-// reordering the same chips counts as an edit, and that's fine for the purpose.
+// Literal equality: same text, same chips in the same order. An identity
+// question, not a semantic one — reordering the same chips counts as different,
+// which is what its caller wants: `graphContextState` uses it to decide whether
+// applying the graph's context would *change* anything, and re-applying a
+// permutation is a no-op worth disabling.
 export function sameFilter(a: Filter, b: Filter): boolean {
   return (
     a.text === b.text &&
     a.chips.length === b.chips.length &&
     a.chips.every((chip, i) => sameChip(chip, b.chips[i]))
   );
+}
+
+// What the panel's "Filter to graph" control can do right now. Four answers,
+// because three of them disable the button for visibly different reasons and
+// the user is owed the right one:
+//
+// - `none`     nothing is plotted, so there is no context to take.
+// - `pending`  series are plotted but no metadata has arrived, so their shared
+//              attributes aren't known yet. Distinct from `none` because the
+//              button becomes live on its own once the fetches land, and a
+//              tooltip that said "nothing on the graph" would be a lie.
+// - `same`     the filter already *is* the context. Disabled, and the most
+//              useful of the four: it's the only place the panel says out loud
+//              that what you're looking at matches your graph.
+// - `apply`    the context differs from the filter. The button acts.
+//
+// Takes `hasSeries` rather than the whole context so this module keeps its
+// distance from the graphs half of the app: `GraphContext` is declared in
+// urlState.ts, which imports *from* here.
+export type GraphContextState = 'none' | 'pending' | 'same' | 'apply';
+
+export function graphContextState(
+  current: Filter,
+  context: Filter,
+  hasSeries: boolean,
+): GraphContextState {
+  if (!isFilterActive(context)) return hasSeries ? 'pending' : 'none';
+  return sameFilter(current, context) ? 'same' : 'apply';
 }
 
 export function hasChip(filter: Filter, chip: FilterChip): boolean {
