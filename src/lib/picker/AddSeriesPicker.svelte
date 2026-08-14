@@ -291,26 +291,33 @@ import { TIME_RANGES } from './pickerOptions';
     <div class="error">Failed to load metadata: {picker.metadataError}</div>
   {/if}
 
+  <!-- Two groups, one per thing the panel decides, each on one grid row:
+       what gets loaded, and what of it is shown. The label rail names the
+       group; the right rail holds that group's secondary controls. Which row
+       a control belongs on is not a matter of taste — `cacheKey` is
+       `repo | subtests | interval`, so repos and the time range are the fetch,
+       and everything else is a filter semantic. See docs/design.md, "The
+       control block is two groups: what loads, and what shows". -->
   <section class="controls">
-    <div class="control-row filter-row">
-      <span class="control-label">Filter</span>
-      <FilterInput
-        filter={picker.filter}
-        onchange={(next) => {
-          picker.filter = next;
-        }}
-      />
-      <!-- Both always mounted, both fixed-width labels: the row must not resize
-           as series load or as the filter changes. Disabled is the signal, and
-           for "Derive filter" it carries information — disabled *because the
-           filter is already the derived one* is the one place the panel says the
-           filter and the graph agree.
+    <span class="control-label">Filter</span>
+    <FilterInput
+      filter={picker.filter}
+      onchange={(next) => {
+        picker.filter = next;
+      }}
+    />
+    <div class="row-aside">
+      <!-- Both always mounted, both fixed-width labels: the rail must not
+           resize as series load or as the filter changes. Disabled is the
+           signal, and for "Derive filter" it carries information — disabled
+           *because the filter is already the derived one* is the one place the
+           panel says the filter and the graph agree.
 
            Fill it / empty it, on the same object: both labels take "filter" as
            their grammatical object, which is what keeps them from reading as
            actions on the *graph* in a dialog whose whole job is changing the
            graph. See docs/design.md, "Deriving the filter, and clearing it". -->
-      <div class="filter-actions">
+      <div class="aside-line">
         <button
           type="button"
           class="btn btn-compact"
@@ -326,44 +333,56 @@ import { TIME_RANGES } from './pickerOptions';
           onclick={() => picker.clearFilter()}>Clear filter</button
         >
       </div>
-      <div class="time-controls">
-        <label class="inline-label" for="time-range-select">Time range</label>
-        <select id="time-range-select" bind:value={picker.timeRangeSeconds}>
+      <!-- On the filter's row, not the loading one, because that is what it
+           is: whether the filter descends into subtests. It only *implies* a
+           fatter fetch. See docs/design.md, "'Match inside subtests' is a
+           filter semantic; fetching is separate". -->
+      <label class="toggle">
+        <input type="checkbox" bind:checked={picker.matchSubtests} />
+        Match inside subtests
+      </label>
+    </div>
+
+    <span class="control-label">Load from</span>
+    <div class="chips">
+      {#each picker.repoChips as repo}
+        {@const count = picker.countForRepoChip(repo)}
+        <label class="chip" class:chip-on={picker.selectedRepos.has(repo)}>
+          <input
+            type="checkbox"
+            checked={picker.selectedRepos.has(repo)}
+            onchange={() => picker.toggleRepo(repo)}
+          />
+          <span class="chip-name">{repo}</span>
+          <span
+            class="chip-count"
+            class:chip-count-dim={!picker.selectedRepos.has(repo)}
+          >
+            {#if count === 'loading'}…{:else if typeof count === 'number'}{count.toLocaleString()}{:else}&nbsp;{/if}
+          </span>
+        </label>
+      {/each}
+    </div>
+    <div class="row-aside">
+      <!-- "last" completes the row's sentence — *load from* these repos, last
+           14 days — rather than being a second label in the style of the rail's.
+           It is decorative for that reason, and the select carries the real
+           name for assistive technology. -->
+      <div class="aside-line">
+        <span class="aside-word" aria-hidden="true">last</span>
+        <select aria-label="Time range" bind:value={picker.timeRangeSeconds}>
           {#each TIME_RANGES as tr}
             <option value={tr.value}>{tr.label}</option>
           {/each}
         </select>
-        <label class="toggle">
-          <input type="checkbox" bind:checked={picker.matchSubtests} />
-          Match inside subtests
-        </label>
-      </div>
-    </div>
-
-    <div class="control-row">
-      <span class="control-label">Repos</span>
-      <div class="chips">
-        {#each picker.repoChips as repo}
-          {@const count = picker.countForRepoChip(repo)}
-          <label class="chip" class:chip-on={picker.selectedRepos.has(repo)}>
-            <input
-              type="checkbox"
-              checked={picker.selectedRepos.has(repo)}
-              onchange={() => picker.toggleRepo(repo)}
-            />
-            <span class="chip-name">{repo}</span>
-            <span
-              class="chip-count"
-              class:chip-count-dim={!picker.selectedRepos.has(repo)}
-            >
-              {#if count === 'loading'}…{:else if typeof count === 'number'}{count.toLocaleString()}{:else}&nbsp;{/if}
-            </span>
-          </label>
-        {/each}
       </div>
     </div>
   </section>
 
+  <!-- The status row counts the rows below it and acts on them in bulk, so it
+       belongs to the list, not to the controls: it sits in the same box, one
+       small gap away, rather than floating equidistant between the two. -->
+  <div class="list">
   <!-- Both buttons stay mounted even when they have nothing to act on, so the
        status row's height never changes. Disabled is the visual signal.
        Nothing here commits anything any more — rows land on the graph as they
@@ -718,6 +737,7 @@ import { TIME_RANGES } from './pickerOptions';
       </tbody>
     </table>
   </div>
+  </div>
 </div>
 
 <style>
@@ -766,54 +786,57 @@ import { TIME_RANGES } from './pickerOptions';
     border-radius: 3px;
     font-size: 12px;
   }
+  /* Three columns — label rail, the group's main control, the group's
+     secondary controls — and one grid row per group. A grid rather than two
+     flex rows because the rails then line up by construction: the previous
+     version got there with a `min-width` on each label plus two different
+     hand-tuned `padding-top`s, which is three numbers that have to be
+     re-measured every time a font or a control changes.
+
+     `align-items: baseline` finishes the job: the rail's text, the first chip
+     in the filter box and the first button in the aside all sit on one
+     baseline, at whatever height the row turns out to be — and the filter box
+     is 1 to 4 lines tall depending on how many chips are in it. */
   .controls {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: baseline;
+    /* The row gap has to beat the aside's own gap by enough that the second
+       line of a right rail is unambiguously part of the group above it and
+       not the one below — that is the only place the grouping could be
+       misread, since everything else is anchored to a label. Roughly 3:1. */
+    gap: 18px 12px;
     padding: 12px;
     background: var(--bg-subtle);
     border: 1px solid var(--border-default);
     border-radius: 6px;
   }
-  .control-row {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    flex-wrap: wrap;
-  }
-  .filter-row {
-    align-items: flex-start;
-  }
-  .filter-row .control-label {
-    padding-top: 8px;
-  }
-  .time-controls {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding-top: 4px;
-  }
-  /* `flex: none` so the filter input keeps the slack: these two labels are
-     fixed, and the box that grows should be the one holding the chips. */
-  .filter-actions {
+  /* The right rail: a group's secondary controls, stacked, sharing a left
+     edge with the rail above them. `flex: none` on the column keeps the slack
+     with the filter box and the chips, which are the things worth growing. */
+  .row-aside {
     display: flex;
     flex: none;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+  .aside-line {
+    display: flex;
     align-items: center;
     gap: 6px;
-    padding-top: 4px;
   }
-  .inline-label {
+  /* Deliberately not `.control-label`: a lowercase word finishing a sentence,
+     not a second thing claiming to name a group. */
+  .aside-word {
     color: var(--fg-muted);
-    font-size: 12px;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
   }
   .control-label {
-    min-width: 80px;
     color: var(--fg-muted);
     font-size: 12px;
     text-transform: uppercase;
     letter-spacing: 0.04em;
+    white-space: nowrap;
   }
   .chips {
     display: flex;
@@ -861,11 +884,22 @@ import { TIME_RANGES } from './pickerOptions';
     border-radius: 6px;
     background: var(--bg-canvas);
   }
+  /* The list and the line that describes it. A flex column so the scroller
+     inside keeps absorbing the leftover height: `flex: 1` + `min-height: 0`
+     has to be repeated at every level of the chain, or the innermost item
+     sizes to its (25k-row) content and the whole panel scrolls instead. */
+  .list {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    flex-direction: column;
+    gap: 6px;
+  }
   .status {
     display: flex;
     align-items: center;
     gap: 12px;
-    padding: 6px 4px;
+    padding: 0 4px;
   }
   .plotted-count {
     font-weight: 600;

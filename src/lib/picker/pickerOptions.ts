@@ -1,6 +1,8 @@
-// What the Add-series panel offers in its two fixed control groups. Neither is
-// discovered from the API: both are choices Perfherder's own Graphs view makes,
-// and we match them so a user coming from there finds the same options.
+// The two controls on the Add-series panel's "Load from" row — which is one
+// row precisely because these are the fetch (`cacheKey` is
+// `repo | subtests | interval`). Neither list is discovered from the API: both
+// are choices Perfherder's own Graphs view makes, and we match them so a user
+// coming from there finds the same options.
 //
 // Separate from signaturesApi.ts because they are neither transport nor
 // schema — urlState.ts validates an interval from a link against `TIME_RANGES`

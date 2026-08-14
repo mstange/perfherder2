@@ -28,6 +28,7 @@ change is wrong for a reason the code doesn't show:
 | A URL parameter | three sections that have to agree: "Architecture" below (`urlState.ts` owns the whole schema), graphs.md "URL state", comparison.md "URL state" |
 | `FilterInput.svelte`, or anything holding filter state | "The one component that owns state" — this has bitten us twice |
 | When the picker's filter gets written for the user | "Opening the picker prefills its filter" and "Deriving the filter, and clearing it" — deciding *when* to overwrite a filter by inspecting it has been wrong once already; the rule is now one `isFilterActive` check plus a button |
+| Adding a control above the picker's list | "The control block is two groups: what loads, and what shows" — which row it goes on follows from `cacheKey`, and the last arrangement that was decided by eye put two controls in each other's group |
 | Markup with two adjacent badges | "Whitespace between adjacent badges (Svelte gotcha)" |
 | A color, anywhere | "Theming: one resolved attribute, one exception" — there are exactly two, and neither is new |
 | A button | "One button, defined once" |
@@ -723,9 +724,69 @@ The prefill goes through the normal `pickerView` state, so it lands in the
 URL (`pc=` / `pr=` params) like anything else the panel shows and a shared
 link reopens on the same rows.
 
+### The control block is two groups: what loads, and what shows
+
+Everything above the list is one CSS grid with three columns — a label
+rail, the group's main control, and a right rail for that group's
+secondary controls — and exactly one row per group:
+
+```
+FILTER      [ chips + free text ................. ]   [Derive filter] [Clear filter]
+                                                      ☑ Match inside subtests
+LOAD FROM   [☑ autoland 11,923] [mozilla-central] …   last [14 days ▾]
+```
+
+**Which row a control goes on is decided by `cacheKey`, not by taste.**
+It is `repo | subtests | interval` (see "Cache key"), so the repos and
+the time range *are* the fetch: change either and a request goes out and
+the list is rebuilt from a different set of signatures. Everything else
+narrows what is already loaded. That is the line the two rows draw, and
+it is why the block used to look arbitrary: the time range sat inside the
+row labelled `FILTER`, and `Match inside subtests` — a pure filter
+semantic, see its own section — sat past it, at the far end of the panel
+from the box it modifies. Each control was in the other one's group.
+
+`Match inside subtests` is the one control the rule doesn't place by
+itself, since turning it on can trigger a subtests=1 fetch. It goes with
+the filter anyway: what it *means* is whether the filter descends, and
+the fetch is derived from that (`needSubtestsFetch`), not the other way
+round.
+
+- **A grid, so the rails line up by construction.** The previous version
+  was two flex rows that lined up because each label carried
+  `min-width: 80px` and the taller row's label carried a `padding-top: 8px`
+  to fake first-line alignment, with a second, different `padding-top: 4px`
+  on the controls at the other end. Three measured numbers, all of them
+  facts about one screenshot: reword a label, change a font size, and
+  they are quietly wrong.
+- **`align-items: baseline` does the vertical alignment.** The rail's
+  text, the first chip in the filter box and the first button in the
+  right rail sit on one baseline at whatever height the row turns out to
+  be — and that height genuinely varies, since the filter box is one to
+  four lines tall depending on how many chips are in it. This is
+  "Layout stability"'s prefer-stacking-to-measuring rule applied to
+  alignment: let the browser find the number.
+- **The row gap beats the right rail's own gap about 3:1** (18px vs 6px).
+  A rail's second line is the only thing in the block not anchored to a
+  label, so it is the only thing whose group could be misread; the
+  spacing is what settles it.
+- **"last" is lowercase and `aria-hidden`.** It finishes the row's
+  sentence — *load from these repos, last 14 days* — rather than being a
+  second thing in the rail's uppercase style claiming to name a group,
+  which is what the old `TIME RANGE` inline label did. The `<select>`
+  carries `aria-label="Time range"`, so the accessible name is the real
+  one.
+- **The status row belongs to the list.** It counts the rows below it and
+  acts on them in bulk, so it sits in the same flex column as the
+  scroller, 6px above it, rather than floating equidistant between the
+  controls and the table the way it did (12px each way — visibly a member
+  of neither). That wrapper repeats `flex: 1; min-height: 0`, which every
+  level of the chain has to carry; see "The Add-series dialog has exactly
+  one scroller".
+
 ### Deriving the filter, and clearing it
 
-Two buttons at the end of the filter row, and between them they replace
+Two buttons in the filter row's right rail, and between them they replace
 everything the old prefill guard was trying to infer:
 
 - **Derive filter** applies the same thing the prefill applies — what the
