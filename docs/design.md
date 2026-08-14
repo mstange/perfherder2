@@ -35,7 +35,7 @@ change is wrong for a reason the code doesn't show:
 | A hover explanation | "Tooltips: for what the canvas paints". Ordinary controls use `title`; the drawn box is for the marks in the graph's canvas, which have no element to hang one on |
 | A percentage or a delta in the details pane | graphs.md, "The three change cards say it the same way" — one component draws all three headlines, and the sign is the measurement's, never the verdict's |
 | Anything that renders before its data arrives | "Layout stability" |
-| A fetch, or a new endpoint | "Validating API responses"; plus "Cache key" if the result is cached |
+| A fetch, or a new endpoint | "Validating API responses"; plus "Cache key" if the result is cached, and "The picker's caches live at module scope" if it is the picker doing the fetching — a cache on `PickerState` does not survive the panel closing |
 | A treeherder *list* endpoint | its default page is 10 rows and truncation is silent — a partial answer is shaped exactly like a complete one. comparison.md, "The inline pushlog", and the `getCommonAlerts` note in graphs-todo.md |
 | How a row is identified | "Row identity: `Series.key`, composed at construction" |
 | A loading or empty state for subtests | "`has_subtests` is a claim, not a promise" — `has_subtests` does not mean a subtests=1 fetch will return any |
@@ -117,6 +117,12 @@ import graph rather than assumed:
 - [src/lib/picker/pickerOptions.ts](../src/lib/picker/pickerOptions.ts) — the repo and
   time-range choices the panel offers. Neither is discovered from the API;
   both mirror Perfherder's own Graphs view.
+- [src/lib/picker/fetchStore.ts](../src/lib/picker/fetchStore.ts) — **pure logic**.
+  A keyed cache with a TTL, a bound and in-flight dedupe. Exists because the
+  picker is unmounted every time the panel closes, so a cache on
+  `PickerState` doesn't survive it; the instances are module scope in
+  `pickerState.svelte.ts`. Unit-tested. See "The picker's caches live at
+  module scope, because the picker doesn't".
 - [src/lib/graphs/reorder.ts](../src/lib/graphs/reorder.ts) — **pure logic**. Drag
   geometry for the series list: drop index, per-card offsets, auto-scroll
   ramp. Unit-tested.
@@ -210,6 +216,70 @@ subtests=1 cache if loaded; fall back to subtests=0.** This is safe because
 a subtests=1 fetch is a strict superset of subtests=0 — the top-level rows
 are identical in both. Do not break this invariant without also revisiting
 the disclosure UX.
+
+### The picker's caches live at module scope, because the picker doesn't
+
+`AddSeriesPicker` is mounted inside `{#if app.pickerOpen}` (App.svelte),
+so `PickerState` — and every cache declared as a field on it — is
+constructed when the panel opens and thrown away when it closes. Closing
+and reopening therefore refetched the entire signature list. Measured
+against production: **1622 ms and three requests on the first open, 2 ms
+and none on the second.**
+
+Nothing else was going to cover it. The request URL is *stable* — the
+rolling window is expressed as `interval=1209600`, a duration the server
+resolves against its own clock, so the same bytes are asked for every
+time — but the endpoint sends no `cache-control`, no `etag` and no
+`last-modified`, so the browser has nothing to revalidate against and
+nothing to compute heuristic freshness from.
+
+So the caches are module-scope `FetchStore`s
+([fetchStore.ts](../src/lib/picker/fetchStore.ts)), owned by
+`pickerState.svelte.ts` and shared by every opening of the panel. The
+store does three things, and the panel needs all three:
+
+- **A TTL** (`SIGNATURES_TTL_MS`, 10 minutes). That the URL is a duration
+  cuts both ways: a cached answer is never wrong, only increasingly
+  behind. Ten minutes is deliberately shorter than the data's real rate
+  of change — new signatures appear over hours — because the person most
+  likely to be hurt is the one chasing a regression that landed this
+  morning. Dated from when the fetch *started*, the conservative end.
+- **A bound** (`MAX_SIGNATURE_ENTRIES`, 6). One subtests=1 entry is tens
+  of thousands of `Series`, and the key space is repo × subtests ×
+  interval. Same eviction discipline as the activity cache: insertion
+  order, least recently fetched.
+- **In-flight dedupe.** Close and reopen the panel while the first fetch
+  is running and the second `PickerState` would otherwise start the same
+  multi-megabyte download again — the case the cache exists for, and the
+  one where a miss costs most.
+
+Two things about wiring it up that are easy to get wrong:
+
+- **Priming is synchronous, and it happens in `seed`.** Not in the
+  constructor, because the keys aren't known until `seed` has run — the
+  repos, the interval and `matchSubtests` all arrive with it. And not via
+  `loadRepo`, which would land the rows a microtask later: the fetch
+  effect runs in between, sees an empty cache, and the panel renders a
+  screen of skeleton over data it is already holding. `metadataReady` is
+  taken the same way and for the same reason — it *gates* the fetch
+  effect, so a microtask of `false` is a microtask in which the primed
+  signature cache goes unread.
+- **A rejection is not cached.** `PickerState.failedFetches` decides
+  whether a failure is worth retrying (it says no until the repo is
+  re-checked), and a store that remembered failures would take that
+  decision away from it.
+
+Deliberately **not** moved: the run-activity cache. Its values go stale
+much faster — a run count over a rolling window changes on every push —
+and the pop-in it causes on reopen is one small batched request, not a
+multi-megabyte one.
+
+The flip side of module scope is that one test's fetch answers the next
+one's, so `pickerState.test.svelte.ts` calls `resetPickerCaches()` in
+`beforeEach`. Its `settle()` helper also had to stop counting microtask
+hops and drain to a macrotask instead: routing fetches through the store
+added two `.then`s, and a hop-counting helper failed fourteen tests for a
+reason no reader would have connected to the change.
 
 ### Row identity: `Series.key`, composed at construction
 

@@ -17,6 +17,7 @@ import {
 } from './activity';
 import { fetchActivityData } from './activityApi';
 import { buildOptionMap, fetchFrameworks, fetchOptionCollections, fetchSignatures } from './signaturesApi';
+import { FetchStore } from './fetchStore';
 import { type Series, toSeries } from './series';
 import { DEFAULT_REPOS, PINNED_REPOS } from './pickerOptions';
 import {
@@ -52,6 +53,44 @@ export const ACTIVITY_DEBOUNCE_MS = 150;
 // would mean writing to the cache during render, which isn't worth it for a
 // decoration; the cost is that scrolling far away and back refetches.
 const MAX_ACTIVITY_ENTRIES = 5000;
+
+// ---- Caches that outlive the panel ----------------------------------------
+// Everything below is module scope on purpose; see fetchStore.ts for why a
+// field on PickerState is the wrong place for a cache in a component that is
+// unmounted every time the user closes the dialog.
+
+// Ten minutes. The signature list moves when a test first reports or when an
+// old one ages out of the rolling window, which happens on the order of hours
+// — but an engineer chasing a regression that landed this morning is exactly
+// the person who wants a signature that started reporting an hour ago, so this
+// is deliberately shorter than the data's real rate of change. The cost of
+// being wrong is one refetch of something we already had.
+export const SIGNATURES_TTL_MS = 10 * 60_000;
+// Enough for the two default repos across a subtests toggle, plus one change
+// of mind about the time range. Kept small because each entry is a whole
+// repo's signature list.
+export const MAX_SIGNATURE_ENTRIES = 6;
+
+const signatureStore = new FetchStore<Series[]>(SIGNATURES_TTL_MS, MAX_SIGNATURE_ENTRIES);
+
+// The framework and option-collection tables: two small requests that gate
+// every repo fetch behind them (`metadataReady`), so leaving them uncached
+// costs a round trip of waterfall on every single open. No expiry — a new
+// framework or option collection appears a few times a year, and a reload
+// picks it up.
+type PickerMetadata = {
+  frameworkMap: Map<number, string>;
+  optionMap: Map<string, string[]>;
+};
+const METADATA_KEY = 'metadata';
+const metadataStore = new FetchStore<PickerMetadata>(Infinity, 1);
+
+// Test seam: module-scope caches are shared by every test in a file the same
+// way they are shared by every opening of the panel.
+export function resetPickerCaches(): void {
+  signatureStore.reset();
+  metadataStore.reset();
+}
 
 // Whether this filter can only match anything with "Match inside subtests" on.
 // Parent rows carry no `test` of their own, so a `test:` chip matches nothing
@@ -254,7 +293,15 @@ export class PickerState {
     // Load framework + option-collection maps once. Must happen before any
     // repo fetch — the effect below waits on `metadataReady` — because
     // `toSeries` needs both maps to enrich signatures.
-    void this.loadMetadata();
+    //
+    // Taken synchronously when they're already cached, rather than awaiting a
+    // resolved promise: `metadataReady` gates the fetch effect, so a microtask
+    // of `false` on a reopen is a microtask in which the effect declines to
+    // look at the signature cache, and the panel shows skeleton rows over data
+    // it already has.
+    const cached = metadataStore.peek(METADATA_KEY, Date.now());
+    if (cached) this.applyMetadata(cached);
+    else void this.loadMetadata();
 
     // Fetch missing (repo, needSubtestsFetch, interval) tuples.
     $effect(() => {
@@ -281,15 +328,26 @@ export class PickerState {
     });
   }
 
+  private applyMetadata(meta: PickerMetadata): void {
+    this.frameworkMap = meta.frameworkMap;
+    this.optionMap = meta.optionMap;
+    this.metadataReady = true;
+  }
+
   private async loadMetadata(): Promise<void> {
     try {
-      const [frameworks, ocs] = await Promise.all([
-        fetchFrameworks(),
-        fetchOptionCollections(),
-      ]);
-      this.frameworkMap = new Map(frameworks.map((f) => [f.id, f.name]));
-      this.optionMap = buildOptionMap(ocs);
-      this.metadataReady = true;
+      this.applyMetadata(
+        await metadataStore.load(METADATA_KEY, Date.now(), async () => {
+          const [frameworks, ocs] = await Promise.all([
+            fetchFrameworks(),
+            fetchOptionCollections(),
+          ]);
+          return {
+            frameworkMap: new Map(frameworks.map((f) => [f.id, f.name])),
+            optionMap: buildOptionMap(ocs),
+          };
+        }),
+      );
     } catch (e) {
       this.metadataError = (e as Error).message;
     }
@@ -305,8 +363,15 @@ export class PickerState {
     next.add(key);
     this.loadingRepos = next;
     try {
-      const raw = await fetchSignatures(repo, interval, sub);
-      const series = toSeries(raw, repo, this.frameworkMap, this.optionMap);
+      // Through the store, so a key that went cold mid-session — the user
+      // toggling "Match inside subtests", or coming back to a time range they
+      // had already looked at — is answered without a request, and so a fetch
+      // still running from a previous opening of the panel is joined rather
+      // than started again.
+      const series = await signatureStore.load(key, Date.now(), async () => {
+        const raw = await fetchSignatures(repo, interval, sub);
+        return toSeries(raw, repo, this.frameworkMap, this.optionMap);
+      });
       const cache = new Map(this.seriesCache);
       cache.set(key, series);
       this.seriesCache = cache;
@@ -515,6 +580,37 @@ export class PickerState {
       this.extraRepos = view.repos.filter((r) => !PINNED_REPOS.includes(r));
     }
     if (view.intervalSeconds !== null) this.timeRangeSeconds = view.intervalSeconds;
+    this.primeFromCache();
+  }
+
+  // Take whatever a previous opening of the panel already fetched, for the
+  // repos and interval this one is opening on.
+  //
+  // Here rather than in the constructor because the keys aren't known until
+  // `seed` has run — the repos, the interval and `matchSubtests` all arrive
+  // with it. And synchronously rather than through `loadRepo`, which would put
+  // the rows in a microtask later: the fetch effect runs in between, sees an
+  // empty cache, and the panel renders a screen of skeleton rows over data it
+  // is already holding.
+  //
+  // Only the opening case needs this. A key that goes cold mid-session is
+  // handled by `loadRepo` going through the same store, at the cost of one
+  // frame of "Loading…" in the status row.
+  private primeFromCache(): void {
+    const now = Date.now();
+    const cache = new Map(this.seriesCache);
+    for (const repo of this.selectedRepos) {
+      // Both, not just the one `needSubtestsFetch` asks for: the subtests=0
+      // list is what `pickCachedForRepo` falls back to, so having it means a
+      // panel opening straight into "Match inside subtests" shows its rows
+      // while the fatter fetch runs, instead of skeletons.
+      for (const sub of [false, true]) {
+        const key = cacheKey(repo, sub, this.timeRangeSeconds);
+        const rows = signatureStore.peek(key, now);
+        if (rows) cache.set(key, rows);
+      }
+    }
+    this.seriesCache = cache;
   }
 
   // "Derive filter": replace the filter with what the plotted series share.

@@ -16,7 +16,12 @@ import { MAX_IDS_PER_REQUEST } from './activity';
 import { type Series } from './series';
 import { DEFAULT_REPOS, PINNED_REPOS } from './pickerOptions';
 import type { FilterChip } from './filter';
-import { ACTIVITY_DEBOUNCE_MS, PickerState } from './pickerState.svelte';
+import {
+  ACTIVITY_DEBOUNCE_MS,
+  PickerState,
+  SIGNATURES_TTL_MS,
+  resetPickerCaches,
+} from './pickerState.svelte';
 import { EMPTY_PICKER_VIEW, type GraphContext, type PickerViewState } from '../urlState';
 
 let fetchMock: ReturnType<typeof vi.fn>;
@@ -29,6 +34,18 @@ let activityData: Record<string, unknown> = {};
 // Every /performance/data/ URL the picker asked for, in order — the batching
 // assertions are all about how many of these there are and what's in them.
 let activityUrls: string[] = [];
+// When set, signature responses wait on it before resolving. The seam for
+// tests about what happens while a fetch is still in flight — the panel being
+// closed and reopened mid-download, in particular.
+let signaturesGate: Promise<void> | null = null;
+
+function gate() {
+  let open!: () => void;
+  const promise = new Promise<void>((resolve) => {
+    open = resolve;
+  });
+  return { promise, open };
+}
 
 function json(body: unknown) {
   return { ok: true, status: 200, json: () => Promise.resolve(body) } as Response;
@@ -48,9 +65,15 @@ function signature(id: number, o: Record<string, unknown> = {}) {
 }
 
 beforeEach(() => {
+  // The signature and metadata caches are module scope — they have to be, or
+  // they'd die with the panel (see fetchStore.ts). That means one test's fetch
+  // answers the next one's, and a test asserting "this fetched" would pass or
+  // fail on file order.
+  resetPickerCaches();
   signatures = {};
   activityData = {};
   activityUrls = [];
+  signaturesGate = null;
   fetchMock = vi.fn(async (url: string) => {
     const s = String(url);
     if (s.includes('/performance/framework/')) return json([{ id: 13, name: 'browsertime' }]);
@@ -62,6 +85,7 @@ beforeEach(() => {
       return json(activityData);
     }
     // The signatures payload; an empty map is a valid response.
+    if (signaturesGate) await signaturesGate;
     return json(signatures);
   });
   vi.stubGlobal('fetch', fetchMock);
@@ -97,9 +121,20 @@ function withPicker(
   return Promise.resolve(fn(picker)).finally(dispose);
 }
 
+// Five rounds of "let everything pending finish, then let the effects react".
+// One round covers a generation — an effect fires a fetch, the fetch lands, the
+// effect reacts to what it wrote — and nothing here is more than a couple of
+// generations deep.
+//
+// The boundary is a macrotask, not `await Promise.resolve()`. That drains the
+// whole microtask queue instead of advancing it a single hop, so the helper
+// doesn't silently depend on how many `.then`s deep the code under test is:
+// routing the fetches through `FetchStore` added two, and a hop-counting
+// version of this failed fourteen tests for no reason a reader would connect
+// to the change.
 async function settle() {
   for (let i = 0; i < 5; i++) {
-    await Promise.resolve();
+    await new Promise((r) => setTimeout(r, 0));
     flushSync();
   }
 }
@@ -408,6 +443,107 @@ describe('PickerState.view', () => {
         });
       },
     ));
+});
+
+// Closing the panel destroys PickerState, so a second one here is a second
+// opening of the dialog. What it must not do is fetch the same signature list
+// again — see fetchStore.ts.
+describe('PickerState reopening the panel', () => {
+  const reopen = (seed: (p: PickerState) => void, fn: (p: PickerState) => void | Promise<void>) =>
+    withPicker(seed, async () => {
+      await settle();
+      return withPicker(seed, fn);
+    });
+
+  it('serves the second opening from cache, with no second request', () =>
+    reopen(
+      (p) => p.seed(view({ repos: ['autoland'] })),
+      async () => {
+        await settle();
+        expect(signatureRepos()).toEqual(['autoland']);
+      },
+    ));
+
+  it('has its rows on the first render, without a frame of skeleton', () => {
+    signatures = { '1': signature(1) };
+    return reopen(
+      (p) => p.seed(view({ repos: ['autoland'] })),
+      (p) => {
+        // No `settle()`: this is what the very first render sees. Anything
+        // asynchronous about the priming would show the loading state over
+        // rows we are already holding.
+        expect(p.listStatus).toBe('rows');
+        expect(p.filteredParents).toHaveLength(1);
+      },
+    );
+  });
+
+  it('fetches again once the cached list has gone stale', () =>
+    reopen(
+      (p) => p.seed(view({ repos: ['autoland'] })),
+      async () => {
+        vi.setSystemTime(Date.now() + SIGNATURES_TTL_MS + 1);
+        try {
+          await withPicker(
+            (p) => p.seed(view({ repos: ['autoland'] })),
+            async () => {
+              await settle();
+              expect(signatureRepos()).toEqual(['autoland', 'autoland']);
+            },
+          );
+        } finally {
+          vi.useRealTimers();
+        }
+      },
+    ));
+
+  it('fetches the metadata once across both openings', () =>
+    reopen(
+      (p) => p.seed(view({ repos: ['autoland'] })),
+      async (p) => {
+        // And synchronously, so `metadataReady` never goes back to false —
+        // the fetch effect is gated on it, and a microtask of `false` is a
+        // microtask in which the primed signature cache goes unread.
+        expect(p.metadataReady).toBe(true);
+        await settle();
+        const urls = fetchMock.mock.calls.map((c) => String(c[0]));
+        expect(urls.filter((u) => u.includes('/performance/framework/'))).toHaveLength(1);
+        expect(urls.filter((u) => u.includes('/optioncollectionhash/'))).toHaveLength(1);
+      },
+    ));
+
+  it('joins a fetch still in flight rather than starting it over', async () => {
+    // The panel closed and reopened before the first response landed. Without
+    // in-flight dedupe this is two multi-megabyte downloads of one list — the
+    // case the cache exists for, and the one where a miss costs most.
+    signatures = { '1': signature(1) };
+    const held = gate();
+    signaturesGate = held.promise;
+
+    const dispose = $effect.root(() => {
+      const p = new PickerState();
+      p.seed(view({ repos: ['autoland'] }));
+    });
+    flushSync();
+    // Far enough for the metadata to land and the request to have gone out —
+    // without this the first panel closes before it ever asks for anything,
+    // and the test passes without touching the behaviour it names.
+    await settle();
+    expect(signatureRepos()).toEqual(['autoland']);
+    dispose();
+
+    await withPicker(
+      (p) => p.seed(view({ repos: ['autoland'] })),
+      async (p) => {
+        held.open();
+        await settle();
+        expect(signatureRepos()).toEqual(['autoland']);
+        // And the reopened panel gets the rows, rather than joining a promise
+        // whose result went to the picker that started it.
+        expect(p.listStatus).toBe('rows');
+      },
+    );
+  });
 });
 
 describe('PickerState.listStatus', () => {
