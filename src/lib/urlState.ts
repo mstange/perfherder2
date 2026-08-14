@@ -72,7 +72,7 @@ export const EMPTY_PICKER_VIEW: PickerViewState = {
 // (the picker must not reach into `graphs/`).
 //
 // Two consumers: the prefill that fires when the panel opens without a filter,
-// and the panel's own "Filter to graph" button. They apply the *same* thing, so
+// and the panel's own "Derive filter" button. They apply the *same* thing, so
 // they read the same value rather than each deriving it.
 export type GraphContext = {
   filter: Filter;

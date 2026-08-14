@@ -517,7 +517,7 @@ export class PickerState {
     if (view.intervalSeconds !== null) this.timeRangeSeconds = view.intervalSeconds;
   }
 
-  // "Filter to graph": replace the filter with what the plotted series share.
+  // "Derive filter": replace the filter with what the plotted series share.
   // The mid-session counterpart to the prefill `seed` applies on open, for the
   // three cases the prefill can't reach — a filter the user typed themselves, a
   // filter that arrived in a link, and a graph whose metadata landed after the

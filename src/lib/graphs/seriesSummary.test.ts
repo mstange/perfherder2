@@ -406,7 +406,7 @@ describe('graphContextFilter', () => {
   });
 
   it('is an inactive filter when there is nothing to derive from', () => {
-    // What the panel's "Filter to graph" button reads as "nothing to offer" —
+    // What the panel's "Derive filter" button reads as "nothing to offer" —
     // no series, or none whose metadata has arrived.
     expect(graphContextFilter([])).toEqual({ chips: [], text: '' });
     expect(graphContextFilter([null, null])).toEqual({ chips: [], text: '' });

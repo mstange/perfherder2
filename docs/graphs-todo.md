@@ -225,7 +225,7 @@ Living checklist. Update in the same commit as the work it describes.
       hover preview the pane draws for the dot under the same pointer.
 
 - [ ] **A graph of subtests opens the picker on collapsed parents.** Plot two
-      `perf_reftest_singletons` subtests, then "Filter to graph": the filter is
+      `perf_reftest_singletons` subtests, then "Derive filter": the filter is
       right and the list is one collapsed `perf_reftest_singletons` row per repo,
       with the siblings you wanted behind the disclosure caret and no swatch to
       show that two of its children are already plotted. The filter can't fix

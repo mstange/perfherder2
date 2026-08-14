@@ -274,7 +274,7 @@ export function commonFilterChips(common: SeriesAttrs): FilterChip[] {
 }
 
 // The whole filter, not just its chips: the two places that apply it — the
-// prefill on open and the panel's "Filter to graph" button — both replace the
+// prefill on open and the panel's "Derive filter" button — both replace the
 // filter outright, free text included. Merging instead would be worse in both
 // directions: the text is usually the search that *found* the plotted series
 // and is spent once they're on the graph, and a leftover token silently

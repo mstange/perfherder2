@@ -172,7 +172,7 @@ export function sameFilter(a: Filter, b: Filter): boolean {
   );
 }
 
-// What the panel's "Filter to graph" control can do right now. Four answers,
+// What the panel's "Derive filter" control can do right now. Four answers,
 // because three of them disable the button for visibly different reasons and
 // the user is owed the right one:
 //

@@ -1672,7 +1672,7 @@ export class AppState {
   // `splitCommonAttrs` version the series list renders — with a single series
   // plotted, that one series is exactly the context to search from.
   //
-  // Derived rather than computed on open, because the panel's "Filter to graph"
+  // Derived rather than computed on open, because the panel's "Derive filter"
   // button reads it live: it has to become available the moment the metadata
   // behind it lands, with the panel already open.
   graphContext = $derived.by(
@@ -1686,10 +1686,10 @@ export class AppState {
     // Prefill on open, and only into a panel with no filter to show. That's the
     // whole rule now: an active filter is never overwritten, whether it came
     // from the user, from a link, or from an earlier prefill. The panel carries
-    // "Filter to graph" for asking again on purpose, which is what the guard
-    // this replaced was trying to guess — and guessed wrong for any filter it
-    // hadn't handed over itself, including the search that had just been used to
-    // find the series now on the graph. See docs/design.md.
+    // "Derive filter" for asking again on purpose, which is what the guard this
+    // replaced was trying to guess — and guessed wrong for any filter it hadn't
+    // handed over itself, including the search that had just been used to find
+    // the series now on the graph. See docs/design.md.
     //
     // So the prefill fires on the first open of a fresh graph, and after Clear.
     // The panel's interval and sort survive it: with the filter no longer

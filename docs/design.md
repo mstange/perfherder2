@@ -27,7 +27,7 @@ change is wrong for a reason the code doesn't show:
 | --- | --- |
 | A URL parameter | three sections that have to agree: "Architecture" below (`urlState.ts` owns the whole schema), graphs.md "URL state", comparison.md "URL state" |
 | `FilterInput.svelte`, or anything holding filter state | "The one component that owns state" — this has bitten us twice |
-| When the picker's filter gets written for the user | "Opening the picker prefills its filter" and "Taking the graph's filter, and clearing it" — deciding *when* to overwrite a filter by inspecting it has been wrong once already; the rule is now one `isFilterActive` check plus a button |
+| When the picker's filter gets written for the user | "Opening the picker prefills its filter" and "Deriving the filter, and clearing it" — deciding *when* to overwrite a filter by inspecting it has been wrong once already; the rule is now one `isFilterActive` check plus a button |
 | Markup with two adjacent badges | "Whitespace between adjacent badges (Svelte gotcha)" |
 | A color, anywhere | "Theming: one resolved attribute, one exception" — there are exactly two, and neither is new |
 | A button | "One button, defined once" |
@@ -80,12 +80,12 @@ import graph rather than assumed:
 - **Dependencies run feature → shared, and `graphs` → `picker` but never
   back.** The only two edges into the picker are `appState` and
   `seriesSummary` reaching for `filter.ts`, which is the graph's context
-  reaching the panel — as a prefill on open and as its "Filter to graph"
+  reaching the panel — as a prefill on open and as its "Derive filter"
   button (see "Opening the picker prefills its filter"). The `GraphContext`
   they meet over is declared in `urlState.ts` for exactly this reason:
-  either feature owning it would be an edge one way or the other. There is exactly one edge the
-  wrong way: `shared/chart.ts` imports the `SeriesPoint` *type* from
-  `graphs/graphData.ts`, because some of its helpers plot graph points while
+  either feature owning it would be an edge one way or the other. There is
+  exactly one edge the wrong way: `shared/chart.ts` imports the `SeriesPoint`
+  *type* from `graphs/graphData.ts`, because some of its helpers plot points while
   the rest (formatting, `padDomain`, `Range`) are generic and the details
   pane's distributions use them. Type-only, so nothing pulls at runtime. If
   it ever grows, the fix is to split the graph-point helpers out of chart.ts,
@@ -723,22 +723,43 @@ The prefill goes through the normal `pickerView` state, so it lands in the
 URL (`pc=` / `pr=` params) like anything else the panel shows and a shared
 link reopens on the same rows.
 
-### Taking the graph's filter, and clearing it
+### Deriving the filter, and clearing it
 
 Two buttons at the end of the filter row, and between them they replace
 everything the old prefill guard was trying to infer:
 
-- **Filter to graph** applies the same thing the prefill applies — what
-  the plotted series share — at any moment, on request. That is the
-  answer to every case an open-time guess gets wrong: a filter the user
-  typed, one that arrived in a link, one left over from finding the
-  series now on the graph, or a graph whose metadata landed after the
-  panel was already open.
-- **Clear** empties the chips and the free text together. The chips have
-  their own `×` for undoing one click; this is for eight chips and a
-  search you're done with. Clear plus a reopen is also the way back to
-  the graph's context, since an empty filter is what the prefill is
+- **Derive filter** applies the same thing the prefill applies — what the
+  plotted series share — at any moment, on request. That is the answer to
+  every case an open-time guess gets wrong: a filter the user typed, one
+  that arrived in a link, one left over from finding the series now on
+  the graph, or a graph whose metadata landed after the panel was already
+  open.
+- **Clear filter** empties the chips and the free text together. The
+  chips have their own `×` for undoing one click; this is for eight chips
+  and a search you're done with. Clear plus a reopen is also the way back
+  to the graph's context, since an empty filter is what the prefill is
   allowed to write into.
+
+**Both labels take "filter" as their grammatical object, and that is the
+point.** The first draft read *Filter to graph* / *Clear*, which is wrong
+in a dialog whose entire job is changing the graph: a verb with no object
+beside the word "graph" reads as an action *on the graph*. Someone who
+has typed a search and is hunting for the way to commit it reads "Filter
+to graph" as *filter my graph by this* — the Apply button this panel
+deliberately doesn't have (see "The row's pick control") — two controls
+away from `Add all 24`, which encourages the same reading. Clicking it
+would then throw away the search they were about to use. "Clear" alone
+had a milder version of it, sitting a row above `Remove all`.
+
+Naming the filter fixes it, and the pair then reads as fill it / empty
+it. Rejected on the way: *Filter to plotted series*, which still leads
+with a verb that could be read as acting on the graph and is three times
+the length; and *Reset filter*, which is accurate — the derived filter
+*is* the default — but collides with `Clear filter` beside it, since
+both then sound like undo. The row's `FILTER` label can't carry this on
+its own: buttons get read alone and out of order. What "Derive filter"
+can't say is what it derives *from*, so every tooltip says it, and the
+disabled ones say why they can't (see `graphContextState`).
 
 What makes this cheap rather than another mechanism to keep in sync:
 

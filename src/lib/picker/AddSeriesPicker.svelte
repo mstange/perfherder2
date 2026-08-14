@@ -35,7 +35,7 @@ import { TIME_RANGES } from './pickerOptions';
     initialView?: PickerViewState;
     // What the plotted series have in common, live. Not a seed and not the same
     // thing as `initialView`, which is a snapshot taken on open: this one has to
-    // track the graph while the panel is open, because the "Filter to graph"
+    // track the graph while the panel is open, because the "Derive filter"
     // button offers it at any moment — including after the metadata that decides
     // what it says has finally arrived.
     graphContext?: GraphContext;
@@ -88,23 +88,27 @@ import { TIME_RANGES } from './pickerOptions';
   // block, and the button sits in a plain <div>.
   const bulk = $derived(picker.bulkAction);
 
-  // "Filter to graph": what it can do, and what it says it will do. The chips
-  // are spelled out in full — `suite:speedometer3 · platform:…` — because this
-  // button replaces the filter rather than adding to it, and the exact text it
-  // is about to put in the box is the only honest preview of that.
+  // "Derive filter": what it can do, and what it says it will do. The label
+  // can't say what it derives *from*, so every string here does, and each one
+  // names the filter as the thing being acted on. See docs/design.md, "Deriving
+  // the filter, and clearing it".
+  //
+  // The chips are spelled out in full — `suite:speedometer3 · platform:…` —
+  // because this button replaces the filter rather than adding to it, and the
+  // exact text it is about to put in the box is the only honest preview of that.
   const contextState = $derived(
     graphContextState(picker.filter, graphContext.filter, graphContext.repos.length > 0),
   );
   const contextTitle = $derived.by(() => {
     switch (contextState) {
       case 'none':
-        return 'Nothing on the graph to take a filter from';
+        return 'Nothing plotted to derive a filter from';
       case 'pending':
         return 'Waiting for the plotted series’ metadata';
       case 'same':
-        return 'The filter already matches what the graph’s series share';
+        return 'The filter already matches what the plotted series share';
       case 'apply':
-        return `Filter to what the graph’s series share: ${graphContext.filter.chips
+        return `Derive the filter from what the plotted series share: ${graphContext.filter.chips
           .map(chipToString)
           .join(' · ')}`;
     }
@@ -311,24 +315,28 @@ import { TIME_RANGES } from './pickerOptions';
       />
       <!-- Both always mounted, both fixed-width labels: the row must not resize
            as series load or as the filter changes. Disabled is the signal, and
-           for "Filter to graph" it carries information — disabled *because the
-           filter already is the graph's context* is the one place the panel says
-           the two agree. See docs/design.md, "Taking the graph's filter, and
-           clearing it". -->
+           for "Derive filter" it carries information — disabled *because the
+           filter is already the derived one* is the one place the panel says the
+           filter and the graph agree.
+
+           Fill it / empty it, on the same object: both labels take "filter" as
+           their grammatical object, which is what keeps them from reading as
+           actions on the *graph* in a dialog whose whole job is changing the
+           graph. See docs/design.md, "Deriving the filter, and clearing it". -->
       <div class="filter-actions">
         <button
           type="button"
           class="btn btn-compact"
           disabled={contextState !== 'apply'}
           title={contextTitle}
-          onclick={() => picker.applyGraphContext(graphContext)}>Filter to graph</button
+          onclick={() => picker.applyGraphContext(graphContext)}>Derive filter</button
         >
         <button
           type="button"
           class="btn btn-compact"
           disabled={!picker.filterActive}
           title="Clear every chip and the search text (keeps repos and time range)"
-          onclick={() => picker.clearFilter()}>Clear</button
+          onclick={() => picker.clearFilter()}>Clear filter</button
         >
       </div>
       <div class="time-controls">
