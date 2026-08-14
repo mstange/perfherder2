@@ -793,14 +793,13 @@ import { TIME_RANGES } from './pickerOptions';
      hand-tuned `padding-top`s, which is three numbers that have to be
      re-measured every time a font or a control changes.
 
-     `align-items: baseline` finishes the job: the rail's text, the first chip
-     in the filter box and the first button in the aside all sit on one
-     baseline, at whatever height the row turns out to be — and the filter box
-     is 1 to 4 lines tall depending on how many chips are in it. */
+     Vertically, every column is flush with the top of its row, and the label
+     rail is then nudged down onto the right rail's first baseline. See
+     `.control-label` for why it is that pair and not any other. */
   .controls {
     display: grid;
     grid-template-columns: auto minmax(0, 1fr) auto;
-    align-items: baseline;
+    align-items: start;
     /* The row gap has to beat the aside's own gap by enough that the second
        line of a right rail is unambiguously part of the group above it and
        not the one below — that is the only place the grouping could be
@@ -817,6 +816,7 @@ import { TIME_RANGES } from './pickerOptions';
   .row-aside {
     display: flex;
     flex: none;
+    align-self: baseline;
     flex-direction: column;
     align-items: flex-start;
     gap: 6px;
@@ -831,7 +831,20 @@ import { TIME_RANGES } from './pickerOptions';
   .aside-word {
     color: var(--fg-muted);
   }
+  /* A 12px label has to be dropped a few px to sit level with the 14px
+     controls beside it, and the number is nobody's to type: `baseline` is it,
+     computed from the two fonts. The pairing is what matters. A grid row's
+     baseline-aligned items form one group, positioned by the largest ascent
+     in it — so a group is only as stable as its tallest member, and pairing
+     the label with the *main* control would tie it to the one box in the row
+     whose first line changes: clearing the last chip swaps a 12px chip pill
+     for the 14px text input, and the label (and, when it was in the group,
+     the whole right rail) slid a few px down. The right rail's first line is
+     a button, or a select, and neither ever changes height, so that is the
+     pair. The main control is left at `start`, where nothing it does to its
+     own height can move anything else. */
   .control-label {
+    align-self: baseline;
     color: var(--fg-muted);
     font-size: 12px;
     text-transform: uppercase;

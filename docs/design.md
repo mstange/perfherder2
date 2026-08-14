@@ -759,13 +759,29 @@ round.
   on the controls at the other end. Three measured numbers, all of them
   facts about one screenshot: reword a label, change a font size, and
   they are quietly wrong.
-- **`align-items: baseline` does the vertical alignment.** The rail's
-  text, the first chip in the filter box and the first button in the
-  right rail sit on one baseline at whatever height the row turns out to
-  be — and that height genuinely varies, since the filter box is one to
-  four lines tall depending on how many chips are in it. This is
-  "Layout stability"'s prefer-stacking-to-measuring rule applied to
-  alignment: let the browser find the number.
+- **Vertical alignment is `baseline`, between the label and the *right
+  rail*.** A 12px uppercase label has to drop a few px to sit level with
+  the 14px controls beside it, and that offset is nobody's to type: it
+  falls out of the two fonts. This is "Layout stability"'s
+  prefer-stacking-to-measuring rule applied to alignment — let the
+  browser find the number.
+
+  **Which two things share the baseline is the part that took a second
+  go.** A grid row's baseline-aligned items form one group, positioned by
+  the largest ascent in it, so a group is only as stable as its tallest
+  member. Pairing the label with the row's main control — the obvious
+  choice — tied it to the one box in the row whose first line changes
+  height: clearing the last chip swaps a 12px chip pill for the 14px text
+  input, and everything in the group slid down a few px on a click that
+  should only have made the box shorter. The right rail's first line is a
+  button, or a select, and neither ever changes, so the label pairs with
+  that. The main control is left at `start`, where nothing it does to its
+  own height can move anything else.
+
+  What still moves when the filter is cleared is the `LOAD FROM` row and
+  the list below it, because the block genuinely got shorter. The rail
+  floors the row at its own height, so that shrink is 13px rather than
+  the box's full 28.
 - **The row gap beats the right rail's own gap about 3:1** (18px vs 6px).
   A rail's second line is the only thing in the block not anchored to a
   label, so it is the only thing whose group could be misread; the
