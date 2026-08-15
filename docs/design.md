@@ -32,6 +32,7 @@ change is wrong for a reason the code doesn't show:
 | Markup with two adjacent badges | "Whitespace between adjacent badges (Svelte gotcha)" |
 | A color, anywhere | "Theming: one resolved attribute, one exception" — there are exactly two, and neither is new |
 | A button | "One button, defined once" |
+| A spinner, a skeleton, or any "still loading" mark | "Two loading cues, and which wait each one is for" — there are two classes in app.css, the choice between them is what the wait *is*, and a third hand-rolled one is the mistake |
 | A hover explanation | "Tooltips: for what the canvas paints". Ordinary controls use `title`; the drawn box is for the marks in the graph's canvas, which have no element to hang one on |
 | A percentage or a delta in the details pane | graphs.md, "The three change cards say it the same way" — one component draws all three headlines, and the sign is the measurement's, never the verdict's |
 | Anything that renders before its data arrives | "Layout stability" |
@@ -1320,6 +1321,47 @@ the series list's icon buttons, the details pane's inline `.unpin` /
 `.cmp-prev`, and the replicate chips, whose width is a measured value (see the
 comment above `.replicates`) rather than a size anyone else should reuse.
 
+### Two loading cues, and which wait each one is for
+
+`.spinner` and `.pulse` in [app.css](../src/app.css) are the app's only two
+animated loading marks, and the choice between them is about **what the wait
+is**, not how long it is:
+
+- **`.spinner`** — a named request is out. It goes where that request's answer
+  will appear, so it reads as *this number is coming* and says nothing about the
+  rest of the row: the series card puts it in the point-count slot, beside
+  "loading…". Motion is the whole point of it. The card had said "loading…" in
+  that slot from the beginning, and text is the part that was already right —
+  what a static label cannot distinguish is a slow fetch from a hung one, and a
+  90-day two-series load takes long enough for that to be a real question.
+- **`.pulse`** — a placeholder standing in for content that isn't there yet. The
+  picker's skeleton rows, and the series card's `· alerts…`, which holds the
+  alert count's place while that second fetch is out.
+
+Both are opt-in classes, both stop under `prefers-reduced-motion`, and both live
+in app.css for the reason `.btn` does: a 1.2s pulse next to a copy that drifted
+to 1.4s looks like a bug, and a hand-rolled second spinner would be the fifth
+copied recipe this file already has a section about.
+
+Two things they are deliberately *not*:
+
+- **Not the card as a whole.** A bar or a shimmer across the whole card would
+  claim the whole card is unknown. Its identity line can be filled in
+  independently of its data — today they land together, out of one
+  `/performance/summary/` response, but that is this implementation and not the
+  shape of the card, and a cue placed per-slot survives that changing.
+- **Not a substitute for the text.** The spinner is `aria-hidden`; "loading…"
+  beside it is what a screen reader gets, and it is also what remains under
+  reduced motion. A cue that is only an animation says nothing to either.
+
+**Whether a wait needs a cue at all is a question about honesty, not about
+duration.** The alert count is the case that decided it: for several seconds
+after the dots land, a card reading "1,592 points · 7 changes · +3.5% drift" is
+a complete-looking summary that is one badge short, and the user cannot tell
+that from the same card with no alerts. The graph header's "Loading N…" and the
+plot's "Loading…" note, by contrast, name a wait the empty graph already makes
+obvious, so they stay plain text.
+
 ### Tooltips: for what the canvas paints
 
 **`title` is still the app's hover explanation.** Badges, icon buttons, `dt`
@@ -1411,7 +1453,10 @@ Several places take care to not shift the list under the user's cursor:
   text in an otherwise empty table.
 - A series card's `.sub` row reserves both of its lines and clamps to them, so the
   alert count (a second fetch), the change count and the drift figure (both after
-  detection) can appear without moving the cards under them. Two lines rather than
+  detection) can appear without moving the cards under them. The alert count also
+  holds its place with a pulsing `· alerts…` while its fetch is out, so within the
+  row it resolves in place rather than pushing the badges after it — see "Two
+  loading cues". Two lines rather than
   one because four badges do not fit on one — graphs.md, "The drift figure, for the
   series with no bars", has the measurement. The reserve is `calc(2 * 1.35em)`
   against a `line-height` of 1.35 rather than a pixel count, which is the next

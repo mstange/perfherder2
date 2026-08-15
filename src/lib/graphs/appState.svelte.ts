@@ -127,6 +127,13 @@ export type SeriesEntry = {
   // range. Empty until they land, which is deliberate: they're a second fetch,
   // and the graph must not wait for them to draw its dots.
   alerts: readonly SeriesAlert[];
+  // Whether that second fetch is still out. Empty `alerts` alone can't answer
+  // it — that is also what a series with no alerts looks like — and the gap is
+  // wide enough to matter: on a two-series 90-day load the dots and the change
+  // count are on screen for several seconds before the alert count joins them,
+  // so a card without this says "1,592 points · 7 changes" and reads as
+  // finished while it is still one badge short.
+  alertsPending: boolean;
   // Steps this app found in the data itself (changes.ts). Empty while
   // `changeDetection` is off, and empty until the detection has run — which is
   // one frame behind the dots, not a fetch.
@@ -283,6 +290,12 @@ export class AppState {
   // nothing and look identical either way.
   private alertCache = $state(new Map<string, SeriesAlert[]>());
   private alertRequests = new Set<string>();
+  // The subset of those requests that are actually in flight, for the card's
+  // "still coming" cue. Separate from `alertRequests` — which means "we have
+  // asked" and is deliberately never cleared on failure, so that a failed
+  // lookup isn't retried forever — because this one has to clear either way, or
+  // a series whose alert fetch failed would pulse for the rest of the session.
+  private alertsInFlight = $state(new Set<string>());
 
   // Detected changes per series, keyed and pruned the same way. Cached rather
   // than derived because the segmentation is an O(n²) dynamic program and
@@ -391,6 +404,7 @@ export class AppState {
         loading: this.loadingKeys.has(key),
         error: this.errorsByKey.get(key) ?? null,
         alerts: this.alertCache.get(key) ?? EMPTY_ALERTS,
+        alertsPending: this.alertsInFlight.has(key),
         changes: this.changeDetection
           ? (this.changeCache.get(key) ?? EMPTY_CHANGES)
           : EMPTY_CHANGES,
@@ -1080,6 +1094,7 @@ export class AppState {
   private async loadAlerts(ref: SeriesRef, key: string, data: SeriesData): Promise<void> {
     if (this.alertCache.has(key) || this.alertRequests.has(key)) return;
     this.alertRequests.add(key);
+    this.alertsInFlight = new Set(this.alertsInFlight).add(key);
     // Server-side, `timerange` counts back from now, so this asks for
     // everything since the start of our window and lets `alertsForSeries` drop
     // what lands outside it. A day's floor keeps a degenerate range (start in
@@ -1098,6 +1113,10 @@ export class AppState {
       );
     } catch {
       // As with pushes and jobs: a failed lookup must not take the graph down.
+    } finally {
+      const done = new Set(this.alertsInFlight);
+      done.delete(key);
+      this.alertsInFlight = done;
     }
   }
 
@@ -1249,6 +1268,9 @@ export class AppState {
     for (const key of this.alertRequests) {
       if (!wanted.has(key)) this.alertRequests.delete(key);
     }
+    // `alertsInFlight` is deliberately not pruned here: its entries are removed
+    // when the request settles, and a request for a key nobody wants any more
+    // belongs to no card, so it is invisible until then either way.
 
     const changes = new Map<string, DetectedChange[]>();
     for (const [key, value] of this.changeCache) {

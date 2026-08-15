@@ -67,6 +67,7 @@ function entry(
     loading: false,
     error: null,
     alerts: [],
+    alertsPending: false,
     changes: [],
     drift: null,
     trend,
@@ -903,6 +904,78 @@ describe('AppState alerts', () => {
       // framework's alert history.
       expect(String(calls[0][0])).toContain('alerts__series_signature=1');
       expect(app.series[0].alerts).toHaveLength(1);
+    });
+  });
+
+  // `alertsPending` is what the series card pulses on, and empty `alerts` can't
+  // stand in for it: that is also what "fetched, and there are none" looks like.
+  describe('alertsPending', () => {
+    // The alerts response, held open until the test lets it go.
+    const withHeldAlerts = () => {
+      let release!: (settle: 'ok' | 'fail') => void;
+      fetchMock.mockImplementation(async (url: string) => {
+        if (url.includes('/performance/summary/')) return json([SAMPLE]);
+        if (url.includes('/performance/alertsummary/')) {
+          return new Promise((resolve, reject) => {
+            release = (settle) =>
+              settle === 'ok'
+                ? resolve(json(alertPage([alertSummary()])))
+                : reject(new Error('nope'));
+          });
+        }
+        if (url.includes('/repository/')) return json([]);
+        return json({});
+      });
+      return () => release;
+    };
+
+    it('is set once the data has landed and the alerts request is out', async () => {
+      const held = withHeldAlerts();
+      await withApp('?series=autoland,1,1', async (app) => {
+        await settle();
+        // The distinction the flag exists for: the dots are on screen and the
+        // card is already showing its point count.
+        expect(app.series[0].loading).toBe(false);
+        expect(app.series[0].data.pushes.length).toBeGreaterThan(0);
+        expect(app.series[0].alertsPending).toBe(true);
+        expect(app.series[0].alerts).toEqual([]);
+
+        held()('ok');
+        await settle();
+        expect(app.series[0].alertsPending).toBe(false);
+        expect(app.series[0].alerts).toHaveLength(1);
+      });
+    });
+
+    // The reason this is its own flag rather than `alertRequests`, which is
+    // deliberately never cleared on failure: a card that pulsed forever would be
+    // the worst outcome of a dropped request.
+    it('clears when the alerts request fails', async () => {
+      const held = withHeldAlerts();
+      await withApp('?series=autoland,1,1', async (app) => {
+        await settle();
+        expect(app.series[0].alertsPending).toBe(true);
+
+        held()('fail');
+        await settle();
+        expect(app.series[0].alertsPending).toBe(false);
+        expect(app.series[0].alerts).toEqual([]);
+      });
+    });
+
+    it('is never set for a series that failed or came back empty', async () => {
+      fetchMock.mockImplementation(async (url: string) => {
+        if (url.includes('/performance/summary/')) return json([summary(1, [])]);
+        if (url.includes('/repository/')) return json([]);
+        return json({});
+      });
+      await withApp('?series=autoland,1,1', async (app) => {
+        await settle();
+        expect(app.series[0].alertsPending).toBe(false);
+        expect(
+          fetchMock.mock.calls.filter((c: unknown[]) => String(c[0]).includes('/alertsummary/')),
+        ).toEqual([]);
+      });
     });
   });
 

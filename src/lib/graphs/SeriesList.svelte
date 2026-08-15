@@ -344,7 +344,17 @@
           <div class="sub">
             <span class="count">
               {#if entry.loading}
-                loading…
+                <!-- The spinner sits where the point count will land, not on the
+                     card as a whole: what is outstanding is this series' *data*,
+                     and the attribute line above may well be filled in before it
+                     (today the two arrive together, from one response, but that
+                     is this implementation and not the shape of the card). A ring
+                     rather than a pulse on the word, because the word already
+                     says everything a static mark can — what it cannot
+                     distinguish is a slow fetch from a hung one. -->
+                <span class="loading-cue">
+                  <span class="spinner" aria-hidden="true"></span>loading…
+                </span>
               {:else if entry.error}
                 <span class="error" title={entry.error}>failed</span>
               {:else}
@@ -353,7 +363,23 @@
                 {entry.plot.points.length.toLocaleString()} points
               {/if}
             </span>
-            {#if entry.alerts.length > 0}
+            {#if entry.alertsPending}
+              <!-- The alert count's own slot, held while its fetch is out. Without
+                   it the row reads as a finished summary several seconds before it
+                   is one — the dots and the change count are on screen, and a card
+                   that will say "3 alerts" says nothing at all. Pulsing rather
+                   than spinning: the number is *not* on screen yet, so this is a
+                   placeholder for content, which is what `.pulse` means
+                   everywhere else (the picker's skeleton rows).
+
+                   It resolves in place to the count, or to nothing when there are
+                   none. The badges after it shift by a few characters when it
+                   does; the card's height doesn't, which is the reflow that
+                   matters — see `.sub`. -->
+              <span class="alerts pulse" title="Loading this series’ perfherder alerts">
+                · alerts…
+              </span>
+            {:else if entry.alerts.length > 0}
               <!-- The only place the alert markers are counted, and the only cue
                    that a series has any without looking at the graph. It lands
                    after the dots do — a second fetch — which is why `.sub`
@@ -645,6 +671,14 @@
     display: inline-block;
     min-width: 8.5ch;
     white-space: nowrap;
+  }
+  /* A flex line rather than a text node and a space, so the gap between the ring
+     and the word is this number and not whatever Svelte's whitespace handling
+     leaves between two elements. `.spinner` itself is app.css's. */
+  .loading-cue {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
   }
   .error {
     color: var(--danger-fg);

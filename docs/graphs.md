@@ -594,6 +594,23 @@ surfaced, and it isn't retried — the retry is changing the range or the series
 list. The dots are the point; a missing marker is a smaller harm than a retry
 loop or an error banner over a working graph.
 
+**But being second is visible, so the wait is stated.** Measured on a two-series
+90-day load, the dots and the change counts were on screen at 2s and the alert
+counts arrived between 6s and past 9s — long enough that a card reading
+"1,592 points · 7 changes · +3.5% drift" looks finished while it is still one
+badge short of the truth, and indistinguishable from the same card on a series
+with no alerts. `SeriesEntry.alertsPending` is that gap, and the card holds the
+count's place with a pulsing `· alerts…` until it closes (design.md, "Two
+loading cues").
+
+It is a flag of its own, tracked in `AppState.alertsInFlight`, for a reason worth
+keeping: `alertRequests` — the set that stops a failed lookup being reissued
+forever — is deliberately *never* cleared on failure, so a cue driven off it
+would pulse for the rest of the session on exactly the series whose request
+died. `alertsInFlight` clears in a `finally`, whatever happened. Neither one is
+pruned with the range: a request for a key nobody wants any more belongs to no
+card.
+
 **Marker shape is a deliberate deviation.** Treeherder highlights the alerted
 *dot* with a 12px translucent halo, behind a "highlight alerts" toggle. That
 works when the graph draws one dot per push; ours draws every replicate, so the

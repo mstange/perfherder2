@@ -104,6 +104,10 @@ Notes that save a round trip:
   hover or disabled in a component — that recipe was copied five times and
   drifted five ways. Bespoke buttons (badges, swatches, icon toggles) skip
   `.btn` entirely; see "One button, defined once" in docs/design.md.
+- **Loading cues come from `.spinner` and `.pulse` in `src/app.css`** — a
+  ring where one outstanding request's answer will land, a pulse for a
+  placeholder holding content's place. Don't hand-roll a third or copy the
+  keyframes; see "Two loading cues" in docs/design.md.
 
 ## What this project is
 

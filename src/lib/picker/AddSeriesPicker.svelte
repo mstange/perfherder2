@@ -716,13 +716,13 @@ import { TIME_RANGES } from './pickerOptions';
             <tr class="skeleton" aria-hidden="true">
               <td class="col-check"></td>
               <td class="col-disclose"></td>
-              <td><span class="skeleton-bar"></span></td>
-              <td><span class="skeleton-bar"></span></td>
-              <td><span class="skeleton-bar"></span></td>
-              <td><span class="skeleton-bar"></span></td>
-              <td><span class="skeleton-bar"></span></td>
-              <td><span class="skeleton-bar"></span></td>
-              <td><span class="skeleton-bar"></span></td>
+              <td><span class="skeleton-bar pulse"></span></td>
+              <td><span class="skeleton-bar pulse"></span></td>
+              <td><span class="skeleton-bar pulse"></span></td>
+              <td><span class="skeleton-bar pulse"></span></td>
+              <td><span class="skeleton-bar pulse"></span></td>
+              <td><span class="skeleton-bar pulse"></span></td>
+              <td><span class="skeleton-bar pulse"></span></td>
             </tr>
           {/each}
         {:else if picker.listStatus !== 'rows'}
@@ -1278,8 +1278,9 @@ import { TIME_RANGES } from './pickerOptions';
     padding: 24px;
   }
   /* Loading placeholders: one grey bar per content column, pulsing together.
-     Only `opacity` animates, so this costs nothing while the main thread is
-     parsing a 22 MB response. */
+     The pulse itself is `.pulse` from app.css, shared with the series card's
+     alert-count placeholder — only `opacity` animates, so this costs nothing
+     while the main thread is parsing a 22 MB response. */
   .skeleton:hover {
     background: transparent;
   }
@@ -1289,17 +1290,6 @@ import { TIME_RANGES } from './pickerOptions';
     height: 14px;
     border-radius: 7px;
     background: var(--bg-neutral-muted);
-    animation: skeleton-pulse 1.2s ease-in-out infinite;
-  }
-  @keyframes skeleton-pulse {
-    50% {
-      opacity: 0.4;
-    }
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .skeleton-bar {
-      animation: none;
-    }
   }
   /* Virtual-scroll spacer rows: their sole job is to occupy vertical space
      for the rows we haven't rendered yet. No borders, no padding, no hover. */

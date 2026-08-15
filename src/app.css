@@ -503,6 +503,57 @@ button {
   cursor: pointer;
 }
 
+/* Loading cues.
+   ------------
+   Two of them, and the choice between them is what the wait *is* rather than
+   how big it is:
+
+   `.spinner` — one named request is out. It goes where that request's answer
+     will land, so it reads as "this number is coming", and it says nothing
+     about the rest of the row. Motion is the point: the text beside it
+     ("loading…") already says as much as text can, and what a static label
+     can't distinguish is a slow fetch from a hung one.
+   `.pulse` — a placeholder standing in for content. On the picker's skeleton
+     rows, and on the card's alert-count slot before that second fetch lands.
+
+   Both live here rather than in the two components that use them, for the same
+   reason `.btn` does: an animation copied is an animation that drifts, and a
+   1.2s pulse beside a 1.4s one looks like a bug. Both stop under
+   `prefers-reduced-motion` — the accompanying text carries the state, so
+   nothing is lost but the movement. */
+.spinner {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border: 1.5px solid var(--border-muted);
+  /* The moving head is the whole signal, so the two need real contrast at 9px:
+     with the track on `--border-default` the ring read as a plain circle in a
+     screenshot, which is what it looks like to anyone glancing at it. The quiet
+     token for the track, the text token for the head. */
+  border-top-color: var(--fg-muted);
+  border-radius: 50%;
+  animation: spinner-rotate 0.8s linear infinite;
+}
+@keyframes spinner-rotate {
+  to {
+    transform: rotate(1turn);
+  }
+}
+.pulse {
+  animation: loading-pulse 1.2s ease-in-out infinite;
+}
+@keyframes loading-pulse {
+  50% {
+    opacity: 0.4;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .spinner,
+  .pulse {
+    animation: none;
+  }
+}
+
 /* The UA's link colors do follow `color-scheme`, but to a purple-blue that
    matches nothing else here. Ours is the accent the rest of the app uses. */
 a {
