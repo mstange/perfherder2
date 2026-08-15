@@ -366,7 +366,21 @@ calls. See [artifactsApi.ts](../src/lib/graphs/artifactsApi.ts).
   threshold lookup asks for metadata and nothing else (`fetchSignatureMeta`; see
   "The floor comes from the signature"). It is also the only endpoint that
   serializes `alert_threshold` and `alert_change_type` at all — the signatures
-  endpoint the picker uses does not.
+  endpoint does not.
+
+**A second, much cheaper request runs first and in parallel**: `GET
+/api/project/<repo>/performance/signatures/?id=…&id=…`, one per repository, which
+answers with every plotted signature's identity in 866 bytes and ~160 ms
+(`fetchSignaturesByIds` → `metaFromSignature`). It is what puts a card's suite,
+platform and options on screen about a second before its dots, and it is keyed by
+signature rather than by range, so changing the window doesn't un-name the list.
+The full reasoning, the two fields it can't answer, and the field-for-field
+verification against the summary response are in design.md, "Two endpoints
+describe a series", and api-assumptions.md.
+
+Neither request waits on the other, and the identity one is best-effort: if it
+fails it is not retried, because the summary response carries everything it was
+after.
 
 ### Replicates
 
@@ -1316,7 +1330,9 @@ Recovery is the explicit Retry button.
   serializers rather than from sampled payloads.
 - [graphData.ts](../src/lib/graphs/graphData.ts) — **pure**. Flat rows →
   push/run/replicate, plus the flat arrays the renderer walks — both of them,
-  see "Replicates" above.
+  see "Replicates" above. Also `SeriesMeta` and the three projections into it:
+  `metaFromSummary`, `metaFromSignature` (the early identity, from the picker's
+  signature row) and `placeholderMeta`, with `source` naming which one ran.
 - [chart.ts](../src/lib/shared/chart.ts) — **pure**. Scales, domains, ticks,
   formatting, plot geometry, hit-testing, palette, and the jitter both charts
   use (see "Dots are translucent, and jittered sideways" below).

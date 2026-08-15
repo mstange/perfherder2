@@ -16,7 +16,12 @@ import {
   type Activity,
 } from './activity';
 import { fetchActivityData } from './activityApi';
-import { buildOptionMap, fetchFrameworks, fetchOptionCollections, fetchSignatures } from './signaturesApi';
+import {
+  fetchFrameworks,
+  fetchOptionMap,
+  fetchSignatures,
+  resetOptionMapCache,
+} from './signaturesApi';
 import { FetchStore } from './fetchStore';
 import { type Series, toSeries } from './series';
 import { DEFAULT_REPOS, PINNED_REPOS } from './pickerOptions';
@@ -90,6 +95,7 @@ const metadataStore = new FetchStore<PickerMetadata>(Infinity, 1);
 export function resetPickerCaches(): void {
   signatureStore.reset();
   metadataStore.reset();
+  resetOptionMapCache();
 }
 
 // Whether this filter can only match anything with "Match inside subtests" on.
@@ -338,13 +344,17 @@ export class PickerState {
     try {
       this.applyMetadata(
         await metadataStore.load(METADATA_KEY, Date.now(), async () => {
-          const [frameworks, ocs] = await Promise.all([
+          // `fetchOptionMap` rather than `fetchOptionCollections` + `buildOptionMap`:
+          // the graphs view needs the same table to name a signature's options
+          // before its data lands, and the memo behind it means the two sides
+          // share one request instead of pulling the table down twice.
+          const [frameworks, optionMap] = await Promise.all([
             fetchFrameworks(),
-            fetchOptionCollections(),
+            fetchOptionMap(),
           ]);
           return {
             frameworkMap: new Map(frameworks.map((f) => [f.id, f.name])),
-            optionMap: buildOptionMap(ocs),
+            optionMap,
           };
         }),
       );

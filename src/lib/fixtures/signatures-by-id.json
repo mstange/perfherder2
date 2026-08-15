@@ -1,0 +1,42 @@
+{
+    "270490": {
+        "application": "fenix",
+        "extra_options": [
+            "fission",
+            "webrender"
+        ],
+        "framework_id": 13,
+        "has_subtests": true,
+        "id": 270490,
+        "lower_is_better": false,
+        "machine_platform": "android-hw-a55-14-0-aarch64-shippable",
+        "measurement_unit": "score",
+        "option_collection_hash": "102210fe594ee9b33d82058545b1ed14f4c8206e",
+        "should_alert": null,
+        "signature_hash": "fe4add3402d08dd7be6556701c17b6b50b4fb09e",
+        "suite": "speedometer3",
+        "tags": [
+            "fission",
+            "webrender"
+        ]
+    },
+    "5310381": {
+        "application": "firefox",
+        "extra_options": [
+            "e10s",
+            "fission",
+            "stylo",
+            "webrender"
+        ],
+        "framework_id": 12,
+        "id": 5310381,
+        "machine_platform": "windows11-64-24h2-shippable",
+        "measurement_unit": "ms",
+        "option_collection_hash": "102210fe594ee9b33d82058545b1ed14f4c8206e",
+        "parent_signature": "45cd555c70bf08b3d32c99568a21c749128dc78a",
+        "should_alert": true,
+        "signature_hash": "e59d118c117c066ce163f28fbfca2327c8f72306",
+        "suite": "damp",
+        "test": "custom.jsdebugger.stepIn.big-bundle.DAMP"
+    }
+}

@@ -46,6 +46,7 @@ import {
   buildSeriesData,
   EMPTY_SERIES_DATA,
   MEAN_REPLICATE,
+  metaFromSignature,
   metaFromSummary,
   placeholderMeta,
   pushValues,
@@ -77,6 +78,8 @@ import {
 } from './compare';
 import { MIN_CURVE_VALUES, stableScales, type StableScales } from './distribution';
 import { isFilterActive } from '../picker/filter';
+import { fetchOptionMap, fetchSignaturesByIds, type RawSignature } from '../picker/signaturesApi';
+import { chunkIds, MAX_IDS_PER_REQUEST } from '../picker/activity';
 import {
   attrsForEntry,
   chipText,
@@ -297,6 +300,25 @@ export class AppState {
   // a series whose alert fetch failed would pulse for the rest of the session.
   private alertsInFlight = $state(new Set<string>());
 
+  // What a series *is*, as opposed to what it measured: the signatures endpoint's
+  // row, keyed by `seriesKey(ref)` and projected by `metaFromSignature`. This is
+  // what lets a card show its suite, platform and options while its dots are
+  // still downloading — one batched request per repository at ~160 ms against
+  // ~1.3 s for a 90-day data response.
+  //
+  // **Keyed by signature alone, not by range, and never pruned.** A signature's
+  // identity doesn't depend on the window, so changing the range keeps every card
+  // named instead of blanking the list back to "signature 5257392" — which is
+  // what it did when the only metadata came bundled with the range's data. Not
+  // pruning is the same call `parentThresholds` makes: an entry is a dozen short
+  // strings, bounded by how many distinct signatures one session plots, and
+  // keeping it means re-adding a series names it with no request at all.
+  private signatureMetas = $state(new Map<string, SeriesMeta>());
+  // "We have asked", not "it is in flight" — a failure is not retried, since the
+  // data response carries the same fields and is already on its way. Same policy
+  // as `alertRequests`, and here the fallback is complete rather than partial.
+  private signatureMetaRequests = new Set<string>();
+
   // Detected changes per series, keyed and pruned the same way. Cached rather
   // than derived because the segmentation is an O(n²) dynamic program and
   // `series` recomputes for reasons that have nothing to do with the data —
@@ -390,7 +412,12 @@ export class AppState {
         color: style.color,
         symbol: style.symbol,
         visible: ref.visible,
-        meta: loaded?.meta ?? null,
+        // The summary response's metadata when we have it, the signatures row's
+        // until then. Ordered that way rather than the reverse because only the
+        // first carries the alerting threshold and the parent's id; every other
+        // field is identical, checked field for field against production, so the
+        // swap is invisible on screen. Null only until the first of the two lands.
+        meta: loaded?.meta ?? this.signatureMetas.get(seriesKey(ref)) ?? null,
         data,
         // `none` takes the means, not an empty set: the dots aren't drawn, but
         // everything else `plot` feeds — the selection a click or an arrow key
@@ -864,6 +891,26 @@ export class AppState {
   constructor(search = '', now = Date.now()) {
     this.applyViewState(parseViewState(search), now);
 
+    // What the series *are*, batched per repository. First, and independent of
+    // the range, so a shared URL names its cards about a second before their
+    // dots arrive rather than showing a column of "signature 5257392".
+    //
+    // Reads `seriesRefs` rather than `series`, like the detection effect below:
+    // it must not wake for a theme flip or a point-mode change, and what it needs
+    // is the ids, which are on the refs.
+    $effect(() => {
+      const wanted = new Map<string, SeriesRef[]>();
+      for (const ref of this.seriesRefs) {
+        const key = seriesKey(ref);
+        if (this.signatureMetas.has(key) || this.signatureMetaRequests.has(key)) continue;
+        this.signatureMetaRequests.add(key);
+        const refs = wanted.get(ref.repository);
+        if (refs) refs.push(ref);
+        else wanted.set(ref.repository, [ref]);
+      }
+      for (const [repository, refs] of wanted) void this.loadSignatureMetas(repository, refs);
+    });
+
     // Fetch data for every (series, range) pair we don't have yet.
     $effect(() => {
       const span = this.range;
@@ -1050,6 +1097,58 @@ export class AppState {
       const done = new Set(this.loadingKeys);
       done.delete(key);
       this.loadingKeys = done;
+    }
+  }
+
+  // The identity of every plotted signature in one repository — suite, test,
+  // platform, application, options, unit — in a single request, before any of
+  // their data has arrived. Measured on the two-series speedometer3 URL: 866
+  // bytes and 163 ms for both signatures, against 1276 ms for the larger one's
+  // 9 MB of points, so the cards are named for the whole second the graph is
+  // still empty.
+  //
+  // **Batched per repository because that is the endpoint's shape**: `id` is an
+  // `id__in` filter, but the repository is in the path, so a graph spanning
+  // autoland and mozilla-central makes two requests and not one. Both are issued
+  // together, and neither waits on the other.
+  //
+  // The option-collection table is awaited *with* the row rather than after it:
+  // the options ("opt fission webrender") come from it, and writing the metadata
+  // early without them would put a card's name on screen and then rewrite it a
+  // few hundred milliseconds later — a visible edit, and one that would move the
+  // shared-attribute header with it. `fetchOptionMap` is memoised across the app,
+  // so this costs a request once per session and usually none at all.
+  //
+  // A signature absent from the response — a stale URL, an id from another
+  // repository — leaves no entry, and the card keeps saying "signature <id>"
+  // until the data response either names it or confirms there is nothing there.
+  private async loadSignatureMetas(repository: string, refs: SeriesRef[]): Promise<void> {
+    try {
+      const [optionMap, ...pages] = await Promise.all([
+        fetchOptionMap(),
+        // Chunked on the same ceiling the picker's activity fetch obeys: a
+        // request line over 4094 bytes is rejected before Django sees it, and
+        // this endpoint's `&id=<7 digits>` is about half the cost of that one's
+        // parameter, so `MAX_IDS_PER_REQUEST` is comfortably inside it. Nobody
+        // plots 150 series, but the failure mode if they did would be every card
+        // losing its name rather than one request being split.
+        ...chunkIds(
+          refs.map((ref) => ref.signatureId),
+          MAX_IDS_PER_REQUEST,
+        ).map((ids) => fetchSignaturesByIds(repository, ids)),
+      ]);
+      const rows = Object.assign({}, ...pages) as Record<string, RawSignature>;
+      const next = new Map(this.signatureMetas);
+      for (const ref of refs) {
+        const raw = rows[String(ref.signatureId)];
+        if (raw) next.set(seriesKey(ref), metaFromSignature(ref.signatureId, raw, optionMap));
+      }
+      if (next.size !== this.signatureMetas.size) this.signatureMetas = next;
+    } catch {
+      // Swallowed like the alerts lookup, and with a better fallback than that
+      // one has: the data response carries every field this was after, so a
+      // failure here costs the cards their head start and nothing else. Not
+      // retried, for the reason `signatureMetaRequests` records.
     }
   }
 

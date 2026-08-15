@@ -46,5 +46,24 @@
     "name": "arm-opt"
    }
   ]
+ },
+ {
+  "option_collection_hash": "102210fe594ee9b33d82058545b1ed14f4c8206e",
+  "options": [
+   {
+    "name": "opt"
+   }
+  ]
+ },
+ {
+  "option_collection_hash": "531e7f974f8dab5d4d8dfe344a0219a5b1184d20",
+  "options": [
+   {
+    "name": "debug"
+   },
+   {
+    "name": "memleak"
+   }
+  ]
  }
 ]

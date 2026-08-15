@@ -8,7 +8,7 @@
 // but its own distinguishing attributes.
 
 import type { Filter, FilterChip, FilterField } from '../picker/filter';
-import type { SeriesMeta, SeriesRef } from './graphData';
+import { isPlaceholder, type SeriesMeta, type SeriesRef } from './graphData';
 
 // The displayable attributes of one series, flattened.
 //
@@ -56,12 +56,12 @@ export function attrsFromMeta(ref: SeriesRef, meta: SeriesMeta): SeriesAttrs {
 
 // What both consumers actually want: attributes, or null when there is no real
 // metadata to read. That covers a series still loading *and* one the summary
-// endpoint had nothing to say about — `SeriesMeta.placeholder`, whose suite is
-// a synthesized "signature 1234". Feeding those fabricated fields into an
+// endpoint had nothing to say about — a placeholder, whose suite is a
+// synthesized "signature 1234". Feeding those fabricated fields into an
 // intersection would either wipe out the shared header or, worse, prefill the
 // picker with a filter that matches nothing.
 export function attrsForEntry(ref: SeriesRef, meta: SeriesMeta | null): SeriesAttrs | null {
-  if (!meta || meta.placeholder) return null;
+  if (!meta || isPlaceholder(meta)) return null;
   return attrsFromMeta(ref, meta);
 }
 
@@ -197,7 +197,7 @@ export type Measurement = { unit: string; lowerIsBetter: boolean };
 // default nobody stated. Counting it would report a direction as unanimous
 // when only one series actually has an opinion.
 export function measurementForEntry(meta: SeriesMeta | null): Measurement | null {
-  if (!meta || meta.placeholder) return null;
+  if (!meta || isPlaceholder(meta)) return null;
   return { unit: meta.measurementUnit, lowerIsBetter: meta.lowerIsBetter };
 }
 

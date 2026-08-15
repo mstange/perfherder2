@@ -2,14 +2,21 @@ import { describe, expect, it } from 'vitest';
 import { JITTER_GAP_FRACTION } from '../shared/chart';
 import type { RawDatum, RawSummary } from './graphApi';
 import { parseApiDate } from './graphApi';
+import { buildOptionMap, type OptionCollection, type RawSignature } from '../picker/signaturesApi';
+import optionCollections from '../fixtures/option-collections.json';
+import signaturesById from '../fixtures/signatures-by-id.json';
+import summaryFixture from '../fixtures/summary.json';
 import {
   alertThresholdFromSummary,
   buildSeriesData,
   DEFAULT_ALERT_THRESHOLD,
   indexInPushValues,
+  isPlaceholder,
   jitterForSelection,
   MEAN_REPLICATE,
+  metaFromSignature,
   metaFromSummary,
+  placeholderMeta,
   pushValues,
   replicateGroups,
   resolveAlertThreshold,
@@ -505,6 +512,139 @@ describe('metaFromSummary', () => {
     );
     expect(meta.lowerIsBetter).toBe(true);
     expect(meta.measurementUnit).toBe('');
+  });
+});
+
+describe('metaFromSignature', () => {
+  const OPTION_MAP = buildOptionMap(optionCollections as OptionCollection[]);
+  // "opt", the collection both recorded fixtures use.
+  const OPT = '102210fe594ee9b33d82058545b1ed14f4c8206e';
+
+  function signature(over: Partial<RawSignature> = {}): RawSignature {
+    return {
+      id: 42,
+      signature_hash: 'h'.repeat(40),
+      framework_id: 1,
+      option_collection_hash: OPT,
+      machine_platform: 'linux2404-64-shippable',
+      suite: 'ts_paint',
+      should_alert: true,
+      extra_options: ['e10s', 'fission'],
+      ...over,
+    };
+  }
+
+  // The load-bearing test of the whole early-identity path: the two endpoints
+  // describe the same signature, and the card is drawn from whichever answered
+  // first, so any disagreement is a card that visibly rewrites itself when its
+  // data lands. Both sides here are *recorded production responses* for
+  // mozilla-central signature 5310381 — a damp subtest — not hand-written
+  // fixtures agreeing with each other.
+  it('agrees field for field with the summary response for the same signature', () => {
+    const raw = (signaturesById as Record<string, RawSignature>)['5310381'];
+    const row = (summaryFixture as RawSummary[])[0];
+    expect(row.signature_id).toBe(5310381);
+
+    const fromSignature = metaFromSignature(5310381, raw, OPTION_MAP);
+    const fromSummary = metaFromSummary(row);
+
+    // Everything the card and the shared-attribute header read, including the
+    // server-composed name this one has to reproduce by hand.
+    expect(fromSignature.name).toBe(fromSummary.name);
+    expect(fromSignature.options).toBe(fromSummary.options);
+    expect(fromSignature.suite).toBe(fromSummary.suite);
+    expect(fromSignature.test).toBe(fromSummary.test);
+    expect(fromSignature.platform).toBe(fromSummary.platform);
+    expect(fromSignature.application).toBe(fromSummary.application);
+    expect(fromSignature.measurementUnit).toBe(fromSummary.measurementUnit);
+    expect(fromSignature.lowerIsBetter).toBe(fromSummary.lowerIsBetter);
+
+    // And the three that are allowed to differ, spelled out so a change to any
+    // of them has to be deliberate. The threshold and the parent id are the two
+    // fields the signatures endpoint does not serialize.
+    expect(fromSignature.source).toBe('signature');
+    expect(fromSummary.source).toBe('summary');
+    expect(fromSummary.parentSignatureId).toBe(5309052);
+    expect(fromSignature.parentSignatureId).toBeNull();
+    expect(fromSignature.alertThreshold).toBeNull();
+  });
+
+  it('composes the name the way the serializer does, trailing space and all', () => {
+    // `"{} {} {}".format(test_suite, option_name, extra_options)` — a signature
+    // with no extra options really does come back as "…opt " from treeherder
+    // (checked against production), and `options` must not pick that up.
+    const meta = metaFromSignature(42, signature({ extra_options: undefined }), OPTION_MAP);
+    expect(meta.name).toBe('ts_paint opt ');
+    expect(meta.options).toBe('opt');
+  });
+
+  it('does not deduplicate options, because the server does not', () => {
+    // 204 of autoland's 31,547 signatures have an option collection that
+    // overlaps their extra options. The picker tidies this; matching the summary
+    // endpoint matters more here, since the two take turns describing one card.
+    const asan = '03abd064e50ec12b8c7309950268531d78c63f60'; // ["asan"]
+    const meta = metaFromSignature(
+      42,
+      signature({ suite: 'installer size', option_collection_hash: asan, extra_options: ['asan', 'opt'] }),
+      OPTION_MAP,
+    );
+    expect(meta.name).toBe('installer size asan asan opt');
+    expect(meta.options).toBe('asan asan opt');
+  });
+
+  it('drops a test name that merely repeats the suite, as metaFromSummary does', () => {
+    const meta = metaFromSignature(42, signature({ suite: 'ts_paint', test: 'ts_paint' }), OPTION_MAP);
+    expect(meta.test).toBe('');
+    expect(meta.name).toBe('ts_paint opt e10s fission');
+  });
+
+  it('keeps a genuine subtest name in the composed name', () => {
+    const meta = metaFromSignature(
+      42,
+      signature({ suite: 'speedometer3', test: 'Charts' }),
+      OPTION_MAP,
+    );
+    expect(meta.test).toBe('Charts');
+    expect(meta.name).toBe('speedometer3 Charts opt e10s fission');
+  });
+
+  it('claims a parent id only for a parent, never for a subtest', () => {
+    // A parent is its own answer, as in `metaFromSummary`. A subtest's parent is
+    // reported as a *hash* by this endpoint, so the id stays unknown until the
+    // data arrives — and null here means "unknown", not "has no parent".
+    expect(metaFromSignature(777, signature({ has_subtests: true }), OPTION_MAP).parentSignatureId)
+      .toBe(777);
+    expect(
+      metaFromSignature(777, signature({ parent_signature: 'p'.repeat(40) }), OPTION_MAP)
+        .parentSignatureId,
+    ).toBeNull();
+    expect(metaFromSignature(777, signature(), OPTION_MAP).parentSignatureId).toBeNull();
+  });
+
+  it('defaults lowerIsBetter to true, since the producer omits it when true', () => {
+    expect(metaFromSignature(42, signature(), OPTION_MAP).lowerIsBetter).toBe(true);
+    expect(
+      metaFromSignature(42, signature({ lower_is_better: false }), OPTION_MAP).lowerIsBetter,
+    ).toBe(false);
+  });
+
+  it('is not a placeholder — its fields are real, unlike placeholderMeta', () => {
+    const ref: SeriesRef = { repository: 'autoland', signatureId: 42, frameworkId: 1 };
+    expect(isPlaceholder(metaFromSignature(42, signature(), OPTION_MAP))).toBe(false);
+    expect(isPlaceholder(metaFromSummary(summary([])))).toBe(false);
+    expect(isPlaceholder(placeholderMeta(ref))).toBe(true);
+  });
+
+  it('leaves options empty when the option collection is unknown to us', () => {
+    // A collection added after our memoised table was fetched. The extra options
+    // still come through; the missing one is simply not named.
+    const meta = metaFromSignature(
+      42,
+      signature({ option_collection_hash: 'z'.repeat(40) }),
+      OPTION_MAP,
+    );
+    expect(meta.options).toBe('e10s fission');
+    expect(meta.name).toBe('ts_paint  e10s fission');
   });
 });
 

@@ -58,7 +58,7 @@ describe('attrsFromMeta', () => {
       options: 'opt cold fission webrender',
       parentSignatureId: 5152393,
       alertThreshold: null,
-      placeholder: false,
+      source: 'summary',
     };
     expect(attrsFromMeta(ref, meta)).toEqual({
       repo: 'autoland',

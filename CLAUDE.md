@@ -8,6 +8,13 @@ its second table lists the changes that have gone wrong before and the section
 that explains each. It has the *why* behind non-obvious choices, and every
 non-trivial change should be checked against it.
 
+**Touching a fetch, a schema, or anything that reads a treeherder field? Read
+[docs/api-assumptions.md](docs/api-assumptions.md) too.** It is the register of
+things this app depends on that treeherder never promised — an undocumented
+query parameter, a serializer we reimplement, a page size — each with how it was
+verified, *when*, and what it looks like when it breaks. Everything in it fails
+silently, so add an entry when you take a new one on.
+
 ## Answering performance questions: use `bin/perfherder-cli`, not the source
 
 **When you are asked a question *about Firefox performance data* — how two

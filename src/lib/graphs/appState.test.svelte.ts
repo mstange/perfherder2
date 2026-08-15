@@ -9,6 +9,7 @@ import type { Job, Push, RawDatum, RawSummary } from './graphApi';
 import { buildSeriesData, MEAN_REPLICATE, metaFromSummary, seriesKey } from './graphData';
 import type { TrendPoint } from './trend';
 import { parseViewState } from '../urlState';
+import { resetOptionMapCache } from '../picker/signaturesApi';
 
 const DAY = 86400000;
 const NOW = Date.UTC(2026, 6, 27, 12, 0, 0);
@@ -200,9 +201,39 @@ function alertSummary(overrides: Record<string, unknown> = {}) {
   };
 }
 
+// The option-collection table, which the identity fetch resolves options
+// against. One row, matching the hash `signatureRow` uses.
+const OPTION_COLLECTIONS = [
+  { option_collection_hash: 'oc-hash', options: [{ name: 'opt' }] },
+];
+
+// One row of the batched `/performance/signatures/?id=…` response — the cheap
+// request that names a card before its data lands.
+function signatureRow(id: number, over: Record<string, unknown> = {}) {
+  return {
+    id,
+    signature_hash: 'hash',
+    framework_id: 1,
+    option_collection_hash: 'oc-hash',
+    machine_platform: 'linux2404-64-shippable',
+    suite: 'ts_paint',
+    should_alert: true,
+    extra_options: ['e10s'],
+    ...over,
+  };
+}
+
+// The endpoint answers with a map keyed by id, holding only the ids it knows.
+function signaturePage(url: string) {
+  const ids = [...new URL(url, 'https://x/').searchParams.getAll('id')].map(Number);
+  return Object.fromEntries(ids.map((id) => [String(id), signatureRow(id)]));
+}
+
 let fetchMock: ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
+  // Module-scope memo, so it outlives a test the way it outlives a panel.
+  resetOptionMapCache();
   fetchMock = vi.fn(async (url: string) => {
     // Signature 2 is the long stepped series, 6 is the same step on another
     // platform; everything else gets SAMPLE.
@@ -210,6 +241,8 @@ beforeEach(() => {
       if (url.includes('signature=6&')) return json([STEP_OTHER]);
       return json([url.includes('signature=2&') ? STEP : SAMPLE]);
     }
+    if (url.includes('/performance/signatures/')) return json(signaturePage(url));
+    if (url.includes('/optioncollectionhash/')) return json(OPTION_COLLECTIONS);
     if (url.includes('/performance/alertsummary/')) return json(alertPage([]));
     if (url.includes('/repository/')) return json([]);
     if (url.includes('/push/')) return json(push());
@@ -266,6 +299,136 @@ describe('AppState construction', () => {
         expect(app.selectedPoint?.datumId).toBe(10);
       },
     ));
+});
+
+describe('AppState signature identity', () => {
+  const signatureCalls = () =>
+    fetchMock.mock.calls
+      .map((c: unknown[]) => String(c[0]))
+      .filter((u: string) => u.includes('/performance/signatures/'));
+
+  // Hold every data response open, so the only thing that can have named the
+  // cards is the identity fetch.
+  const withHeldData = () => {
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.includes('/performance/summary/')) return new Promise(() => {});
+      if (url.includes('/performance/signatures/')) return json(signaturePage(url));
+      if (url.includes('/optioncollectionhash/')) return json(OPTION_COLLECTIONS);
+      if (url.includes('/repository/')) return json([]);
+      return json({});
+    });
+  };
+
+  it('names a card before its data arrives', async () => {
+    withHeldData();
+    await withApp('?series=autoland,1,1', async (app) => {
+      await settle();
+      expect(app.series[0].loading).toBe(true);
+      expect(app.series[0].data.pushes).toEqual([]);
+      // Everything the card and the shared-attribute header draw.
+      expect(app.series[0].meta?.suite).toBe('ts_paint');
+      expect(app.series[0].meta?.platform).toBe('linux2404-64-shippable');
+      expect(app.series[0].meta?.options).toBe('opt e10s');
+      expect(app.series[0].meta?.source).toBe('signature');
+    });
+  });
+
+  it('asks once per repository, not once per series', async () => {
+    withHeldData();
+    await withApp('?series=autoland,1,1&series=autoland,2,1&series=mozilla-central,3,1', async () => {
+      await settle();
+      const calls = signatureCalls();
+      expect(calls).toHaveLength(2);
+      const autoland = calls.find((u: string) => u.includes('/project/autoland/'))!;
+      // Both autoland signatures in one query string.
+      expect([...new URL(autoland).searchParams.getAll('id')]).toEqual(['1', '2']);
+      expect(calls.some((u: string) => u.includes('/project/mozilla-central/'))).toBe(true);
+      // No `interval`: it filters on `last_updated`, which would drop exactly the
+      // quiet signature someone has a stale URL for.
+      expect(autoland).not.toContain('interval');
+    });
+  });
+
+  // The reason this cache is keyed by signature and not by (signature, range):
+  // a range change used to blank every card back to "signature <id>".
+  it('keeps the names across a range change, and does not ask again', async () => {
+    withHeldData();
+    await withApp('?series=autoland,1,1', async (app) => {
+      await settle();
+      expect(signatureCalls()).toHaveLength(1);
+      expect(app.series[0].meta?.suite).toBe('ts_paint');
+
+      app.setRange({ start: NOW - 30 * DAY, end: NOW });
+      await settle();
+      expect(app.series[0].meta?.suite).toBe('ts_paint');
+      expect(signatureCalls()).toHaveLength(1);
+    });
+  });
+
+  it('asks only about series it does not already know', async () => {
+    withHeldData();
+    await withApp('?series=autoland,1,1', async (app) => {
+      await settle();
+      expect(signatureCalls()).toHaveLength(1);
+
+      app.addSeries([{ repository: 'autoland', signatureId: 9, frameworkId: 1 }]);
+      await settle();
+      const calls = signatureCalls();
+      expect(calls).toHaveLength(2);
+      // The second request is about the new series alone.
+      expect([...new URL(calls[1]).searchParams.getAll('id')]).toEqual(['9']);
+    });
+  });
+
+  // The two fields the signatures endpoint cannot answer arrive with the data,
+  // and the swap must not disturb anything the card was already showing.
+  it('upgrades to the summary metadata when the data lands', async () => {
+    await withApp('?series=autoland,1,1', async (app) => {
+      await settle();
+      expect(app.series[0].meta?.source).toBe('summary');
+      expect(app.series[0].meta?.suite).toBe('ts_paint');
+      // SAMPLE declares no threshold of its own, so this is still null — but it
+      // is now null as a *statement* rather than as "we didn't ask".
+      expect(app.series[0].meta?.alertThreshold).toBeNull();
+    });
+  });
+
+  it('leaves the placeholder in place for a signature the endpoint does not know', async () => {
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.includes('/performance/summary/')) return new Promise(() => {});
+      // An id from a stale URL: present in the request, absent from the response.
+      if (url.includes('/performance/signatures/')) return json({});
+      if (url.includes('/optioncollectionhash/')) return json(OPTION_COLLECTIONS);
+      return json({});
+    });
+    await withApp('?series=autoland,404,1', async (app) => {
+      await settle();
+      expect(app.series[0].meta).toBeNull();
+      expect(app.series[0].loading).toBe(true);
+    });
+  });
+
+  it('does not retry a failed identity fetch, and the data still names the card', async () => {
+    let attempts = 0;
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.includes('/performance/signatures/')) {
+        attempts++;
+        return { ok: false, status: 503, statusText: '' } as Response;
+      }
+      if (url.includes('/optioncollectionhash/')) return json(OPTION_COLLECTIONS);
+      if (url.includes('/performance/summary/')) return json([SAMPLE]);
+      return json({});
+    });
+    await withApp('?series=autoland,1,1', async (app) => {
+      await settle();
+      expect(attempts).toBe(1);
+      // The data response carries every field the identity fetch was after.
+      expect(app.series[0].meta?.source).toBe('summary');
+      app.setRange({ start: NOW - 30 * DAY, end: NOW });
+      await settle();
+      expect(attempts).toBe(1);
+    });
+  });
 });
 
 describe('AppState loading', () => {

@@ -12,6 +12,10 @@
 
 import { JITTER_GAP_FRACTION, jitterAt } from '../shared/chart';
 import { parseApiDate, type RawSummary } from './graphApi';
+// The one type this module borrows across the feature line: the signatures
+// endpoint's row, which `metaFromSignature` projects into the same `SeriesMeta`
+// the summary response produces. See docs/design.md, "Architecture".
+import type { RawSignature } from '../picker/signaturesApi';
 
 // One job's worth of values for one signature: a single performance datum
 // plus its replicates.
@@ -155,9 +159,12 @@ export type AlertThreshold = {
 // `treeherder/perf/alerts.py`, `generate_new_alerts_in_series`.
 export const DEFAULT_ALERT_THRESHOLD: AlertThreshold = { kind: 'percentage', value: 2 };
 
-// Display metadata, taken from the summary response rather than the picker's
-// signature row, so a series restored from a bare URL looks identical to one
-// the user just added.
+// Display metadata for one series, from whichever of two endpoints has answered
+// so far — the summary response that carries the data, or the much cheaper
+// signatures row that lands about a second earlier. One shape for both, so a
+// series restored from a bare URL looks identical to one the user just added, and
+// so a card doesn't have two ways to describe itself. `source` says which
+// answered, and it matters for exactly two fields; see `MetaSource`.
 export type SeriesMeta = {
   suite: string;
   test: string;
@@ -184,14 +191,37 @@ export type SeriesMeta = {
   // quietly hand every build-metrics subtest a 2% floor on a metric that moves by
   // hundredths of a percent.
   alertThreshold: AlertThreshold | null;
-  // True for the stand-in we synthesize when a signature has no data in the
-  // range: the endpoint returns nothing at all in that case, so there is no
-  // metadata and every field above is either empty or made up. Code that
-  // *displays* the fields can ignore this; code that would act on them (the
-  // series list's shared-attribute header, the picker prefill) has to skip
-  // these entries or it will filter on a fabricated suite name.
-  placeholder: boolean;
+  // Which of the three things we know produced this, because two of the fields
+  // above cannot be answered by all of them. One field rather than a pair of
+  // booleans: the states are exclusive, and a `placeholder` flag beside a
+  // `fromSignature` flag would have four combinations for three facts.
+  source: MetaSource;
 };
+
+// - `summary` — the `/performance/summary/` response that carries the data. The
+//   complete answer, and the only one with `alertThreshold` and
+//   `parentSignatureId`; assume this wherever a series' *data* is in hand.
+// - `signature` — the batched `/performance/signatures/?id=…` response, which
+//   arrives ~1s before the data and is what lets a card name itself early (see
+//   `metaFromSignature`). **Its `alertThreshold` and `parentSignatureId` are
+//   null because that endpoint does not serialize them, which is not the same
+//   claim as "this signature declares none"** — the fields' own comments spell
+//   out why that difference matters. Nothing may read either field off one of
+//   these; everything that does is reached only once the data has landed, and
+//   `metaTest` in graphData.test.ts pins that.
+// - `none` — the stand-in we synthesize when a signature has no data in the
+//   range *and* no signature row came back: every field is empty or made up.
+//   Code that *displays* the fields can ignore this; code that would act on them
+//   (the shared-attribute header, the picker prefill) has to skip these or it
+//   will filter on a fabricated suite name. `isPlaceholder` is the check.
+export type MetaSource = 'summary' | 'signature' | 'none';
+
+// Whether this metadata is the synthesized stand-in rather than something an
+// endpoint said. Named for what callers care about, so the three-valued field
+// doesn't turn into `=== 'none'` comparisons spread over the app.
+export function isPlaceholder(meta: SeriesMeta): boolean {
+  return meta.source === 'none';
+}
 
 export function seriesKey(ref: SeriesRef): string {
   return `${ref.repository}|${ref.signatureId}`;
@@ -214,7 +244,74 @@ export function metaFromSummary(summary: RawSummary): SeriesMeta {
     parentSignatureId:
       summary.parent_signature ?? (summary.has_subtests ? summary.signature_id : null),
     alertThreshold: alertThresholdFromSummary(summary),
-    placeholder: false,
+    source: 'summary',
+  };
+}
+
+// The same metadata from the *signatures* endpoint's row, which the graph fetches
+// for every plotted series in one request per repository before their data
+// arrives (`AppState.loadSignatureMetas`). One request, ~160 ms, against 1.3 s
+// for a 90-day data response — so this is what a card's name, platform and
+// options are drawn from while its dots are still downloading.
+//
+// **The two endpoints must agree field for field, or the card would rewrite
+// itself when the data landed.** Everything here was checked against production:
+// 12 signatures spanning subtests, `test === suite`, and duplicated options, and
+// every displayed field plus the composed `name` matched exactly. graphData.test.ts
+// pins the same equality against a recorded pair of responses.
+//
+// Two of them take care:
+//
+//   `name` is composed here, because only the summary serializer builds it —
+//     and it is composed as *that serializer's own format string*, spaces and
+//     all, so `options` can then be recovered with the same `optionsFromName`
+//     the summary path uses instead of a second parallel rule. It is
+//     deliberately not tidied: the server's `"{} {} {}".format(...)` leaves a
+//     trailing space when a signature has no extra options
+//     ("BenchSign_RSA2048 64_verify opt "), and it does not deduplicate, so 204
+//     of autoland's 31,547 signatures legitimately read "installer size asan
+//     asan opt". Both were checked against production. Matching the server byte
+//     for byte is the point; the picker is free to be tidier (`toSeries` dedups)
+//     because nothing swaps its rows out from under it.
+//   `parentSignatureId` can only be filled for a *parent*, whose own id it is.
+//     This endpoint reports a subtest's parent as a signature *hash*, and
+//     resolving that to an id would be another request for a field nothing reads
+//     until the data (which carries it) has arrived.
+//
+// One known divergence, and it is unreachable today: for an option collection
+// holding more than one option this joins them ("debug memleak") while the
+// summary endpoint emits just one of them, because the map it builds is keyed by
+// collection id and a multi-option collection has one row per option, so the
+// dict comprehension keeps the last. Production has exactly one such collection
+// and **zero of the 76,025 signatures across autoland and mozilla-central use
+// it**. If that ever changes, the symptom is a card whose options are rewritten
+// when its data lands, not a wrong answer.
+export function metaFromSignature(
+  id: number,
+  raw: RawSignature,
+  optionMap: ReadonlyMap<string, string[]>,
+): SeriesMeta {
+  const suite = raw.suite ?? '';
+  // Same rule as `metaFromSummary`, and the same reason: 58 of autoland's rows
+  // repeat the suite in `test`, and "ts_paint · ts_paint" is not a label.
+  const test = raw.test && raw.test !== suite ? raw.test : '';
+  const testSuite = test ? `${suite} ${test}` : suite;
+  const optionName = (optionMap.get(raw.option_collection_hash) ?? []).join(' ');
+  const extraOptions = (raw.extra_options ?? []).join(' ');
+  const name = `${testSuite} ${optionName} ${extraOptions}`;
+  return {
+    suite,
+    test,
+    platform: raw.machine_platform,
+    application: raw.application ?? '',
+    measurementUnit: raw.measurement_unit ?? '',
+    // Emitted only when false — the producer treats true as the default.
+    lowerIsBetter: raw.lower_is_better !== false,
+    name,
+    options: optionsFromName(name, suite, test),
+    parentSignatureId: raw.parent_signature ? null : raw.has_subtests ? id : null,
+    alertThreshold: null,
+    source: 'signature',
   };
 }
 
@@ -277,7 +374,7 @@ export function placeholderMeta(ref: SeriesRef): SeriesMeta {
     options: '',
     parentSignatureId: null,
     alertThreshold: null,
-    placeholder: true,
+    source: 'none',
   };
 }
 

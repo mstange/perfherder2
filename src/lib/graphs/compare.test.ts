@@ -24,7 +24,7 @@ function meta(): SeriesMeta {
     options: 'opt',
     parentSignatureId: 5152393,
     alertThreshold: null,
-    placeholder: false,
+    source: 'summary',
   };
 }
 

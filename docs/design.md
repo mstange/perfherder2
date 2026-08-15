@@ -18,6 +18,7 @@ is documented elsewhere.
 | What the details pane does with a selection: distributions, comparison mode, statistics | [comparison.md](comparison.md) |
 | The `bin/perfherder-cli` CLI: its commands, its caching, the mode analysis it adds, and how it is published | [cli.md](cli.md) |
 | What's built, what's next, what was deliberately deferred and why | [graphs-todo.md](graphs-todo.md) for the app, [cli-todo.md](cli-todo.md) for the CLI |
+| What we assume about treeherder that it never promised, and what it looks like when one of those assumptions breaks | [api-assumptions.md](api-assumptions.md) — read it before depending on a new endpoint, and when a display is subtly wrong for no reason the diff explains |
 | Which module owns a thing | "Architecture" below, graphs.md "Code map", comparison.md "Code map", cli.md "Code map" |
 
 **If you touch X, read Y first.** Each of these is a place where the obvious
@@ -36,7 +37,8 @@ change is wrong for a reason the code doesn't show:
 | A hover explanation | "Tooltips: for what the canvas paints". Ordinary controls use `title`; the drawn box is for the marks in the graph's canvas, which have no element to hang one on |
 | A percentage or a delta in the details pane | graphs.md, "The three change cards say it the same way" — one component draws all three headlines, and the sign is the measurement's, never the verdict's |
 | Anything that renders before its data arrives | "Layout stability" |
-| A fetch, or a new endpoint | "Validating API responses"; plus "Cache key" if the result is cached, and "The picker's caches live at module scope" if it is the picker doing the fetching — a cache on `PickerState` does not survive the panel closing |
+| A fetch, or a new endpoint | "Validating API responses" and [api-assumptions.md](api-assumptions.md); plus "Cache key" if the result is cached, and "The picker's caches live at module scope" if it is the picker doing the fetching — a cache on `PickerState` does not survive the panel closing |
+| `SeriesMeta`, or anything that reads a series' metadata | "Two endpoints describe a series" below. It arrives from one of two responses, `source` says which, and two of its fields are answerable by only one of them — api-assumptions.md, "Two null fields mean different things depending on `source`" |
 | A treeherder *list* endpoint | its default page is 10 rows and truncation is silent — a partial answer is shaped exactly like a complete one. comparison.md, "The inline pushlog", and the `getCommonAlerts` note in graphs-todo.md |
 | How a row is identified | "Row identity: `Series.key`, composed at construction" |
 | A loading or empty state for subtests | "`has_subtests` is a claim, not a promise" — `has_subtests` does not mean a subtests=1 fetch will return any |
@@ -80,12 +82,22 @@ Two things this layout is claiming, both of which were checked against the
 import graph rather than assumed:
 
 - **Dependencies run feature → shared, and `graphs` → `picker` but never
-  back.** The only two edges into the picker are `appState` and
-  `seriesSummary` reaching for `filter.ts`, which is the graph's context
-  reaching the panel — as a prefill on open and as its "Derive filter"
-  button (see "Opening the picker prefills its filter"). The `GraphContext`
-  they meet over is declared in `urlState.ts` for exactly this reason:
-  either feature owning it would be an edge one way or the other. There is
+  back.** There are five edges into the picker, in two groups. Two are
+  `appState` and `seriesSummary` reaching for `filter.ts`, which is the
+  graph's context reaching the panel — as a prefill on open and as its
+  "Derive filter" button (see "Opening the picker prefills its filter"). The
+  `GraphContext` they meet over is declared in `urlState.ts` for exactly this
+  reason: either feature owning it would be an edge one way or the other.
+  The other three are the graphs view fetching a signature's *identity* before
+  its data (see "Two endpoints describe a series"): `appState` and
+  `graphData` reach for `signaturesApi.ts`, whose endpoint and row schema are
+  not picker-specific, and `appState` reaches for `activity.ts`'s
+  `chunkIds` / `MAX_IDS_PER_REQUEST`, which are a fact about treeherder's
+  request-line limit rather than about the picker. **Those two are the ones
+  to watch**: if a third feature ever wants the signature endpoint, or if
+  `signaturesApi.ts` starts importing picker state, the fix is to move it to
+  `shared/` — not to copy its schema, which would be two schemas for one
+  endpoint. There is
   exactly one edge the wrong way: `shared/chart.ts` imports the `SeriesPoint`
   *type* from `graphs/graphData.ts`, because some of its helpers plot points while
   the rest (formatting, `padDomain`, `Range`) are generic and the details
@@ -504,6 +516,48 @@ click removes it. Visual affordance: hover shows a `+` cue; active shows a
 keyboard support falls out of that. `title` attributes describe the action
 for screen readers and hover-hint.
 
+### Two endpoints describe a series, and the cheap one answers first
+
+A card's text — suite, test, platform, application, options, unit — is
+`SeriesMeta`, and it can come from either of two responses:
+
+| | `/performance/signatures/?id=…` | `/performance/summary/` |
+| --- | --- | --- |
+| Cost, measured | 866 B, 163 ms, **all series in a repo at once** | 1.4–9 MB, 0.4–1.3 s, one series |
+| Carries | identity only | identity *and* every data point |
+| `source` | `'signature'` | `'summary'` |
+
+**The split exists because the identity is the part the user is waiting to
+read.** Before it, a shared two-series URL showed a column of "signature
+5257392 / loading…" for as long as the biggest data response took — 1.3 s on the
+90-day speedometer3 link, and much longer on a slow connection. Now the cards are
+named at ~160 ms, and the spinner in the point-count slot is the only thing still
+saying "not yet" (see "Two loading cues"). Measured on the production build: the
+names land at ~500 ms cold, against 2.2 s for the second series' dots.
+
+Four things follow, and each one is a mistake someone would otherwise make:
+
+- **The identity cache is keyed by signature, not by (signature, range).** A
+  signature's name doesn't depend on the window, so changing the range keeps
+  every card named instead of blanking the list — which is what it did when the
+  only metadata came bundled with the range's data.
+- **One request per *repository*, not per series.** `id` is an `id__in` filter
+  but the repository is in the path, so a graph spanning autoland and
+  mozilla-central makes two. Both are chunked on activity.ts's
+  `MAX_IDS_PER_REQUEST`, which is the request-line ceiling, not a tuning knob.
+- **The summary's metadata wins when both exist**, because two of its fields —
+  `alertThreshold` and `parentSignatureId` — are the only ones the signatures
+  endpoint can't answer. Every other field is identical, verified field for field
+  against production, so the swap is invisible.
+- **Null in those two fields means something different depending on `source`**,
+  and reading them off a `'signature'` meta would silently compute a drift badge
+  against the wrong alerting floor. Nothing does today, structurally rather than
+  by type. api-assumptions.md has the invariant and what breaking it looks like.
+
+This is also the one place the graphs view reaches across to the picker for
+transport rather than pure logic (`signaturesApi.ts`, plus `activity.ts` for the
+chunking) — an allowed direction, and listed in "Architecture" above.
+
 ### The series list shows differences, not descriptions
 
 A plotted set is usually one test sliced along one axis: the same
@@ -784,9 +838,11 @@ The rules that make this safe:
   That three-valued-ness is the whole reason `psub` is written even when
   false — see "URL state" in graphs.md.
 - **Placeholder metadata is excluded** (`attrsForEntry` /
-  `SeriesMeta.placeholder`). A signature with no data in the range gets a
-  synthesized `suite: "signature 1234"`; prefilling on that would open
-  the picker on an empty list.
+  `isPlaceholder`, i.e. `SeriesMeta.source === 'none'`). A signature with
+  no data in the range gets a synthesized `suite: "signature 1234"`;
+  prefilling on that would open the picker on an empty list. Metadata from
+  the signatures endpoint is *not* excluded — it is real, it just arrived
+  first, which is what lets "Derive filter" answer before the dots do.
 - The intersection here is `commonAttrs`, not `splitCommonAttrs` — with
   one series plotted there's no header to render but that one series is
   exactly the context to search from.
