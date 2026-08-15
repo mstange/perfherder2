@@ -327,10 +327,13 @@ later.
   a few hundred kB each in the worst case observed, and the whole reason to keep
   them is that they are shared and wanted again after a range change. A session
   that visited many distinct broad regressions would accumulate them.
-- **The alerts *list* request is still 1.0–1.5 s per plotted signature**, and it
-  carries every other signature's alerts inside each summary (548 alerts arrive
-  for the one signature we asked about, on 5825019). Unavoidable without a
-  narrower endpoint; it is now the floor on how fast a marker can appear.
+- **The per-signature alerts request is still 1.0–2.0 s each**, and it carries
+  every *other* signature's alerts inside each summary: 590 kB to report one alert
+  on 5825019, 0.18% of the payload. Now the floor on how fast a marker can appear,
+  and not fixable on this side — every existing parameter selects which summaries
+  come back rather than what is in one. It is a treeherder ask, written up in that
+  checkout as `proposal-alertsummary-signature-payload.md` and tracked in
+  graphs-todo.md.
 - **The picker's `toSeries` and the graph's `metaFromSignature` project the same
   row differently on purpose** — the picker dedups options, the graph matches
   the server. Two projections of one endpoint's row is a real fork; the reason

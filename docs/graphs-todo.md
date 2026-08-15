@@ -225,15 +225,28 @@ Living checklist. Update in the same commit as the work it describes.
       batching will be added, so `?id=` stays the right route.
 
 - [ ] **The per-signature alerts request is now the floor on marker latency**, at
-      1.0–1.5 s each — `/performance/alertsummary/?alerts__series_signature=<id>`,
+      1.0–2.0 s each — `/performance/alertsummary/?alerts__series_signature=<id>`,
       which is alerts and not data points (those are `/performance/summary/`, and
-      they are already on screen by then). It cannot be narrowed with the
-      parameters that exist: each summary arrives carrying every other signature's
-      alerts
-      (548 of them for the one signature we asked about on 5825019), and there is
-      no way to ask for less. Attacking it needs a new endpoint, which is the same
-      conclusion the "who else alerted on this push" note below reached from the
-      other direction — see the `getCommonAlerts` entry in "Open questions".
+      they are already on screen by then). Nothing on this side can make it
+      faster: each summary arrives carrying every *other* signature's alerts too,
+      so 590 kB and 1.1–1.6 s buys news of a single alert on signature 5825019 —
+      0.18% of the payload — and the two-series graph transfers 1.6 MB and 1,494
+      alerts to report 16. Every existing parameter selects *which summaries* come
+      back and none touches what is inside one (`limit=1`,
+      `hide_related_and_invalid` and `hide_improvements` all return byte-identical
+      responses), `/performance/alert/` filters only by `id` and carries no push or
+      triage state anyway, and unknown parameters are silently ignored — so a
+      narrowing one cannot be found by probing.
+
+      **So this one is a treeherder ask, written up in that checkout as
+      `proposal-alertsummary-signature-payload.md`**: the example URL, the
+      measurements, and every alternative that was checked with why it doesn't
+      answer. Deliberately separate from `proposal-alertsummary-detail-perf.md` —
+      that is a code path missing an optimisation its own sibling has, this is a
+      response shape with no way to ask for less, and fixing either leaves the
+      other standing. Same conclusion the "who else alerted on this push" note
+      reached from the other direction; see the `getCommonAlerts` entry in "Open
+      questions".
 
 - [ ] **A selection outside the band is invisible in `points: None`.** The axis
       covers the band there, so a selected run mean above p75 or below p25 has its
