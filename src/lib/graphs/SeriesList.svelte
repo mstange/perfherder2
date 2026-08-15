@@ -469,11 +469,13 @@
 </aside>
 
 <style>
+  /* No border: which of this pane's sides face another pane depends on where
+     the shell has put it, and the shell is the only thing that knows. It draws
+     the seam on the slot — see `main` in App.svelte. */
   .series-list {
     display: flex;
     flex-direction: column;
     min-height: 0;
-    border-right: 1px solid var(--border-default);
     background: var(--bg-subtle);
     font: 13px/1.4 system-ui, sans-serif;
   }

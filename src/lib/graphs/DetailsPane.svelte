@@ -688,11 +688,13 @@
 </aside>
 
 <style>
+  /* No border: which of this pane's sides face another pane depends on where
+     the shell has put it, and the shell is the only thing that knows. It draws
+     the seam on the slot — see `main` in App.svelte. */
   .details {
     display: flex;
     flex-direction: column;
     min-height: 0;
-    border-left: 1px solid var(--border-default);
     background: var(--bg-subtle);
     font: 13px/1.45 system-ui, sans-serif;
   }

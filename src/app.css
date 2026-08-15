@@ -237,12 +237,19 @@
      identical on a Mac, where `ui-monospace` wins before the fallbacks are
      reached, and not necessarily anywhere else. */
   --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
-  /* Not a color, but it belongs with them for the same reason: the Add-series
-     panel docks to the right of the series list, so this number is shared by
-     `main`'s grid and the panel's `inset` — in two different scoped
-     stylesheets, which have no other way to agree on it. Drift here would put
-     the panel over the list it is deliberately not covering. */
+  /* Not colors, but they belong with them for the same reason: the Add-series
+     panel docks to the right of the series list, so the first number is shared
+     by `main`'s grid and the panel's `inset` — in two different scoped
+     stylesheets, which have no other way to agree on it. Drift there would put
+     the panel over the list it is deliberately not covering.
+
+     Both are also read by src/lib/shared/layout.ts, which works out from them
+     where the shell has to change arrangement. That copy is the one to keep in
+     step; it says so at each constant. Nothing crashes if it drifts — the tiers
+     just start at the wrong widths, which is the sort of thing you only notice
+     by dragging a window edge. */
   --sidebar-width: 280px;
+  --details-width: 320px;
 }
 
 html,

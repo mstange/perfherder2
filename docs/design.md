@@ -37,6 +37,7 @@ change is wrong for a reason the code doesn't show:
 | A hover explanation | "Tooltips: for what the canvas paints". Ordinary controls use `title`; the drawn box is for the marks in the graph's canvas, which have no element to hang one on |
 | A percentage or a delta in the details pane | graphs.md, "The three change cards say it the same way" — one component draws all three headlines, and the sign is the measurement's, never the verdict's |
 | Anything that renders before its data arrives | "Layout stability" |
+| Where a pane sits, how wide it is, or a border between two panes | "The shell has three arrangements, and the graph keeps its width" — there are three, the thresholds are computed from the pane widths in `shared/layout.ts` rather than chosen, and a pane that draws its own border draws a doubled one as soon as the arrangement moves it |
 | A fetch, or a new endpoint | "Validating API responses" and [api-assumptions.md](api-assumptions.md); plus "Cache key" if the result is cached, and "The picker's caches live at module scope" if it is the picker doing the fetching — a cache on `PickerState` does not survive the panel closing |
 | `SeriesMeta`, or anything that reads a series' metadata | "Two endpoints describe a series" below. It arrives from one of two responses, `source` says which, and two of its fields are answerable by only one of them — api-assumptions.md, "Two null fields mean different things depending on `source`" |
 | A treeherder *list* endpoint | its default page is 10 rows and truncation is silent — a partial answer is shaped exactly like a complete one. comparison.md, "The inline pushlog", and the `getCommonAlerts` note in graphs-todo.md |
@@ -64,8 +65,8 @@ architecture breaks.**
 
 ```
 src/lib/
-  shared/   http, links, chart, stats, theme(+.svelte, ThemeToggle), timeRange,
-            tooltip(+State.svelte, Tooltip)
+  shared/   http, links, chart, layout, stats, theme(+.svelte, ThemeToggle),
+            timeRange, tooltip(+State.svelte, Tooltip)
   picker/   the Add-series panel: signaturesApi, series, pickerOptions, filter,
             activity(+Api), pickerState.svelte, AddSeriesPicker, FilterInput
   graphs/   the graphs view and its two side panes: graphApi, graphData,
@@ -1088,6 +1089,72 @@ Consequences worth knowing:
   common state where the subtest payload hasn't loaded and there is no
   count to show.
 
+### The shell has three arrangements, and the graph keeps its width
+
+`main` is a series list, a graph and a details pane. The two side panes are a
+fixed 600px between them, and for a long time that was a hard floor the graph
+paid for: at a 900px window it left 300px of plot, at 640px it left 40px, and
+below 600px the middle column was **zero** — the graph's own chrome painting
+over the pane beside it, which was itself clipped off the right-hand edge. The
+app was unusable in a tiled half-screen window, which is where a lot of people
+read a graph somebody linked in a bug.
+
+The rule is the other way round: **the graph is the content, the side panes are
+apparatus, and a pane that no longer fits stops being a column rather than
+squeezing the graph.** That gives three arrangements, and the thresholds are
+arithmetic rather than taste — each tier ends exactly where its columns would
+push the graph below `GRAPH_MIN_WIDTH`:
+
+| Window | Arrangement | Graph gets |
+| --- | --- | --- |
+| ≥ 1040 | `list │ graph │ details` | window − 600 |
+| 720–1039 | `list │ graph`, details in a row **under** the graph | window − 280 |
+| < 720 | one pane at a time, chosen by a switcher | the window |
+
+- **The middle tier moves the details pane rather than hiding it**, and that
+  buys the graph the pane's whole 320px of *width* at the cost of height. The
+  right way round for a time series: it is read across, and the y axis is the
+  one that can be squeezed without losing a date. It also keeps the graph fully
+  visible and clickable, which an overlay docked over it would not — shift-click
+  to compare needs two reachable points.
+- **The details row is reserved, not grown into.** Sizing it to its content
+  would move the graph under the pointer on the very click that fills it. It is
+  the same bargain the wide layout already strikes, where an empty pane holds
+  320px of width open all day; the cap is `min(40%, 320px)`, so a tall window
+  spends the extra on the graph rather than on a taller empty pane.
+- **The narrow tier switches rather than stacks.** Three cramped panes in one
+  column is worse than one pane with the window, and stacking would have to
+  reserve height for a details pane that is empty until you click. A click on
+  the graph moves the switcher to Selection, because at this width that click's
+  only visible effect is in a pane you would otherwise have to go and find —
+  but only on a *change of point*, so zooming or toggling a switch leaves you
+  where you are. `resolveNarrowPane` handles the other direction: a `selection`
+  pane whose selection has been dropped falls back to the graph.
+- **The tier is decided in JS and published as `data-layout`, not written as
+  media queries.** Two things that are not CSS have to agree with it: which
+  panes the Add-series panel covers, and therefore which are `inert` while it's
+  open — a DOM property no media query can set — and whether the switcher is
+  rendered at all. A media query plus a matching `matchMedia` is the same two
+  numbers written twice, and the failure is silent. The numbers live in
+  [layout.ts](../src/lib/shared/layout.ts) with a unit test that asserts the
+  property they exist for: whatever the window, the graph is at or above its
+  minimum.
+- **The panes don't draw their own borders; the slots do.** Which of a pane's
+  sides faces another pane is a fact about the arrangement, and the arrangement
+  changes: the details pane drew its own `border-left` until it moved under the
+  graph, where that edge lands against the series list's `border-right` and the
+  two render as one 2px rule. A pane can't know that. `main` draws exactly one
+  rule per seam, per tier.
+- **Each pane gets a slot `div` that is the grid item.** The panes are
+  components with scoped styles, so the shell can't place them without reaching
+  through `:global` for a class name three files away. The slot is also where
+  `inert` goes, which is what lets the list be live beside the panel in two
+  tiers and covered in the third.
+
+The narrow tier is also the one that found two long-standing bugs in the picker,
+both of which bit at any window under ~1150px and are described in the next
+section.
+
 ### The Add-series panel docks beside the series list
 
 The panel used to be a full-screen modal over an `inert` `<main>`. It now
@@ -1131,6 +1198,13 @@ that exists only inside a dialog.
 - **Left-aligned, still capped at 1400px.** On a display wide enough for
   the cap to bite, the leftover is graph — dimmed, but visible, and
   better company than empty backdrop.
+- **At narrow widths there is no beside, so the panel takes the window** and
+  the list's slot goes `inert` with the other two. This is the case the
+  original version of this section ruled out — "no breakpoint that hands the
+  sidebar back, inert-ness would then have to depend on the viewport, which
+  CSS can't drive". The objection was right about CSS and wrong about the
+  conclusion: the viewport *is* what decides, so the deciding moved to JS. See
+  the previous section.
 - The panel is ~280px narrower than it was. The table's `min-width: 64em`
   and its wrapper's `overflow: auto` were supposed to handle that — at a 1152px
   window the table fits exactly, and below that it should scroll horizontally
@@ -1153,8 +1227,6 @@ that exists only inside a dialog.
   The lesson worth keeping: the `min-height: 0` chain this panel documents
   carefully has a horizontal twin, and a `min-width` deep inside a flex chain
   propagates *up* as an automatic minimum until something definite stops it.
-- No breakpoint that hands the sidebar back — inert-ness would then have to
-  depend on the viewport, which CSS can't drive.
 
 ### Rows already on the graph show their swatch
 

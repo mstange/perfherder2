@@ -10,6 +10,12 @@
   import SeriesList from './lib/graphs/SeriesList.svelte';
   import Tooltip from './lib/shared/Tooltip.svelte';
   import { AppState } from './lib/graphs/appState.svelte';
+  import {
+    NARROW_PANES,
+    layoutForWidth,
+    resolveNarrowPane,
+    type NarrowPane,
+  } from './lib/shared/layout';
   import type { Series } from './lib/picker/series';
 
   const app = new AppState(location.search);
@@ -32,6 +38,50 @@
   function handleRemove(series: Series[]) {
     app.removeSeries(series.map(refFor));
   }
+
+  // Which of the three arrangements the window can afford. The thresholds and
+  // the reasoning are in layout.ts; what is here is only the wiring.
+  //
+  // Driven from JS and published as `data-layout` rather than written as media
+  // queries, because two things that are not CSS have to agree with it: which
+  // panes the Add-series panel covers (and therefore which are `inert` while it
+  // is open — a DOM property no media query can set), and whether the narrow
+  // switcher exists at all. A media query plus a matching `matchMedia` would be
+  // the same two numbers written twice, and the failure would be silent.
+  let layout = $state(layoutForWidth(window.innerWidth));
+  $effect(() => {
+    const measure = () => (layout = layoutForWidth(window.innerWidth));
+    measure();
+    window.addEventListener('resize', measure);
+    return () => window.removeEventListener('resize', measure);
+  });
+
+  // Narrow only: which pane has the window. Deliberately not in the URL — it
+  // answers "what am I looking at on this screen", not "what am I looking at",
+  // and a shared link that forced a companion onto the Series tab because the
+  // sender was on a phone would be a bug.
+  let requestedPane = $state<NarrowPane>('graph');
+  const narrowPane = $derived(resolveNarrowPane(requestedPane, !!app.selectedPoint));
+
+  // A click on the graph *is* a request to see the selection, and at this width
+  // the selection is a pane the user would otherwise have to go and find. Only
+  // on a change of point, so that zooming, hiding a series or toggling a switch
+  // — all of which touch the selection without being about it — leave the user
+  // where they are.
+  let lastSelected: unknown = app.selectedPoint;
+  $effect(() => {
+    const selected = app.selectedPoint;
+    if (selected !== lastSelected) {
+      lastSelected = selected;
+      if (selected && layout === 'narrow') requestedPane = 'selection';
+    }
+  });
+
+  // The panel covers the graph and the details pane in every arrangement. It
+  // covers the series list only when the list isn't beside it — which is the
+  // narrow case, where the panel has the whole window. See docs/design.md,
+  // "The Add-series panel docks beside the series list".
+  const listCovered = $derived(app.pickerOpen && layout === 'narrow');
 
   // Send focus back where it came from when the panel closes, so dismissing
   // it doesn't dump the user at the top of the document.
@@ -62,20 +112,54 @@
   <title>{app.pageTitle}</title>
 </svelte:head>
 
-<main>
+<!-- One slot per pane, and the slot is the grid item. The panes are components
+     with scoped styles, so the shell cannot place them directly without
+     reaching through `:global` for their class names — which would make every
+     rearrangement here depend on a class name three files away. The slot is
+     also where `inert` goes: it is a DOM-tree property and grid placement is a
+     layout one, and giving each pane its own box lets the two be set
+     independently, which is what the narrow case needs. -->
+<main data-layout={layout} data-pane={layout === 'narrow' ? narrowPane : null}>
+  {#if layout === 'narrow'}
+    <!-- Nothing fits beside anything, so the window shows one pane and this
+         says which. A segmented group because it is an exclusive choice — the
+         same vocabulary as the graph header's tracks; see docs/graphs.md, "The
+         header is two groups". Rendered only at this width: at the others every
+         pane is on screen and a switcher would be three buttons that do
+         nothing. -->
+    <nav class="switcher" inert={listCovered} aria-label="Pane">
+      <div class="btn-group" role="group">
+        {#each NARROW_PANES as choice (choice.pane)}
+          <button
+            type="button"
+            class="btn"
+            class:btn-selected={narrowPane === choice.pane}
+            aria-pressed={narrowPane === choice.pane}
+            onclick={() => (requestedPane = choice.pane)}
+          >
+            {choice.label}
+          </button>
+        {/each}
+      </div>
+    </nav>
+  {/if}
+
   <!-- The series list stays live while the panel is open — it's the only place
        the result of an Add or a Remove is visible, and it's the control the
        user will keep using once the panel closes. See docs/design.md, "The
-       Add-series panel docks beside the series list".
-
-       The two panes the panel *does* cover are inert instead, or Tab would
-       wander into invisible controls behind it. `display: contents` on the
-       wrapper because `inert` is a DOM-tree property while grid placement is a
-       layout one: the panes stay direct children of the grid, so nothing about
-       the three-column layout changes. -->
-  <SeriesList {app} />
-  <div class="covered" inert={app.pickerOpen}>
+       Add-series panel docks beside the series list". At narrow widths there is
+       no beside, so there it is covered like the rest. -->
+  <div class="slot slot-list" data-active={narrowPane === 'series' || null} inert={listCovered}>
+    <SeriesList {app} />
+  </div>
+  <div class="slot slot-graph" data-active={narrowPane === 'graph' || null} inert={app.pickerOpen}>
     <GraphPane {app} />
+  </div>
+  <div
+    class="slot slot-details"
+    data-active={narrowPane === 'selection' || null}
+    inert={app.pickerOpen}
+  >
     <DetailsPane {app} />
   </div>
 </main>
@@ -86,7 +170,7 @@
        closing it would be a trap rather than an escape hatch. Done, the close
        button and Escape are the ways out. The dim is still here — it's what
        says the graph behind is out of play while the list beside it isn't. -->
-  <div class="overlay">
+  <div class="overlay" data-layout={layout}>
     <div class="overlay-panel" role="dialog" aria-label="Add series">
       <AddSeriesPicker
         onadd={handleAdd}
@@ -110,19 +194,115 @@
 <style>
   main {
     display: grid;
-    /* Fixed side panes, elastic middle: the graph should absorb every extra
-       pixel, and the panes must not resize as their content loads. */
-    grid-template-columns: var(--sidebar-width) minmax(0, 1fr) 320px;
     height: 100vh;
     height: 100dvh;
     overflow: hidden;
     background: var(--bg-canvas);
     color: var(--fg-default);
   }
-  /* Layout-transparent: its children are the grid items, not it. See the
-     markup for why it exists at all. */
-  .covered {
-    display: contents;
+  /* A grid rather than a block so the pane inside stretches to the slot in both
+     axes without the shell naming it. `min-*: 0` because the panes are flex
+     columns ending in a scroller, and an `auto` minimum anywhere in that chain
+     is what makes a pane size to its content and push the scrollbar off the
+     bottom of the window instead of scrolling. */
+  .slot {
+    display: grid;
+    min-width: 0;
+    min-height: 0;
+  }
+
+  /* Three columns. Fixed side panes, elastic middle: the graph absorbs every
+     extra pixel, and the panes must not resize as their content loads. */
+  main[data-layout='wide'] {
+    grid-template-columns: var(--sidebar-width) minmax(0, 1fr) var(--details-width);
+    grid-template-areas: 'list graph details';
+  }
+
+  /* Two columns, and the details pane goes under the graph rather than away:
+     the graph gains the pane's full 320px of width and pays in height, which is
+     the right way round for a time series — it is read across, and the y axis
+     is the one that can be squeezed without losing a date.
+
+     The details row is *reserved*, not grown into. Sizing it to its content
+     would move the graph under the pointer on the click that fills it, which is
+     the thing this app doesn't do (docs/design.md, "Layout stability"); and it
+     is the same bargain the wide layout already strikes, where an empty pane
+     holds 320px of width open all day. */
+  main[data-layout='medium'] {
+    grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) min(40%, 320px);
+    grid-template-areas:
+      'list graph'
+      'list details';
+  }
+
+  /* One pane at a time. All three slots share the cell and the inactive two are
+     taken out — `display: none` rather than `visibility` or a `hidden`
+     attribute, because it is also what takes them out of the tab order and the
+     accessibility tree, and the switcher is the only honest way to reach them.
+     The charts come back correctly sized: ScatterChart observes its wrapper, so
+     0×0 and back is a resize like any other. */
+  main[data-layout='narrow'] {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-areas:
+      'switch'
+      'pane';
+  }
+  main[data-layout='narrow'] > .slot {
+    grid-area: pane;
+  }
+  main[data-layout='narrow'] > .slot:not([data-active]) {
+    display: none;
+  }
+
+  .slot-list {
+    grid-area: list;
+  }
+  .slot-graph {
+    grid-area: graph;
+  }
+  .slot-details {
+    grid-area: details;
+  }
+
+  /* The seams. They live here, on the slots, rather than on the panes, because
+     which of a pane's sides faces another pane is a fact about the arrangement
+     and the arrangement changes: the details pane drew its own `border-left`
+     until it moved under the graph, where that edge lands against the series
+     list's `border-right` and the two render as one 2px rule. A pane cannot
+     know that; the shell is the only thing that does. Exactly one rule per
+     seam, on the slot above or to the left of it. */
+  main[data-layout='wide'] > .slot-list,
+  main[data-layout='medium'] > .slot-list {
+    border-right: 1px solid var(--border-default);
+  }
+  main[data-layout='wide'] > .slot-details {
+    border-left: 1px solid var(--border-default);
+  }
+  main[data-layout='medium'] > .slot-details {
+    border-top: 1px solid var(--border-default);
+  }
+  /* Narrow draws none: one pane fills the window, so every edge it has is the
+     window's own. */
+
+  .switcher {
+    grid-area: switch;
+    display: flex;
+    padding: 6px 8px;
+    border-bottom: 1px solid var(--border-default);
+    background: var(--bg-subtle);
+  }
+  /* One track across the window with three equal segments, so the labels don't
+     move as the selected one takes its fill and the targets are as big as the
+     width allows — this is the arrangement most likely to be driven by a
+     thumb. */
+  .switcher .btn-group {
+    display: flex;
+    flex: 1;
+  }
+  .switcher .btn {
+    flex: 1;
   }
   /* Starts where the series list ends, so the list is neither dimmed nor
      covered. The panel is stretched to exactly the space between the
@@ -134,6 +314,10 @@
   .overlay {
     position: fixed;
     inset: 0 0 0 var(--sidebar-width);
+    /* Docking to the right of the list only means something while the list is
+       a column. At narrow widths it is one pane of three, so the panel takes
+       the window — which is what it was before it learned to dock, and the
+       reason the list's slot goes `inert` at this width with it. */
     background: var(--backdrop);
     display: flex;
     align-items: stretch;
@@ -143,6 +327,13 @@
     justify-content: flex-start;
     padding: 16px;
     z-index: 10;
+  }
+  .overlay[data-layout='narrow'] {
+    inset: 0;
+    padding: 0;
+  }
+  .overlay[data-layout='narrow'] .overlay-panel {
+    border-radius: 0;
   }
   .overlay-panel {
     display: flex;
