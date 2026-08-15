@@ -575,6 +575,46 @@ year, whose target summary #51596 had gathered fourteen signatures' alerts onto
 one push), and the ids are computed first so the ordinary case doesn't even
 spend a microtask turn on the lookup.
 
+**That request goes through the list route with `?id=`, never through
+`/alertsummary/<id>/`, and the difference is 12x.** The batched queries that make
+this endpoint fast were only wired into `list()`, so the detail route falls back
+to several sequential queries *per alert* and its cost is linear in how many
+alerts a sheriff piled onto that push — about 30 ms each, no fixed cost to blame.
+On summary 50829 (27 own alerts plus 609 reassigned into it) that is 17.7 s and
+18.0 s for the detail route against 1.42 s and 1.39 s for `?id=50829`, for the
+same 700 kB of identical content. End to end on the two-series speedometer3 URL,
+the alert counts used to appear at about twenty seconds and now appear at 3.4 s.
+
+Two things follow, both in `fetchAlertSummary`'s comment: a missing summary is a
+200 with an empty page rather than a 404, and the result is matched by id rather
+than read off `results[0]` — because an `id` filter that stopped being applied
+would otherwise move a marker to an unrelated push while looking like a verdict.
+api-assumptions.md carries both.
+
+**Targets are cached for the session, by id** (`AppState.reassignmentTarget`),
+which is not the belt-and-braces it looks like: a sheriff blaming one push for a
+broad regression reassigns *every* affected signature's alert onto it, so two
+plotted series routinely want the same target, and `loadAlerts` runs per series
+and concurrently. The cache stores the in-flight promise, so those two share one
+request rather than racing to start two, and it is deliberately not pruned with
+the series data — the summary survives the range change that discards every
+`alertCache` entry referencing it. A failed lookup is evicted rather than kept, so
+one dropped request doesn't leave a marker on the wrong push for the rest of the
+session.
+
+**Skipping the request when the target is already in the page does not work**,
+tempting as it looks — `reassignmentTargetIds` does skip the case where the
+target *is* the summary holding the alert, so the idea is half there already. But
+the page we have is filtered by `alerts__series_signature`, which matches own
+alerts only, and a target holds our alert as a *related* alert: it is almost
+never in the page. Confirmed for both targets on the two-series speedometer3 URL
+— 50643 and 50829 are each absent from the page that named them.
+
+The server-side fix is worth having too, and is written up separately in the
+treeherder checkout (`proposal-alertsummary-detail-perf.md`) — but it needs a
+deploy we don't control, and `list()` is where the batching lives and where
+future batching will be added, so the route choice here is right either way.
+
 Everything about the *push* then comes from the target: `prevPushId` and the
 revisions, so clicking the marker pins the pair the sheriff claims, and the
 status and bug number, because the original summary's status is "reassigned" and

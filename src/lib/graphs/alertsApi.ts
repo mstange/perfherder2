@@ -131,8 +131,45 @@ export async function fetchAlertSummaries(
 // target's `related_alerts`, so the push a sheriff moved the alert to has to be
 // asked for by id. See `alertsForSeries`.
 //
-// The viewset is a `ModelViewSet`, so the detail route exists and answers with a
-// bare summary rather than with a page of one.
-export function fetchAlertSummary(id: number, signal?: AbortSignal): Promise<AlertSummary> {
-  return fetchJson(AlertSummarySchema, `${API_BASE}/performance/alertsummary/${id}/`, signal);
+// **This asks the list route with `?id=`, and not the detail route, because the
+// detail route is 12x slower.** The viewset is a `ModelViewSet`, so
+// `/alertsummary/<id>/` exists and answers with a bare summary — but the batched
+// queries that make this endpoint fast were only ever wired into `list()`, so the
+// detail route falls back to a handful of sequential queries *per alert*, and the
+// cost is linear in how many alerts a sheriff piled onto that push. Measured on
+// summary 50829 (27 own + 609 reassigned into it): 17.7s and 18.0s for the detail
+// route against 1.42s and 1.39s for `?id=50829`, for the same 700 kB. That one
+// request was the whole of a ~20s wait before an alert marker appeared.
+//
+// The two routes agree on every field we validate — checked field by field over
+// all 636 alerts of that summary. `list()` in fact returns slightly *more*
+// (it fills in `profile_url`, which the detail route leaves null); we read
+// neither. See docs/api-assumptions.md before assuming that is still true.
+//
+// Two consequences of the swap, both handled here:
+//
+//   A missing summary is a 200 with `{"count": 0, "results": []}` rather than a
+//     404, so `fetchJson`'s `HttpError` no longer covers it and this has to raise
+//     its own. Callers already treat a failure as "leave the marker where the
+//     analysis put it".
+//   The result is *matched by id* rather than taken as `results[0]`. If treeherder
+//     ever dropped `id` from `PerformanceAlertSummaryFilter`, an unfiltered page
+//     would come back 200 and `results[0]` would be some arbitrary summary — which
+//     would move an alert marker to an unrelated push and look like a real
+//     verdict. Matching turns that silent wrong answer into the failure the
+//     callers already handle. (One page is enough for the same reason: `id` is
+//     unique, so a match is on the first page or nowhere.)
+export async function fetchAlertSummary(
+  id: number,
+  signal?: AbortSignal,
+): Promise<AlertSummary> {
+  const params = new URLSearchParams({ id: String(id) });
+  const page = await fetchJson(
+    AlertSummaryPageSchema,
+    `${API_BASE}/performance/alertsummary/?${params}`,
+    signal,
+  );
+  const summary = page.results.find((s) => s.id === id);
+  if (!summary) throw new Error(`No alert summary ${id}`);
+  return summary;
 }

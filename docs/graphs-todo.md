@@ -213,6 +213,25 @@ Living checklist. Update in the same commit as the work it describes.
 
 ## Next
 
+- [ ] **File the treeherder bug for `/performance/alertsummary/<id>/`.** Its
+      batched queries were only ever wired into `list()`, so the detail route does
+      several sequential queries per alert and costs ~30 ms each: 2.7 s at 94
+      alerts, 18.9 s at 636. This app no longer waits on it — `fetchAlertSummary`
+      goes through `?id=` instead, which is 12x faster for byte-identical content
+      — so this is somebody else's win to collect, not a blocker here. The
+      write-up with the measurements and the query analysis is in the treeherder
+      checkout as `proposal-alertsummary-detail-perf.md`. Landing it would not
+      change any code here: `list()` is where the batching lives and where future
+      batching will be added, so `?id=` stays the right route.
+
+- [ ] **The alerts list request is now the floor on marker latency**, at
+      1.0–1.5 s per plotted signature. It cannot be narrowed with the parameters
+      that exist: each summary arrives carrying every other signature's alerts
+      (548 of them for the one signature we asked about on 5825019), and there is
+      no way to ask for less. Attacking it needs a new endpoint, which is the same
+      conclusion the "who else alerted on this push" note below reached from the
+      other direction — see the `getCommonAlerts` entry in "Open questions".
+
 - [ ] **A selection outside the band is invisible in `points: None`.** The axis
       covers the band there, so a selected run mean above p75 or below p25 has its
       ring clipped at the plot edge while the details pane goes on describing it.

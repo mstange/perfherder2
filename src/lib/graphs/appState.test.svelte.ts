@@ -1158,10 +1158,14 @@ describe('AppState alerts', () => {
     // marker changing columns.
     const target = alertSummary({ id: 901, push_id: 1, prev_push_id: 0, alerts: [] });
 
-    const withTarget = (detail: unknown) => {
+    // The target is asked for through the *list* route with `?id=`, not the
+    // detail route: see `fetchAlertSummary`. `page` is what that request answers
+    // with, so a test can hand back a malformed body, an empty page, or a page
+    // about the wrong summary.
+    const withTarget = (page: unknown) => {
       fetchMock.mockImplementation(async (url: string) => {
         if (url.includes('/performance/summary/')) return json([SAMPLE]);
-        if (url.includes('/alertsummary/901/')) return detail === null ? json({}) : json(detail);
+        if (url.includes('/alertsummary/?id=901')) return json(page);
         if (url.includes('/performance/alertsummary/')) {
           return json(alertPage([reassignedTo901]));
         }
@@ -1169,6 +1173,7 @@ describe('AppState alerts', () => {
         return json({});
       });
     };
+    const targetPage = (summaries: unknown[]) => alertPage(summaries);
 
     // Two settles: the target lookup is a second round trip, and the ordinary
     // path deliberately doesn't spend a microtask turn on it.
@@ -1178,7 +1183,7 @@ describe('AppState alerts', () => {
     };
 
     it('draws the alert on the push it was reassigned to', async () => {
-      withTarget(target);
+      withTarget(targetPage([target]));
       await withApp('?series=autoland,1,1', async (app) => {
         await settleTwice();
         expect(app.series[0].alerts.map((a) => a.pushId)).toEqual([1]);
@@ -1193,14 +1198,18 @@ describe('AppState alerts', () => {
       });
     });
 
-    it('asks for the target once, by id', async () => {
-      withTarget(target);
+    it('asks for the target once, by id, through the list route', async () => {
+      withTarget(targetPage([target]));
       await withApp('?series=autoland,1,1', async (app) => {
         await settleTwice();
         const calls = fetchMock.mock.calls
           .map((c: unknown[]) => String(c[0]))
           .filter((u: string) => u.includes('/alertsummary/'));
-        expect(calls.filter((u: string) => u.includes('/alertsummary/901/'))).toHaveLength(1);
+        const byId = calls.filter((u: string) => u.includes('id=901'));
+        expect(byId).toHaveLength(1);
+        // Not `/alertsummary/901/`: that route is 12x slower for the same bytes,
+        // because its batched queries only exist in `list()`.
+        expect(byId[0]).not.toMatch(/alertsummary\/901\//);
         expect(app.series[0].alerts).toHaveLength(1);
       });
     });
@@ -1208,11 +1217,140 @@ describe('AppState alerts', () => {
     it('leaves the marker where it was detected when the lookup fails', async () => {
       // A bad response, not a rejection: the schema is what rejects it, and the
       // marker must survive that the same way.
-      withTarget(null);
+      withTarget({});
       await withApp('?series=autoland,1,1', async (app) => {
         await settleTwice();
         expect(app.series[0].alerts.map((a) => a.pushId)).toEqual([2]);
         expect(app.series[0].alerts[0].summaryId).toBe(900);
+      });
+    });
+
+    // The list route answers 200 with an empty page where the detail route
+    // answered 404, so "no such summary" is no longer an `HttpError` and
+    // `fetchAlertSummary` has to notice it itself. If it didn't, `results[0]`
+    // would be `undefined` typed as an `AlertSummary` and the failure would
+    // surface somewhere much less obvious than here.
+    it('leaves the marker where it was detected when the summary does not exist', async () => {
+      withTarget(targetPage([]));
+      await withApp('?series=autoland,1,1', async (app) => {
+        await settleTwice();
+        expect(app.series[0].alerts.map((a) => a.pushId)).toEqual([2]);
+        expect(app.series[0].alerts[0].summaryId).toBe(900);
+      });
+    });
+
+    // The guard that turns a silently wrong answer into a handled failure: if
+    // treeherder ever dropped `id` from its filter set, the request would come
+    // back 200 with an unfiltered page and taking `results[0]` would move this
+    // marker to an unrelated push — while looking like a real verdict.
+    it('ignores a page that is about some other summary', async () => {
+      withTarget(targetPage([alertSummary({ id: 777, push_id: 1, prev_push_id: 0, alerts: [] })]));
+      await withApp('?series=autoland,1,1', async (app) => {
+        await settleTwice();
+        expect(app.series[0].alerts.map((a) => a.pushId)).toEqual([2]);
+        expect(app.series[0].alerts[0].summaryId).toBe(900);
+      });
+    });
+
+    // Reassignment targets are shared by construction — a sheriff blaming one
+    // push moves every affected signature's alert onto it — so this is the
+    // common case, not a corner one.
+    it('fetches a target shared by two series exactly once', async () => {
+      let targetCalls = 0;
+      fetchMock.mockImplementation(async (url: string) => {
+        if (url.includes('/performance/summary/')) return json([SAMPLE]);
+        if (url.includes('/alertsummary/?id=901')) {
+          targetCalls++;
+          return json(targetPage([target]));
+        }
+        if (url.includes('/performance/alertsummary/')) {
+          // Answer about whichever signature was asked for, so both series
+          // really do have an alert of their own to reassign. This is what a
+          // sheriff blaming one push for a broad regression produces.
+          const asked = Number(
+            new URL(url).searchParams.get('alerts__series_signature') ?? '1',
+          );
+          return json(
+            alertPage([
+              alertSummary({
+                status: 2,
+                bug_number: null,
+                alerts: [
+                  {
+                    ...alertSummary().alerts[0],
+                    status: 2,
+                    related_summary_id: 901,
+                    series_signature: { id: asked },
+                  },
+                ],
+              }),
+            ]),
+          );
+        }
+        if (url.includes('/repository/')) return json([]);
+        return json({});
+      });
+      // Both series' alerts were reassigned to summary 901. Their own alert
+      // lookups are separate requests; the target behind them is one.
+      await withApp('?series=autoland,1,1&series=autoland,3,1', async (app) => {
+        await settleTwice();
+        expect(app.series[0].alerts[0].summaryId).toBe(901);
+        expect(app.series[1].alerts[0].summaryId).toBe(901);
+        expect(targetCalls).toBe(1);
+      });
+    });
+
+    // The cache is not pruned with the series data, so the summary survives the
+    // range change that throws away every `alertCache` entry referencing it.
+    it('keeps a target across a range change', async () => {
+      let targetCalls = 0;
+      fetchMock.mockImplementation(async (url: string) => {
+        if (url.includes('/performance/summary/')) return json([SAMPLE]);
+        if (url.includes('/alertsummary/?id=901')) {
+          targetCalls++;
+          return json(targetPage([target]));
+        }
+        if (url.includes('/performance/alertsummary/')) return json(alertPage([reassignedTo901]));
+        if (url.includes('/repository/')) return json([]);
+        return json({});
+      });
+      await withApp('?series=autoland,1,1', async (app) => {
+        await settleTwice();
+        expect(targetCalls).toBe(1);
+
+        app.setRange({ start: NOW - 30 * DAY, end: NOW });
+        await settleTwice();
+        // The alerts were re-requested for the new range; the target was not.
+        expect(targetCalls).toBe(1);
+        expect(app.series[0].alerts[0].summaryId).toBe(901);
+      });
+    });
+
+    // A dropped request must not leave a marker on the wrong push for the rest of
+    // the session, which is what caching the failure would do.
+    it('retries a failed target on the next range change', async () => {
+      let attempts = 0;
+      fetchMock.mockImplementation(async (url: string) => {
+        if (url.includes('/performance/summary/')) return json([SAMPLE]);
+        if (url.includes('/alertsummary/?id=901')) {
+          attempts++;
+          return attempts === 1
+            ? ({ ok: false, status: 503, statusText: '' } as Response)
+            : json(targetPage([target]));
+        }
+        if (url.includes('/performance/alertsummary/')) return json(alertPage([reassignedTo901]));
+        if (url.includes('/repository/')) return json([]);
+        return json({});
+      });
+      await withApp('?series=autoland,1,1', async (app) => {
+        await settleTwice();
+        expect(attempts).toBe(1);
+        expect(app.series[0].alerts[0].summaryId).toBe(900);
+
+        app.setRange({ start: NOW - 30 * DAY, end: NOW });
+        await settleTwice();
+        expect(attempts).toBe(2);
+        expect(app.series[0].alerts[0].summaryId).toBe(901);
       });
     });
 

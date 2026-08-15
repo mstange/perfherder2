@@ -293,6 +293,10 @@ export class AppState {
   // nothing and look identical either way.
   private alertCache = $state(new Map<string, SeriesAlert[]>());
   private alertRequests = new Set<string>();
+  // Reassignment target summaries by id, as in-flight-or-resolved promises. See
+  // `reassignmentTarget` for why the promise is what's stored and why this
+  // outlives the caches around it.
+  private alertTargets = new Map<number, Promise<AlertSummary | null>>();
   // The subset of those requests that are actually in flight, for the card's
   // "still coming" cue. Separate from `alertRequests` — which means "we have
   // asked" and is deliberately never cleared on failure, so that a failed
@@ -1229,17 +1233,48 @@ export class AppState {
   // Failures are swallowed per id rather than as a batch, so one dead lookup
   // costs one marker its move instead of costing every marker its position.
   private async loadReassignmentTargets(ids: number[]): Promise<Map<number, AlertSummary>> {
-    const targets = new Map<number, AlertSummary>();
-    await Promise.all(
-      ids.map(async (id) => {
-        try {
-          targets.set(id, await fetchAlertSummary(id));
-        } catch {
-          // `alertsForSeries` leaves the marker on the detected push.
-        }
-      }),
+    const entries = await Promise.all(
+      ids.map(async (id) => [id, await this.reassignmentTarget(id)] as const),
     );
+    const targets = new Map<number, AlertSummary>();
+    for (const [id, summary] of entries) if (summary) targets.set(id, summary);
     return targets;
+  }
+
+  // One target summary, fetched at most once per session.
+  //
+  // **Reassignment targets are shared, which is the whole point of them**: a
+  // sheriff who blames one push for a broad regression reassigns every affected
+  // signature's alert onto it. Summary 50829 holds 609 alerts moved in from 17
+  // distinct source summaries. `loadAlerts` runs per series and concurrently, so
+  // without this two series whose alerts were reassigned to the same push each
+  // fetched that summary — two 1.4s requests (and, before `fetchAlertSummary`
+  // stopped using the detail route, two 18s ones) for one answer.
+  //
+  // **The promise is the cache**, as in `fetchOptionMap`: storing it rather than
+  // its result is what makes concurrent callers share one request instead of
+  // racing to start two. Not `$state` — nothing renders from it, it is read only
+  // inside a fetch, so it is bookkeeping like `detailRequests`.
+  //
+  // Not pruned with the series caches either. A summary by id is immutable enough
+  // for a session, it is a few hundred kB at worst, and it is the single thing
+  // most likely to be wanted again — including after the range change that throws
+  // away every `alertCache` entry that referenced it.
+  //
+  // A failure is *not* kept: the entry is dropped so that the next range change,
+  // which re-asks for the alerts anyway, gets a fresh attempt. Caching the null
+  // would mean one dropped request left a marker on the wrong push for the rest of
+  // the session.
+  private reassignmentTarget(id: number): Promise<AlertSummary | null> {
+    const cached = this.alertTargets.get(id);
+    if (cached) return cached;
+    const request = fetchAlertSummary(id).catch(() => {
+      this.alertTargets.delete(id);
+      // `alertsForSeries` leaves the marker on the detected push.
+      return null;
+    });
+    this.alertTargets.set(id, request);
+    return request;
   }
 
   private async loadPush(repository: string, pushId: number): Promise<void> {

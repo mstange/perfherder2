@@ -159,6 +159,69 @@ is how `fetchSignatureMeta` asks about a signature nobody is plotting.
 - **Symptom if it stops:** parent thresholds resolve to null, so subtests fall
   back to the 2% default and their bars change.
 
+## Alerts: `?id=` instead of the detail route
+
+`fetchAlertSummary` asks the *list* route with `?id=<n>` for a reassignment
+target, even though `/performance/alertsummary/<n>/` exists and is the obvious
+way to fetch one summary. The reason is speed — the batched queries live only in
+`list()`, so the detail route does several sequential queries per alert — and it
+means we depend on three things the detail route wouldn't have needed.
+
+### `id` is a real filter on the list route
+
+`PerformanceAlertSummaryFilter.id` is a `NumberFilter`, so `?id=50829` answers
+with a page of exactly one.
+
+- **Verified:** 2026-08-15 — `?id=50829` returns `count: 1`, and a nonexistent id
+  returns `count: 0`. An *ignored* filter would have returned the whole
+  framework's summaries in both cases, so those two results together are the
+  proof, not just the first.
+- **Symptom if the filter were dropped:** a 200 with an unfiltered page. Taking
+  `results[0]` would then move an alert marker onto an unrelated push and print
+  that summary's bug number beside it — a wrong answer that looks like a real
+  verdict. **This is why the code matches by id instead of taking the first
+  result**, which turns that case into the "no such summary" failure both callers
+  already handle by leaving the marker where the analysis put it.
+- **Re-verify:**
+  `curl -s "$B/performance/alertsummary/?id=50829" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['count'], [r['id'] for r in d['results']])"`
+  → `1 [50829]`.
+
+### A missing summary is `200` with an empty page, not `404`
+
+- **Verified:** 2026-08-15 — detail route: `404` and
+  `{"detail": "No PerformanceAlertSummary matches the given query."}`; list
+  route: `200` and `{"count": 0, …, "results": []}`.
+- **Consequence:** `fetchJson`'s `HttpError` no longer covers "no such summary",
+  so `fetchAlertSummary` raises its own. Without that throw, `results[0]` is
+  `undefined` typed as an `AlertSummary` and the failure surfaces far from here.
+
+### The two routes agree on every field we read
+
+- **Verified:** 2026-08-15, on summary 50829 — identical values across all 27 own
+  alerts and all 609 related alerts, for every field `AlertSummarySchema` and
+  `AlertSchema` declare. `list()` returns slightly *more* (it fills in
+  `profile_url` / `prev_profile_url`, which the detail route leaves null:
+  701,885 bytes against 699,701). We read neither.
+- **Known disagreements, in fields we don't read:** `taskcluster_metadata` on 9
+  of 636 alerts and `prev_taskcluster_metadata` on 17. Both routes name a real
+  task for the right (signature, push); they pick different retriggers because
+  neither orders the query. Worth knowing before someone diffs the routes and
+  concludes this change lost something.
+- **Symptom if they diverge in a field we do read:** whatever that field drives —
+  a marker's bug number, its status word — quietly differs from what perfherder's
+  own alerts view shows for the same summary.
+
+### The per-alert cost is treeherder's, and the fix is theirs
+
+~30 ms per alert serialised, intercept roughly zero, so the detail route's
+latency is set by how many alerts a sheriff happened to reassign onto one push:
+2.7 s at 94 alerts, 18.9 s at 636.
+
+- **If treeherder fixes it** (written up in the treeherder checkout as
+  `proposal-alertsummary-detail-perf.md`), nothing here needs to change and the
+  `?id=` route stays the right choice — `list()` is where the batching lives and
+  where future batching will be added.
+
 ### `timerange` on the alerts endpoint counts back from *now*
 
 Our range is absolute and may end in the past, so the request asks for a
@@ -249,6 +312,14 @@ later.
 - **A failed identity fetch is never retried.** The data response carries the
   same fields, so the cost is one card's head start. Changing the range does not
   retry it either, unlike a failed *data* fetch, which has an explicit Retry.
+- **`AppState.alertTargets` is never pruned.** Reassignment target summaries are
+  a few hundred kB each in the worst case observed, and the whole reason to keep
+  them is that they are shared and wanted again after a range change. A session
+  that visited many distinct broad regressions would accumulate them.
+- **The alerts *list* request is still 1.0–1.5 s per plotted signature**, and it
+  carries every other signature's alerts inside each summary (548 alerts arrive
+  for the one signature we asked about, on 5825019). Unavoidable without a
+  narrower endpoint; it is now the floor on how fast a marker can appear.
 - **The picker's `toSeries` and the graph's `metaFromSignature` project the same
   row differently on purpose** — the picker dedups options, the graph matches
   the server. Two projections of one endpoint's row is a real fork; the reason
