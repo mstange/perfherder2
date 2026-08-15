@@ -37,9 +37,12 @@ is the same one the Add-series panel's control block draws — see design.md,
 idiom down to the CSS (`.control-grid` and friends in app.css):
 
 ```
-RANGE   last [2 days][7 days][14 days][30 days][60 days][90 days][1 year]  May 17 – Aug 15      Loading 3…
-SHOW    points [Replicates][Run means][None]   ☑ Detected changes  ☑ Trend band   Zoomed: … [Reset zoom]
+RANGE   last ( 2 days  7 days  14 days  30 days  60 days [90 days] 1 year )  May 17 – Aug 15   Loading 3…
+SHOW    points ( Replicates  Run means [None] )   ☑ Detected changes  ☑ Trend band  Zoomed: … [Reset zoom]
 ```
+
+(The parentheses are the two segmented tracks; the square brackets are the option
+in effect in each.)
 
 **Which row a control goes on is decided by whether it fetches.** `dataKey` is
 the series plus the *range*, so changing the range sends requests and rebuilds
@@ -55,20 +58,42 @@ over a graph rather than a card in a panel:
   column of their own, which lines the rails up down the block. Reserving that
   column here costs its widest member's width — the zoom label's 23ch plus a
   button, ~250px — on *every* row, and the range presets need the space:
-  measured at a 680px pane, the reserved column put the seven presets on three
-  lines and the header at 156px, against 134px with each aside as the last item
-  of its own row, pushed right by `margin-left: auto`. It reads as a right rail
+  measured at a 680px pane (before the tracks below, which cost 4px a row), the
+  reserved column put the seven presets on three lines and the header at 156px,
+  against 134px with each aside as the last item of its own row, pushed right by
+  `margin-left: auto`. It reads as a right rail
   while there is room for one and is the first thing to wrap when there isn't.
 - **An 8px row gap, not 18px.** That figure exists in the panel to keep a right
   rail's *second* line with the group above it. No rail here has one.
 
-**Exclusive choices are button groups; independent switches are checkboxes.**
-That is the whole vocabulary of the bar, and it is why `points` is three buttons
-with one filled (`.btn-selected`, the same shape as the range presets) rather
-than a `<select>`: `None` is the option nobody would think to look for, and a
-dropdown that has to be opened before it admits to a third choice would not get
-found. The shape difference is also what says the two checkboxes beside it are
-not part of the group.
+**Exclusive choices are segmented groups; independent switches are checkboxes.**
+That is the whole vocabulary of the bar. It is why `points` is a group of buttons
+with one filled (`.btn-selected`) rather than a `<select>` — `None` is the option
+nobody would think to look for, and a dropdown that has to be opened before it
+admits to a third choice would not get found — and it is why both groups are
+drawn as one control rather than as buttons in a row: three buttons with gaps
+between them are three buttons, and the recessed track (`.btn-group` in app.css)
+is what says they are one control with one answer. The shape difference is also
+what tells them from the checkboxes beside them.
+
+Two consequences of the track worth knowing, both in app.css beside the rules:
+
+- **It is a filled box, not joined borders.** Segments sharing 1px edges with
+  only the outer corners rounded is the other way to draw this, and it cannot
+  survive `flex-wrap` — a wrapped row starts with a square left edge and the
+  group reads as broken. Seven presets at a 500px pane *have* to wrap, so the
+  grouping cue has to be something that encloses two rows as happily as one. The
+  lowercase word beside each track stays on the track's first line
+  (`align-items: baseline`), and does not wrap with it: a flex item whose
+  max-content doesn't fit takes a line of its own, which left "last" alone on a
+  line and cost 24px at a 500px pane.
+- **Hover and press mean a different surface inside it.** `--bg-hover` is a step
+  *down* from the canvas, which against the track's own fill is three or four
+  units and invisible; so the group remaps `--bg-hover` and `--bg-active` for its
+  children — in light mode a hovered segment lifts to the canvas and a held one
+  settles past the track, in dark mode the track is already lighter than the
+  canvas and the ordinary fills point the right way. The state *rules* are
+  untouched; only what they resolve to changes.
 
 Measured heights, against the single wrapping flex row this replaced (window
 width, then the pane it leaves — the pane is the window less 600px of fixed side
@@ -76,20 +101,21 @@ panes):
 
 | Window | Pane | Before | After |
 | --- | --- | --- | --- |
-| 1800 | 1200 | 77px | 77px |
-| 1500 | 900 | 77px | 77px |
-| 1280 | 680 | 104px | 134px |
-| 1100 | 500 | 136px | 166px |
-| 980 | 380 | 154px | 190px |
-| 860 | 260 | 208px, **overflowing by 70px** | 359px, no overflow |
+| 1800 | 1200 | 77px | 81px |
+| 1500 | 900 | 77px | 81px |
+| 1280 | 680 | 104px | 138px |
+| 1100 | 500 | 136px | 164px |
+| 980 | 380 | 154px | 188px |
+| 860 | 260 | 208px, **overflowing by 70px** | 365px, no overflow |
 
-So it is free at the widths where the graph has room, and costs ~30px between
-1280 and 980 — where it is also carrying two more controls than before, the
-points group being 271px against the one checkbox's ~100px. The last row is the
-pane at 260px, where the graph is unusable either way; the point of it is that
-the header no longer spills out of its own pane. Below a 360px pane a container
-query gives up the zoom label's reserved width, which is the only remaining
-unwrappable item.
+So it costs 4px at the widths where the graph has room — the tracks' padding, and
+`.btn-group` gives 2px of it back by tightening the segments' own vertical
+padding — and ~30px between 1280 and 980, where it is also carrying two more
+controls than before (the points group is 271px against the one checkbox's
+~100px). The last row is the pane at 260px, where the graph is unusable either
+way; the point of it is that the header no longer spills out of its own pane.
+Below a 360px pane a container query gives up the zoom label's reserved width,
+which is the only remaining unwrappable item.
 
 ### The details pane, top to bottom
 

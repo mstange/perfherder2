@@ -251,21 +251,24 @@
   <header class="control-grid">
     <span class="control-label">Range</span>
     <div class="row">
-      <div class="ranges" role="group" aria-label="Time range">
+      <div class="ranges">
         <!-- Finishes the row's sentence — *range: last 14 days* — rather than
-             being a second thing in the rail's style naming a group. -->
+             being a second thing in the rail's style naming a group. It sits
+             outside the track: the track holds the options and nothing else. -->
         <span class="control-word" aria-hidden="true">last</span>
-        {#each RANGE_PRESETS as preset (preset.seconds)}
-          <button
-            type="button"
-            class="btn btn-compact"
-            class:btn-selected={activePreset?.seconds === preset.seconds}
-            aria-pressed={activePreset?.seconds === preset.seconds}
-            onclick={() => app.setRangePreset(preset.seconds)}
-          >
-            {preset.label}
-          </button>
-        {/each}
+        <div class="btn-group" role="group" aria-label="Time range">
+          {#each RANGE_PRESETS as preset (preset.seconds)}
+            <button
+              type="button"
+              class="btn btn-compact"
+              class:btn-selected={activePreset?.seconds === preset.seconds}
+              aria-pressed={activePreset?.seconds === preset.seconds}
+              onclick={() => app.setRangePreset(preset.seconds)}
+            >
+              {preset.label}
+            </button>
+          {/each}
+        </div>
       </div>
       <span class="span-text" title="The URL pins these absolute bounds">
         {describeSpan(app.range)}
@@ -282,20 +285,22 @@
       <!-- All drawing switches, not fetch switches: replicates are always
            fetched, both analyses run on data already in hand, so every one of
            these is instant and the details pane is unaffected by all of them. -->
-      <div class="points" role="group" aria-label="Data points">
+      <div class="points">
         <span class="control-word" aria-hidden="true">points</span>
-        {#each POINT_CHOICES as choice (choice.mode)}
-          <button
-            type="button"
-            class="btn btn-compact"
-            class:btn-selected={app.pointMode === choice.mode}
-            aria-pressed={app.pointMode === choice.mode}
-            title={choice.title}
-            onclick={() => app.setPointMode(choice.mode)}
-          >
-            {choice.label}
-          </button>
-        {/each}
+        <div class="btn-group" role="group" aria-label="Data points">
+          {#each POINT_CHOICES as choice (choice.mode)}
+            <button
+              type="button"
+              class="btn btn-compact"
+              class:btn-selected={app.pointMode === choice.mode}
+              aria-pressed={app.pointMode === choice.mode}
+              title={choice.title}
+              onclick={() => app.setPointMode(choice.mode)}
+            >
+              {choice.label}
+            </button>
+          {/each}
+        </div>
       </div>
       <!-- Steps this app found for itself, as opposed to the alert markers,
            which are perfherder's. See changes.ts. -->
@@ -465,9 +470,10 @@
          23ch plus a button, ~250px) on *every* row, and the range presets need
          every pixel: measured at a 680px pane, a reserved aside column put the
          seven presets on three lines and the header at 156px against this
-         layout's 134. So each aside is the last item of its own row instead,
-         pushed right by `.trailing` — a right rail while there is room for one,
-         and the thing that wraps first when there isn't.
+         layout's 134 (both before the segmented tracks, which cost 4px a row).
+         So each aside is the last item of its own row instead, pushed right by
+         `.trailing` — a right rail while there is room for one, and the thing
+         that wraps first when there isn't.
        - **An 8px row gap** rather than 18px. That figure exists to keep a right
          rail's *second* line with the group above it; no rail here has one, and
          every px of this bar is a px the graph doesn't get. */
@@ -477,17 +483,32 @@
     border-bottom: 1px solid var(--border-default);
     font: 13px/1.4 system-ui, sans-serif;
   }
-  /* One row per group, wrapping as whole items: the preset group and the points
-     group each stay intact and the descriptive text beside them drops to the next
-     line first, which is the order that keeps a control usable while the pane
-     narrows. */
-  .row,
-  .ranges,
-  .points {
+  /* One row per group, wrapping as whole items: each segmented track stays intact
+     — wrapping happens *inside* it, see `.btn-group` in app.css — and the
+     descriptive text beside it drops to the next line first, which is the order
+     that keeps a control usable while the pane narrows. */
+  .row {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     gap: 6px;
+  }
+  /* The lowercase word stays on its track's line, and the track shrinks instead.
+     Letting this wrap costs a whole line for one word: a flex item whose
+     max-content doesn't fit takes a line of its own, so the track dropped below
+     "last" and left it alone up there — measured at a 500px pane, where it took
+     the header from 166px to 188px. `min-width: 0` is what lets the track narrow
+     past its max-content and wrap inside itself instead. */
+  .ranges,
+  .points {
+    display: flex;
+    flex-wrap: nowrap;
+    /* Baseline, so the word sits level with the *first* row of segments. Centred
+       leaves it floating between the two rows once a track wraps, pointing at
+       neither. */
+    align-items: baseline;
+    gap: 6px;
+    min-width: 0;
   }
   /* The two independent switches sit further from the points group than its own
      buttons do from each other, so the group reads as one control rather than as

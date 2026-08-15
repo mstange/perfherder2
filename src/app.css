@@ -28,11 +28,28 @@
   --bg-subtle: #f6f8fa;
   --bg-inset: #eef1f4;
   --bg-hover: #f3f4f6;
+  /* Held down: one step past the hover, in the same direction. Primer's own
+     pressed default button is #ebecf0, which is a hair off its hover; a state
+     that exists for as long as a click lasts needs to be readable in that
+     time, so this goes one step further. */
+  --bg-active: #e4e8ec;
   /* Nested rows: the picker's subtests, one step back from their parent. */
   --bg-nested: #fafbfc;
   --bg-nested-hover: #f0f3f6;
   --bg-nested-quiet: #fbfcfd;
   --bg-neutral-muted: #eaeef2;
+  /* A segment inside a recessed track (`.btn-group`), hovered and held. The
+     track is a fill on top of the canvas, and "nearer the reader" is a different
+     direction in each theme: here the canvas is the lightest surface there is, so
+     a hovered segment lifts to it and a held one settles back past the track.
+     `--bg-hover` cannot serve — it is a step *down* from the canvas, which
+     against the track's own fill is a difference of three or four units and
+     invisible in a screenshot. */
+  --btn-segment-hover: var(--bg-canvas);
+  /* Its own value rather than `--bg-neutral-muted`: that one is four units off
+     the track's fill, and a press nobody can see is not a state. This is a step
+     past the track in the direction away from the reader. */
+  --btn-segment-active: #dfe5ea;
   /* Tints over whatever is underneath, for hovers on already-colored rows. */
   --bg-overlay-hover: rgba(0, 0, 0, 0.04);
   --bg-overlay-active: rgba(0, 0, 0, 0.08);
@@ -51,6 +68,7 @@
   --accent-fg: #0969da;
   --accent-emphasis: #0969da;
   --accent-emphasis-hover: #0860c4;
+  --accent-emphasis-active: #0757ba;
   --accent-muted: #54aeff;
   --accent-subtle: #ddf4ff;
   --accent-on-subtle: #0a4b70;
@@ -65,6 +83,7 @@
   --success-strong-fg: #0a5c2b;
   --success-emphasis: #1f883d;
   --success-emphasis-hover: #1a7f37;
+  --success-emphasis-active: #176f30;
   --success-emphasis-disabled: #94d3a2;
   --success-fg-on-emphasis-disabled: #ffffffcc;
   --success-subtle: #dafbe1;
@@ -124,10 +143,17 @@
   --bg-subtle: #161b22;
   --bg-inset: #1c222b;
   --bg-hover: #262c36;
+  /* Dark hovers go *lighter* than the canvas, so pressed continues that way
+     rather than reversing — the direction is the theme's, the step is the same. */
+  --bg-active: #343c46;
   --bg-nested: #11161e;
   --bg-nested-hover: #1a212b;
   --bg-nested-quiet: #10151c;
   --bg-neutral-muted: #262c36;
+  /* Here the track is *lighter* than the canvas, so lifting a segment means
+     going lighter still and the ordinary fills already point that way. */
+  --btn-segment-hover: var(--bg-hover);
+  --btn-segment-active: var(--bg-active);
   --bg-overlay-hover: rgba(255, 255, 255, 0.06);
   --bg-overlay-active: rgba(255, 255, 255, 0.1);
 
@@ -142,6 +168,12 @@
   --accent-fg: #4493f8;
   --accent-emphasis: #1f6feb;
   --accent-emphasis-hover: #388bfd;
+  /* Darker than the *idle* fill, not lighter still. The filled variants carry
+     white text, and this theme's hover already lightens them to 3.3:1 against it;
+     continuing that way for the press took it to 2.9:1, which is a state you
+     cannot read for as long as the click lasts. Going the other way reads as
+     "pushed in" — the commoner convention anyway — and measures 5.9:1. */
+  --accent-emphasis-active: #1a5fd0;
   --accent-muted: #4493f8;
   --accent-subtle: #0d2847;
   --accent-on-subtle: #a5d6ff;
@@ -153,6 +185,8 @@
   --success-strong-fg: #4ac26b;
   --success-emphasis: #238636;
   --success-emphasis-hover: #2ea043;
+  /* Darker than idle, for the reason recorded on `--accent-emphasis-active`. */
+  --success-emphasis-active: #1a692b;
   /* Light mode washes the disabled Add button out towards white; the dark
      equivalent is towards the page, not a slightly duller green — at #1c4b28 it
      still read as "enabled, just a bit off". */
@@ -251,10 +285,21 @@ button {
    commits what you picked, and `.btn-selected` (accent) is not an action at
    all — it's the option in a group that is currently in effect.
 
-   Every filled variant needs its own `:hover`. `.btn:hover` sets `background`,
-   so a variant that sets only the idle fill keeps its text and border colors on
-   hover and loses the fill underneath them — which is how the range presets
-   came to render white-on-#f3f4f6 (1.07:1) while the pointer was on them. */
+   Every filled variant needs its own `:hover` **and its own `:active:hover`**.
+   `.btn:hover` sets `background`, so a variant that sets only the idle fill
+   keeps its text and border colors on hover and loses the fill underneath them
+   — which is how the range presets came to render white-on-#f3f4f6 (1.07:1)
+   while the pointer was on them. The generic pressed rule is a class and three
+   pseudo-classes, so it outranks a variant's plain `:hover` and would do the
+   same thing again on the way down.
+
+   **Pressed is `:active:hover`, not `:active`.** A pointer held down and
+   dragged off a button keeps `:active` in every browser, and a control that
+   still looks pressed while the cursor is elsewhere is saying the release will
+   activate it, which it won't. Pairing it with `:hover` makes the state mean
+   what it looks like: let go here and this happens. The cost is that a keyboard
+   Space press flashes nothing, which is the trade every `:active:hover` makes
+   and is why `:focus-visible` is the state that matters for keyboard users. */
 .btn {
   font: inherit;
   padding: 4px 10px;
@@ -266,6 +311,9 @@ button {
 }
 .btn:hover:not(:disabled) {
   background: var(--bg-hover);
+}
+.btn:active:hover:not(:disabled) {
+  background: var(--bg-active);
 }
 /* Outline buttons fade; the filled ones below swap color instead, because a
    translucent fill reads as a rendering glitch rather than as unavailable. */
@@ -284,6 +332,9 @@ button {
 .btn-primary:hover:not(:disabled) {
   background: var(--accent-emphasis-hover);
 }
+.btn-primary:active:hover:not(:disabled) {
+  background: var(--accent-emphasis-active);
+}
 .btn-confirm {
   background: var(--success-emphasis);
   border-color: var(--success-emphasis);
@@ -291,6 +342,9 @@ button {
 }
 .btn-confirm:hover:not(:disabled) {
   background: var(--success-emphasis-hover);
+}
+.btn-confirm:active:hover:not(:disabled) {
+  background: var(--success-emphasis-active);
 }
 .btn-confirm:disabled {
   opacity: 1;
@@ -307,6 +361,56 @@ button {
 }
 .btn-selected:hover:not(:disabled) {
   background: var(--accent-emphasis-hover);
+}
+.btn-selected:active:hover:not(:disabled) {
+  background: var(--accent-emphasis-active);
+}
+
+/* Segmented groups.
+   ---------------
+   A one-of-several choice, drawn as one control: a recessed track holding the
+   options, with the one in effect filled (`.btn-selected`). Three buttons in a
+   row with gaps between them are three buttons; the track is what says they are
+   one control with one answer, and it is the shape that tells them apart from
+   the checkboxes beside them, which are independent switches. Used by the graph
+   header's time-range presets and its points modes; see graphs.md, "The header
+   is two groups".
+
+   **It wraps, which is why the track is a filled box and not joined borders.**
+   Joining the segments — shared 1px edges, rounded outer corners only — is the
+   other way to draw this, and it cannot survive `flex-wrap`: a wrapped row
+   starts with a square left edge and the group reads as broken. The presets
+   have to wrap (seven of them at a 500px pane), so the grouping cue has to be
+   something that encloses two rows as happily as one.
+
+   The segments keep `.btn`, so the chrome is still defined once. They only lose
+   their own fill and border, which is what makes the track read as one surface
+   — and that override is wrapped in `:where()` to zero its specificity, so
+   every state rule above still wins over it without needing a copy in here. */
+.btn-group {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 8px;
+  background: var(--bg-inset);
+  /* Remapped for the children rather than overridden rule by rule: the state
+     rules above stay the only place a hover or a press is defined, and what
+     changes inside a track is which surface those states mean. See the two
+     tokens for why the direction is per-theme. */
+  --bg-hover: var(--btn-segment-hover);
+  --bg-active: var(--btn-segment-active);
+}
+.btn-group > :where(.btn:not(.btn-selected)) {
+  border-color: transparent;
+  background: transparent;
+}
+/* Two of the four px the track adds back, so a bar of these is 28px rather than
+   32px. The segments stay the same height as each other, which is all that
+   matters inside the track — and the graph header is where every px is a px the
+   plot doesn't get (graphs.md, "The header is two groups"). */
+.btn-group > .btn {
+  padding-block: 2px;
 }
 
 /* Control blocks.

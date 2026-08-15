@@ -1276,8 +1276,10 @@ choice, which is not worth taking the app down for.
 ### One button, defined once
 
 `.btn` in [app.css](../src/app.css) is the app's button chrome — border,
-radius, canvas fill, hover, disabled — plus `.btn-compact` for the toolbar
-size and two fills, `.btn-primary` (accent) and `.btn-confirm` (success).
+radius, canvas fill, hover, pressed, disabled — plus `.btn-compact` for the
+toolbar size, three fills (`.btn-primary` accent, `.btn-confirm` success,
+`.btn-selected` for the option in a group that is in effect), and `.btn-group`,
+the recessed track that makes a one-of-several choice read as one control.
 
 It exists because the same six-line recipe had been copied into five
 components, and the copies had drifted: paddings of `4px 12px`, `4px 10px`,
@@ -1287,7 +1289,7 @@ swap in the picker — with three of those panes on screen simultaneously. The
 same rule as for colors applies, and for the same reason: a value that exists
 in five places is five values.
 
-Two things to know before changing it:
+Three things to know before changing it:
 
 - **It's opt-in (`class="btn"`), not a bare `button` rule.** Most buttons in
   this app are *not* this shape — badges, swatches, sort headers, disclosure
@@ -1296,6 +1298,14 @@ Two things to know before changing it:
   series swatch lose its color on hover: SeriesList's component-wide
   `button:hover` outranked `.swatch`, which never declared a hover of its own,
   so pointing at a series greyed out the one thing identifying it.
+- **Pressed is `:active:hover`, and every filled variant needs its own.** A
+  pointer held down and dragged off a button keeps `:active` everywhere, and a
+  control that still looks pressed with the cursor elsewhere is promising an
+  activation that will not happen; pairing the two makes the state mean *let go
+  here and this happens*. The cost is that a keyboard Space press flashes
+  nothing, which is `:focus-visible`'s job anyway. The generic rule is one class
+  and three pseudo-classes, so it outranks a variant's plain `:hover` — which is
+  the same trap the `:hover` note in app.css records, one state further down.
 - **A component rule that has to beat `.btn:hover` needs `.btn` in its own
   selector.** `.btn:hover:not(:disabled)` is (0,3,0); a plain
   `.replicates li.selected button` is (0,2,2) and loses. The selected
