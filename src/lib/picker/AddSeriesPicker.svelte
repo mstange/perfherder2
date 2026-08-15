@@ -752,6 +752,17 @@ import { TIME_RANGES } from './pickerOptions';
     gap: 12px;
     padding: 16px;
     max-width: 1400px;
+    /* `width` is load-bearing next to the auto margins, and only in one
+       direction: an auto margin on the cross axis turns off a flex item's
+       stretch, so without it this box is sized to fit its content — and its
+       content has a floor, the table's `min-width: 64em`. In a window narrower
+       than that the panel stopped shrinking at 866px and simply hung off the
+       right-hand edge, taking `Done` and the close button with it and leaving
+       Escape as the only way out. With a width to stretch to, the shrink lands
+       on `.table-wrap` instead, which has had `overflow: auto` for exactly this
+       (see the note there). The pairing still centres the picker on a display
+       wide enough for the cap to bite, which is what the margins are for. */
+    width: 100%;
     margin: 0 auto;
     color: var(--fg-default);
     font: 14px/1.4 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
@@ -846,10 +857,16 @@ import { TIME_RANGES } from './pickerOptions';
     flex-direction: column;
     gap: 6px;
   }
+  /* Wraps, which costs nothing where the row fits — it never has slack to spare
+     until the panel is a phone wide — and is the difference between `Done`
+     being off the right-hand edge and being on the next line. The two
+     `min-width`s below are what make the row too wide to fit before its
+     contents are: 27ch of reserved count before the buttons even start. */
   .status {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
-    gap: 12px;
+    gap: 8px 12px;
     padding: 0 4px;
   }
   .plotted-count {

@@ -1132,11 +1132,29 @@ that exists only inside a dialog.
   the cap to bite, the leftover is graph — dimmed, but visible, and
   better company than empty backdrop.
 - The panel is ~280px narrower than it was. The table's `min-width: 64em`
-  and its wrapper's `overflow: auto` already handle that: at a 1152px
-  window the table fits exactly, and below that it scrolls horizontally
-  rather than the columns collapsing. No breakpoint that hands the
-  sidebar back — inert-ness would then have to depend on the viewport,
-  which CSS can't drive.
+  and its wrapper's `overflow: auto` were supposed to handle that — at a 1152px
+  window the table fits exactly, and below that it should scroll horizontally
+  rather than the columns collapsing. **It didn't, and hadn't since the panel
+  learned to dock.** Two separate faults, both of which left a control off the
+  right-hand edge of the window with nothing to scroll to reach it:
+  - `.picker` sets `margin: 0 auto` to centre itself under the 1400px cap. An
+    auto margin on the *cross* axis turns off a flex item's stretch, so the box
+    was sized to fit its content — and its content has a floor, that 64em
+    table. Below a ~1150px window it stopped shrinking at 866px and simply hung
+    off the edge, taking the close button with it; Escape was the only way out.
+    The fix is `width: 100%` beside the margins, which restores the stretch and
+    lands the shrink on `.table-wrap`, where the `overflow: auto` was waiting.
+    (`min-width: 0` on `.overlay-panel` is *not* the fix and was tried: its
+    `width: min(1400px, 100%)` already caps its own automatic minimum.)
+  - `.status` was a nowrap flex row carrying 27ch of reserved count before its
+    buttons even start, so `Done` went over the edge next. It wraps now, which
+    costs nothing at widths where it fits.
+
+  The lesson worth keeping: the `min-height: 0` chain this panel documents
+  carefully has a horizontal twin, and a `min-width` deep inside a flex chain
+  propagates *up* as an automatic minimum until something definite stops it.
+- No breakpoint that hands the sidebar back — inert-ness would then have to
+  depend on the viewport, which CSS can't drive.
 
 ### Rows already on the graph show their swatch
 
