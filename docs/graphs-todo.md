@@ -194,7 +194,34 @@ Living checklist. Update in the same commit as the work it describes.
   (comparison.md), which already owned the word — hence `trend.ts`, `TrendPoint`,
   `showTrend`.
 
+- Three point modes in place of the Replicates checkbox — `replicates` / `runs` /
+  `none` (`AppState.pointMode`, `pts=`, a button group in the header). The band's
+  companion: it is drawn under every dot of every series, and on the
+  128m_encrypt/decrypt pair the dots' outliers scale the axis to ~45k–115k where
+  the band lives in ~64k–72k. So `none` drops the dots *and* the connecting line,
+  and the y axis follows what is drawn — `extentOf` measures the band instead
+  (`trendExtent`, over exactly the vertices `trendSpan` gives the drawing), which
+  is ~7× the vertical resolution on that pair. Hit-testing goes off with the ink,
+  the selection survives, and the detail graph explains itself when the dots are
+  off with no band on. See graphs.md, "Replicates".
+
+- The graph header rebuilt as two labelled groups, `RANGE` and `SHOW`, sharing the
+  picker's control-block idiom (`.control-*` in app.css) and its rule for which row
+  a control belongs on: what loads against what shows. Free at wide widths, ~30px
+  taller between 1280 and 980, and it no longer overflows its own pane at the
+  narrow end — measured table in graphs.md, "The header is two groups".
+
 ## Next
+
+- [ ] **A selection outside the band is invisible in `points: None`.** The axis
+      covers the band there, so a selected run mean above p75 or below p25 has its
+      ring clipped at the plot edge while the details pane goes on describing it.
+      `selectionInView` only asks about x, so nothing says so. Two candidate fixes
+      and neither is obviously right: union the selected value into the domain (an
+      axis that moves when you select), or extend `selectionInView` to y and let
+      the pane say "outside the band" (a fourth reason a selection can be off
+      screen, in a pane that already explains two). Reachable only by keyboard or a
+      link, since nothing in that mode is clickable.
 
 - [ ] **The band's curves do not say what they are.** Nothing on the plot states the
       window is 24 pushes, or that the middle line is a rolling *median* rather than

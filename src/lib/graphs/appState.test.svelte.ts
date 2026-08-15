@@ -7,6 +7,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AppState, extentOf, type SeriesEntry } from './appState.svelte';
 import type { Job, Push, RawDatum, RawSummary } from './graphApi';
 import { buildSeriesData, MEAN_REPLICATE, metaFromSummary, seriesKey } from './graphData';
+import type { TrendPoint } from './trend';
+import { parseViewState } from '../urlState';
 
 const DAY = 86400000;
 const NOW = Date.UTC(2026, 6, 27, 12, 0, 0);
@@ -44,9 +46,13 @@ function summary(signatureId: number, data: RawDatum[]): RawSummary {
 }
 
 // A loaded, visible series entry — enough of one for the pure helpers below,
-// which only look at `data` and `plot`. `showReplicates` picks which point set
-// lands in `plot` in the real app; here the caller says.
-function entry(s: RawSummary, showReplicates = true): SeriesEntry {
+// which only look at `data`, `plot` and `trend`. `pointMode` picks which point
+// set lands in `plot` in the real app; here the caller says.
+function entry(
+  s: RawSummary,
+  replicates = true,
+  trend: readonly TrendPoint[] = [],
+): SeriesEntry {
   const ref = { repository: 'autoland', signatureId: s.signature_id, frameworkId: 1 };
   const data = buildSeriesData(s);
   return {
@@ -57,13 +63,13 @@ function entry(s: RawSummary, showReplicates = true): SeriesEntry {
     visible: true,
     meta: metaFromSummary(s),
     data,
-    plot: showReplicates ? data.replicates : data.means,
+    plot: replicates ? data.replicates : data.means,
     loading: false,
     error: null,
     alerts: [],
     changes: [],
     drift: null,
-    trend: [],
+    trend,
   };
 }
 
@@ -2250,16 +2256,16 @@ describe('AppState page title', () => {
     }));
 });
 
-describe('AppState replicate drawing', () => {
+describe('AppState point modes', () => {
   // SAMPLE: one run of three replicates (100/110/120, mean 110) and one of two
   // (200/210, mean 205).
-  it('collapses each run to one dot at its mean when turned off', () =>
+  it('collapses each run to one dot at its mean for run means', () =>
     withApp('?series=autoland,1,1', async (app) => {
       await settle();
-      expect(app.showReplicates).toBe(true);
+      expect(app.pointMode).toBe('replicates');
       expect(app.series[0].plot.points).toHaveLength(5);
 
-      app.setShowReplicates(false);
+      app.setPointMode('runs');
       expect(app.series[0].plot.points.map((p) => p.y)).toEqual([110, 205]);
       // Still one dot per run, so the graph is not empty and `hasData` holds.
       expect(app.hasData).toBe(true);
@@ -2271,17 +2277,18 @@ describe('AppState replicate drawing', () => {
       expect(app.fullYDomain.min).toBeLessThan(100);
       expect(app.fullYDomain.max).toBeGreaterThan(210);
 
-      app.setShowReplicates(false);
+      app.setPointMode('runs');
       expect(app.fullYDomain.min).toBeGreaterThan(100);
       expect(app.fullYDomain.max).toBeLessThan(210);
     }));
 
-  it('is a drawing choice, so toggling it refetches nothing', () =>
+  it('is a drawing choice, so switching modes refetches nothing', () =>
     withApp('?series=autoland,1,1', async (app) => {
       await settle();
       const before = fetchMock.mock.calls.length;
-      app.setShowReplicates(false);
-      app.setShowReplicates(true);
+      app.setPointMode('runs');
+      app.setPointMode('none');
+      app.setPointMode('replicates');
       await settle();
       expect(fetchMock.mock.calls.length).toBe(before);
     }));
@@ -2289,21 +2296,25 @@ describe('AppState replicate drawing', () => {
   it('round-trips through the URL', () =>
     withApp('?series=autoland,1,1', async (app) => {
       await settle();
-      app.setShowReplicates(false);
-      expect(location.search).toContain('reps=0');
-      app.setShowReplicates(true);
-      expect(location.search).not.toContain('reps');
+      app.setPointMode('runs');
+      expect(location.search).toContain('pts=runs');
+      app.setPointMode('none');
+      expect(location.search).toContain('pts=none');
+      app.setPointMode('replicates');
+      expect(location.search).not.toContain('pts');
     }));
 
-  it('restores the off state from the URL', () =>
-    withApp('?series=autoland,1,1&reps=0', async (app) => {
+  it('restores run means from the URL, including the reps=0 form', () =>
+    withApp('?series=autoland,1,1&pts=runs', async (app) => {
       await settle();
-      expect(app.showReplicates).toBe(false);
+      expect(app.pointMode).toBe('runs');
       expect(app.series[0].plot.points).toHaveLength(2);
+      app.applyViewState(parseViewState('?series=autoland,1,1&reps=0'));
+      expect(app.pointMode).toBe('runs');
     }));
 
   it('selects the run mean rather than a hidden replicate', () =>
-    withApp('?series=autoland,1,1&reps=0', async (app) => {
+    withApp('?series=autoland,1,1&pts=runs', async (app) => {
       await settle();
       // The keyboard entry point goes through the drawn point set.
       app.stepRun(1);
@@ -2317,20 +2328,50 @@ describe('AppState replicate drawing', () => {
     }));
 
   it('does not step replicates while they are hidden', () =>
-    withApp('?series=autoland,1,1&reps=0&sel=autoland,1,10,-1', async (app) => {
+    withApp('?series=autoland,1,1&pts=runs&sel=autoland,1,10,-1', async (app) => {
       await settle();
+      app.stepReplicate(1);
+      expect(app.selectedPoint?.replicateIndex).toBe(MEAN_REPLICATE);
+      app.setPointMode('none');
       app.stepReplicate(1);
       expect(app.selectedPoint?.replicateIndex).toBe(MEAN_REPLICATE);
     }));
 
-  it('keeps a replicate selection across a toggle instead of rewriting it', () =>
+  it('keeps a replicate selection across a mode change instead of rewriting it', () =>
     withApp('?series=autoland,1,1&sel=autoland,1,10,2', async (app) => {
       await settle();
       expect(app.selection?.value).toBe(120);
-      app.setShowReplicates(false);
+      app.setPointMode('none');
+      // Nothing is drawn, but the details pane is still describing this value —
+      // clearing it would empty the pane as well as the plot.
       expect(app.selection?.value).toBe(120);
-      app.setShowReplicates(true);
+      app.setPointMode('replicates');
       expect(app.selection?.replicateIndex).toBe(2);
+    }));
+
+  it('stops drawing and hit-testing dots in none, without emptying the graph', () =>
+    withApp('?series=autoland,1,1', async (app) => {
+      await settle();
+      expect(app.drawPoints).toBe(true);
+      app.setPointMode('none');
+      expect(app.drawPoints).toBe(false);
+      // `plot` stays at run resolution: the point count on the card, the
+      // keyboard's entry point and the fallback y extent all read it, and
+      // `hasData` deciding "no data in this time range" off an emptied array was
+      // the bug that shape of fix caused.
+      expect(app.series[0].plot.points).toHaveLength(2);
+      expect(app.hasData).toBe(true);
+    }));
+
+  it('says so when the dots are off and nothing else draws values', () =>
+    withApp('?series=autoland,1,1', async (app) => {
+      await settle();
+      expect(app.noValuesDrawn).toBe(false);
+      app.setPointMode('none');
+      expect(app.noValuesDrawn).toBe(true);
+      // The band is something to look at, so there is nothing to explain.
+      app.setShowTrend(true);
+      expect(app.noValuesDrawn).toBe(false);
     }));
 });
 
@@ -2387,6 +2428,41 @@ describe('extentOf', () => {
     expect(extentOf([SLOPED], { start: DAY_2 + DAY, end: DAY_2 + 2 * DAY })).toEqual({
       min: 0,
       max: 1,
+    });
+  });
+
+  // With the dots and the line off, the band is the only thing painted, so it is
+  // what the axis has to cover — see the note on `extentOf` and `AppState.pointMode`.
+  describe('with the points hidden', () => {
+    const BANDED = entry(
+      summary(4, [
+        datum({ id: 40, value: 100, push_id: 1, push_timestamp: '2026-07-21T06:00:00' }),
+        datum({ id: 41, value: 200, push_id: 2, push_timestamp: '2026-07-22T06:00:00' }),
+      ]),
+      false,
+      [
+        { x: DAY_1, p25: 140, median: 150, p75: 160 },
+        { x: DAY_2, p25: 150, median: 160, p75: 170 },
+      ],
+    );
+
+    it('covers the band rather than the dots it is drawn instead of', () => {
+      expect(extentOf([BANDED], null, false)).toEqual({ min: 140, max: 170 });
+      // The same series with its dots on is four times as tall.
+      expect(extentOf([BANDED], null, true)).toEqual({ min: 100, max: 200 });
+    });
+
+    it('takes the same vertices the ribbon is drawn from', () => {
+      // A window inside the first half of the band keeps the vertex on each side,
+      // exactly as `trendSpan` does for the drawing.
+      const span = { start: DAY_1 + DAY / 4, end: DAY_1 + DAY / 2 };
+      expect(extentOf([BANDED], span, false)).toEqual({ min: 140, max: 170 });
+    });
+
+    it('falls back to the points when there is no band to measure', () => {
+      // Nothing is drawn at all in this state; the axis stays the data's, ready
+      // for whichever switch the reader reaches for next.
+      expect(extentOf([SLOPED], null, false)).toEqual({ min: 100, max: 200 });
     });
   });
 });

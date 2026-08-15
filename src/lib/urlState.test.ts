@@ -249,7 +249,7 @@ describe('serializeViewState', () => {
       range: { start: T0, end: T1 },
       zoom: { start: T0 + 1000, end: T1 - 1000 },
       selected: { repository: 'try', signatureId: 2, datumId: 77, replicateIndex: 4 },
-      showReplicates: false,
+      points: 'none',
       pickerOpen: true,
       picker: {
         filter: {
@@ -268,13 +268,27 @@ describe('serializeViewState', () => {
     expect(parseViewState(`?${serializeViewState(full)}`)).toEqual(full);
   });
 
-  // On is the default, so only the off state is worth a param — see the
-  // comment on ViewState.showReplicates.
-  it('writes the replicate flag only when replicate drawing is off', () => {
-    expect(serializeViewState(state({ showReplicates: true }))).toBe('');
-    expect(serializeViewState(state({ showReplicates: false }))).toBe('reps=0');
-    expect(parseViewState('').showReplicates).toBe(true);
-    expect(parseViewState('?reps=0').showReplicates).toBe(false);
+  // Replicates is the default, so only the other two are worth a param — see the
+  // comment on ViewState.points.
+  it('writes the point mode only when it is not the default', () => {
+    expect(serializeViewState(state({ points: 'replicates' }))).toBe('');
+    expect(serializeViewState(state({ points: 'runs' }))).toBe('pts=runs');
+    expect(serializeViewState(state({ points: 'none' }))).toBe('pts=none');
+    expect(parseViewState('').points).toBe('replicates');
+    expect(parseViewState('?pts=runs').points).toBe('runs');
+    expect(parseViewState('?pts=none').points).toBe('none');
+    // A value we don't know is the default rather than an error, the same rule
+    // every other param here follows.
+    expect(parseViewState('?pts=means').points).toBe('replicates');
+  });
+
+  // Links written before `none` existed say `reps=0`, which meant exactly what
+  // `pts=runs` means now. Read, never written, so such a link normalizes on the
+  // next interaction — and `pts` wins if a hand-edited URL carries both.
+  it('reads the two-valued reps=0 form the point mode replaced', () => {
+    expect(parseViewState('?reps=0').points).toBe('runs');
+    expect(parseViewState('?reps=1').points).toBe('replicates');
+    expect(parseViewState('?reps=0&pts=none').points).toBe('none');
   });
 
   it('writes the change-detection flag only when it is off', () => {

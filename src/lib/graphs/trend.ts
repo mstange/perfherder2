@@ -78,6 +78,49 @@ export function trendWindow(pushCount: number): number {
   return Math.min(WINDOW_PUSHES, Math.floor(pushCount / 2));
 }
 
+// Which vertices of a band fall in an x window: the ones inside it, plus one on
+// each side, so the ribbon enters and leaves the plot instead of stopping short
+// of its edges. Null when fewer than two vertices are in play, which is the one
+// case nothing can be drawn from.
+//
+// **Here rather than in chartDraw, because two callers need the same answer.**
+// The drawing asks it to place the ribbon; `extentOf` asks it to scale the y
+// axis when the band is the only thing on the plot (see `AppState.pointMode`).
+// If those two disagreed about which vertices are in play, the axis would be
+// scaled to a stretch of band that isn't painted.
+export function trendSpan(
+  trend: readonly TrendPoint[],
+  xMin: number,
+  xMax: number,
+): [number, number] | null {
+  if (trend.length < 2) return null;
+  let lo = 0;
+  while (lo + 1 < trend.length && trend[lo + 1].x < xMin) lo++;
+  let hi = trend.length - 1;
+  while (hi > lo + 1 && trend[hi - 1].x > xMax) hi--;
+  return hi > lo ? [lo, hi] : null;
+}
+
+// The band's vertical extent over an x window: the floor of its p25 and the
+// ceiling of its p75, over exactly the vertices `trendSpan` says are drawn.
+// Null when there is no band to measure.
+export function trendExtent(
+  trend: readonly TrendPoint[],
+  xMin: number,
+  xMax: number,
+): { min: number; max: number } | null {
+  const span = trendSpan(trend, xMin, xMax);
+  if (!span) return null;
+  const [lo, hi] = span;
+  let min = Infinity;
+  let max = -Infinity;
+  for (let i = lo; i <= hi; i++) {
+    if (trend[i].p25 < min) min = trend[i].p25;
+    if (trend[i].p75 > max) max = trend[i].p75;
+  }
+  return { min, max };
+}
+
 // One point per push, each summarising the window centred on it.
 //
 // **Centred, not trailing.** A trailing window is the cheaper thing and every

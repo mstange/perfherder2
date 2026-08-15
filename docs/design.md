@@ -28,7 +28,7 @@ change is wrong for a reason the code doesn't show:
 | A URL parameter | three sections that have to agree: "Architecture" below (`urlState.ts` owns the whole schema), graphs.md "URL state", comparison.md "URL state" |
 | `FilterInput.svelte`, or anything holding filter state | "The one component that owns state" — this has bitten us twice |
 | When the picker's filter gets written for the user | "Opening the picker prefills its filter" and "Deriving the filter, and clearing it" — deciding *when* to overwrite a filter by inspecting it has been wrong once already; the rule is now one `isFilterActive` check plus a button |
-| Adding a control above the picker's list | "The control block is two groups: what loads, and what shows" — which row it goes on follows from `cacheKey`, and the last arrangement that was decided by eye put two controls in each other's group |
+| Adding a control above the picker's list, or to the graph header | "The control block is two groups: what loads, and what shows" — which row it goes on follows from whether it fetches, and the last arrangement that was decided by eye put two controls in each other's group. Both blocks share `.control-*` in `src/app.css`; the header's own departures are in graphs.md, "The header is two groups" |
 | Markup with two adjacent badges | "Whitespace between adjacent badges (Svelte gotcha)" |
 | A color, anywhere | "Theming: one resolved attribute, one exception" — there are exactly two, and neither is new |
 | A button | "One button, defined once" |
@@ -795,6 +795,15 @@ URL (`pc=` / `pr=` params) like anything else the panel shows and a shared
 link reopens on the same rows.
 
 ### The control block is two groups: what loads, and what shows
+
+**Two blocks in the app take this shape**, and they share it down to the CSS:
+the picker's controls above its list, described here, and the graph header,
+whose two departures from it are recorded in graphs.md, "The header is two
+groups". The alignment lives in `.control-grid` / `.control-label` /
+`.control-aside` / `.control-word` / `.control-toggle` in
+[app.css](../src/app.css) — one definition, for the reason `.btn` is one
+definition — and each component keeps only its own frame: a bordered card here,
+a bar with a bottom rule there.
 
 Everything above the list is one CSS grid with three columns — a label
 rail, the group's main control, and a right rail for that group's

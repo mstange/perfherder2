@@ -34,7 +34,7 @@ values differently.
   this build", which is the question the pane's "Values on this push" section
   exists to answer — and it is the one-row form of the same chart a comparison
   fills with two rows, in the same place. It is
-  deliberately *not* filtered by `showReplicates`: that flag decides what gets
+  deliberately *not* filtered by `pointMode`: that setting decides what gets
   *drawn* on the time-series graph (see graphs.md), and collapsing the pool to
   one mean per run would leave a 4-value distribution where 60 real
   measurements exist. The pane says how many values came from how many runs so

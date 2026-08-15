@@ -29,14 +29,15 @@ import {
   type ChangeSlot,
 } from './annotations';
 import type { PushGroup, SeriesPoint } from './graphData';
-import type { TrendPoint } from './trend';
+import { trendSpan, type TrendPoint } from './trend';
 import type { ChartPalette } from '../shared/theme';
 
 export type DrawSeries = {
   color: string;
   symbol: SeriesSymbol;
-  // The dots to draw — every replicate, or one per run at its mean. The caller
-  // picks (see AppState.showReplicates); drawing doesn't care which it got.
+  // The dots to draw — every replicate, one per run at its mean, or none at all.
+  // The caller picks (see AppState.pointMode); drawing doesn't care which it
+  // got, and an empty array is simply a series with no dots on it.
   points: SeriesPoint[];
   // The connecting line goes through the per-push means whichever point set is
   // being drawn, so it needs the pushes regardless.
@@ -60,6 +61,9 @@ export type DrawOptions = {
   dotRadius: number;
   // The detail graph joins the per-push means; the overview deliberately
   // doesn't (task requirement) — at overview density the lines are just noise.
+  // It also goes off with the dots: the line is a reading of the same raw data
+  // at push resolution, so "no data points" has to mean no line either, or
+  // hiding the dots would leave the noisiest summary of them on the plot.
   showLines: boolean;
   showAxes: boolean;
   // The theme's chart colors. Passed in rather than read off the DOM so the
@@ -274,14 +278,11 @@ const TREND_MEDIAN_WIDTH = 2;
 
 // The band's x span, clipped to the domain the same way `drawPushLine` does it:
 // one vertex beyond each edge, so the ribbon enters and leaves the plot instead
-// of stopping short of it.
+// of stopping short of it. `trend.ts` owns the rule because the y domain is
+// scaled from the same vertices when the band is all that's drawn — see
+// `trendSpan`.
 function trendRange(o: DrawOptions, trend: readonly TrendPoint[]): [number, number] | null {
-  if (trend.length < 2) return null;
-  let lo = 0;
-  while (lo + 1 < trend.length && trend[lo + 1].x < o.xDomain.min) lo++;
-  let hi = trend.length - 1;
-  while (hi > lo + 1 && trend[hi - 1].x > o.xDomain.max) hi--;
-  return hi > lo ? [lo, hi] : null;
+  return trendSpan(trend, o.xDomain.min, o.xDomain.max);
 }
 
 function drawTrendRibbon(ctx: CanvasRenderingContext2D, o: DrawOptions, s: DrawSeries): void {

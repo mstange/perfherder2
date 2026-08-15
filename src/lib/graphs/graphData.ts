@@ -117,7 +117,8 @@ export type SeriesData = {
   // what the graphs draw by default, and the whole reason to fetch with
   // `replicates=true`. `means` is one dot per run, at the same y the
   // connecting line passes through, for when the replicate cloud is more
-  // noise than signal (see AppState.showReplicates). Both are materialized at
+  // noise than signal, or is not wanted at all (see AppState.pointMode, whose
+  // third answer draws neither set). Both are materialized at
   // build time rather than derived on demand: drawing and hit-testing want a
   // plain x-sorted array on every frame of a drag.
   replicates: PlotPoints;
@@ -489,7 +490,7 @@ export function buildSeriesData(summary: RawSummary | null): SeriesData {
 // Every replicate value this series recorded on one push, in run order —
 // retriggers pooled, since each is an independent sample of the same build.
 //
-// Deliberately not filtered by `showReplicates`: that flag decides which dots
+// Deliberately not filtered by `pointMode`: that setting decides which dots
 // get drawn (see docs/graphs.md), and collapsing to one mean per run would leave
 // a four-value distribution where sixty measurements exist.
 export function pushValues(push: PushGroup): number[] {

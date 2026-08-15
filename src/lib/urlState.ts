@@ -29,6 +29,14 @@ export type SelectedPoint = {
   replicateIndex: number;
 };
 
+// How much of the raw data the graphs draw as dots. Three mutually exclusive
+// answers rather than a pair of booleans, because they are three answers to one
+// question — at what resolution do I want to see the measurements — and the
+// combinations a pair would allow ("no dots but keep the line") are not states
+// anybody asked for. See `AppState.pointMode` for what each one is *for*.
+export const POINT_MODES = ['replicates', 'runs', 'none'] as const;
+export type PointMode = (typeof POINT_MODES)[number];
+
 // A series in the URL: its identity plus whether it's currently plotted.
 // Hiding keeps it in the list (and in the link) without drawing it — the same
 // thing treeherder's legend cards do.
@@ -99,13 +107,12 @@ export type ViewState = {
   // here: it's transient by definition, and writing it would rewrite the URL on
   // every mouse movement.
   compared: SelectedPoint | null;
-  // Whether the graphs draw every replicate or one dot per run at its mean.
-  // Two-valued, not three: unlike the picker's fields there is no caller with
-  // no opinion, so an absent param simply means the default (on).
-  showReplicates: boolean;
-  // Whether the graph draws the steps this app detects for itself. Two-valued
-  // like `showReplicates`, and on by default for the reasons recorded on
-  // `AppState.changeDetection`.
+  // Which dots the graphs draw, if any — see `AppState.pointMode`. Three-valued,
+  // but not in the picker's sense: there is no caller with no opinion here, so an
+  // absent param means the default (`replicates`) rather than "unspecified".
+  points: PointMode;
+  // Whether the graph draws the steps this app detects for itself. Two-valued,
+  // and on by default for the reasons recorded on `AppState.changeDetection`.
   changeDetection: boolean;
   // Whether the graph draws the rolling quartile band (trend.ts). Two-valued like
   // the two above, and **off** by default — the one drawing switch that is, for the
@@ -121,7 +128,7 @@ export const EMPTY_VIEW_STATE: ViewState = {
   zoom: null,
   selected: null,
   compared: null,
-  showReplicates: true,
+  points: 'replicates',
   changeDetection: true,
   showTrend: false,
   pickerOpen: false,
@@ -215,6 +222,18 @@ function parseInterval(s: string | null): number | null {
   return n !== null && TIME_RANGES.some((r) => r.value === n) ? n : null;
 }
 
+// `pts=runs` / `pts=none`; anything else, including absent, is the default.
+//
+// **`reps=0` is still read**, because it is what every link shared before the
+// third mode existed says, and it means what `pts=runs` means now. Only the new
+// name is ever written, so such a link normalizes on the next interaction —
+// there is no second spelling to keep working from here on.
+function parsePointMode(p: URLSearchParams): PointMode {
+  const raw = p.get('pts');
+  if (raw && (POINT_MODES as readonly string[]).includes(raw)) return raw as PointMode;
+  return p.get('reps') === '0' ? 'runs' : 'replicates';
+}
+
 // "1" / "0"; anything else (including absent) is unspecified.
 function parseFlag(s: string | null): boolean | null {
   if (s === '1') return true;
@@ -262,7 +281,7 @@ export function parseViewState(search: string): ViewState {
     zoom,
     selected: parseSelected(p.get('sel')),
     compared: parseSelected(p.get('cmp')),
-    showReplicates: p.get('reps') !== '0',
+    points: parsePointMode(p),
     changeDetection: p.get('cd') !== '0',
     // `=== '1'` rather than `!== '0'`, because this one's default is off: the
     // param's presence turns it on, the way `picker` below works.
@@ -304,8 +323,8 @@ export function serializeViewState(state: ViewState): string {
   // Only meaningful alongside a selection — a comparison needs two ends, and a
   // link carrying just `cmp` would arrive with nothing to compare it to.
   if (state.selected && state.compared) p.set('cmp', serializePoint(state.compared));
-  // Only written when off, so the common case keeps links short.
-  if (!state.showReplicates) p.set('reps', '0');
+  // Only written when it isn't the default, so the common case keeps links short.
+  if (state.points !== 'replicates') p.set('pts', state.points);
   if (!state.changeDetection) p.set('cd', '0');
   // And this one only when on, its default being the other way round.
   if (state.showTrend) p.set('trend', '1');

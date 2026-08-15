@@ -23,6 +23,7 @@
     type Highlight,
   } from './chartDraw';
   import type { SeriesEntry } from './appState.svelte';
+  import type { SeriesPoint } from './graphData';
   import { theme } from '../shared/theme.svelte';
   import { tooltip } from '../shared/tooltipState.svelte';
   import type { TooltipContent } from '../shared/tooltip';
@@ -44,6 +45,11 @@
     xDomain: Range;
     yDomain: Range;
     dotRadius?: number;
+    // Whether the series' dots are drawn *and* hit-tested. Off is `pointMode:
+    // 'none'` (see AppState), and the two have to travel together: a dot that
+    // can be clicked but not seen is a selection out of nowhere, and a ring
+    // appearing on empty space as the pointer crosses it is worse.
+    showPoints?: boolean;
     showLines?: boolean;
     showAxes?: boolean;
     // Alert markers, on the detail graph only: the overview is 84px tall and
@@ -120,6 +126,7 @@
     xDomain,
     yDomain,
     dotRadius = 2,
+    showPoints = true,
     showLines = false,
     showAxes = true,
     showAlerts = false,
@@ -143,6 +150,10 @@
     onkeyprevious,
     ariaLabel,
   }: Props = $props();
+
+  // Shared, so every series with its dots hidden hands the same array to the
+  // drawing and the hit test rather than allocating an empty one per repaint.
+  const NO_POINTS: SeriesPoint[] = [];
 
   // Click radius. Larger than the dot so small targets are still hittable,
   // but not so large that it grabs a point the user wasn't aiming at.
@@ -206,6 +217,12 @@
     showChanges ? layoutChangeBars(series, geom.xScale, geom) : [],
   );
 
+  // The dots this chart is working with: the series' own point sets, or nothing
+  // at all. One derived feeding both the drawing and the hit test, so the two
+  // cannot disagree about which dots exist — the same choke-point discipline
+  // `SeriesEntry.plot` applies one level up.
+  const drawnPoints = $derived(series.map((s) => (showPoints ? s.plot.points : NO_POINTS)));
+
   // Turns each dot's stored room into a pixel offset. One object for the whole
   // chart, derived rather than recomputed per draw: the dots, the selection rings
   // and the hit test all have to agree on it, and the overlay layer repaints on
@@ -249,10 +266,10 @@
       geom,
       xDomain,
       yDomain,
-      series: series.map((s) => ({
+      series: series.map((s, i) => ({
         color: s.color,
         symbol: s.symbol,
-        points: s.plot.points,
+        points: drawnPoints[i],
         pushes: s.data.pushes,
         trend: s.trend,
       })),
@@ -393,7 +410,7 @@
 
   function hitAt(px: number, py: number) {
     return hitTestAll(
-      series.map((s) => ({ points: s.plot.points })),
+      drawnPoints.map((points) => ({ points })),
       geom.xScale,
       geom.yScale,
       px,

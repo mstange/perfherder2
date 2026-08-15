@@ -29,6 +29,68 @@ Three panes, filling the viewport, no page scroll:
 The "Add series" picker opens as an overlay panel over the whole area rather
 than living in the left pane — it needs the full width for its table.
 
+### The header is two groups: what loads, and what shows
+
+The bar over the graphs holds nine controls, and the line between its two rows
+is the same one the Add-series panel's control block draws — see design.md,
+"The control block is two groups: what loads, and what shows". They share the
+idiom down to the CSS (`.control-grid` and friends in app.css):
+
+```
+RANGE   last [2 days][7 days][14 days][30 days][60 days][90 days][1 year]  May 17 – Aug 15      Loading 3…
+SHOW    points [Replicates][Run means][None]   ☑ Detected changes  ☑ Trend band   Zoomed: … [Reset zoom]
+```
+
+**Which row a control goes on is decided by whether it fetches.** `dataKey` is
+the series plus the *range*, so changing the range sends requests and rebuilds
+every point array; everything on the second row draws data already in hand. That
+also places the two things that look like they could go anywhere: the loading
+count belongs to the row that causes the loading, and the zoom — a window onto
+data already fetched — to the row that decides what is painted.
+
+Two departures from the panel's version of the block, both because this is a bar
+over a graph rather than a card in a panel:
+
+- **Two columns, not three.** The panel gives each group's secondary controls a
+  column of their own, which lines the rails up down the block. Reserving that
+  column here costs its widest member's width — the zoom label's 23ch plus a
+  button, ~250px — on *every* row, and the range presets need the space:
+  measured at a 680px pane, the reserved column put the seven presets on three
+  lines and the header at 156px, against 134px with each aside as the last item
+  of its own row, pushed right by `margin-left: auto`. It reads as a right rail
+  while there is room for one and is the first thing to wrap when there isn't.
+- **An 8px row gap, not 18px.** That figure exists in the panel to keep a right
+  rail's *second* line with the group above it. No rail here has one.
+
+**Exclusive choices are button groups; independent switches are checkboxes.**
+That is the whole vocabulary of the bar, and it is why `points` is three buttons
+with one filled (`.btn-selected`, the same shape as the range presets) rather
+than a `<select>`: `None` is the option nobody would think to look for, and a
+dropdown that has to be opened before it admits to a third choice would not get
+found. The shape difference is also what says the two checkboxes beside it are
+not part of the group.
+
+Measured heights, against the single wrapping flex row this replaced (window
+width, then the pane it leaves — the pane is the window less 600px of fixed side
+panes):
+
+| Window | Pane | Before | After |
+| --- | --- | --- | --- |
+| 1800 | 1200 | 77px | 77px |
+| 1500 | 900 | 77px | 77px |
+| 1280 | 680 | 104px | 134px |
+| 1100 | 500 | 136px | 166px |
+| 980 | 380 | 154px | 190px |
+| 860 | 260 | 208px, **overflowing by 70px** | 359px, no overflow |
+
+So it is free at the widths where the graph has room, and costs ~30px between
+1280 and 980 — where it is also carrying two more controls than before, the
+points group being 271px against the one checkbox's ~100px. The last row is the
+pane at 260px, where the graph is unusable either way; the point of it is that
+the header no longer spills out of its own pane. Below a 360px pane a container
+query gives up the zoom label's reserved width, which is the only remaining
+unwrappable item.
+
 ### The details pane, top to bottom
 
 The pane is read from the top on every click, so its order is by how immediately
@@ -289,21 +351,46 @@ replicate value, all sharing the same datum `id`, `job_id`, `push_id` and
 back to emitting a single row with the summary `value`. So "a run always has at
 least one value" holds.
 
-*Drawing* them is a toggle (`AppState.showReplicates`, `reps=0` in the URL,
-the "Replicates" checkbox above the graphs). Off, each run collapses to a
-single dot at its mean, which takes a 90-day range from ~20k dots per series
-to a few hundred and stops a real step in the data being buried in scatter.
+*Drawing* them is one of three modes (`AppState.pointMode`, `pts=` in the URL,
+the `points` button group above the graphs). It is one question — at what
+resolution do I want to see the measurements — so it is one control with three
+answers rather than two checkboxes:
 
-Still one dot per *run*, note — not per push. A retriggered push keeps one dot
-per retrigger, straddling the line's single vertex for that push. Collapsing
-to one dot per push would need a second sentinel alongside `MEAN_REPLICATE`
-and a push-level selection in the details pane, and it would hide that a build
-was retriggered at all.
+| Mode | Dots | For |
+| --- | --- | --- |
+| `replicates` | every replicate value | the default; the only view that shows a run's *spread*, which is what tells a step from a noisy series |
+| `runs` | one per run, at its mean | takes a 90-day range from ~20k dots per series to a few hundred, and stops a real step being buried in scatter |
+| `none` | none, and no connecting line | leaves the summaries: the trend band, the alert markers, the change bars |
+
+`none` exists because the band is drawn *under* nine series' worth of dots
+(see "The trend band"), and comparing two bands is a question the raw plot
+cannot answer at all. Two things follow the mode rather than being switches of
+their own — in both cases because the state the extra switch would allow is one
+nobody asked for:
+
+- **The connecting line goes off with the dots.** It is the same raw data at
+  push resolution, so "no data points" that still drew the noisiest summary of
+  them would not be the thing the reader asked for.
+- **The y axis follows what is drawn**, so with the dots off it covers the
+  *band* (`extentOf`'s `drawPoints` argument, and `trendExtent` in trend.ts,
+  which measures exactly the vertices `trendSpan` hands the drawing). Measured
+  on the two 128m_encrypt/decrypt signatures over three months: run means span
+  ~45k–115k where the band spans ~64k–72k, so leaving the axis on the invisible
+  dots would draw the band as a stripe across a fifth of the plot. With no band
+  either — `none` and the band off — it falls back to the point extent, and the
+  detail graph carries a note saying the dots are hidden, since that state is
+  otherwise indistinguishable from a broken graph.
+
+In `runs` and `none` it is still one dot (or none) per *run*, note — not per
+push. A retriggered push keeps one dot per retrigger, straddling the line's
+single vertex for that push. Collapsing to one dot per push would need a second
+sentinel alongside `MEAN_REPLICATE` and a push-level selection in the details
+pane, and it would hide that a build was retriggered at all.
 
 Keeping this on the drawing side rather than the fetch side is deliberate:
-toggling is then instant and allocation-free rather than a refetch of every
+switching is then instant and allocation-free rather than a refetch of every
 series, and the details pane can still list a run's individual replicates in
-either mode. `buildSeriesData` materializes both point sets up front
+every mode. `buildSeriesData` materializes both point sets up front
 (`SeriesData.replicates` and `.means`, each a `PlotPoints` with its own
 precomputed y extent); `AppState` picks one into `SeriesEntry.plot`, and
 *everything* downstream — both graphs, both y domains, hit-testing, keyboard
@@ -311,16 +398,29 @@ stepping, the series list's point count — reads `plot` rather than re-deriving
 the choice. That single choke point is what keeps the graph, the y axis and
 the click targets from disagreeing about which dots exist.
 
+**`none` does not empty `plot`**, which was the first shape of the change and
+was wrong twice over: `hasData` reads it, so the graph drew "No data in this
+time range." over a year of data, and the point count, the keyboard's entry
+point and the fallback y extent all describe the series whether or not it is
+painted. So `plot` stays at run resolution and a separate `AppState.drawPoints`
+suppresses the ink. That flag gates ScatterChart's drawing **and** its hit test
+together (one `drawnPoints` derived feeds both): a dot that can be clicked but
+not seen is a selection out of nowhere, and a hover ring appearing over empty
+space is worse.
+
 Selecting a mean dot needs a way to say "not a replicate": that is
 `MEAN_REPLICATE = -1`, which flows through `SelectedPoint.replicateIndex` and
 the URL's `sel` unchanged. A selection is deliberately *not* rewritten when
-the toggle flips — a mean selection is still valid with replicates drawn, and
+the mode changes — a mean selection is still valid with replicates drawn, and
 a replicate selection still names a real value with them hidden, so coercing
-it either way would throw away the point the user was looking at. The
-consequence is that with replicates hidden, a replicate selection draws its
-ring on a value that has no dot; that's honest (the ring shows where that
-replicate sits relative to the mean) and reachable only by deliberately
-picking one from the pane's replicate list.
+it either way would throw away the point the user was looking at. In `none` the
+details pane is the *only* thing still describing the selection, so clearing it
+would empty that pane too. The consequence is that with replicates hidden, a
+replicate selection draws its ring on a value that has no dot; that's honest
+(the ring shows where that replicate sits relative to the mean) and reachable
+only by deliberately picking one from the pane's replicate list. In `none`, where
+the axis covers the band, a selected value outside the band is off the axis and
+its ring is clipped away — see graphs-todo.md.
 
 ### The three-level hierarchy
 
@@ -602,7 +702,7 @@ after the run, and a row whose graph has gone empty is stale rather than wrong.
 | [5350953 — the same test on Windows, two months](http://localhost:5173/?series=autoland,5350953,13&range=1781113080000,1786297080000) | 1 alert, 2 bars: one on alert #51136's own push, and one on 2026-07-30 that perfherder has no alert for | The standard-error penalty in `relocateBoundary`. Before it, the first bar sat 16 pushes and 21 hours early and the second did not exist |
 | [299010 — tresize, two months](http://localhost:5173/?series=autoland,299010,1&range=1780954380000,1786138380000) | 5 alerts and 10 bars, among them alert #51554's −4.56% improvement on 2026-07-23 with one push shortly before it dragged low by a single bad job | That `relocateBoundary` has to exist at all: the proposed cut lands on the bad push, not on the step |
 | [5352791 — speedometer3 TodoMVC-jQuery/total, macOS, two months](http://localhost:5173/?series=autoland,5352791,13&range=1780963200000,1786147200000) | A level that wanders over 65–68 ms with one push in six measured far less precisely, four perfherder alerts and 17 bars. Recorded as `fixtures/push-means-wandering.json` | Binary segmentation, replacing a dynamic program that scored the whole range against one noise scale and covered everything past push 290 with a single segment |
-| [installer size — three subtests, one week](http://localhost:5173/?series=autoland,1954909,2&series=autoland,1668132,2&series=autoland,5688441,2&range=1785563520000,1786168320000&reps=0) | 9, 8 and 2 bars, all of them steps of tens of KB on binaries of 119–240 MB — tenths of a *tenth* of a percent — with four of the first two landing on the same push across two platforms | The per-signature threshold. A fixed 0.5% floor drew nothing at all on any of the three |
+| [installer size — three subtests, one week](http://localhost:5173/?series=autoland,1954909,2&series=autoland,1668132,2&series=autoland,5688441,2&range=1785563520000,1786168320000&pts=runs) | 9, 8 and 2 bars, all of them steps of tens of KB on binaries of 119–240 MB — tenths of a *tenth* of a percent — with four of the first two landing on the same push across two platforms | The per-signature threshold. A fixed 0.5% floor drew nothing at all on any of the three |
 
 **The first row is the honest one, and worth reading twice.** The macOS series
 gets no bar either. Measured over the two months around that push, the same event
@@ -1131,15 +1231,19 @@ curves collapse to a tight ribbon around a line that does mean what it looks lik
 - **Both in the series' own colour**, since on a nine-series graph a band has to say
   whose it is and the list's swatch is the only key there is. The ribbon's alpha is
   low enough to survive nine of itself overlapping.
-- **The third checkbox costs 27px of plot height at one window width**, and that is
-  accepted rather than fixed. Measured by hiding it and re-measuring at nine widths:
-  identical everywhere except between roughly 1230px and 1330px, where the header
-  takes an extra row. Shortening the label does not help — "Trend", "Band" and
-  "Quartiles" all give the same 104px, because it is the third item's checkbox and gap
-  that overflow, not its text. It is a static cost at a narrow range of widths, not
-  something that moves while the user is working, so it does not trade against
-  "Layout stability" in design.md; restructuring the header's groups to reclaim it
-  would be a bigger change than the row is worth.
+- **`points: None` is the band's companion**, and the two are worth reaching for
+  together: this ribbon is drawn under every dot of every series, and on the encrypt /
+  decrypt pair above it is a smear across a fifth of a plot scaled to the raw data's
+  outliers. Turning the dots off gives the band the axis (see "Replicates"). The two
+  stay separate switches, though — a band nobody asked for is not the answer to
+  "hide the dots", and `none` with the band off is a legitimate view of the marks
+  alone.
+- **The header's rows are what the switches cost.** An earlier version of this
+  section recorded 27px of plot height lost to the third checkbox at one narrow band
+  of widths, and accepted it because "restructuring the header's groups would be a
+  bigger change than the row is worth". The header has since been restructured for
+  the points group (see "The header is two groups"), which is where that
+  accounting now lives.
 - **Cached per `(series, range)` and pruned with the data**, like the change bars and
   for the same reason: a quartile of 24 values *per push* is 2,700 sorts on a year of
   autoland, and `series` recomputes for reasons that have nothing to do with the data.
@@ -1492,9 +1596,9 @@ The whole view is in the query string:
 | `series` | Repeated. Each is `repo,signatureId,frameworkId[,0]`; the trailing `0` means hidden and is omitted when visible. **Order is significant** — it drives legend order and color assignment. |
 | `range` | Absolute full time range, `<startMs>,<endMs>` |
 | `zoom` | Absolute zoomed range, `<startMs>,<endMs>`; absent when not zoomed |
-| `sel` | Selected point, `<repo>,<signatureId>,<datumId>,<replicateIndex>`. A `replicateIndex` of `-1` (`MEAN_REPLICATE`) means the run's *mean* rather than one of its replicates — what a click selects while `reps=0` |
+| `sel` | Selected point, `<repo>,<signatureId>,<datumId>,<replicateIndex>`. A `replicateIndex` of `-1` (`MEAN_REPLICATE`) means the run's *mean* rather than one of its replicates — what a click selects while the points mode is not `replicates` |
 | `cmp` | Pinned comparison point, same shape as `sel`; set by shift-clicking a dot. Only written alongside a `sel`, since a comparison needs two ends. See [comparison.md](comparison.md) |
-| `reps` | `0` to draw one dot per run at its mean instead of every replicate. Omitted when on, which is the default |
+| `pts` | Which dots are drawn: `runs` (one per run at its mean) or `none` (no dots and no connecting line). Omitted for `replicates`, the default. **`reps=0` is still read** as `runs` — it is what links written before the third mode say — but never written, so such a link normalizes on the next interaction |
 | `cd` | `0` to stop drawing the steps this app detects for itself. Omitted when on, which is the default — see "Detected changes" |
 | `trend` | `1` to draw the rolling quartile band. **The one drawing switch written when *on*** rather than off, its default being the other way round — see "The trend band" |
 | `picker` | `1` when the Add-series panel is open |

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { buildDrift } from './drift';
 import type { PushGroup } from './graphData';
-import { trendWindow, rollingTrend } from './trend';
+import { rollingTrend, trendExtent, trendSpan, trendWindow, type TrendPoint } from './trend';
 
 const BASE_TIME = Date.UTC(2026, 0, 1);
 const HOUR = 3_600_000;
@@ -109,5 +109,59 @@ describe('rollingTrend', () => {
       expect(p.p25).toBeLessThanOrEqual(p.median);
       expect(p.median).toBeLessThanOrEqual(p.p75);
     }
+  });
+});
+
+// One rule, two readers: the ribbon is drawn from these vertices and the y axis
+// is scaled from them when the band is all that's on the plot. A disagreement
+// would scale the axis to a stretch of band nobody can see.
+describe('trendSpan', () => {
+  const trend = rollingTrend(pushesOf(Array.from({ length: 12 }, (_, i) => i)));
+
+  it('keeps one vertex beyond each edge, so the ribbon crosses the plot', () => {
+    // Vertices 4..7 are inside; 3 and 8 are the ones that carry it in and out.
+    expect(trendSpan(trend, BASE_TIME + 4 * HOUR, BASE_TIME + 7 * HOUR)).toEqual([3, 8]);
+  });
+
+  it('covers everything for an unbounded window', () => {
+    expect(trendSpan(trend, -Infinity, Infinity)).toEqual([0, 11]);
+  });
+
+  it('still gives two vertices for a window between them', () => {
+    // A zero-width window between vertices 5 and 6: the segment crossing it is
+    // drawn, so both ends are in play.
+    const between = BASE_TIME + 5 * HOUR + HOUR / 2;
+    expect(trendSpan(trend, between, between)).toEqual([5, 6]);
+  });
+
+  it('is null when there is no segment to draw', () => {
+    expect(trendSpan([], 0, 1)).toBeNull();
+    expect(trendSpan(trend.slice(0, 1), -Infinity, Infinity)).toBeNull();
+  });
+});
+
+describe('trendExtent', () => {
+  const trend: TrendPoint[] = [
+    { x: BASE_TIME, p25: 10, median: 15, p75: 20 },
+    { x: BASE_TIME + HOUR, p25: 30, median: 35, p75: 40 },
+    { x: BASE_TIME + 2 * HOUR, p25: 50, median: 55, p75: 60 },
+  ];
+
+  it('spans the ribbon, floor to ceiling', () => {
+    expect(trendExtent(trend, -Infinity, Infinity)).toEqual({ min: 10, max: 60 });
+  });
+
+  it('measures exactly the vertices trendSpan hands the drawing', () => {
+    // The middle vertex alone, which brings its two neighbours with it.
+    expect(trendExtent(trend, BASE_TIME + HOUR, BASE_TIME + HOUR)).toEqual({ min: 10, max: 60 });
+    // The last two, which do not.
+    expect(trendExtent(trend, BASE_TIME + 2 * HOUR, BASE_TIME + 3 * HOUR)).toEqual({
+      min: 30,
+      max: 60,
+    });
+  });
+
+  it('is null when there is no band', () => {
+    expect(trendExtent([], -Infinity, Infinity)).toBeNull();
   });
 });

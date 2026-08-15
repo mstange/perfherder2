@@ -30,7 +30,7 @@ import {
 } from './alerts';
 import { detectChanges, type DetectedChange } from './changes';
 import { buildDrift, driftWorthReporting, type DriftSummary } from './drift';
-import { rollingTrend, type TrendPoint } from './trend';
+import { rollingTrend, trendExtent, type TrendPoint } from './trend';
 import {
   benchmarkComparison,
   profileLinks,
@@ -93,6 +93,7 @@ import {
   serializeViewState,
   type GraphContext,
   type PickerViewState,
+  type PointMode,
   type SelectedPoint,
   type SeriesEntryState,
   type ViewState,
@@ -112,10 +113,13 @@ export type SeriesEntry = {
   visible: boolean;
   meta: SeriesMeta | null;
   data: SeriesData;
-  // Which of `data`'s two point sets is in play, per `showReplicates`. Picked
-  // once here so that everything downstream — both graphs, the y domains,
+  // Which of `data`'s two point sets is in play, per `pointMode`. Picked once
+  // here so that everything downstream — both graphs, the y domains,
   // hit-testing, keyboard stepping, the series list's point count — draws and
-  // talks about the same dots without each re-deriving the choice.
+  // talks about the same dots without each re-deriving the choice. **Whether
+  // they are drawn at all is a separate question** (`AppState.drawPoints`): in
+  // `none` mode this is still the run means, because everything but the ink
+  // still needs a resolution to work at.
   plot: PlotPoints;
   loading: boolean;
   error: string | null;
@@ -204,18 +208,31 @@ export class AppState {
   // let the pane preview the comparison a shift-click would pin. Cleared when
   // the pointer leaves the graph.
   hoveredPoint = $state<SelectedPoint | null>(null);
-  // With replicates on, every replicate of every run is a dot — the default,
-  // and the reason we fetch with `replicates=true` at all. Off, each run
-  // collapses to one dot at its mean: a 90-day range drops from ~20k dots per
-  // series to a few hundred, and a real step in the data stops being buried in
-  // scatter. (Still one dot per *run*, so a retriggered push keeps one dot per
-  // retrigger, straddling the line's single vertex for that push. Collapsing
-  // to one dot per push would need a second sentinel and a push-level
-  // selection, and would hide that a build was retriggered at all.) This
-  // is a *drawing* choice only; the fetch is unchanged, so toggling it is
-  // instant and the details pane can still list a run's individual
-  // replicates either way.
-  showReplicates = $state(true);
+  // At what resolution the raw data is drawn. One question with three answers,
+  // coarsening left to right, and each one is *for* something:
+  //
+  //   `replicates` — every replicate of every run is a dot. The default, and the
+  //     reason we fetch with `replicates=true` at all: it is the only view that
+  //     shows a run's spread, which is what tells a step from a noisy series.
+  //   `runs` — one dot per run at its mean. A 90-day range drops from ~20k dots
+  //     per series to a few hundred, and a real step stops being buried in
+  //     scatter. (Still one dot per *run*, so a retriggered push keeps one dot
+  //     per retrigger, straddling the line's single vertex for that push.
+  //     Collapsing to one dot per push would need a second sentinel and a
+  //     push-level selection, and would hide that a build was retriggered.)
+  //   `none` — no dots and no connecting line. What is left is the summaries:
+  //     the trend band, the alert markers and the detected-change bars. Nine
+  //     series' worth of dots is what makes a band hard to follow, and comparing
+  //     two *bands* is a question the raw plot cannot answer at all.
+  //
+  // All three are *drawing* choices; the fetch is unchanged, so switching is
+  // instant, and the details pane still lists a run's individual replicates in
+  // every mode. Two things follow the mode rather than being switches of their
+  // own, both because the alternative is a state nobody asked for: the
+  // connecting line, which is the same raw data at push resolution (see
+  // `DrawOptions.showLines`), and the y axis, which covers what is drawn and so
+  // scales to the band in `none` (see `extentOf`).
+  pointMode = $state<PointMode>('replicates');
   // Draw the steps this app detects in each series (changes.ts).
   //
   // **On by default**, which is a deliberate departure from how this app treats
@@ -362,7 +379,15 @@ export class AppState {
         visible: ref.visible,
         meta: loaded?.meta ?? null,
         data,
-        plot: this.showReplicates ? data.replicates : data.means,
+        // `none` takes the means, not an empty set: the dots aren't drawn, but
+        // everything else `plot` feeds — the selection a click or an arrow key
+        // resolves to, the card's point count, the fallback y extent — still has
+        // to describe the series at *some* resolution, and one dot per run is the
+        // resolution `none` is a step past. `drawPoints` is what suppresses the
+        // ink, in one place. (Emptying `plot` here instead made `hasData` false,
+        // which put "No data in this time range." over a graph holding a year of
+        // it.)
+        plot: this.pointMode === 'replicates' ? data.replicates : data.means,
         loading: this.loadingKeys.has(key),
         error: this.errorsByKey.get(key) ?? null,
         alerts: this.alertCache.get(key) ?? EMPTY_ALERTS,
@@ -404,13 +429,24 @@ export class AppState {
   hasData = $derived(this.visibleSeries.some((s) => s.plot.points.length > 0));
   failedSeries = $derived(this.series.filter((s) => s.error !== null));
 
+  // Whether the dots (and with them the connecting line) are painted at all. One
+  // flag off `pointMode` rather than three comparisons spread over the pane and
+  // the chart: it gates the drawing *and* the hit test, which have to agree, or
+  // the graph would hand out selections for dots nobody can see.
+  drawPoints = $derived(this.pointMode !== 'none');
+
+  // Nothing on the plot but the axes: the dots are off and so is the only other
+  // thing that draws a series' *values*. The marks may still be there, which is
+  // why this is a note explaining a setting and not an "empty" state.
+  noValuesDrawn = $derived(!this.drawPoints && !this.showTrend);
+
   // The detail graph's x domain.
   detailSpan = $derived<Span>(this.zoom ?? this.range);
 
   // Shared y domain across every visible series, over the whole range. The
   // overview graph uses this one.
   fullYDomain = $derived.by((): Range => {
-    const e = extentOf(this.visibleSeries, null);
+    const e = extentOf(this.visibleSeries, null, this.drawPoints);
     return padDomain(e.min, e.max);
   });
 
@@ -419,7 +455,7 @@ export class AppState {
   // bottom of the plot. Treeherder keeps a y zoom in its URL instead; we
   // derive it, which is one less thing to get out of sync.
   detailYDomain = $derived.by((): Range => {
-    const e = extentOf(this.visibleSeries, this.detailSpan);
+    const e = extentOf(this.visibleSeries, this.detailSpan, this.drawPoints);
     return padDomain(e.min, e.max);
   });
 
@@ -1340,13 +1376,15 @@ export class AppState {
     this.setZoom(null);
   }
 
-  setShowReplicates(on: boolean): void {
-    if (this.showReplicates === on) return;
-    this.showReplicates = on;
-    // The selection deliberately survives: a mean selection is still a valid
-    // mean selection with replicates drawn, and a replicate selection still
-    // names a real value with them hidden. Coercing it either way would lose
-    // the point the user was looking at for the sake of tidiness.
+  setPointMode(mode: PointMode): void {
+    if (this.pointMode === mode) return;
+    this.pointMode = mode;
+    // The selection deliberately survives every one of these transitions: a mean
+    // selection is still a valid mean selection with replicates drawn, and a
+    // replicate selection still names a real value with them hidden. Coercing it
+    // would lose the point the user was looking at for the sake of tidiness —
+    // including on the way into `none`, where the details pane is the *only* thing
+    // still describing it and clearing it would empty that pane too.
     this.syncUrl('push');
   }
 
@@ -1617,9 +1655,10 @@ export class AppState {
       this.selectFirstPoint();
       return;
     }
-    // With replicates hidden there is nothing to walk: every run is one dot,
-    // and stepping would park the selection ring on a value that isn't drawn.
-    if (!this.showReplicates) return;
+    // With replicates hidden there is nothing to walk: every run is one dot (or
+    // none), and stepping would park the selection ring on a value that isn't
+    // drawn.
+    if (this.pointMode !== 'replicates') return;
     this.stepSelection({
       repository: sel.entry.ref.repository,
       signatureId: sel.entry.ref.signatureId,
@@ -1726,7 +1765,7 @@ export class AppState {
     zoom: this.zoom ? { start: this.zoom.start, end: this.zoom.end } : null,
     selected: this.selectedPoint,
     compared: this.comparedPoint,
-    showReplicates: this.showReplicates,
+    points: this.pointMode,
     changeDetection: this.changeDetection,
     showTrend: this.showTrend,
     pickerOpen: this.pickerOpen,
@@ -1756,7 +1795,7 @@ export class AppState {
       this.zoom = state.zoom ? clampSpan(state.zoom, this.range) : null;
       this.selectedPoint = state.selected;
       this.comparedPoint = state.compared;
-      this.showReplicates = state.showReplicates;
+      this.pointMode = state.points;
       this.changeDetection = state.changeDetection;
       this.showTrend = state.showTrend;
       this.pickerOpen = state.pickerOpen;
@@ -1831,12 +1870,36 @@ function compareSideOf(sel: Selection): CompareSide {
   };
 }
 
-// Extent of every plotted value, optionally restricted to a time window.
-// Points are x-sorted, so the window is a slice found by binary search rather
-// than a full scan — this runs on every frame of a zoom drag.
-export function extentOf(series: SeriesEntry[], span: Span | null): Range {
+// Extent of everything drawn, optionally restricted to a time window. Points are
+// x-sorted, so the window is a slice found by binary search rather than a full
+// scan — this runs on every frame of a zoom drag.
+//
+// **The y axis covers what is painted, and nothing else.** That rule is why the
+// line's edge crossings are in here (below), and it is what `drawPoints` is doing
+// in the signature: with the dots and the line off, the band is the only thing on
+// the plot, so scaling to the dots would anchor the axis to invisible data and
+// leave the band — the thing the reader asked to see — as a stripe across a
+// quarter of it. Measured on the two 128m_encrypt/decrypt signatures over three
+// months: the run means span ~45k–115k while the band spans ~64k–72k, so the
+// difference is roughly 7× the vertical resolution.
+//
+// With no band to measure it falls back to the point extent, which is deliberate:
+// the axis of a plot with nothing on it should still be the axis of the data,
+// ready for whichever switch the reader reaches for next.
+export function extentOf(series: SeriesEntry[], span: Span | null, drawPoints = true): Range {
   const ranges: Range[] = [];
   for (const s of series) {
+    if (!drawPoints) {
+      const band = trendExtent(
+        s.trend,
+        span ? span.start : -Infinity,
+        span ? span.end : Infinity,
+      );
+      if (band) {
+        ranges.push(band);
+        continue;
+      }
+    }
     const points = s.plot.points;
     if (points.length === 0) continue;
     if (!span) {
