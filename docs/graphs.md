@@ -54,17 +54,42 @@ data already fetched — to the row that decides what is painted.
 Two departures from the panel's version of the block, both because this is a bar
 over a graph rather than a card in a panel:
 
-- **Two columns, not three.** The panel gives each group's secondary controls a
-  column of their own, which lines the rails up down the block. Reserving that
-  column here costs its widest member's width — the zoom label's 23ch plus a
-  button, ~250px — on *every* row, and the range presets need the space:
-  measured at a 680px pane (before the tracks below, which cost 4px a row), the
-  reserved column put the seven presets on three lines and the header at 156px,
-  against 134px with each aside as the last item of its own row, pushed right by
+- **Two columns, not three** — `class="control-grid no-aside"`, the variant
+  declared beside `.control-grid` itself so that every arrangement of the block
+  stays in one file. The panel gives each group's secondary controls a column of
+  their own, which lines the rails up down the block. Reserving that column here
+  costs its widest member's width — the zoom label's 23ch plus a button, ~250px
+  — on *every* row, and the range presets need the space: measured at a 680px
+  pane (before the tracks below, which cost 4px a row), the reserved column put
+  the seven presets on three lines and the header at 156px, against 134px with
+  each aside as the last item of its own row, pushed right by
   `margin-left: auto`. It reads as a right rail
   while there is room for one and is the first thing to wrap when there isn't.
 - **An 8px row gap, not 18px.** That figure exists in the panel to keep a right
   rail's *second* line with the group above it. No rail here has one.
+
+**The label rail is the first thing given up when the pane narrows.** Below a
+560px pane a container query in app.css drops it and the block becomes a single
+column. It is ~66px of every line — the widest label plus the column gap — and
+at those widths that is two more presets per row of the track, which is a whole
+line of header per row of the bar. What it names, the lowercase word beside each
+track already says: *last 30 days*, *points, run means*. Nothing is lost for
+assistive tech, because the rail was never the accessible name — each track
+carries its own `aria-label`, and `.control-word` is `aria-hidden` precisely so
+that the two don't both claim to name the group. The rule is shared with the
+picker's block, which needs it more urgently: there the third column is real, an
+`auto` track doesn't shrink, and past a point the right rail simply landed on
+top of the filter input.
+
+**Both labels sit on the line they name.** `.control-label` is
+`align-self: baseline`, but a baseline group of one resolves to `start` — and
+with the aside column gone, each label here *was* alone in its group, riding 7px
+above the "last" and "points" beside it. The row is baseline-aligned too, which
+gives the label its partner. Pairing a label with the main control is what
+app.css warns against in general, but that hazard is the picker's, where
+clearing the last chip swaps a 12px pill for a 14px input; these rows begin with
+a segmented track of fixed-height buttons, and the row's ascent is the larger of
+the two, so the label comes down to it and nothing else moves.
 
 **Exclusive choices are segmented groups; independent switches are checkboxes.**
 That is the whole vocabulary of the bar. It is why `points` is a group of buttons
@@ -95,9 +120,10 @@ Two consequences of the track worth knowing, both in app.css beside the rules:
   canvas and the ordinary fills point the right way. The state *rules* are
   untouched; only what they resolve to changes.
 
-Measured heights, against the single wrapping flex row this replaced (window
-width, then the pane it leaves — the pane is the window less 600px of fixed side
-panes):
+Measured heights against the single wrapping flex row this replaced. Recorded
+when the block was built, against the shell of the time, where the pane was
+always the window less 600px of fixed side panes — no longer true, so the window
+column is kept only because it is what was measured:
 
 | Window | Pane | Before | After |
 | --- | --- | --- | --- |
@@ -112,10 +138,32 @@ So it costs 4px at the widths where the graph has room — the tracks' padding, 
 `.btn-group` gives 2px of it back by tightening the segments' own vertical
 padding — and ~30px between 1280 and 980, where it is also carrying two more
 controls than before (the points group is 271px against the one checkbox's
-~100px). The last row is the pane at 260px, where the graph is unusable either
-way; the point of it is that the header no longer spills out of its own pane.
-Below a 360px pane a container query gives up the zoom label's reserved width,
-which is the only remaining unwrappable item.
+~100px).
+
+What the rail is worth, measured since, by pane width with it dropped and forced
+back on:
+
+| Pane | Rail dropped | Rail on |
+| --- | --- | --- |
+| 1200 | 81px | 81px |
+| 900 | 81px | 81px |
+| 680 | 138px | 138px |
+| 580 | 138px | 138px |
+| 480 | **164px** | 188px |
+| 440 | **164px** | 188px |
+| 390 | 188px | 188px |
+
+One line, in a 120px band. Above 560px the rail is drawn anyway; below 440 the
+presets wrap to three lines whatever the width, and the 66px buys nothing. The
+whole of the saving is at 440–560px — which is not an accident of the
+measurement, it is the band the shell's middle tier hands out most often.
+
+Two floors are worth knowing. 440px is the narrowest pane the shell will now
+give the graph, which is why the table stops there: it is the width at which the
+header settles and the plot keeps more height than its chrome, and it is
+`GRAPH_MIN_WIDTH` in layout.ts. Below a 360px pane — reachable only on the narrow
+tier, where the graph has the whole window — a second container query gives up
+the zoom label's reserved width, the last unwrappable item.
 
 ### The details pane, top to bottom
 

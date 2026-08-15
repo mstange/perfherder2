@@ -248,7 +248,7 @@
        row's aside, while the zoom, a window onto data already in hand, is the
        drawing row's. The alignment is `.control-grid` in app.css, shared with
        the panel; see docs/design.md, "The control block is two groups". -->
-  <header class="control-grid">
+  <header class="control-grid no-aside">
     <span class="control-label">Range</span>
     <div class="row">
       <div class="ranges">
@@ -464,20 +464,20 @@
        `.control-grid`. Two differences, both because this is a bar over a graph
        rather than a card in a panel:
 
-       - **Two columns, not three.** The panel gives each group's secondary
-         controls their own column, which lines the rails up down the block. Here
-         that column would reserve its widest member's width (the zoom label's
-         23ch plus a button, ~250px) on *every* row, and the range presets need
-         every pixel: measured at a 680px pane, a reserved aside column put the
-         seven presets on three lines and the header at 156px against this
-         layout's 134 (both before the segmented tracks, which cost 4px a row).
-         So each aside is the last item of its own row instead, pushed right by
-         `.trailing` — a right rail while there is room for one, and the thing
-         that wraps first when there isn't.
+       - **Two columns, not three** — the `no-aside` class, defined beside
+         `.control-grid` so all of this block's arrangements stay in one file.
+         The panel gives each group's secondary controls their own column, which
+         lines the rails up down the block. Here that column would reserve its
+         widest member's width (the zoom label's 23ch plus a button, ~250px) on
+         *every* row, and the range presets need every pixel: measured at a 680px
+         pane, a reserved aside column put the seven presets on three lines and
+         the header at 156px against this layout's 134 (both before the segmented
+         tracks, which cost 4px a row). So each aside is the last item of its own
+         row instead, pushed right by `.trailing` — a right rail while there is
+         room for one, and the thing that wraps first when there isn't.
        - **An 8px row gap** rather than 18px. That figure exists to keep a right
          rail's *second* line with the group above it; no rail here has one, and
          every px of this bar is a px the graph doesn't get. */
-    grid-template-columns: auto minmax(0, 1fr);
     row-gap: 8px;
     padding: 8px 12px;
     border-bottom: 1px solid var(--border-default);

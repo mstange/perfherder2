@@ -445,6 +445,43 @@ button {
      is anchored to a label. Roughly 3:1. */
   gap: 18px 12px;
 }
+/* A host with no third column says so here rather than re-declaring the grid,
+   so that every arrangement of this block is in one place and the narrow rule
+   below only has to know about the two. The graph header is the one: reserving
+   an aside column there costs its widest member's width on every row and the
+   range presets need it — see docs/graphs.md, "The header is two groups". */
+.control-grid.no-aside {
+  grid-template-columns: auto minmax(0, 1fr);
+}
+/* Narrow enough that the rails cost more than they say.
+ *
+ * The label rail is ~66px of every line — the widest label plus the column gap
+ * — and what it names, the lowercase word beside each control already says:
+ * *last 30 days*, *points, run means*. So the rail goes and the block becomes a
+ * single column, which is also what stops the picker's right rail from landing
+ * on top of its filter input: an `auto` column doesn't shrink, so past a point
+ * the two simply overlap.
+ *
+ * Dropping the label costs nothing for assistive tech — it was never the
+ * accessible name. Each control carries its own `aria-label`, and
+ * `.control-word` is `aria-hidden` precisely so the two don't both claim to
+ * name the group.
+ *
+ * A *container* query, not a media query: both blocks sit in boxes much
+ * narrower than the window (the graph header in the elastic middle column, the
+ * picker in a panel docked past the sidebar), so the viewport is the wrong
+ * number by 280–600px. Unnamed, so it resolves to whichever host declared
+ * itself a container — `graph-pane` in GraphPane, `picker-panel` in
+ * AddSeriesPicker. Both must keep doing so or this rule silently never fires. */
+@container (width < 560px) {
+  .control-grid,
+  .control-grid.no-aside {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .control-label {
+    display: none;
+  }
+}
 /* A 12px label has to be dropped a few px to sit level with the 14px controls
    beside it, and the number is nobody's to type: `baseline` is it, computed
    from the two fonts. The pairing is what matters. A grid row's baseline-aligned

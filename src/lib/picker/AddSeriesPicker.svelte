@@ -764,6 +764,12 @@ import { TIME_RANGES } from './pickerOptions';
        wide enough for the cap to bite, which is what the margins are for. */
     width: 100%;
     margin: 0 auto;
+    /* What `.control-grid`'s narrow rule in app.css measures against. It has to
+       be this box rather than the viewport: the panel docks past the sidebar,
+       so the two numbers differ by 280px, and on the tier where the sidebar is
+       gone they don't. Safe to contain — the width above is definite, so
+       nothing inside was sizing this. */
+    container: picker-panel / inline-size;
     color: var(--fg-default);
     font: 14px/1.4 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
   }
