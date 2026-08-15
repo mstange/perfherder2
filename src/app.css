@@ -455,7 +455,12 @@ button {
    input, and the label (and, when it was in the group, the whole right rail)
    slid a few px down. A right rail's first line is a button or a select, and
    neither ever changes height, so that is the pair. The main control is left at
-   `start`, where nothing it does to its own height can move anything else. */
+   `start`, where nothing it does to its own height can move anything else.
+
+   Which means a row with no right rail leaves its label in a baseline group of
+   one — and that resolves to `start`, so the label rides up off the line it
+   names. Every row here has one; the graph header's rows don't, and pair the
+   label with the main control instead. See `.row` in GraphPane.svelte. */
 .control-label {
   align-self: baseline;
   color: var(--fg-muted);

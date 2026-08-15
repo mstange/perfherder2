@@ -492,6 +492,19 @@
     flex-wrap: wrap;
     align-items: center;
     gap: 6px;
+    /* The label's baseline partner. `.control-label` is `align-self: baseline`,
+       but a baseline group of one resolves to `start`, so with the aside column
+       gone (see above) each label had nothing to align *to* and sat 7px above
+       the "last"/"points" beside it. The panel avoids this by accident: its
+       third column is baseline too, so its labels always have a partner.
+
+       Pairing with the main control is what app.css warns against — it ties the
+       label to the one box whose first line can change height — but that hazard
+       is the picker's, where clearing the last chip swaps a 12px pill for a 14px
+       input. This row's first item is a segmented track of fixed-height buttons,
+       so the pair is stable, and the row itself doesn't move: its ascent is the
+       larger of the two, so the label comes down to it. */
+    align-self: baseline;
   }
   /* The lowercase word stays on its track's line, and the track shrinks instead.
      Letting this wrap costs a whole line for one word: a flex item whose
