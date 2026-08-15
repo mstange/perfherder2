@@ -1,10 +1,21 @@
-// The one endpoint behind alert markers.
+// The one endpoint behind alert markers. Both requests in this file go to it:
 //
-//   /performance/alertsummary/?framework=<id>&alerts__series_signature=<id>
+//   /performance/alertsummary/?framework=<id>&alerts__series_signature=<id>   one series' alerts
+//   /performance/alertsummary/?id=<n>                                         one summary, by id
 //
 // Producer: `PerformanceAlertSummaryViewSet` in
 // treeherder/webapp/api/performance_data.py, paginated by
 // `AlertSummaryPagination`.
+//
+// **Not to be confused with `/performance/summary/`**, which is the data points
+// (graphApi.ts). Two endpoints, both with "summary" in the name, and nothing but
+// the `alert` prefix to tell them apart — worth reading twice in a stack trace.
+// This one is about *alerts*; it carries no measurements.
+//
+// "List route" throughout this file means the collection URL above —
+// `ViewSet.list()`, as against `retrieve()` at `/alertsummary/<n>/`. The
+// distinction earns its keep because the two are not equally fast; see
+// `fetchAlertSummary`.
 //
 // An *alert summary* is a push: one build where the analysis found at least one
 // series changing. The alerts inside it are one per signature, and a summary
@@ -125,10 +136,10 @@ export async function fetchAlertSummaries(
   return page.results;
 }
 
-// One summary by id, which the list request above cannot reach: its filter is
-// `alerts__series_signature`, and that matches a summary's *own* alerts only. A
-// reassigned alert stays in its original summary's `alerts` and appears in the
-// target's `related_alerts`, so the push a sheriff moved the alert to has to be
+// One summary by id, which the per-signature request above cannot reach: its
+// filter is `alerts__series_signature`, and that matches a summary's *own* alerts
+// only. A reassigned alert stays in its original summary's `alerts` and appears in
+// the target's `related_alerts`, so the push a sheriff moved the alert to has to be
 // asked for by id. See `alertsForSeries`.
 //
 // **This asks the list route with `?id=`, and not the detail route, because the

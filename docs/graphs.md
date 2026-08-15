@@ -575,8 +575,9 @@ year, whose target summary #51596 had gathered fourteen signatures' alerts onto
 one push), and the ids are computed first so the ordinary case doesn't even
 spend a microtask turn on the lookup.
 
-**That request goes through the list route with `?id=`, never through
-`/alertsummary/<id>/`, and the difference is 12x.** The batched queries that make
+**That request goes through the same collection URL as the one above — the
+viewset's `list()`, with `?id=<n>` — and never through `/alertsummary/<n>/`,
+because the difference is 12x.** The batched queries that make
 this endpoint fast were only wired into `list()`, so the detail route falls back
 to several sequential queries *per alert* and its cost is linear in how many
 alerts a sheriff piled onto that push — about 30 ms each, no fixed cost to blame.

@@ -224,9 +224,12 @@ Living checklist. Update in the same commit as the work it describes.
       change any code here: `list()` is where the batching lives and where future
       batching will be added, so `?id=` stays the right route.
 
-- [ ] **The alerts list request is now the floor on marker latency**, at
-      1.0–1.5 s per plotted signature. It cannot be narrowed with the parameters
-      that exist: each summary arrives carrying every other signature's alerts
+- [ ] **The per-signature alerts request is now the floor on marker latency**, at
+      1.0–1.5 s each — `/performance/alertsummary/?alerts__series_signature=<id>`,
+      which is alerts and not data points (those are `/performance/summary/`, and
+      they are already on screen by then). It cannot be narrowed with the
+      parameters that exist: each summary arrives carrying every other signature's
+      alerts
       (548 of them for the one signature we asked about on 5825019), and there is
       no way to ask for less. Attacking it needs a new endpoint, which is the same
       conclusion the "who else alerted on this push" note below reached from the

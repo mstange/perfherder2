@@ -1225,7 +1225,7 @@ export class AppState {
 
   // The summaries a reassigned alert was moved to, so `alertsForSeries` can draw
   // it on the push a sheriff blamed rather than on the one the analysis flagged.
-  // One request each, because the list request can't carry them (see
+  // One request each, because the per-signature alerts request can't carry them (see
   // `fetchAlertSummary`) — affordable only because reassignments are a small
   // minority: one of the five alerts autoland signature 300397 collected over a
   // year, and that one shared its target with thirteen other signatures'.

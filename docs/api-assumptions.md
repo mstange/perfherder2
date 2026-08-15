@@ -161,13 +161,24 @@ is how `fetchSignatureMeta` asks about a signature nobody is plotting.
 
 ## Alerts: `?id=` instead of the detail route
 
-`fetchAlertSummary` asks the *list* route with `?id=<n>` for a reassignment
-target, even though `/performance/alertsummary/<n>/` exists and is the obvious
-way to fetch one summary. The reason is speed — the batched queries live only in
-`list()`, so the detail route does several sequential queries per alert — and it
-means we depend on three things the detail route wouldn't have needed.
+Two routes on one endpoint, and they are not equally fast:
 
-### `id` is a real filter on the list route
+| | URL | viewset action |
+| --- | --- | --- |
+| collection ("list") | `/performance/alertsummary/?…` | `list()` |
+| detail | `/performance/alertsummary/<n>/` | `retrieve()` |
+
+Neither carries measurements — that is `/performance/summary/`, a different
+endpoint whose similar name is a standing hazard when reading either one.
+
+`fetchAlertSummary` asks the *collection* route with `?id=<n>` for a reassignment
+target and pulls the single row out of the page, even though the detail route
+exists and is the obvious way to fetch one summary. The reason is speed — the
+batched queries live only in `list()`, so the detail route does several
+sequential queries per alert — and it means we depend on three things the detail
+route wouldn't have needed.
+
+### `id` is a real filter on the collection route
 
 `PerformanceAlertSummaryFilter.id` is a `NumberFilter`, so `?id=50829` answers
 with a page of exactly one.
