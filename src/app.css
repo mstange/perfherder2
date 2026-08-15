@@ -309,6 +309,96 @@ button {
   background: var(--accent-emphasis-hover);
 }
 
+/* Control blocks.
+   --------------
+   The shape both of this app's control clusters take: the Add-series panel's
+   filter/load rows, and the graph header's range/show rows. One grid, three
+   columns — a label rail naming the group, the group's main control, and a
+   right rail for its secondary controls — and exactly one row per group.
+
+   Here rather than in either component because it is the same idiom twice, and
+   the last time chrome was left in two places it drifted five ways (see the
+   button note above). What each component still owns is its own frame: the
+   panel's block is a bordered card, the graph header is a bar with a bottom
+   rule, and the header tightens the row gap because it has no second lines to
+   disambiguate. Everything about the *alignment* is here.
+
+   Which row a control belongs on is not a matter of taste in either place: the
+   dividing line is what loads against what shows. See docs/design.md, "The
+   control block is two groups: what loads, and what shows".
+
+   A grid rather than flex rows because the rails then line up by construction:
+   the picker's previous version got there with a `min-width` on each label plus
+   two hand-tuned `padding-top`s, three numbers that have to be re-measured
+   whenever a font or a control changes. */
+.control-grid {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  /* The row gap has to beat the aside's own gap by enough that the second line
+     of a right rail is unambiguously part of the group above it and not the one
+     below — the only place the grouping could be misread, since everything else
+     is anchored to a label. Roughly 3:1. */
+  gap: 18px 12px;
+}
+/* A 12px label has to be dropped a few px to sit level with the 14px controls
+   beside it, and the number is nobody's to type: `baseline` is it, computed
+   from the two fonts. The pairing is what matters. A grid row's baseline-aligned
+   items form one group, positioned by the largest ascent in it — so a group is
+   only as stable as its tallest member, and pairing the label with the *main*
+   control would tie it to the one box in the row whose first line changes:
+   clearing the last chip in the picker swaps a 12px chip pill for the 14px text
+   input, and the label (and, when it was in the group, the whole right rail)
+   slid a few px down. A right rail's first line is a button or a select, and
+   neither ever changes height, so that is the pair. The main control is left at
+   `start`, where nothing it does to its own height can move anything else. */
+.control-label {
+  align-self: baseline;
+  color: var(--fg-muted);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+/* The right rail: a group's secondary controls, stacked, sharing a left edge
+   with the rail above them. `flex: none` on the column keeps the slack with the
+   main control, which is the thing worth growing. */
+.control-aside {
+  display: flex;
+  flex: none;
+  align-self: baseline;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+.control-aside-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+/* A lowercase word finishing the row's sentence — *load from these repos, last
+   14 days*; *show points, replicates* — deliberately not in `.control-label`'s
+   style, which would make it a second thing claiming to name a group. It is
+   decorative for that reason, and the control beside it carries the real
+   accessible name. */
+.control-word {
+  color: var(--fg-muted);
+}
+/* A checkbox and its label on one line. An independent switch, as against the
+   exclusive choices in a group of `.btn` + `.btn-selected` — that is the whole
+   vocabulary these blocks use, and the two shapes are what say which is which. */
+.control-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.control-toggle input {
+  margin: 0;
+  cursor: pointer;
+}
+
 /* The UA's link colors do follow `color-scheme`, but to a purple-blue that
    matches nothing else here. Ours is the accent the rest of the app uses. */
 a {

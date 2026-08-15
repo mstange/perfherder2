@@ -298,7 +298,7 @@ import { TIME_RANGES } from './pickerOptions';
        `repo | subtests | interval`, so repos and the time range are the fetch,
        and everything else is a filter semantic. See docs/design.md, "The
        control block is two groups: what loads, and what shows". -->
-  <section class="controls">
+  <section class="controls control-grid">
     <span class="control-label">Filter</span>
     <FilterInput
       filter={picker.filter}
@@ -306,7 +306,7 @@ import { TIME_RANGES } from './pickerOptions';
         picker.filter = next;
       }}
     />
-    <div class="row-aside">
+    <div class="control-aside">
       <!-- Both always mounted, both fixed-width labels: the rail must not
            resize as series load or as the filter changes. Disabled is the
            signal, and for "Derive filter" it carries information — disabled
@@ -317,7 +317,7 @@ import { TIME_RANGES } from './pickerOptions';
            their grammatical object, which is what keeps them from reading as
            actions on the *graph* in a dialog whose whole job is changing the
            graph. See docs/design.md, "Deriving the filter, and clearing it". -->
-      <div class="aside-line">
+      <div class="control-aside-line">
         <button
           type="button"
           class="btn btn-compact"
@@ -337,7 +337,7 @@ import { TIME_RANGES } from './pickerOptions';
            is: whether the filter descends into subtests. It only *implies* a
            fatter fetch. See docs/design.md, "'Match inside subtests' is a
            filter semantic; fetching is separate". -->
-      <label class="toggle">
+      <label class="control-toggle">
         <input type="checkbox" bind:checked={picker.matchSubtests} />
         Match inside subtests
       </label>
@@ -363,13 +363,13 @@ import { TIME_RANGES } from './pickerOptions';
         </label>
       {/each}
     </div>
-    <div class="row-aside">
+    <div class="control-aside">
       <!-- "last" completes the row's sentence — *load from* these repos, last
            14 days — rather than being a second label in the style of the rail's.
            It is decorative for that reason, and the select carries the real
            name for assistive technology. -->
-      <div class="aside-line">
-        <span class="aside-word" aria-hidden="true">last</span>
+      <div class="control-aside-line">
+        <span class="control-word" aria-hidden="true">last</span>
         <select aria-label="Time range" bind:value={picker.timeRangeSeconds}>
           {#each TIME_RANGES as tr}
             <option value={tr.value}>{tr.label}</option>
@@ -786,70 +786,14 @@ import { TIME_RANGES } from './pickerOptions';
     border-radius: 3px;
     font-size: 12px;
   }
-  /* Three columns — label rail, the group's main control, the group's
-     secondary controls — and one grid row per group. A grid rather than two
-     flex rows because the rails then line up by construction: the previous
-     version got there with a `min-width` on each label plus two different
-     hand-tuned `padding-top`s, which is three numbers that have to be
-     re-measured every time a font or a control changes.
-
-     Vertically, every column is flush with the top of its row, and the label
-     rail is then nudged down onto the right rail's first baseline. See
-     `.control-label` for why it is that pair and not any other. */
+  /* Two groups, one grid row each; the alignment is `.control-grid` in
+     app.css, which the graph header shares. What's left here is this block's
+     own frame: a card, because it sits inside a panel rather than being one. */
   .controls {
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr) auto;
-    align-items: start;
-    /* The row gap has to beat the aside's own gap by enough that the second
-       line of a right rail is unambiguously part of the group above it and
-       not the one below — that is the only place the grouping could be
-       misread, since everything else is anchored to a label. Roughly 3:1. */
-    gap: 18px 12px;
     padding: 12px;
     background: var(--bg-subtle);
     border: 1px solid var(--border-default);
     border-radius: 6px;
-  }
-  /* The right rail: a group's secondary controls, stacked, sharing a left
-     edge with the rail above them. `flex: none` on the column keeps the slack
-     with the filter box and the chips, which are the things worth growing. */
-  .row-aside {
-    display: flex;
-    flex: none;
-    align-self: baseline;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 6px;
-  }
-  .aside-line {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-  }
-  /* Deliberately not `.control-label`: a lowercase word finishing a sentence,
-     not a second thing claiming to name a group. */
-  .aside-word {
-    color: var(--fg-muted);
-  }
-  /* A 12px label has to be dropped a few px to sit level with the 14px
-     controls beside it, and the number is nobody's to type: `baseline` is it,
-     computed from the two fonts. The pairing is what matters. A grid row's
-     baseline-aligned items form one group, positioned by the largest ascent
-     in it — so a group is only as stable as its tallest member, and pairing
-     the label with the *main* control would tie it to the one box in the row
-     whose first line changes: clearing the last chip swaps a 12px chip pill
-     for the 14px text input, and the label (and, when it was in the group,
-     the whole right rail) slid a few px down. The right rail's first line is
-     a button, or a select, and neither ever changes height, so that is the
-     pair. The main control is left at `start`, where nothing it does to its
-     own height can move anything else. */
-  .control-label {
-    align-self: baseline;
-    color: var(--fg-muted);
-    font-size: 12px;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    white-space: nowrap;
   }
   .chips {
     display: flex;
@@ -884,12 +828,6 @@ import { TIME_RANGES } from './pickerOptions';
   }
   .chip-count-dim {
     opacity: 0.55;
-  }
-  .toggle {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    cursor: pointer;
   }
   select {
     padding: 4px 6px;
