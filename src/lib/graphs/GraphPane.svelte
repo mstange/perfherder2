@@ -380,7 +380,12 @@
     />
   </div>
 
-  <div class="detail">
+  <!-- The pad is handed to the CSS so the overlay notes below can sit inside the
+       plot rectangle rather than over the axis gutters. -->
+  <div
+    class="detail"
+    style="--plot-left: {DETAIL_PAD.left}px; --plot-right: {DETAIL_PAD.right}px; --plot-top: {DETAIL_PAD.top}px; --plot-bottom: {DETAIL_PAD.bottom}px"
+  >
     {#if unitLabel}<span class="unit">{unitLabel}</span>{/if}
     <ScatterChart
       series={app.visibleSeries}
@@ -621,14 +626,23 @@
     pointer-events: none;
   }
   .overlay-note {
+    /* Inset to the plot rectangle, not the pane: centred over the full box the
+       longest of these notes reaches into the y-axis labels and past the right
+       edge once the pane is narrow. Inside the plot it has the same room the
+       marks do, and it wraps there instead of overflowing. The extra 8px keeps
+       the wrapped text off the axis rules. */
     position: absolute;
-    inset: 0;
+    inset: var(--plot-top) var(--plot-right) var(--plot-bottom) var(--plot-left);
     display: flex;
     align-items: center;
     justify-content: center;
     margin: 0;
+    padding: 0 8px;
+    box-sizing: border-box;
     color: var(--fg-subtle);
     font: 14px system-ui, sans-serif;
+    text-align: center;
+    text-wrap: balance;
     pointer-events: none;
   }
 </style>
