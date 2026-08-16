@@ -37,7 +37,7 @@ change is wrong for a reason the code doesn't show:
 | A hover explanation | "Tooltips: for what the canvas paints". Ordinary controls use `title`; the drawn box is for the marks in the graph's canvas, which have no element to hang one on |
 | A percentage or a delta in the details pane | graphs.md, "The three change cards say it the same way" — one component draws all three headlines, and the sign is the measurement's, never the verdict's |
 | Anything that renders before its data arrives | "Layout stability" |
-| Where a pane sits, how wide it is, or a border between two panes | "The shell has three arrangements, and the graph keeps its width" — there are three, the thresholds are computed from the pane widths in `shared/layout.ts` rather than chosen, and a pane that draws its own border draws a doubled one as soon as the arrangement moves it |
+| Where a pane sits, how wide it is, or a border between two panes | "The shell has four arrangements, and the graph keeps its size" — there are four, the thresholds are computed from the pane sizes in `shared/layout.ts` rather than chosen (*both* axes: a pane that becomes a row needs height the way a column needs width), and a pane that draws its own border draws a doubled one as soon as the arrangement moves it |
 | A fetch, or a new endpoint | "Validating API responses" and [api-assumptions.md](api-assumptions.md); plus "Cache key" if the result is cached, and "The picker's caches live at module scope" if it is the picker doing the fetching — a cache on `PickerState` does not survive the panel closing |
 | `SeriesMeta`, or anything that reads a series' metadata | "Two endpoints describe a series" below. It arrives from one of two responses, `source` says which, and two of its fields are answerable by only one of them — api-assumptions.md, "Two null fields mean different things depending on `source`" |
 | A treeherder *list* endpoint | its default page is 10 rows and truncation is silent — a partial answer is shaped exactly like a complete one. comparison.md, "The inline pushlog", and the `getCommonAlerts` note in graphs-todo.md |
@@ -1089,7 +1089,7 @@ Consequences worth knowing:
   common state where the subtest payload hasn't loaded and there is no
   count to show.
 
-### The shell has three arrangements, and the graph keeps its width
+### The shell has four arrangements, and the graph keeps its size
 
 `main` is a series list, a graph and a details pane. The two side panes are a
 fixed 600px between them, and for a long time that was a hard floor the graph
@@ -1101,15 +1101,31 @@ read a graph somebody linked in a bug.
 
 The rule is the other way round: **the graph is the content, the side panes are
 apparatus, and a pane that no longer fits stops being a column rather than
-squeezing the graph.** That gives three arrangements, and the thresholds are
-arithmetic rather than taste — each tier ends exactly where its columns would
-push the graph below `GRAPH_MIN_WIDTH`:
+squeezing the graph.** That gives four arrangements, and the thresholds are
+arithmetic rather than taste — each tier ends exactly where its columns or rows
+would push the graph below `GRAPH_MIN_WIDTH` / `GRAPH_MIN_HEIGHT`:
 
 | Window | Arrangement | Graph gets |
 | --- | --- | --- |
-| ≥ 1040 | `list │ graph │ details` | window − 600 |
-| 720–1039 | `list │ graph`, details in a row **under** the graph | window − 280 |
-| < 720 | one pane at a time, chosen by a switcher | the window |
+| w ≥ 1040 | `list │ graph │ details` | w − 600 |
+| w 720–1039, h ≥ 717 | `list │ graph`, details in a row **under** the graph | w − 280, h − 40% |
+| w 720–1039, h < 717 | `list │ graph`, details taking turns with the graph | w − 280, h |
+| w < 720 | one pane at a time, chosen by a switcher | the window |
+
+**Both axes are consulted, and the height one was missing until a phone was
+turned sideways.** The tier used to be a function of width alone, which is right
+while every pane is a column and wrong the moment one becomes a *row*: an 844×390
+landscape phone is wide enough for two columns, so it took the stacking
+arrangement, and between the details row (156px), the graph's own header (138px)
+and the overview (84px) the detail plot was left **12px tall**. The stacking
+bargain is that the graph pays for the pane's width in *height*, and that assumes
+there is height to pay with.
+
+So `short` is the arrangement for a window that can afford columns but not rows:
+the series list stays a column, because width is not what is short, and the
+details pane goes back to taking turns with the graph. Which makes the switcher's
+contents a question with more than one answer — `switchedPanes` — rather than the
+fixed list of three it was.
 
 - **The middle tier moves the details pane rather than hiding it**, and that
   buys the graph the pane's whole 320px of *width* at the cost of height. The
@@ -1122,14 +1138,31 @@ push the graph below `GRAPH_MIN_WIDTH`:
   the same bargain the wide layout already strikes, where an empty pane holds
   320px of width open all day; the cap is `min(40%, 320px)`, so a tall window
   spends the extra on the graph rather than on a taller empty pane.
-- **The narrow tier switches rather than stacks.** Three cramped panes in one
+
+  **That percentage is why the height threshold is a division.**
+  `STACKED_MIN_HEIGHT` is `GRAPH_MIN_HEIGHT / (1 − 0.4)` = 717, not the sum of two
+  minimums: above it the graph keeps its floor by construction, and the row comes
+  out at 286px or more — comfortably past the 200px the pane needs for its header,
+  the selected series' identity and the value headline. `DETAILS_MIN_ROW` is
+  therefore a checked consequence rather than a term in the arithmetic, and
+  `layout.test.ts` asserts both halves, so a fraction changed in App.svelte and not
+  mirrored in layout.ts fails a test instead of quietly stacking a useless row.
+- **The switching tiers switch rather than stack.** Three cramped panes in one
   column is worse than one pane with the window, and stacking would have to
   reserve height for a details pane that is empty until you click. A click on
-  the graph moves the switcher to Selection, because at this width that click's
-  only visible effect is in a pane you would otherwise have to go and find —
-  but only on a *change of point*, so zooming or toggling a switch leaves you
-  where you are. `resolveNarrowPane` handles the other direction: a `selection`
-  pane whose selection has been dropped falls back to the graph.
+  the graph moves the switcher to Selection, because wherever the selection is
+  switched that click's only visible effect is in a pane you would otherwise
+  have to go and find — but only on a *change of point*, so zooming or toggling a
+  switch leaves you where you are. `resolvePane` handles the two ways that choice
+  can go stale: a `selection` pane whose selection has been dropped, and a pane
+  this arrangement doesn't switch at all (resizing from `narrow` to `short` while
+  on Series would otherwise press neither button and hide the graph). Both fall
+  back to the graph.
+- **A slot asks whether it is visible, not whether it is the active pane.**
+  `isPaneVisible` is `!switched || active`, which is what keeps one CSS rule for
+  hiding the rest across two arrangements that switch *different* panes: in
+  `short` the series list is a column while the other two take turns, and a plain
+  `pane === active` test hides it.
 - **The tier is decided in JS and published as `data-layout`, not written as
   media queries.** Two things that are not CSS have to agree with it: which
   panes the Add-series panel covers, and therefore which are `inert` while it's

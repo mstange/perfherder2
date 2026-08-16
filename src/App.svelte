@@ -11,10 +11,12 @@
   import Tooltip from './lib/shared/Tooltip.svelte';
   import { AppState } from './lib/graphs/appState.svelte';
   import {
-    NARROW_PANES,
-    layoutForWidth,
-    resolveNarrowPane,
-    type NarrowPane,
+    PANE_LABELS,
+    isPaneVisible,
+    layoutFor,
+    resolvePane,
+    switchedPanes,
+    type Pane,
   } from './lib/shared/layout';
   import type { Series } from './lib/picker/series';
 
@@ -39,41 +41,46 @@
     app.removeSeries(series.map(refFor));
   }
 
-  // Which of the three arrangements the window can afford. The thresholds and
+  // Which of the four arrangements the window can afford. The thresholds and
   // the reasoning are in layout.ts; what is here is only the wiring.
   //
   // Driven from JS and published as `data-layout` rather than written as media
   // queries, because two things that are not CSS have to agree with it: which
   // panes the Add-series panel covers (and therefore which are `inert` while it
-  // is open — a DOM property no media query can set), and whether the narrow
-  // switcher exists at all. A media query plus a matching `matchMedia` would be
-  // the same two numbers written twice, and the failure would be silent.
-  let layout = $state(layoutForWidth(window.innerWidth));
+  // is open — a DOM property no media query can set), and which panes the
+  // switcher offers. A media query plus a matching `matchMedia` would be the
+  // same numbers written twice, and the failure would be silent.
+  //
+  // Both axes, because two of the arrangements put a pane in a *row* — see
+  // layout.ts, and `resize` fires for either dimension.
+  let layout = $state(layoutFor(window.innerWidth, window.innerHeight));
   $effect(() => {
-    const measure = () => (layout = layoutForWidth(window.innerWidth));
+    const measure = () => (layout = layoutFor(window.innerWidth, window.innerHeight));
     measure();
     window.addEventListener('resize', measure);
     return () => window.removeEventListener('resize', measure);
   });
 
-  // Narrow only: which pane has the window. Deliberately not in the URL — it
-  // answers "what am I looking at on this screen", not "what am I looking at",
-  // and a shared link that forced a companion onto the Series tab because the
-  // sender was on a phone would be a bug.
-  let requestedPane = $state<NarrowPane>('graph');
-  const narrowPane = $derived(resolveNarrowPane(requestedPane, !!app.selectedPoint));
+  // The panes sharing one cell in this arrangement, and which of them has it.
+  // Deliberately not in the URL — it answers "what am I looking at on this
+  // screen", not "what am I looking at", and a shared link that forced a
+  // companion onto the Series tab because the sender was on a phone would be a
+  // bug.
+  const panes = $derived(switchedPanes(layout));
+  let requestedPane = $state<Pane>('graph');
+  const activePane = $derived(resolvePane(requestedPane, !!app.selectedPoint, panes));
 
-  // A click on the graph *is* a request to see the selection, and at this width
-  // the selection is a pane the user would otherwise have to go and find. Only
-  // on a change of point, so that zooming, hiding a series or toggling a switch
-  // — all of which touch the selection without being about it — leave the user
-  // where they are.
+  // A click on the graph *is* a request to see the selection, and where the
+  // selection is switched it is a pane the user would otherwise have to go and
+  // find. Only on a change of point, so that zooming, hiding a series or
+  // toggling a switch — all of which touch the selection without being about it
+  // — leave the user where they are.
   let lastSelected: unknown = app.selectedPoint;
   $effect(() => {
     const selected = app.selectedPoint;
     if (selected !== lastSelected) {
       lastSelected = selected;
-      if (selected && layout === 'narrow') requestedPane = 'selection';
+      if (selected && panes.includes('selection')) requestedPane = 'selection';
     }
   });
 
@@ -119,25 +126,27 @@
      also where `inert` goes: it is a DOM-tree property and grid placement is a
      layout one, and giving each pane its own box lets the two be set
      independently, which is what the narrow case needs. -->
-<main data-layout={layout} data-pane={layout === 'narrow' ? narrowPane : null}>
-  {#if layout === 'narrow'}
-    <!-- Nothing fits beside anything, so the window shows one pane and this
-         says which. A segmented group because it is an exclusive choice — the
-         same vocabulary as the graph header's tracks; see docs/graphs.md, "The
-         header is two groups". Rendered only at this width: at the others every
-         pane is on screen and a switcher would be three buttons that do
-         nothing. -->
+<main data-layout={layout} data-pane={panes.length > 0 ? activePane : null}>
+  {#if panes.length > 0}
+    <!-- Some panes can't be beside each other here, so they take turns and this
+         says whose turn it is. A segmented group because it is an exclusive
+         choice — the same vocabulary as the graph header's tracks; see
+         docs/graphs.md, "The header is two groups". Its existence and its
+         contents both come from `switchedPanes`: at the arrangements where every
+         pane has a cell of its own it would be three buttons that do nothing,
+         and in `short` the series list is still a column, so it must not be
+         offered as a choice. -->
     <nav class="switcher" inert={listCovered} aria-label="Pane">
       <div class="btn-group" role="group">
-        {#each NARROW_PANES as choice (choice.pane)}
+        {#each panes as pane (pane)}
           <button
             type="button"
             class="btn"
-            class:btn-selected={narrowPane === choice.pane}
-            aria-pressed={narrowPane === choice.pane}
-            onclick={() => (requestedPane = choice.pane)}
+            class:btn-selected={activePane === pane}
+            aria-pressed={activePane === pane}
+            onclick={() => (requestedPane = pane)}
           >
-            {choice.label}
+            {PANE_LABELS[pane]}
           </button>
         {/each}
       </div>
@@ -149,15 +158,23 @@
        user will keep using once the panel closes. See docs/design.md, "The
        Add-series panel docks beside the series list". At narrow widths there is
        no beside, so there it is covered like the rest. -->
-  <div class="slot slot-list" data-active={narrowPane === 'series' || null} inert={listCovered}>
+  <div
+    class="slot slot-list"
+    data-active={isPaneVisible('series', activePane, panes) || null}
+    inert={listCovered}
+  >
     <SeriesList {app} />
   </div>
-  <div class="slot slot-graph" data-active={narrowPane === 'graph' || null} inert={app.pickerOpen}>
+  <div
+    class="slot slot-graph"
+    data-active={isPaneVisible('graph', activePane, panes) || null}
+    inert={app.pickerOpen}
+  >
     <GraphPane {app} />
   </div>
   <div
     class="slot slot-details"
-    data-active={narrowPane === 'selection' || null}
+    data-active={isPaneVisible('selection', activePane, panes) || null}
     inert={app.pickerOpen}
   >
     <DetailsPane {app} />
@@ -236,6 +253,20 @@
       'list details';
   }
 
+  /* Two columns, and the window has no height to stack in: the details pane
+     stops being a row and takes turns with the graph in the second column
+     instead. The series list is a column exactly as it is in `medium` — width is
+     not what is short here — so it is *not* one of the panes taking turns, and
+     the switcher sits over the column that is. A landscape phone, or a window
+     dragged down to a strip. */
+  main[data-layout='short'] {
+    grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-areas:
+      'list switch'
+      'list pane';
+  }
+
   /* One pane at a time. All three slots share the cell and the inactive two are
      taken out — `display: none` rather than `visibility` or a `hidden`
      attribute, because it is also what takes them out of the tab order and the
@@ -252,6 +283,14 @@
   main[data-layout='narrow'] > .slot {
     grid-area: pane;
   }
+  main[data-layout='short'] > .slot-graph,
+  main[data-layout='short'] > .slot-details {
+    grid-area: pane;
+  }
+  /* One rule for both arrangements that switch, and it reads the slot's own
+     attribute rather than naming panes: which slots are sharing a cell is
+     `switchedPanes`' answer, and it differs between the two. */
+  main[data-layout='short'] > .slot:not([data-active]),
   main[data-layout='narrow'] > .slot:not([data-active]) {
     display: none;
   }
@@ -274,7 +313,8 @@
      know that; the shell is the only thing that does. Exactly one rule per
      seam, on the slot above or to the left of it. */
   main[data-layout='wide'] > .slot-list,
-  main[data-layout='medium'] > .slot-list {
+  main[data-layout='medium'] > .slot-list,
+  main[data-layout='short'] > .slot-list {
     border-right: 1px solid var(--border-default);
   }
   main[data-layout='wide'] > .slot-details {
@@ -293,10 +333,10 @@
     border-bottom: 1px solid var(--border-default);
     background: var(--bg-subtle);
   }
-  /* One track across the window with three equal segments, so the labels don't
-     move as the selected one takes its fill and the targets are as big as the
-     width allows — this is the arrangement most likely to be driven by a
-     thumb. */
+  /* One track across whatever the switcher spans — the window in `narrow`, the
+     graph's column in `short` — with equal segments, so the labels don't move as
+     the selected one takes its fill and the targets are as big as the width
+     allows. These are the arrangements most likely to be driven by a thumb. */
   .switcher .btn-group {
     display: flex;
     flex: 1;

@@ -6,11 +6,20 @@
 // 40px, and below 600px the middle column is *zero* and the graph's own chrome
 // paints over the pane beside it. The graph is the content and the side panes
 // are apparatus, so the rule is the other way round — **the graph keeps a
-// usable width, and a side pane that no longer fits stops being a column.**
+// usable size, and a side pane that no longer fits stops being a column.**
 //
-// Which gives three arrangements, and the thresholds are arithmetic rather than
-// taste: a tier ends exactly where its columns would push the graph below
-// `GRAPH_MIN_WIDTH`. See docs/design.md, "The shell has three arrangements".
+// Which gives four arrangements, and the thresholds are arithmetic rather than
+// taste: a tier ends exactly where its columns or rows would push the graph
+// below `GRAPH_MIN_WIDTH` / `GRAPH_MIN_HEIGHT`. See docs/design.md, "The shell
+// has four arrangements".
+//
+// **Both axes are consulted, and the height one was missing for a while.** The
+// tier used to be a function of width alone, which is right for the columns and
+// wrong the moment a pane becomes a *row*: a landscape phone (844×390) is wide
+// enough for two columns, took the arrangement that stacks the details pane
+// under the graph, and left the detail plot 12px tall. `medium`'s bargain is
+// that the graph pays for the pane's width in height, and that assumes there is
+// height to pay with.
 
 /** Must match `--sidebar-width` in app.css. */
 export const SIDEBAR_WIDTH = 280;
@@ -25,45 +34,121 @@ export const DETAILS_WIDTH = 320;
 // two rows and the plot keeps more height than its chrome.
 export const GRAPH_MIN_WIDTH = 440;
 
+// The same question in the other axis, and measured the same way. The graph pane
+// is three things stacked: the header, which is 138–164px across the widths the
+// stacked tier covers; the overview, a fixed 84px; and the detail graph, which
+// needs ~200px before it stops being a second copy of the overview — 28px of it
+// is the plot's own padding, and five labelled y ticks want 150px between them.
+// 430px is the sum, and it is the floor every arrangement below has to respect.
+export const GRAPH_MIN_HEIGHT = 430;
+
+// What the details pane needs before a *row* of it says anything: its own 40px
+// header, the 108px identity block naming the selected series, and the 46px
+// value headline. Measured off the live pane. Not a term in any threshold — the
+// row is a percentage, so it comes out at 286px at the tightest window that
+// stacks at all — but it is the reason that is comfortable rather than lucky,
+// and `layout.test.ts` checks it.
+export const DETAILS_MIN_ROW = 200;
+
+// The stacked row's own sizing, mirrored from `grid-template-rows` in
+// App.svelte's `main[data-layout='medium']`. Here because the threshold below is
+// computed from it, and a copy that drifts from the CSS is a threshold that
+// quietly stops meaning what it says.
+export const DETAILS_ROW_FRACTION = 0.4;
+export const DETAILS_ROW_MAX = 320;
+
 /** Below this the details pane cannot be a column. */
 export const THREE_COLUMN_MIN = SIDEBAR_WIDTH + GRAPH_MIN_WIDTH + DETAILS_WIDTH;
 /** Below this the series list cannot be a column either. */
 export const TWO_COLUMN_MIN = SIDEBAR_WIDTH + GRAPH_MIN_WIDTH;
+/**
+ * Below this the details pane cannot be a *row*: the fraction it takes would
+ * leave the graph under its height floor. A division rather than a sum because
+ * the row is sized as a percentage of the window — at every height above this
+ * the graph keeps `GRAPH_MIN_HEIGHT` by construction.
+ */
+export const STACKED_MIN_HEIGHT = Math.ceil(GRAPH_MIN_HEIGHT / (1 - DETAILS_ROW_FRACTION));
 
 /**
  * `wide` — three columns, the arrangement everything else is a retreat from.
+ *   Nothing stacks, so it is the one tier height has no say in: a short window
+ *   makes every column short and there is no rearrangement that would help.
  * `medium` — two columns; the details pane moves under the graph, which buys
  *   the graph the pane's full 320px of *width* and costs it height instead.
  *   The right trade for a time series, which is read across.
+ * `short` — two columns, but the window has no height to give: the details pane
+ *   stops being a row and joins the graph in the switcher. The series list is
+ *   still a column, so only two panes are switched. This is a landscape phone,
+ *   and a laptop window someone has dragged down to a strip.
  * `narrow` — one pane at a time, chosen by a switcher. Nothing fits beside
  *   anything, so rather than three cramped things, each gets the window.
  */
-export type LayoutMode = 'wide' | 'medium' | 'narrow';
+export type LayoutMode = 'wide' | 'medium' | 'short' | 'narrow';
 
-export function layoutForWidth(width: number): LayoutMode {
+export function layoutFor(width: number, height: number): LayoutMode {
+  if (width < TWO_COLUMN_MIN) return 'narrow';
   if (width >= THREE_COLUMN_MIN) return 'wide';
-  if (width >= TWO_COLUMN_MIN) return 'medium';
-  return 'narrow';
+  return height >= STACKED_MIN_HEIGHT ? 'medium' : 'short';
 }
 
-/** The panes the narrow switcher chooses between, in the order it shows them. */
-export type NarrowPane = 'series' | 'graph' | 'selection';
+/** The three panes, in the order the switcher shows them. */
+export type Pane = 'series' | 'graph' | 'selection';
 
-export const NARROW_PANES: { pane: NarrowPane; label: string }[] = [
-  { pane: 'series', label: 'Series' },
-  { pane: 'graph', label: 'Graph' },
-  { pane: 'selection', label: 'Selection' },
-];
+export const PANE_LABELS: Record<Pane, string> = {
+  series: 'Series',
+  graph: 'Graph',
+  selection: 'Selection',
+};
+
+/**
+ * The panes that share one cell in `mode`, in switcher order — and so also the
+ * panes the switcher is rendered for. Empty where every pane has its own column
+ * or row, which is what makes the switcher's own existence fall out of the tier
+ * rather than being a second decision: at those widths it would be three
+ * buttons that do nothing.
+ *
+ * `graph` is in every non-empty answer, which is what `resolvePane` falls back
+ * to and what `initialPane` may be overridden away from.
+ */
+export function switchedPanes(mode: LayoutMode): Pane[] {
+  switch (mode) {
+    case 'narrow':
+      return ['series', 'graph', 'selection'];
+    case 'short':
+      return ['graph', 'selection'];
+    default:
+      return [];
+  }
+}
+
+/**
+ * Is this pane on screen? A pane that isn't switched always is — it has a cell
+ * of its own — and a switched one only when it is the active choice.
+ *
+ * Asking it this way rather than "which pane is showing" is what lets the shell
+ * set one attribute per slot and keep one CSS rule for hiding the rest: in
+ * `short` the series list is a column *and* two other panes are being switched,
+ * and a single active-pane comparison gets that case wrong by hiding the list.
+ */
+export function isPaneVisible(pane: Pane, active: Pane, panes: Pane[]): boolean {
+  return !panes.includes(pane) || pane === active;
+}
 
 /**
  * The pane to actually show, given the one the user last asked for.
  *
- * Only one thing can invalidate that choice: `selection` with nothing selected
- * is a pane whose entire content is "click a point in the graph", and the user
- * can arrive there without touching the switcher — removing the last series, or
- * a Back that drops the selection, both clear it from under them. Fall back to
- * the graph, which is where the instruction points anyway.
+ * Two things can invalidate that choice. A pane that isn't switched in this
+ * arrangement can't be the active one — resizing from `narrow` to `short` while
+ * on Series would otherwise leave both switcher buttons unpressed and the graph
+ * hidden. And `selection` with nothing selected is a pane whose entire content
+ * is "click a point in the graph", which the user can arrive at without
+ * touching the switcher: removing the last series, or a Back that drops the
+ * selection, both clear it from under them.
+ *
+ * Both fall back to the graph, which is where the instruction points anyway.
  */
-export function resolveNarrowPane(requested: NarrowPane, hasSelection: boolean): NarrowPane {
-  return requested === 'selection' && !hasSelection ? 'graph' : requested;
+export function resolvePane(requested: Pane, hasSelection: boolean, panes: Pane[]): Pane {
+  if (!panes.includes(requested)) return 'graph';
+  if (requested === 'selection' && !hasSelection) return 'graph';
+  return requested;
 }

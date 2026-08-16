@@ -205,6 +205,12 @@ Living checklist. Update in the same commit as the work it describes.
   the selection survives, and the detail graph explains itself when the dots are
   off with no band on. See graphs.md, "Replicates".
 
+- A fourth shell arrangement, `short`, for a window that can afford columns but
+  not rows — and the tier is now a function of both axes rather than of width.
+  A landscape phone (844×390) took the stacking tier and got a **12px** detail
+  plot; it gets 126px now, and `layout.test.ts` asserts the graph's height floor
+  the way it already asserted the width one. See design.md, "The shell has four
+  arrangements"
 - The graph header rebuilt as two labelled groups, `RANGE` and `SHOW`, sharing the
   picker's control-block idiom (`.control-*` in app.css) and its rule for which row
   a control belongs on: what loads against what shows. Free at wide widths, ~30px
@@ -221,16 +227,6 @@ rather than estimated. The five items are meant to land in order: the first two
 are independent and cheap, the middle two are the picker and want to land
 together, and the sweep goes last so it is checked once against the final
 arrangements.
-
-- [ ] **The shell has to fit the window in both axes.** `layoutForWidth` chooses an
-      arrangement from width alone, so a landscape phone (844×390) took the
-      `medium` tier — details pane as a 156px row, graph header 138px, overview
-      84px — and the detail plot got **12px** (25px at 915×412). `medium`'s
-      bargain is that the graph pays for the pane's width in height, and that
-      assumes there is height to pay with. Fixed by making the tier a function of
-      both axes, with a fourth arrangement for a window that is wide enough for
-      columns but too short to stack: the series list stays a column, and the graph
-      and the selection share the rest through the switcher.
 
 - [ ] **The empty app has to say what to do.** At narrow the first pane is picked
       by a constant (`'graph'`), and the graph pane draws a full 0-to-1 axis pair
