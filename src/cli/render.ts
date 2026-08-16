@@ -20,6 +20,10 @@ import {
   formatValue,
 } from '../lib/shared/chart';
 import { bugUrl } from '../lib/shared/links';
+// The detector's own numbers, interpolated rather than typed out: this file
+// prints them at the reader, and a printed α that has drifted from the one the
+// gate uses is a worse error than a wrong number in a comment.
+import { CHANGE_ALPHA, MIN_WINDOW_PUSHES, WINDOW_PUSHES } from '../lib/graphs/changes';
 import {
   axisLines,
   columnFor,
@@ -389,7 +393,7 @@ export function renderStep(report: StepReport): string[] {
           ? `  ${name}: significant, but under the ${floor} floor the detector holds this signature to.`
           : `  ${name}: past the ${floor} floor, but p ${
               entry.test ? formatPValue(entry.test.pValue) : NONE
-            } does not clear α = 0.01 — too few pushes, or too noisy, to certify here.`,
+            } does not clear α = ${CHANGE_ALPHA} — too few pushes, or too noisy, to certify here.`,
       );
     }
     out.push('');
@@ -482,7 +486,7 @@ export function renderLocate(report: LocateReport): string[] {
     out.push(
       report.windowPushCount < 4
         ? `Only ${report.windowPushCount} pushes in the window — nothing to rank. Widen --range.`
-        : 'No split in this window has pools big enough for the rank test to reach α = 0.01.',
+        : `No split in this window has pools big enough for the rank test to reach α = ${CHANGE_ALPHA}.`,
     );
     out.push('');
     out.push(report.url);
@@ -742,8 +746,9 @@ export function renderChanges(report: ChangesReport, legend = true, brief = fals
 
   if (report.entries.length === 0) {
     out.push(
-      report.pushCount < 12
-        ? `Nothing found — ${report.pushCount} pushes is too few to test a step (six a side is the minimum).`
+      report.pushCount < 2 * MIN_WINDOW_PUSHES
+        ? `Nothing found — ${report.pushCount} pushes is too few to test a step ` +
+          `(${MIN_WINDOW_PUSHES} a side is the minimum).`
         : 'No steps detected and no perfherder alerts in this range.',
     );
     out.push('');
@@ -780,7 +785,7 @@ export function renderChanges(report: ChangesReport, legend = true, brief = fals
   if (legend) {
     out.push(
       'BEFORE/AFTER and CHANGE are the detected step where there is one — a difference of means',
-      'over up to 24 pushes a side — and the alert\'s own numbers otherwise. Where both exist they',
+      `over up to ${WINDOW_PUSHES} pushes a side — and the alert's own numbers otherwise. Where both exist they`,
       'will differ, and both are right: perfherder averages a 12–24 push window, this one averages',
       'the window either side of the step it located. P is this app\'s rank test; perfherder has no',
       'comparable figure.',
@@ -912,10 +917,8 @@ function driftLines(drift: DriftSummary, series: SeriesHeader): string[] {
       `${delta}${direction}` +
       (drift.test ? ` · p ${formatPValue(drift.test.pValue)}` : ''),
     `  ${drift.windowPushes} pushes a side — ` +
-      `${drift.first.startMs === null ? '?' : formatUtcDate(drift.first.startMs)}…` +
-      `${drift.first.endMs === null ? '?' : formatUtcDate(drift.first.endMs)} against ` +
-      `${drift.last.startMs === null ? '?' : formatUtcDate(drift.last.startMs)}…` +
-      `${drift.last.endMs === null ? '?' : formatUtcDate(drift.last.endMs)}`,
+      `${formatUtcDate(drift.first.startMs)}…${formatUtcDate(drift.first.endMs)} against ` +
+      `${formatUtcDate(drift.last.startMs)}…${formatUtcDate(drift.last.endMs)}`,
   ];
 }
 

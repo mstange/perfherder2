@@ -18,7 +18,7 @@ import { HttpError, SchemaError } from '../lib/shared/http';
 import { DEFAULT_REPOS, PINNED_REPOS } from '../lib/picker/pickerOptions';
 import { FILTER_FIELDS } from '../lib/picker/filter';
 import type { PushGroup } from '../lib/graphs/graphData';
-import { WINDOW_PUSHES } from '../lib/graphs/changes';
+import { CHANGE_ALPHA, WINDOW_PUSHES } from '../lib/graphs/changes';
 import {
   DEFAULT_RANGE_SECONDS,
   flagBoolean,
@@ -293,7 +293,7 @@ const series: Command = {
     '',
     '--drift compares the first pushes of the range with the last, which is the question the',
     'change detector cannot answer: segmentation looks for steps, and a series that slides 8% over',
-    'three months has no step in it. The window is 24 pushes a side, the same one `step` and',
+    `three months has no step in it. The window is ${WINDOW_PUSHES} pushes a side, the same one \`step\` and`,
     '`changes` use, so the figures are on one scale. It says the ends are at different levels, not',
     'that anything stepped between them.',
   ],
@@ -332,7 +332,7 @@ const changes: Command = {
     'Two independent analyses of the same series, merged into one row per event:',
     '',
     '  detected  this app\'s own change detection (src/lib/graphs/changes.ts) — binary',
-    '            segmentation, a Mann-Whitney gate at α = 0.01, and a rank relocation of the',
+    `            segmentation, a Mann-Whitney gate at α = ${CHANGE_ALPHA}, and a rank relocation of the`,
     '            index, held to a quarter of the signature\'s own alerting threshold. It finds',
     '            sub-threshold steps perfherder never alerts on. It also marks outlier pushes',
     '            sometimes; see docs/graphs-todo.md, "A push is summarised by its mean".',
@@ -464,7 +464,7 @@ const step: Command = {
     '',
     'So: name a point, get the level either side of it on every series given, with a',
     'Mann-Whitney U over the push means — and, where the move is real but unmarked, which of',
-    'the detector\'s two bars it failed: α = 0.01, or the signature\'s own size floor.',
+    `the detector's two bars it failed: α = ${CHANGE_ALPHA}, or the signature's own size floor.`,
     '',
     '--at takes a revision — looked up in the repositories of the refs given and then in the',
     'rest of the pinned set, so a revision that landed on autoland works for a series on',

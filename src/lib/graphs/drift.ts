@@ -27,7 +27,7 @@
 // number on a card rather than a mark on the plot — a span drawn across the graph
 // would claim to know the shape of the climb, which this knows nothing about.
 
-import { CHANGE_ALPHA, WINDOW_PUSHES, clearsFloor } from './changes';
+import { CHANGE_ALPHA, MIN_WINDOW_PUSHES, WINDOW_PUSHES, clearsFloor } from './changes';
 import type { AlertThreshold, PushGroup, SeriesMeta } from './graphData';
 import { formatPValue, formatSignedPercent, formatValue } from '../shared/chart';
 import { mannWhitneyU, median, type MannWhitneyResult } from '../shared/stats';
@@ -35,8 +35,13 @@ import { describeSpan } from '../shared/timeRange';
 
 export type DriftWindow = {
   pushCount: number;
-  startMs: number | null;
-  endMs: number | null;
+  // Not nullable: `buildDrift` returns null before either window can be empty,
+  // so every `DriftWindow` in existence has a first and a last push. They were
+  // `number | null` once, and the five `=== null ? '?'` branches that grew to
+  // handle it — two here, four in the CLI — were dead code that read as a case
+  // the reader had to keep in mind.
+  startMs: number;
+  endMs: number;
   median: number;
 };
 
@@ -58,8 +63,7 @@ export type DriftSummary = {
 // is the detector's own minimum for saying anything about a level, and a drift
 // computed from three would be a number with no claim behind it.
 export function buildDrift(pushes: readonly PushGroup[]): DriftSummary | null {
-  const MIN_SIDE = 6;
-  if (pushes.length < 2 * MIN_SIDE) return null;
+  if (pushes.length < 2 * MIN_WINDOW_PUSHES) return null;
   // Never overlapping: with 30 pushes the windows are 15 a side, not 24.
   const windowPushes = Math.min(WINDOW_PUSHES, Math.floor(pushes.length / 2));
   const first = pushes.slice(0, windowPushes);
@@ -74,14 +78,14 @@ export function buildDrift(pushes: readonly PushGroup[]): DriftSummary | null {
     windowPushes,
     first: {
       pushCount: first.length,
-      startMs: first[0]?.x ?? null,
-      endMs: first[first.length - 1]?.x ?? null,
+      startMs: first[0].x,
+      endMs: first[first.length - 1].x,
       median: firstMedian,
     },
     last: {
       pushCount: last.length,
-      startMs: last[0]?.x ?? null,
-      endMs: last[last.length - 1]?.x ?? null,
+      startMs: last[0].x,
+      endMs: last[last.length - 1].x,
       median: lastMedian,
     },
     deltaFraction: firstMedian === 0 ? null : (lastMedian - firstMedian) / firstMedian,
@@ -161,10 +165,7 @@ export function driftBadgeTitle(drift: DriftSummary, meta: SeriesMeta | null): s
   const unit = meta?.measurementUnit ? ` ${meta.measurementUnit}` : '';
   const regression = meta ? driftIsRegression(drift, meta.lowerIsBetter) : null;
   const verdict = regression === null ? '' : ` (${regression ? 'worse' : 'better'})`;
-  const window = (w: DriftWindow) =>
-    w.startMs === null || w.endMs === null
-      ? '?'
-      : describeSpan({ start: w.startMs, end: w.endMs });
+  const window = (w: DriftWindow) => describeSpan({ start: w.startMs, end: w.endMs });
   return [
     `Drift over the loaded range: ${formatValue(drift.first.median)} → ` +
       `${formatValue(drift.last.median)}${unit}, ` +

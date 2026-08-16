@@ -170,7 +170,13 @@ export const CHANGE_ALPHA = 0.01;
 // push. The knock-on is that a step is reported five pushes after it happens rather
 // than six: the gate still needs its six a side, but the pool it fires on can
 // straddle the step, and the estimate then slides onto it.
-const MIN_WINDOW_PUSHES = 6;
+//
+// Exported for the same reason as `WINDOW_PUSHES` and `CHANGE_ALPHA`: three
+// other places state this floor — the drift badge's minimum, the trend band's,
+// and the CLI's "N pushes is too few to test a step" line — and each had typed
+// the number out again while claiming in its comment to be using the
+// detector's.
+export const MIN_WINDOW_PUSHES = 6;
 
 // Changes smaller than this fraction of the signature's *own* alerting threshold
 // are dropped even when the test can see them. With enough pushes a rank-sum test

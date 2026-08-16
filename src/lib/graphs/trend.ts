@@ -53,7 +53,7 @@
 // typical value here", which is the truth about that series and something no single
 // line can say about itself.
 
-import { WINDOW_PUSHES } from './changes';
+import { MIN_WINDOW_PUSHES, WINDOW_PUSHES } from './changes';
 import type { PushGroup } from './graphData';
 import { median, quantile } from '../shared/stats';
 
@@ -69,7 +69,7 @@ export type TrendPoint = {
 // Below this there is no band. The same floor `buildDrift` uses, and for the same
 // reason: six pushes a side is the least the detector will say anything about a
 // level from, and a quartile of three values is not a quartile.
-const MIN_PUSHES = 12;
+const MIN_PUSHES = 2 * MIN_WINDOW_PUSHES;
 
 // How many pushes one window holds. **The same rule `buildDrift` uses**, which is
 // what makes the curve's ends equal the badge's two numbers at every range length
