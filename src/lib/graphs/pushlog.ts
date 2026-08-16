@@ -38,13 +38,6 @@ export type PushlogRange = {
   truncated: boolean;
 };
 
-export const EMPTY_RANGE: PushlogRange = {
-  commits: [],
-  pushCount: 0,
-  hiddenRevisions: 0,
-  truncated: false,
-};
-
 // "Francesco Lodolo <flod@lodolo.net>" → "Francesco Lodolo".
 //
 // Falls back to the address when there is no display name, because

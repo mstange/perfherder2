@@ -176,8 +176,7 @@ export function activityPath(
   scaleMax: number,
 ): string {
   if (counts.length === 0) return '';
-  const max = scaleMax;
-  if (max <= 0) return '';
+  if (scaleMax <= 0) return '';
   const slot = width / counts.length;
   // One pixel of gap between bars, but never a zero-width bar.
   const barWidth = Math.max(1, Math.round(slot) - 1);
@@ -187,10 +186,10 @@ export function activityPath(
     if (n === 0) continue;
     // A bin with any runs at all gets at least 1px: 1 run beside a 500-run
     // neighbour would otherwise round to nothing and claim it never ran. The
-    // upper clamp matters now that `max` comes from outside: a row whose
+    // upper clamp matters now that `scaleMax` comes from outside: a row whose
     // activity landed after the scale was computed can exceed it for one
     // frame, and a bar taller than the box would draw outside the viewBox.
-    const h = Math.min(height, Math.max(1, Math.round((n / max) * height)));
+    const h = Math.min(height, Math.max(1, Math.round((n / scaleMax) * height)));
     const x = Math.round(i * slot);
     parts.push(`M${x} ${height - h}h${barWidth}v${h}h-${barWidth}z`);
   }

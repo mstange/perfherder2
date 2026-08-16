@@ -20,14 +20,7 @@
     formatValue,
   } from '../shared/chart';
   import ComparisonSection from './ComparisonSection.svelte';
-  import {
-    indexInPushValues,
-    MEAN_REPLICATE,
-    pushValues,
-    replicateGroups,
-    runRangeInPushValues,
-    seriesLabel,
-  } from './graphData';
+  import { MEAN_REPLICATE, pushValues, replicateGroups, seriesLabel } from './graphData';
   import {
     alertSummaryUrl,
     bugUrl,

@@ -1452,12 +1452,6 @@ export class AppState {
     this.syncUrl('push');
   }
 
-  showAllSeries(): void {
-    if (this.seriesRefs.every((s) => s.visible)) return;
-    this.seriesRefs = this.seriesRefs.map((s) => (s.visible ? s : { ...s, visible: true }));
-    this.syncUrl('push');
-  }
-
   // Takes one ref or many. Many, because the picker's "Remove all 49" is one
   // user action and has to be one history entry — a loop over the single-ref
   // form would cost 49 Back presses to undo.
@@ -1842,15 +1836,7 @@ export class AppState {
     }
   }
 
-  // Clearing the error lets the loading effect pick the series up again.
-  retrySeries(ref: SeriesRef): void {
-    const key = dataKey(ref, this.range);
-    if (!this.errorsByKey.has(key)) return;
-    const next = new Map(this.errorsByKey);
-    next.delete(key);
-    this.errorsByKey = next;
-  }
-
+  // Clearing the errors lets the loading effect pick those series up again.
   retryAllFailed(): void {
     if (this.errorsByKey.size === 0) return;
     this.errorsByKey = new Map();

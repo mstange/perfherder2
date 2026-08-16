@@ -114,29 +114,23 @@ export type Sparkline = {
 };
 
 // `values` resampled into `width` columns and scaled to the eight block
-// characters.
+// characters. A bucket of several values becomes their mean, which is what a
+// time series wants — a bucket is "what the level was that day".
 //
-// `reduce` is how a bucket of several values becomes one: the mean for a time
-// series, where a bucket is "what the level was that day", and the max for a
-// density curve, where a bucket that contains a peak should show the peak
-// rather than average it away with the tail beside it. Getting that wrong makes
-// a narrow mode vanish at exactly the widths where the plot is useful.
-export function sparkline(
-  values: readonly number[],
-  width: number,
-  reduce: 'mean' | 'max' = 'mean',
-): Sparkline {
+// It used to take a `reduce: 'mean' | 'max'` for the density curve's sake, where
+// a bucket containing a peak has to show the peak rather than average it away
+// with the tail beside it. `densityRow` below does that instead, on the shared
+// scale a comparison needs, so no caller ever passed anything but the default.
+export function sparkline(values: readonly number[], width: number): Sparkline {
   if (values.length === 0 || width < 1) return { text: '', low: NaN, high: NaN };
   const cols = Math.min(width, Math.max(1, values.length));
   const bucketed: number[] = [];
   for (let i = 0; i < cols; i++) {
     const lo = Math.floor((i * values.length) / cols);
     const hi = Math.max(lo + 1, Math.floor(((i + 1) * values.length) / cols));
-    let acc = reduce === 'max' ? -Infinity : 0;
-    for (let j = lo; j < hi; j++) {
-      acc = reduce === 'max' ? Math.max(acc, values[j]) : acc + values[j];
-    }
-    bucketed.push(reduce === 'max' ? acc : acc / (hi - lo));
+    let acc = 0;
+    for (let j = lo; j < hi; j++) acc += values[j];
+    bucketed.push(acc / (hi - lo));
   }
   // The extremes of the *bucketed* series, not of the input: those are the two
   // the blocks are scaled between, and a caller printing the input's extremes

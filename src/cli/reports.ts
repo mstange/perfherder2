@@ -26,11 +26,7 @@ import {
   type ComparisonKind,
   type ComparisonLinks,
 } from '../lib/graphs/compare';
-import {
-  buildDistribution,
-  MIN_CURVE_VALUES,
-  type DistributionPlot,
-} from '../lib/graphs/distribution';
+import { buildDistribution, type DistributionPlot } from '../lib/graphs/distribution';
 import { buildDrift, type DriftSummary } from '../lib/graphs/drift';
 import {
   DEFAULT_ALERT_THRESHOLD,
@@ -1635,13 +1631,6 @@ function sideReport(
     firstPushMs: window[0].x,
     lastPushMs: window[window.length - 1].x,
   };
-}
-
-// Whether a pool is big enough for the density estimate the mode analysis reads.
-// Re-exported so `render.ts` can say why a comparison has no modes rather than
-// silently omitting the section.
-export function hasEnoughForCurve(push: PushGroup): boolean {
-  return pushValues(push).length >= MIN_CURVE_VALUES;
 }
 
 // ---------------------------------------------------------------------------

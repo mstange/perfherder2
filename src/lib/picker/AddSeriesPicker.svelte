@@ -378,7 +378,7 @@ import { TIME_RANGES } from './pickerOptions';
     title={active ? `Remove filter ${field}:${value}` : `Filter to only ${field}:${value}`}
     onclick={() => picker.toggleFilterChip(field, value, { fromSubtest })}
   >
-    <span class="badge-text">{value}</span>
+    <span>{value}</span>
     <span class="badge-cue" aria-hidden="true">{active ? '×' : '+'}</span>
   </button>
 {/snippet}

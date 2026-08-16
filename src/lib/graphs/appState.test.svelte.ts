@@ -583,7 +583,7 @@ describe('AppState visibility', () => {
   it('round-trips the hidden flag through the URL', () =>
     withApp('?series=autoland,1,1,0&series=autoland,2,1', (app) => {
       expect(app.visibleSeries.map((s) => s.ref.signatureId)).toEqual([2]);
-      app.showAllSeries();
+      app.toggleSeriesVisibility(ref(1));
       expect(location.search).not.toContain(',0');
       expect(app.visibleSeries).toHaveLength(2);
     }));

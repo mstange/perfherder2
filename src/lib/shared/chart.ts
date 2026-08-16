@@ -324,9 +324,9 @@ export function jitterOffsetPx(
   return point.jitter * (room < scale.maxPx ? room : scale.maxPx);
 }
 
-// For callers that don't jitter at all — the tests, and anything hit-testing a
-// chart drawn without it.
-export const NO_JITTER: JitterScale = { pxPerValue: 0, maxPx: 0 };
+// The default for the two hit tests below, which the distribution strip's
+// un-jittered callers take.
+const NO_JITTER: JitterScale = { pxPerValue: 0, maxPx: 0 };
 
 // Data-space width of `px` pixels under `scale`. Used to widen the x-sorted
 // searches that drawing and hit-testing do by the jitter's reach, so a dot the

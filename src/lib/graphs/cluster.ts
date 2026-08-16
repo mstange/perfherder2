@@ -205,7 +205,7 @@ export function landingSeriesCount(landing: Landing<unknown>): number {
 
 const HOUR_MS = 3_600_000;
 
-export function windowHours(landing: Landing<unknown>): number {
+function windowHours(landing: Landing<unknown>): number {
   return (landing.endMs - landing.startMs) / HOUR_MS;
 }
 
