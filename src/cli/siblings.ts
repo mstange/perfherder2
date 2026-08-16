@@ -43,6 +43,27 @@ export function isAcrossField(value: string): value is AcrossField {
   return (ACROSS_FIELDS as readonly string[]).includes(value);
 }
 
+// Which repositories to fetch signature lists from, when looking for an anchor's
+// counterparts. Its own repository, because that is where they are and a second
+// repo's list is megabytes spent to filter every row out of it — except when the
+// repository is the thing being varied, which is the one case whose answer is
+// somewhere else.
+//
+// An explicit `--repo` wins outright: the caller has named the scope.
+//
+// Here rather than in main.ts, where it was: this is `--across`'s rule about
+// what gets fetched, and cli.md asks for those to be testable without a network.
+export function repoScope(
+  explicitRepos: readonly string[] | null,
+  anchors: readonly { repository: string }[],
+  fields: readonly AcrossField[],
+  defaultRepos: readonly string[],
+): string[] {
+  if (explicitRepos && explicitRepos.length > 0) return [...explicitRepos];
+  const owned = [...new Set(anchors.map((a) => a.repository))];
+  return fields.includes('repo') ? [...new Set([...owned, ...defaultRepos])] : owned;
+}
+
 // A row is a sibling if it agrees on everything not being varied.
 export type SiblingSet = {
   // The row the reference named, or null when it isn't in the fetched set — a

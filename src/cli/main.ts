@@ -34,6 +34,7 @@ import {
   parseSort,
   resolveRange,
   roundSpanToDays,
+  signatureInterval,
   snapInterval,
   unknownFlags,
   UsageError,
@@ -58,6 +59,7 @@ import {
   ACROSS_FIELDS,
   expandAcross,
   isAcrossField,
+  repoScope,
   type AcrossField,
   type Expansion,
 } from './siblings';
@@ -929,29 +931,6 @@ function acrossFields(value: string | null): AcrossField[] | null {
   return names as AcrossField[];
 }
 
-// Where to look for an anchor's counterparts. Its own repository, because
-// that is where they are and a second repo's signature list is megabytes spent
-// to filter every row out of it — except when the repository is the thing being
-// varied, which is the one case whose answer is somewhere else.
-function repoScope(
-  reposFlag: string | null,
-  anchors: readonly { repository: string }[],
-  fields: readonly AcrossField[],
-): string[] {
-  if (reposFlag) return parseList(reposFlag);
-  const owned = [...new Set(anchors.map((a) => a.repository))];
-  return fields.includes('repo') ? [...new Set([...owned, ...DEFAULT_REPOS])] : owned;
-}
-
-// The signature list is filtered server-side to signatures that have run inside
-// an interval counted back from *now*, so a range that ends in the past needs
-// an interval reaching back to its start or the anchor itself may be absent.
-// Snapped up to one of the picker's, since those are the only intervals this
-// endpoint is ever asked for.
-function signatureInterval(span: Span, nowMs: number): number {
-  return snapInterval(Math.max(14 * 86400, (nowMs - span.start) / 1000));
-}
-
 function describeExpansion(
   expansion: Expansion,
   anchors: readonly { repository: string; signatureId: number }[],
@@ -979,8 +958,9 @@ async function expandRefs(
     repository: ref.repository,
     signatureId: ref.signatureId,
   }));
+  const repos = repoScope(reposFlag ? parseList(reposFlag) : null, anchors, fields, DEFAULT_REPOS);
   const signatures = await loadSignatures(
-    repoScope(reposFlag, anchors, fields),
+    repos,
     signatureInterval(span, nowMs),
     // The anchor is usually a subtest, and children only exist in this payload —
     // the same reason `--parent` implies it.
@@ -992,7 +972,7 @@ async function expandRefs(
       expansion.missing.length > 0
         ? `${expansion.missing.join(', ')} ${
             expansion.missing.length === 1 ? 'is' : 'are'
-          } not in the signature list for ${repoScope(reposFlag, anchors, fields).join(', ')} — ` +
+          } not in the signature list for ${repos.join(', ')} — ` +
             'check the id and the repository, and widen --range, since the list only carries ' +
             'signatures that have run recently'
         : `no counterparts across ${fields.join(', ')}`,

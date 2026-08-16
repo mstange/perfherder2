@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Series } from '../lib/picker/series';
-import { expandAcross, siblingsAcross } from './siblings';
+import { expandAcross, repoScope, siblingsAcross } from './siblings';
 
 function row(overrides: Partial<Series>): Series {
   const base: Series = {
@@ -106,5 +106,47 @@ describe('expandAcross', () => {
     );
     expect(expansion.rows).toHaveLength(3);
     expect(expansion.missing).toEqual(['autoland,999']);
+  });
+});
+
+describe('repoScope', () => {
+  const anchors = [{ repository: 'autoland' }];
+  const defaults = ['autoland', 'mozilla-central'];
+
+  it('fetches only the anchor\'s own repository by default', () => {
+    // A second repo's signature list is megabytes fetched to filter every row
+    // out of it, so varying anything but the repo stays where the anchor is.
+    expect(repoScope(null, anchors, ['platform'], defaults)).toEqual(['autoland']);
+    expect(repoScope(null, anchors, ['application', 'option'], defaults)).toEqual(['autoland']);
+  });
+
+  it('adds the defaults when the repository is the field being varied', () => {
+    // The one case whose answer is somewhere else by definition.
+    expect(repoScope(null, anchors, ['repo'], defaults)).toEqual([
+      'autoland',
+      'mozilla-central',
+    ]);
+    expect(repoScope(null, anchors, ['platform', 'repo'], defaults)).toEqual([
+      'autoland',
+      'mozilla-central',
+    ]);
+  });
+
+  it('lets an explicit --repo win outright', () => {
+    expect(repoScope(['try'], anchors, ['repo'], defaults)).toEqual(['try']);
+    expect(repoScope(['try'], anchors, ['platform'], defaults)).toEqual(['try']);
+  });
+
+  it('de-duplicates, so an anchor already in the defaults is not fetched twice', () => {
+    const two = [{ repository: 'autoland' }, { repository: 'autoland' }];
+    expect(repoScope(null, two, ['repo'], defaults)).toEqual(['autoland', 'mozilla-central']);
+  });
+
+  it('covers every anchor when they span repositories', () => {
+    const spread = [{ repository: 'mozilla-beta' }, { repository: 'mozilla-central' }];
+    expect(repoScope(null, spread, ['platform'], defaults)).toEqual([
+      'mozilla-beta',
+      'mozilla-central',
+    ]);
   });
 });

@@ -13,10 +13,12 @@ import {
   parseSort,
   resolveRange,
   roundSpanToDays,
+  signatureInterval,
   snapInterval,
   unknownFlags,
   UsageError,
 } from './args';
+import { TIME_RANGES } from '../lib/picker/pickerOptions';
 
 const BOOLEANS = new Set(['json', 'subtests']);
 const parse = (line: string) => parseArgv(line.split(' ').filter(Boolean), BOOLEANS);
@@ -264,5 +266,41 @@ describe('parseSort and parseList', () => {
       'autoland',
       'mozilla-central',
     ]);
+  });
+});
+
+describe('signatureInterval', () => {
+  const DAY = 86400 * 1000;
+  // 2026-08-16T00:00:00Z, so the arithmetic below is readable.
+  const NOW = Date.UTC(2026, 7, 16);
+
+  it('floors at 14 days, however short the range', () => {
+    // The endpoint counts back from now, not from the range, so a two-day range
+    // ending today still asks for the picker's default fortnight.
+    expect(signatureInterval({ start: NOW - 2 * DAY, end: NOW }, NOW)).toBe(1209600);
+    expect(signatureInterval({ start: NOW, end: NOW }, NOW)).toBe(1209600);
+  });
+
+  it('reaches back to the range start when the range ends in the past', () => {
+    // A 14-day window that ended 30 days ago is 44 days back from now: asking
+    // for 14 would filter the anchor signature out of the list entirely, and
+    // every command resolving a ref through it would report "no such signature"
+    // for a signature that exists.
+    const span = { start: NOW - 44 * DAY, end: NOW - 30 * DAY };
+    expect(signatureInterval(span, NOW)).toBe(5184000); // 60 days
+  });
+
+  it('snaps up to an interval the endpoint is offered, never down', () => {
+    // 45 days back → 60, not 30. Rounding down would hide signatures that are
+    // inside the asked-for range.
+    expect(signatureInterval({ start: NOW - 45 * DAY, end: NOW }, NOW)).toBe(5184000);
+    expect(signatureInterval({ start: NOW - 31 * DAY, end: NOW }, NOW)).toBe(5184000);
+    expect(signatureInterval({ start: NOW - 30 * DAY, end: NOW }, NOW)).toBe(2592000);
+  });
+
+  it('clamps to the longest interval offered rather than inventing one', () => {
+    expect(signatureInterval({ start: NOW - 5 * 365 * DAY, end: NOW }, NOW)).toBe(
+      TIME_RANGES[TIME_RANGES.length - 1].value,
+    );
   });
 });

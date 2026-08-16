@@ -229,6 +229,25 @@ export function snapInterval(seconds: number): number {
   return TIME_RANGES[TIME_RANGES.length - 1].value;
 }
 
+// Which interval to ask the signature list for, given the range being analysed.
+//
+// The endpoint filters server-side to signatures that have run inside an interval
+// counted back from *now*, not inside the range — so a range that ends in the
+// past needs an interval reaching back to its *start*, or the anchor signature
+// itself may be absent from the list and every command that resolves a ref
+// through it reports "no such signature" for a signature that exists.
+//
+// The 14-day floor is the picker's own default: a range shorter than that still
+// asks for two weeks, because there is nothing to save by asking for less and a
+// signature quiet for ten days is one a reader still expects to find.
+//
+// Here rather than in main.ts, where it was: it decides what gets fetched, which
+// makes it exactly the kind of choice cli.md says has to be testable without a
+// network.
+export function signatureInterval(span: Span, nowMs: number): number {
+  return snapInterval(Math.max(14 * 86400, (nowMs - span.start) / 1000));
+}
+
 // ---------------------------------------------------------------------------
 // Series references
 // ---------------------------------------------------------------------------

@@ -718,7 +718,9 @@ Dependencies run impure → pure, so everything that decides what an answer *is*
 is testable without a network.
 
 - [args.ts](../src/cli/args.ts) — **pure**. argv, durations, ranges, series
-  references, search terms. Reuses `filter.ts::parseChip` and
+  references, search terms, and which interval to ask the signature list for
+  (`signatureInterval` — it decides what gets fetched, so it is here and tested
+  rather than in main.ts, where it was). Reuses `filter.ts::parseChip` and
   `pickerOptions.ts::TIME_RANGES`, so a chip means the same thing here as in the
   picker's search box and an interval is one the endpoint is actually asked for.
 - [format.ts](../src/cli/format.ts) — **pure**. Tables, sparklines, the density
@@ -731,7 +733,8 @@ is testable without a network.
   dependencies run `src/cli` → `src/lib` and never back. Change events from
   several series, grouped into the landings that caused them. See above.
 - [siblings.ts](../src/cli/siblings.ts) — **pure**. One row's counterparts
-  across one attribute — `--like` and `--across`. See above.
+  across one attribute — `--like` and `--across` — and `repoScope`, which is
+  that slice's rule about which repositories to fetch. See above.
 - [suggest.ts](../src/cli/suggest.ts) — **pure**. Why a search matched nothing,
   and what to type instead. See above.
 - [reports.ts](../src/cli/reports.ts) — **pure**. The report object per command,
