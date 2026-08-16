@@ -195,6 +195,43 @@ header settles and the plot keeps more height than its chrome, and it is
 tier, where the graph has the whole window — a second container query gives up
 the zoom label's reserved width, the last unwrappable item.
 
+#### A pane too short for the bar collapses it to one line
+
+Everything above is about width. A 138px header is affordable over a graph and
+not over a strip: a landscape phone gave the pane 347px, and the header plus the
+84px overview left a **126px** plot. So below `GRAPH_MIN_HEIGHT` — the height the
+shell's arrangements try to guarantee the graph, so a pane under it means the
+window had nothing left to give — the block collapses to a single line:
+
+```
+Feb 10 – Aug 9 · run means                                    [Controls ▾]
+```
+
+35px instead of 114–188, which took that plot from 126px to 228px and a 1440×420
+desktop window's from ~200px to 301px.
+
+- **The line says what it collapsed, not just that it collapsed.** A bare
+  "Controls" button makes the reader open it to find out what the graph is set
+  to, which is the tap the collapse was meant to save. The range and the points
+  mode are the two settings you need to read the plot at all; the two checkboxes
+  are about extra marks, and their absence is visible in the plot itself. `zoomed`
+  is appended because it is the one setting that makes the axis disagree with the
+  range printed beside it.
+- **Opening it costs the graph height, and that is the bargain.** In landscape the
+  plot goes to 90px while the block is open. It is a click of the user's, on a
+  control they can close again, which is the case "Layout stability" allows — as
+  against the header changing size because a fetch landed.
+- **The threshold is measured in JS, not in a container query**, for the reason
+  the shell's tier is: two things that are not CSS have to agree with it — whether
+  the toggle is rendered at all, and the `aria-expanded` it carries. A
+  `ResizeObserver` on the pane feeds it, and there is no feedback loop, because
+  the pane's height comes from the shell's grid rather than from its content.
+- **The block is hidden, not unmounted**, so the toggle's `aria-controls` points
+  at something that exists. It needs `header[hidden] { display: none }` in the
+  component: `[hidden]`'s UA rule is zero-specificity, so `.control-grid`'s
+  `display: grid` beats it, and the attribute would otherwise be set, correct and
+  do nothing.
+
 ### The details pane, top to bottom
 
 The pane is read from the top on every click, so its order is by how immediately

@@ -205,6 +205,11 @@ Living checklist. Update in the same commit as the work it describes.
   the selection survives, and the detail graph explains itself when the dots are
   off with no band on. See graphs.md, "Replicates".
 
+- The graph header collapses to one line — `Feb 10 – Aug 9 · run means`, plus a
+  Controls toggle — where the pane is shorter than `GRAPH_MIN_HEIGHT`. 35px against
+  114–188, which is a landscape phone's detail plot at 228px instead of 126px and a
+  1440×420 window's at 301px instead of ~200px. See graphs.md, "A pane too short
+  for the bar collapses it to one line"
 - An empty state for the graph pane: with nothing plotted it is one centred
   block naming the app with a primary **Add series…** in it, in place of a
   0-to-1 axis pair and a header full of controls for a drawing that doesn't

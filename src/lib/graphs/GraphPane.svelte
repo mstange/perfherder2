@@ -12,6 +12,7 @@
     type ChartHit,
   } from './ScatterChart.svelte';
   import type { PointMode, SelectedPoint } from '../urlState';
+  import { GRAPH_MIN_HEIGHT } from '../shared/layout';
   import { describeSpan, matchingPreset, RANGE_PRESETS } from '../shared/timeRange';
 
   type Props = { app: AppState };
@@ -30,20 +31,27 @@
   // Each title says what the dots *are*, not what the switch does: "one dot per
   // run" is the fact someone reading a graph needs, and the mode names alone
   // ("Run means") don't say whether a retrigger gets its own dot.
-  const POINT_CHOICES: { mode: PointMode; label: string; title: string }[] = [
+  // `summary` is the same choice as a phrase rather than a button label, for the
+  // collapsed header's one line. Spelled out rather than lower-cased from
+  // `label`, because "None" does not become "none" there — a summary reading
+  // "last 14 days · none" says nothing about what the none is of.
+  const POINT_CHOICES: { mode: PointMode; label: string; summary: string; title: string }[] = [
     {
       mode: 'replicates',
       label: 'Replicates',
+      summary: 'replicates',
       title: 'One dot per replicate value — every measurement the harness reported',
     },
     {
       mode: 'runs',
       label: 'Run means',
+      summary: 'run means',
       title: 'One dot per run, at its mean — so a retriggered push keeps one dot per retrigger',
     },
     {
       mode: 'none',
       label: 'None',
+      summary: 'no points',
       title:
         'No dots and no connecting line, leaving the trend band and the marks. The y axis then covers the band, and the details pane still lists a selected run’s replicates.',
     },
@@ -70,6 +78,51 @@
   // highlight until something else changes — harmless, and the alternative is
   // a timer that exists only to un-highlight a button.
   const activePreset = $derived(matchingPreset(app.range, Date.now()));
+
+  // ---- The header, where the pane is too short to keep it open --------------
+  // Nine controls in two rows is 138–188px, which is affordable over a graph
+  // and not over a strip: a landscape phone put a 138px header and an 84px
+  // overview over a 126px plot. Below the height the arrangements try to
+  // guarantee the graph (`GRAPH_MIN_HEIGHT`, and a pane under it means the
+  // window had nothing left to give) the header collapses to one line that
+  // *says* what it is set to, and a button that opens it.
+  //
+  // Measured here rather than in a container query, for the reason the shell's
+  // tier is measured in JS: two things that are not CSS have to agree with it —
+  // whether the toggle exists at all, and the `aria-expanded` on it — and a
+  // query plus a matching `matchMedia` would be the same number written twice.
+  // The pane's height comes from the shell's grid, so the header collapsing
+  // cannot change it and there is no loop to guard against.
+  let paneEl = $state<HTMLElement | null>(null);
+  let paneHeight = $state(Infinity);
+  $effect(() => {
+    if (!paneEl) return;
+    const ro = new ResizeObserver(([entry]) => {
+      paneHeight = entry.contentRect.height;
+    });
+    ro.observe(paneEl);
+    return () => ro.disconnect();
+  });
+  const collapsible = $derived(paneHeight < GRAPH_MIN_HEIGHT);
+  // Transient, and not in the URL: it answers "am I fiddling with the controls
+  // right now", which is not part of what a shared link shows.
+  let controlsOpen = $state(false);
+  const controlsShown = $derived(!collapsible || controlsOpen);
+
+  // What the collapsed line says. The range and the points mode are the two
+  // settings a reader has to know to read the plot at all — the checkboxes are
+  // about extra marks, and their absence is visible in the graph itself. The
+  // zoom is here because it is the one that makes the axis disagree with the
+  // range beside it.
+  const headerSummary = $derived(
+    [
+      activePreset ? `last ${activePreset.label}` : describeSpan(app.range),
+      POINT_CHOICES.find((c) => c.mode === app.pointMode)?.summary,
+      app.zoom ? 'zoomed' : null,
+    ]
+      .filter(Boolean)
+      .join(' · '),
+  );
 
   // Is shift down? It decides what a click on the hovered dot would do, and so
   // which ring goes on it (see `hoverRingKind`).
@@ -240,7 +293,7 @@
   onblur={() => (shiftHeld = false)}
 />
 
-<section class="graph-pane">
+<section class="graph-pane" bind:this={paneEl}>
   <!-- Nothing plotted: the pane is a call to action rather than a pair of empty
        axes. What was here before was a full 0-to-1 axis pair with a note in the
        middle of it, under a header of range and points controls that had nothing
@@ -268,6 +321,27 @@
       </button>
     </div>
   {:else}
+    {#if collapsible}
+      <!-- The header, in one line, for a pane too short to keep it open. It
+           states the two settings you need to read the plot rather than being a
+           bare "Controls" button: a collapsed control block that doesn't say
+           what it collapsed makes the reader open it to find out, which is the
+           tap the collapse was supposed to save. -->
+      <div class="header-bar">
+        <span class="header-summary">{headerSummary}</span>
+        <button
+          type="button"
+          class="btn btn-compact"
+          aria-expanded={controlsOpen}
+          aria-controls="graph-controls"
+          title="Range, points and the drawing switches"
+          onclick={() => (controlsOpen = !controlsOpen)}
+        >
+          Controls {controlsOpen ? '▴' : '▾'}
+        </button>
+      </div>
+    {/if}
+
     <!-- Two groups, one grid row each, and the split is the same one the
          Add-series panel's control block draws: what gets *loaded*, then what of
          it gets *shown*. The range is the fetch — `dataKey` is series plus range,
@@ -275,7 +349,7 @@
          row's aside, while the zoom, a window onto data already in hand, is the
          drawing row's. The alignment is `.control-grid` in app.css, shared with
          the panel; see docs/design.md, "The control block is two groups". -->
-    <header class="control-grid no-aside">
+    <header class="control-grid no-aside" id="graph-controls" hidden={!controlsShown}>
       <span class="control-label">Range</span>
       <div class="row">
         <div class="ranges">
@@ -516,6 +590,34 @@
     padding: 8px 12px;
     border-bottom: 1px solid var(--border-default);
     font: 13px/1.4 system-ui, sans-serif;
+  }
+  /* The collapsed header keeps the block in the DOM and hides it, so the toggle's
+     `aria-controls` points at something that exists. An attribute selector
+     because `[hidden]`'s UA rule is `display: none` at zero specificity, and
+     `.control-grid`'s `display: grid` beats it — the attribute would otherwise be
+     set, correct, and do nothing. */
+  header[hidden] {
+    display: none;
+  }
+  /* What the header collapses to: the two settings you need to read the plot,
+     and the way back to all nine controls. One line, at the height of a compact
+     button, against 138–188px for the block it stands in for. */
+  .header-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 4px 8px 4px 12px;
+    border-bottom: 1px solid var(--border-default);
+    font: 13px/1.4 system-ui, sans-serif;
+  }
+  .header-summary {
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    color: var(--fg-muted);
+    font-variant-numeric: tabular-nums;
   }
   /* One row per group, wrapping as whole items: each segmented track stays intact
      — wrapping happens *inside* it, see `.btn-group` in app.css — and the
