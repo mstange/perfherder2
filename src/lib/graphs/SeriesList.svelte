@@ -535,7 +535,9 @@
   }
   .card {
     display: grid;
-    /* The first track holds the eye button, which is the widest thing in it. */
+    /* The first track holds the eye button, which is the widest thing in it —
+       so the coarse-pointer block below has to widen the track by the same
+       amount it widens the button, or the button overflows its own column. */
     grid-template-columns: 20px 1fr auto;
     gap: 8px;
     align-items: start;
@@ -749,6 +751,10 @@
       height: 32px;
       min-height: 32px;
       font-size: 14px;
+    }
+    /* The legend track, which holds one of them. */
+    .card {
+      grid-template-columns: 32px 1fr auto;
     }
     .handle {
       width: 32px;
