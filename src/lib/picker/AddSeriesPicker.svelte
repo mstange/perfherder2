@@ -628,8 +628,12 @@ import { TIME_RANGES } from './pickerOptions';
     {#if cardRows}
       <label class="sort-select">
         <span class="control-word">sort</span>
+        <!-- `title` as well as the label, because the word beside it is dropped
+             on a narrow panel (see the container query in the styles) and the
+             select is then the only thing on the row that says what it sorts. -->
         <select
           aria-label="Sort by"
+          title="Sort by"
           value={picker.sort?.column ?? ''}
           onchange={(e) =>
             picker.setSortColumn((e.currentTarget.value || null) as SortColumn | null)}
@@ -1093,23 +1097,6 @@ import { TIME_RANGES } from './pickerOptions';
     border-radius: 3px;
     font-size: 12px;
   }
-  /* Everything this panel gives up when it is a phone wide. The threshold is
-     `CONTROL_BLOCK_NARROW`, which the script reads too — see the note there;
-     these are the parts that are only a matter of style.
-     - The hint is four lines and ~70px of a 844px screen, spent explaining
-       affordances (a badge filters, a caret expands) that a tap discovers in one
-       go. It stays where there is room, because on a desktop it costs nothing.
-     - The two reserved widths exist so a growing label can't shove `Done`
-       sideways; there is no slack to protect here, and 27ch of reserved count is
-       what made the row wrap to two lines in the first place. */
-  @container picker-panel (width < 560px) {
-    .hint {
-      display: none;
-    }
-    .bulk {
-      min-width: 0;
-    }
-  }
   /* Hidden, not unmounted, so the summary's `aria-controls` points at something
      that exists — and `[hidden]`'s UA rule is zero-specificity, so the class
      rules on these three would otherwise win and the attribute would do nothing.
@@ -1234,7 +1221,13 @@ import { TIME_RANGES } from './pickerOptions';
   }
   /* Pushed right, away from the counts on the left, so a longer label grows
      into the gap rather than moving Done. The `min-width` covers the usual
-     case outright: only five-figure counts exceed it. */
+     case outright: only five-figure counts exceed it.
+
+     There is no narrow override giving this reservation back, and there was one
+     that could never fire: this button and `.plotted-count` beside it are only
+     rendered above `STATUS_ROW_ONE_LINE` (600), and the narrow container query is
+     below `CONTROL_BLOCK_NARROW` (560). The width where the reservation would
+     have cost something is a width where neither element exists. */
   .bulk {
     margin-left: auto;
     min-width: 13ch;
@@ -1259,6 +1252,106 @@ import { TIME_RANGES } from './pickerOptions';
   /* With the bulk button gone, `Done` is what holds the trailing edge. */
   .done.trailing {
     margin-left: auto;
+  }
+  /* Everything this panel gives up when it is a phone wide. The threshold is
+     `CONTROL_BLOCK_NARROW`, which the script reads too — see the note there;
+     these are the parts that are only a matter of style.
+     **After every rule it overrides**, and it has to be: a container query adds
+     no specificity, so this block above `.status` lost its gap to the later
+     declaration and the row went on wrapping. Exactly the trap the `@media
+     (pointer: coarse)` blocks document, in the other kind of query. */
+  @container picker-panel (width < 560px) {
+    /* Four lines and ~70px of an 844px screen, spent explaining affordances (a
+       badge filters, a caret expands) that a tap discovers in one go. It stays
+       where there is room, because on a desktop it costs nothing. */
+    .hint {
+      display: none;
+    }
+    /* `sort` goes for the same reason the words naming the counts do, in the
+       markup one line above them: the row has three items and 358px, and at
+       touch sizes the word plus its gap is the 32px that decides whether they
+       share a line. It is `aria-hidden` decoration — the select's own
+       `aria-label` and `title` are the name — so this costs the reader a word and
+       not a control. */
+    .sort-select .control-word {
+      display: none;
+    }
+    /* And then the row's own slack: at 343px of panel its three items came to
+       339px against 335px of row, and a 4px overrun costs a whole 44px line of
+       list. The 4px inset was aligning the counts with nothing in particular —
+       the scroller's edge is 4px further out — and 12px between three items this
+       size is more air than a wrap is worth. ~16px of headroom afterwards, or
+       about two more digits on each count; past that it wraps, which is the
+       graceful end rather than a broken one. */
+    .status {
+      gap: 8px;
+      padding: 0;
+    }
+  }
+  /* The panel's chrome under a thumb. Everything above the list that app.css's
+     floor cannot reach, because none of these carry `.btn`: they are the panel's
+     own shapes — a pill, a full-width summary line, a sort control — and this is
+     the layout a phone gets, so all four are targets a finger is aiming at.
+     After the base rules, since a media query adds no specificity.
+
+     Four of them were the smallest things on the panel at 30, 30, 29 and 22px,
+     and the last two are the ones that only exist here: the sort control is
+     rendered for the card layout alone (see `cardRows`), which is to say for
+     exactly the pointer this block is about. */
+  @media (pointer: coarse) {
+    /* The floor grew the checkbox inside these to 20px and left the pill's own
+       4px of padding, so the pill had collapsed onto its checkbox — 30px tall,
+       with the box touching both edges of a 999px radius. The padding is what
+       makes it read as a pill again, and the height is what makes it a target.
+
+       Vertical padding only, and the 2px the gap adds is the whole width cost.
+       12px of horizontal padding was tried and cost a *line*: `mozilla-beta` and
+       `try` come to 336px against 334px of card, so the four chips took four
+       lines on a 390px phone instead of three. */
+    .chip {
+      min-height: 36px;
+      padding: 6px 10px;
+      gap: 8px;
+    }
+    /* The one control that gets the folded group back, and it was the smallest
+       thing in the panel's chrome. Full width already, so the height is all it
+       needs — and it should match the chips it opens. */
+    .load-summary {
+      min-height: 36px;
+      padding-block: 6px;
+    }
+    /* Undoes the tightening two rules up. That padding and font-size were
+       chosen to fit four things on the status row with a mouse; a `<select>`
+       nobody can hit is not a saving, and a form control under 16px is the
+       page-zoom-on-focus iOS bug app.css's rule exists to avoid — a scoped
+       selector outranks that rule, so the fix belongs here.
+
+       The height restates app.css's, for the same specificity reason. */
+    .sort-select select {
+      padding: 4px 6px;
+      font-size: 16px;
+      min-height: 36px;
+    }
+    /* 25×32 — the one target in the panel that was short in *both* axes. Square,
+       and level with the select beside it, so the pair reads as one control. */
+    .sort-dir {
+      min-width: 36px;
+      min-height: 36px;
+      padding: 0;
+    }
+    /* The one control in a *row* worth growing, and the only one that can be:
+       a 20×20 caret 6px from a button that puts a series on the graph is a
+       mis-tap with a visible consequence. The height is free — the card's head
+       line is already as tall as the `.btn-compact` in it — and the width costs
+       8px of the suite name, which is the cheapest 8px on the card.
+
+       Scoped to the card head rather than to the panel: the table's own caret
+       sits in a 24px column, and the layout a touch device gets on a phone is
+       the card list. Same reasoning as the `tbody .btn` exemption below. */
+    .card-head .disclose {
+      width: 28px;
+      height: 32px;
+    }
   }
   .muted {
     color: var(--fg-muted);

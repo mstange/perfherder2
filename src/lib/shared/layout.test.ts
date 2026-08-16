@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  CONTROL_BLOCK_NARROW,
   DETAILS_MIN_ROW,
   DETAILS_ROW_FRACTION,
   DETAILS_ROW_MAX,
@@ -224,5 +225,16 @@ describe('foldPickerLoadRow', () => {
     // Three lines of chips, two, one — and each tier takes its band's worst case.
     expect(pickerChromeCost(358)).toBeGreaterThan(pickerChromeCost(556));
     expect(pickerChromeCost(556)).toBeGreaterThan(pickerChromeCost(1096));
+  });
+
+  // The band boundary that isn't about the chips rewrapping: at
+  // CONTROL_BLOCK_NARROW the label rail and the aside column come back and take
+  // width off the chips, so the block just above the threshold costs *more* than
+  // the block just below it. A monotonic estimate charges the docked 900px window
+  // the wider case's cost and folds a panel with room for five rows.
+  it('charges the rails-are-back band more than the one below it', () => {
+    expect(pickerChromeCost(CONTROL_BLOCK_NARROW)).toBeGreaterThan(
+      pickerChromeCost(CONTROL_BLOCK_NARROW - 1),
+    );
   });
 });

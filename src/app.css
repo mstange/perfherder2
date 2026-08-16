@@ -467,6 +467,21 @@ button {
     width: 20px;
     height: 20px;
   }
+  /* A 13px box grew to 20px above, and that is the whole target: the line it
+     sits on is 20px tall, so a checkbox 6px under a row of buttons is 6px of
+     clear space between two things a thumb is aiming at. The compact button's
+     height rather than `.btn`'s, because a switch beside a control is secondary
+     to it — same tier, so the pair reads as one column of targets.
+
+     Free where these share a line with a button, which is both of the graph
+     header's: a row holding a `.btn-compact` is already 32px tall. A/B'd with
+     `tools/visual/toggle-floor-header.mjs` — 0px at a landscape phone, an iPad
+     and a touchscreen laptop, and 12px on a 390px phone, where the two switches
+     wrap to a line of their own. That is the one place this is not free, and the
+     header there already collapses behind a bar. */
+  .control-toggle {
+    min-height: 32px;
+  }
   /* iOS zooms the page when a field with text under 16px takes focus, which
      scales the layout viewport up and pushes half the panel off screen — the
      app's own sizes are 13–14px throughout. Raising the two form controls that
@@ -476,6 +491,17 @@ button {
   select,
   textarea {
     font-size: 16px;
+  }
+  /* And the height, which the font-size above does not buy: a `<select>` at
+     16px is 29px tall, which was the smallest thing on the picker's status row.
+     There are two in the app, both in that panel, but this belongs here for the
+     reason the font-size does — it is a fact about the control, not about the
+     panel. A height and not more padding, because padding here would be dead
+     on arrival: both of those selects sit in a scoped `select { padding }` rule,
+     which is `(0,1,1)` against this one's `(0,0,1)`. A `<select>` centres its
+     own text in whatever box it is given, so the height is all it needs. */
+  select {
+    min-height: 36px;
   }
 }
 
@@ -547,6 +573,10 @@ button {
   .control-label {
     display: none;
   }
+  /* `.control-aside` belongs in here too, and can't be: it is declared below,
+     and a container query adds no specificity any more than a media query does
+     — an override placed above the rule it means to override loses to it. So it
+     has a block of its own after the declaration. */
 }
 /* A 12px label has to be dropped a few px to sit level with the 14px controls
    beside it, and the number is nobody's to type: `baseline` is it, computed
@@ -587,6 +617,25 @@ button {
   display: flex;
   align-items: center;
   gap: 6px;
+}
+/* The other half of the narrow block above — see the note where it ends.
+   A rail stacks; a row under the main control does not. Once the block is one
+   column there is no rail left for this to be, and a forced column spends a line
+   per member whether or not they would have shared one: the picker's filter
+   group is two buttons and a switch, 363px of a 476px block on a landscape
+   phone, which took two lines of it for no reason.
+
+   Wrapping rather than a plain row is what keeps the phone case unchanged — at
+   334px those same three don't fit either, and wrap to exactly the two lines the
+   column gave them. The column gap beats the row gap 2:1, so a wrapped second
+   line still reads as part of the group above it rather than as a new one. */
+@container (width < 560px) {
+  .control-aside {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 12px;
+  }
 }
 /* A lowercase word finishing the row's sentence — *load from these repos, last
    14 days*; *show points, replicates* — deliberately not in `.control-label`'s

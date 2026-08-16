@@ -33,7 +33,7 @@ change is wrong for a reason the code doesn't show:
 | Markup with two adjacent badges | "Whitespace between adjacent badges (Svelte gotcha)" |
 | A color, anywhere | "Theming: one resolved attribute, one exception" — there are exactly two, and neither is new |
 | A button | "One button, defined once", and "Touch: a floor under the controls a thumb drives" if it is smaller than `.btn` |
-| A size for a control, or an instruction naming a click or a key | "Touch: a floor under the controls a thumb drives, and copy that names a gesture the reader has" — the floor is one `pointer: coarse` block in app.css, a media query adds no specificity, and a scoped `font: inherit` outranks it |
+| A size for a control, or an instruction naming a click or a key | "Touch: a floor under the controls a thumb drives, and copy that names a gesture the reader has" — the floor is one `pointer: coarse` block in app.css, neither a media query nor a `@container` query adds any specificity (so both go *after* what they override, and four rules have been silently dead for this), a scoped `font: inherit` outranks the global rule, and a control that isn't a `.btn` gets no floor at all until someone writes one for it |
 | A spinner, a skeleton, or any "still loading" mark | "Two loading cues, and which wait each one is for" — there are two classes in app.css, the choice between them is what the wait *is*, and a third hand-rolled one is the mistake |
 | A hover explanation | "Tooltips: for what the canvas paints". Ordinary controls use `title`; the drawn box is for the marks in the graph's canvas, which have no element to hang one on |
 | A percentage or a delta in the details pane | graphs.md, "The three change cards say it the same way" — one component draws all three headlines, and the sign is the measurement's, never the verdict's |
@@ -973,9 +973,28 @@ and folded a 596×900 window that had all the room in the world for the block.
 `PICKER_LIST_MIN` — five card rows — with the group open. Width still comes into
 it, but only through `pickerChromeCost`, as *how tall is the block here*: the four
 repository chips wrap to three lines on a phone and one on a desktop, so the block
-is 438px there and 291 here. Three tiers, each taking the largest cost measured in
-its band (`tools/visual/picker-chrome-cost.mjs`), because the estimate should err
+is 482px there and 359 here. Four bands, each taking the largest cost measured in
+it (`tools/visual/picker-chrome-cost.mjs`), because the estimate should err
 towards folding — a fold is one tap from being undone and a squeezed list is not.
+
+Two things about that measurement, both of which the first version of the table
+got wrong:
+
+- **It is taken with a coarse pointer as well as a fine one, and the coarse
+  number is the one a band keeps.** The touch floor is worth ~50px of this block,
+  and the widths these bands describe are overwhelmingly phones — so a table
+  measured with a mouse underestimates exactly the case the fold exists for. The
+  first one was, by 44px at a phone's width, and taking the larger of the two errs
+  towards folding on a narrow window with a mouse, which is the recoverable
+  direction.
+- **The cost is not monotonic in the width, which is why there are four bands.**
+  At `CONTROL_BLOCK_NARROW` the label rail and the aside column come back, and
+  between them they take enough width off the chips to cost a line a 528px panel
+  with no rails does not pay: 564 is dearer than 556. One band over the two of
+  them charges a docked 900px window 43px it does not spend, which there is the
+  difference between six card rows and a fold. The extra boundary is
+  `CONTROL_BLOCK_NARROW` itself, not a number near it, because that threshold *is*
+  the cause.
 
 Where it lands, measured with `tools/visual/picker-fold-cases.mjs`:
 
@@ -983,11 +1002,19 @@ Where it lands, measured with `tools/visual/picker-fold-cases.mjs`:
 | --- | --- | --- |
 | 390×844 phone | yes | 6 cards |
 | 390×508 (phone, keyboard up) | yes | 2 cards |
-| 596×900 | **no** | 6 cards |
+| 375×667 phone SE | yes | 4 cards |
+| 596×900 | **no** | 5 cards |
 | 596×400 | yes | 1 card |
-| 900×900, panel docked | no | 5 cards |
+| 768×1024 iPad portrait, docked | no | 7 cards |
+| 900×900, panel docked | no | 6 cards |
 | 1440×900 | no | 16 table rows |
 | 1440×500 | yes | 5 table rows |
+
+The touch cases each pay ~18px for the panel's chrome having a touch floor under
+it (see "Touch" below) and keep their row count anyway; 596×900 is the one that
+lost a row to it. Two of them went the other way: at 556px of content and below,
+a group's secondary controls now wrap as a row instead of stacking as a rail that
+isn't there, which is a card back at 900×900 and 26px at an iPad.
 
 Which group folds is not a matter of taste either:
 
@@ -1699,13 +1726,52 @@ chip's remove 21×18, a checkbox 13 square. Apple asks for 44px and Material for
 30px on a phone.
 
 **The floor is in one `@media (pointer: coarse)` block in app.css**, beside
-`.btn` for the reason `.btn` is in one place: 36px on `.btn`, 32 on
-`.btn-compact`, 20 on the checkboxes, and 16px on text inputs and selects.
-Components add to it only where they own a size the global rule can't express —
-the pane switcher takes the full 44px (it is the app's primary navigation, driven
-by a thumb at the far end of its reach), the series list's icon buttons and drag
-handle go to 32 square, the theme toggle to 72×36, the picker's close button to
-36 square.
+`.btn` for the reason `.btn` is in one place: 36px on `.btn` and on `<select>`,
+32 on `.btn-compact` and on `.control-toggle`, 20 on the checkboxes, and 16px on
+text inputs and selects. Components add to it only where they own a size the
+global rule can't express — the pane switcher takes the full 44px (it is the app's
+primary navigation, driven by a thumb at the far end of its reach), the series
+list's icon buttons and drag handle go to 32 square, the theme toggle to 72×36,
+the picker's close button to 36 square, and the Add-series panel's own four
+shapes are listed below.
+
+**A pill, a summary line and a sort control are not `.btn`, and the first pass
+missed all three.** The panel's chrome had four targets under the floor because
+none of them carries the class the floor is written against: the repository chips
+at 30px, the folded load row's summary line at 30, the time-range `<select>` at
+29, and the card list's sort `<select>` at 22 with a 25×36 direction button
+beside it. Each is now in AddSeriesPicker's own coarse block. Three of them are
+worth knowing about beyond the number:
+
+- **A floor on a checkbox does not float the pill it is in.** The chips' 4px of
+  padding was sized around a 13px checkbox; once the global rule grew the box to
+  20px the pill had collapsed onto it — 30px tall, the checkbox touching both
+  edges of a 999px radius. The padding is what makes it read as a pill again, and
+  it is *vertical* padding: 12px horizontal was tried and cost a line, because
+  `mozilla-beta` and `try` then came to 336px against 334px of card and the four
+  chips took four lines on a phone instead of three.
+- **The sort control was 12px because it was sized for a mouse, in a layout only
+  a phone gets.** It is rendered for the card layout alone, and its padding and
+  font-size were chosen to fit four things on the status row. On touch that is
+  both an unhittable target *and* the page-zoom-on-focus bug the 16px rule exists
+  to avoid — a scoped selector outranks that rule, so it had quietly opted out of
+  it. Raising it to 16px cost 23px of width, which the status row did not have:
+  the decorative `sort` word goes at `CONTROL_BLOCK_NARROW` (it is `aria-hidden`,
+  and the select carries `aria-label` and `title`), and the row's gap and inset
+  come down. Without those two the row wrapped, and a wrap there is 44px of list.
+- **`.control-toggle` is 32 rather than 36**, matching `.btn-compact`: a switch
+  beside a control is secondary to it, and the pair then reads as one column of
+  targets. A/B'd with `tools/visual/toggle-floor-header.mjs` — it costs the graph
+  header 0px at a landscape phone, an iPad and a touchscreen laptop, and 12px on
+  a 390px phone, where the two switches wrap to a line of their own.
+
+Beyond the chrome, the card list's disclosure caret goes to 28×32 on touch: a
+20×20 target 6px from a button that puts a series on the graph is a mis-tap with a
+visible consequence, the height is free because the card's head line is already as
+tall as the `.btn-compact` in it, and the width costs 8px of the suite name. The
+attribute badges stay at 19px, which is the one thing here that is *not* a matter
+of adding a floor: they are two lines inside `CARD_ROW_HEIGHT`, and every row in
+the flat list has to be exactly that tall.
 
 Four things about this that are not obvious:
 
@@ -1713,11 +1779,20 @@ Four things about this that are not obvious:
   touchscreen laptop at 1400px needs the floor and a 400px window on a desktop
   does not. Every other query in this file is a *container* query about layout,
   which is a different question with a different answer.
-- **A media query adds no specificity.** A `@media (pointer: coarse)` block
-  placed *above* the rule it means to override loses to it — the later
-  declaration of the same property wins at equal specificity. This bit twice in
-  one pass, and both times the symptom was a rule that was obviously present and
-  did nothing. Coarse blocks go last.
+- **A media query adds no specificity, and neither does a container query.** A
+  `@media (pointer: coarse)` block placed *above* the rule it means to override
+  loses to it — the later declaration of the same property wins at equal
+  specificity. This bit twice in one pass, and twice more in the next, that time
+  in `@container` blocks: `.control-aside` went on stacking on a landscape phone
+  and the picker's status row went on wrapping at 375px, both because the
+  override was written where the *narrow* rules already lived rather than after
+  the declaration it was fighting. Every symptom is the same — a rule that is
+  obviously present and does nothing. **Both kinds of query go last.** Where that
+  means splitting a narrow block in two, split it and say so at both halves;
+  app.css's `.control-aside` and AddSeriesPicker's `.status` are the two doing it.
+  It is also worth checking that a narrow override *can* fire at all: the panel
+  had a `.bulk { min-width: 0 }` under 560px for a button only rendered above
+  600.
 - **A scoped `font: inherit` beats a global `input[type='text']`.** Svelte adds
   its own class to component selectors, so `.filter-text` is `(0,2,0)` against
   the global rule's `(0,1,1)`. The 16px override for the filter box therefore has

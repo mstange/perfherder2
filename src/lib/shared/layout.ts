@@ -84,29 +84,43 @@ export const CONTROL_BLOCK_NARROW = 560;
 /**
  * What the panel spends above its list, with the loading group open, at a given
  * panel *content* width — so the panel's own 16px padding is already outside
- * these numbers. Measured with `tools/visual/picker-chrome-cost.mjs`:
+ * these numbers. Measured with `tools/visual/picker-chrome-cost.mjs`, at **both
+ * pointer types**, because the touch floor in app.css is worth ~50px of this
+ * block and these widths are overwhelmingly phones:
  *
- * | content width | cost |
- * | --- | --- |
- * | 358 | 438 |
- * | 416–556 | 402 |
- * | 564–668 | ~362 |
- * | 756 | 291 |
- * | 1096 | 237 |
+ * | content width | coarse | fine | chips |
+ * | --- | --- | --- | --- |
+ * | 358 | 482 | 422 | 3 lines |
+ * | 416–556 | 402 | 361 | 2 |
+ * | 564–668 | 445 | 396 | 4 — see below |
+ * | 756 | 359 | 323 | 2 |
+ * | 1096 | 299 | 269 | 1 |
  *
- * Three tiers rather than a fit through those points, because what the cost
- * really tracks is how many lines the repository chips wrap to — three, two, one
- * — which is a step. Each tier takes the *largest* cost in its band, so the
- * estimate errs towards folding, which is the recoverable direction: the fold is
- * one tap from being undone and a squeezed list is not.
+ * Bands rather than a fit through those points, because what the cost really
+ * tracks is how many lines the repository chips wrap to — and that is a step.
+ * Each band takes the *largest* cost in it, **coarse included**, so the estimate
+ * errs towards folding twice over: for a mouse on a narrow window, and for a
+ * panel whose chips happen to wrap one line short of its band's worst case. That
+ * is the recoverable direction — the fold is one tap from being undone and a
+ * squeezed list is not.
+ *
+ * **The cost is not monotonic in the width, which is why there are four bands
+ * and not three.** At `CONTROL_BLOCK_NARROW` the label rail and the aside column
+ * come back, and between them they take enough width off the chips to cost a
+ * line that a 528px panel with no rails does not pay — so 564 is dearer than 556.
+ * Folding one band over the two of them charges a docked 900px window the 564px
+ * case's 445, which is 43px it does not spend, and 43px there is the difference
+ * between five card rows and a fold. The boundary is `CONTROL_BLOCK_NARROW`
+ * itself rather than a number near it, because that threshold *is* the cause.
  */
 export function pickerChromeCost(contentWidth: number): number {
-  // The boundaries are where the chips were *measured* to rewrap — 358 takes
-  // three lines, 416 takes two, 1096 takes one — rather than round numbers near
-  // them, so a panel just inside a band is not charged the cheaper tier.
-  if (contentWidth < 416) return 438;
-  if (contentWidth < 700) return 402;
-  return 291;
+  // The other boundaries are where the chips were *measured* to rewrap — 358
+  // takes three lines, 416 takes two, 1096 takes one — rather than round numbers
+  // near them, so a panel just inside a band is not charged the cheaper tier.
+  if (contentWidth < 416) return 482;
+  if (contentWidth < CONTROL_BLOCK_NARROW) return 402;
+  if (contentWidth < 700) return 445;
+  return 359;
 }
 
 /**
