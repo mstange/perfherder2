@@ -809,7 +809,7 @@ alerted point is a cloud and the halo would have to pick one arbitrary member of
 it. Instead the marker belongs to the pixel column: a triangle at the top of the
 plot — down for a regression, up for an improvement, filled red or green and
 outlined in the series color — over a faint full-height guide. Light enough that
-it doesn't need a toggle. Detail graph only: the overview is 100px tall and may
+it doesn't need a toggle. Detail graph only: the overview is 84px tall and may
 hold a year of pushes.
 
 **Markers that collide stack into rows** rather than overlapping, packed by
@@ -819,7 +819,7 @@ week should not turn the top of the plot into a wall of triangles. Nudging them
 sideways was the alternative and it lies about which column a marker means;
 stacking doesn't. Two alerts fourteen hours apart (speedometer3's 2026-06-02
 regression and improvement, about 5px at a 90-day range against an 8px triangle)
-used to draw as one blob, and `hitTestAlerts` could tell them apart only by
+used to draw as one blob, and `hitTestAlertSlots` could tell them apart only by
 whichever column was nearer — so one of the two was effectively unreachable.
 Now the row answers, and each has a hit band that stops where the next row
 begins. The single-row case, which is nearly all of them, keeps the 16px band
@@ -862,7 +862,7 @@ comparison card is those two pushes and nothing else. On alert #51605 that is
 +121.43% against +195%. Each card says which it is; the Alert card's line used
 to read "against the previous analysed push", which described neither.
 
-**Hit-testing.** `chart.ts::hitTestAlerts` owns the triangle's dimensions as
+**Hit-testing.** `annotations.ts::hitTestAlertSlots` owns the triangle's dimensions as
 well, so the draw loop and the hit test can't drift — the same reason
 `jitterOffsetPx` is shared. The target is widened to 13×16 around the ink's
 8×7, and confined to a band across the top of the plot: the guide runs the full
@@ -1171,8 +1171,10 @@ the five worth knowing here:
   eight pushes — ten minutes — off the real step, because holding that one push
   out of the pre-step segment bought more variance than putting it in the
   post-step one cost. The notch was drawn early, the reported delta understated
-  the step (−3.4% against −4.7%, pushes still at the old level sitting in the
-  "after" pool), and a click pinned the wrong pair of builds. Cliff's delta over
+  the step, and a click pinned the wrong pair of builds. (The two deltas are
+  recorded beside the code, in changes.ts's note on `relocateBoundary`. Stated
+  once: this sentence and that one had already drifted to different figures.)
+  Cliff's delta over
   the same window puts the boundary back on the step; the variance cost, re-run
   inside the window, picks the outlier all over again. δ rather than |z| because a
   z is standardized by a null deviation that grows with `n1 · n2` and so prefers

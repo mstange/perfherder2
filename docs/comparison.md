@@ -280,7 +280,7 @@ Layout, top to bottom, in one canvas:
 - **Both sides share one x domain and one KDE grid.** Two curves drawn on
   separate domains cannot be compared by eye, which is the entire point.
 - **That domain is anchored to the selection, not fitted to the pair on screen**
-  (`distribution.ts::stableAxis` → `AppState.selectionChart` →
+  (`distribution.ts::stableScales` → `AppState.selectionChart` →
   `buildDistribution`'s `axis` argument). The pane redraws on every hover, and
   fitting the axis to the two pools meant the *selected* side — the one thing the
   reader is holding still — moved under the pointer on every dot. Measured over one
@@ -578,8 +578,9 @@ Not pure:
   lookups behind it.
 - `ComparisonSection.svelte` — the comparison card, in all three of its
   states (compared, marked-here, and the hint that says the gesture exists).
-- `DetailsPane.svelte` — the push distribution, and everything else in the
-  pane.
+- `DetailsPane.svelte` — the numbers for the selected push, and everything
+  else in the pane. (Not the push distribution; that moved into
+  `ComparisonSection` — see "Both sides share one x domain" above.)
 
 Open items — a bootstrap CI, per-run shading inside a push pool, comparing more
 than two points — live in [graphs-todo.md](graphs-todo.md).

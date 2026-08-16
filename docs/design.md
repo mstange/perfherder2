@@ -68,8 +68,9 @@ architecture breaks.**
 
 ```
 src/lib/
-  shared/   http, links, chart, layout, stats, theme(+.svelte, ThemeToggle),
-            timeRange, tooltip(+State.svelte, Tooltip)
+  shared/   http, links, chart, layout, stats, pointer, theme(+.svelte,
+            ThemeToggle), timeRange, tooltip(+State.svelte, Tooltip),
+            ChevronIcon, CrossIcon
   picker/   the Add-series panel: signaturesApi, series, pickerOptions, filter,
             activity(+Api), pickerState.svelte, AddSeriesPicker, FilterInput
   graphs/   the graphs view and its two side panes: graphApi, graphData,
@@ -188,9 +189,11 @@ don't round-trip through the parent on every keystroke.
 ```
 User controls                              Fetch state
 ─────────────                              ───────────
-selectedRepos     ─┐          seriesCache: Map<key, Series[]>
-timeRangeSeconds  ─┼→ $effect ─→ loadRepo() per missing key
-includeSubtests   ─┘             key = "repo|subtests|interval"
+selectedRepos      ─┐         seriesCache: Map<key, Series[]>
+timeRangeSeconds   ─┼→ $effect ─→ loadRepo() per missing key
+needSubtestsFetch  ─┘            key = "repo|subtests|interval"
+  (derived from matchSubtests
+   or any manual expansion)
 
 Rendering pipeline
 ──────────────────
@@ -2227,24 +2230,31 @@ window `[startIndex, endIndex)` — driven by the `.table-wrap` scroller's
 `scrollTop` and `clientHeight`. Two spacer `<tr>` elements before and
 after the visible window occupy the space the un-rendered rows would.
 
-Row heights are **exact**, not estimated. The JS-side `ROW_HEIGHT`
-constant is exported to CSS as `--row-height` on the picker root, and
-every `tbody td` sets `height: var(--row-height); box-sizing: border-box;
-padding-block: 0; vertical-align: middle`. That means:
+Row heights are **exact**, not estimated. There are two of them, because
+there are two row layouts — `TABLE_ROW_HEIGHT` and `CARD_ROW_HEIGHT`, see
+"A panel a phone wide lists cards, not columns" — and the derived
+`rowHeight` is whichever is in effect. It is exported to CSS as
+`--row-height` on the picker root, and both layouts use it as an explicit
+height: `tbody td` sets `height: var(--row-height); box-sizing:
+border-box; padding-block: 0; vertical-align: middle`, and `.card-row`
+takes the same height. That means:
 
-- The JS constant and the CSS row height can't drift apart — they're the
+- The JS value and the CSS row height can't drift apart — they're the
   same value, propagated from JS via `style:--row-height`.
 - Content is vertically centered inside a fixed-size box, so height
   doesn't depend on padding + text metrics coincidentally landing at the
   right value. Change the font, the badge padding, the border, whatever
   — the row is still exactly one `--row-height` tall.
-- `scrollTop / ROW_HEIGHT` is an accurate index and `startIndex *
-  ROW_HEIGHT` is where the first rendered row actually sits — no
+- `scrollTop / rowHeight` is an accurate index and `startIndex *
+  rowHeight` is where the first rendered row actually sits — no
   vertical drift as you scroll.
 
-If you need to change the row height, update the `ROW_HEIGHT` constant in
+If you need to change a row height, update `TABLE_ROW_HEIGHT` or
+`CARD_ROW_HEIGHT` in
 [AddSeriesPicker.svelte](../src/lib/picker/AddSeriesPicker.svelte); the CSS
-follows automatically.
+follows automatically. Whatever you add to a row has to fit the height its
+layout declares — a card that grows a third line needs `CARD_ROW_HEIGHT`
+raised with it, or the virtualizer's arithmetic stops matching the layout.
 
 Column widths are also pinned. A `<colgroup>` above the `<thead>` gives
 each column a percentage width, and `table { table-layout: fixed }`
@@ -2430,8 +2440,9 @@ these strings for display — you'll get bitten by edge cases.**
   trigger if we hit perf issues, and profile before/after.
 - **DetailsPane.svelte is part-way split, and the rest is optional.** It was
   ~1200 lines; the comparison card is now
-  [ComparisonSection.svelte](../src/lib/graphs/ComparisonSection.svelte) and
-  the pane is ~740.
+  [ComparisonSection.svelte](../src/lib/graphs/ComparisonSection.svelte), which
+  is ~780, and the pane ~1000. (It was ~740 at the split and has grown since,
+  which is the honest answer to "was that enough of a split".)
 
   What unblocked it was giving the sections' shared text styles one home —
   [detailsPane.css](../src/lib/graphs/detailsPane.css) — because Svelte scopes

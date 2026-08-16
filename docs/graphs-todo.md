@@ -258,15 +258,6 @@ Living checklist. Update in the same commit as the work it describes.
 
 ## Next
 
-### The app on a phone
-
-Surveyed in a 390×844 touch viewport, and at 375×667, 844×390, 915×412 and
-768×1024, with `tools/visual/mobile-review*.mjs`. Every number below is measured
-rather than estimated. The five items are meant to land in order: the first two
-are independent and cheap, the middle two are the picker and want to land
-together, and the sweep goes last so it is checked once against the final
-arrangements.
-
 - [ ] **File the treeherder bug for `/performance/alertsummary/<id>/`.** Its
       batched queries were only ever wired into `list()`, so the detail route does
       several sequential queries per alert and costs ~30 ms each: 2.7 s at 94

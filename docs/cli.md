@@ -716,7 +716,6 @@ which push a step is on, `suggest.ts` for a search that matched nothing, and
 Dependencies run impure → pure, so everything that decides what an answer *is*
 is testable without a network.
 
-- [reports.ts](../src/cli/reports.ts) also owns `buildStepReport`; see above.
 - [args.ts](../src/cli/args.ts) — **pure**. argv, durations, ranges, series
   references, search terms. Reuses `filter.ts::parseChip` and
   `pickerOptions.ts::TIME_RANGES`, so a chip means the same thing here as in the
@@ -741,7 +740,8 @@ is testable without a network.
 - [load.ts](../src/cli/load.ts) — fetch orchestration. The rules about when to
   ask, and what a failure means, are copied from `appState.svelte.ts`; where
   they differ the reason is written beside them.
-- [main.ts](../src/cli/main.ts) — dispatch, the six commands, help, errors.
+- [main.ts](../src/cli/main.ts) — dispatch, the commands, help, errors. (A count
+  used to stand here and was wrong twice; `COMMANDS` is the list.)
 
 Built by [vite.cli.config.ts](../vite.cli.config.ts) into one dependency-free
 ES module, and type-checked by [tsconfig.cli.json](../tsconfig.cli.json) — which
