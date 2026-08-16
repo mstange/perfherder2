@@ -115,6 +115,17 @@ function fetchFailureLines(series: SeriesHeader): string[] {
   return [`! could not be fetched: ${series.error}`, '  (this row is missing, not empty)'];
 }
 
+// Which column goes blank differs by table — `changes` names its alert column
+// SOURCE, `locate` names it PERFHERDER — so the column is the parameter and the
+// sentence is written once. It said ALERT in one of the two callers, a column
+// neither table has.
+function alertsUnavailableLines(column: string): string[] {
+  return [
+    `! Perfherder's alerts could not be fetched, so the ${column} column is blank`,
+    '  everywhere rather than empty where there is no alert.',
+  ];
+}
+
 // Only ever printed for a series that came back. `placeholderMeta` fills the
 // unit with '' and the direction with a default, and "no unit · lower is
 // better" reads as a fact about the metric rather than as the absence of one.
@@ -549,8 +560,7 @@ export function renderLocate(report: LocateReport): string[] {
     }
   } else if (!report.alertsLoaded) {
     out.push('');
-    out.push("! Perfherder's alerts could not be fetched, so the PERFHERDER column is blank");
-    out.push('  everywhere rather than empty where there is no alert.');
+    out.push(...alertsUnavailableLines('PERFHERDER'));
   }
   out.push('');
   out.push(report.url);
@@ -726,8 +736,7 @@ export function renderChanges(report: ChangesReport, legend = true, brief = fals
     return out;
   }
   if (!report.alertsLoaded) {
-    out.push("! Perfherder's alerts could not be fetched, so the ALERT column is blank");
-    out.push('  everywhere rather than empty where there is no alert.');
+    out.push(...alertsUnavailableLines('SOURCE'));
     out.push('');
   }
 
