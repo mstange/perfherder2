@@ -61,6 +61,34 @@
     return () => window.removeEventListener('resize', measure);
   });
 
+  // The height the app lays itself out in, when that is not the window's.
+  //
+  // `100dvh` is the window, and the window is not what an on-screen keyboard
+  // takes space from: iOS leaves the layout viewport alone and slides a smaller
+  // *visual* viewport around inside it, so a full-height shell keeps its full
+  // height and the keyboard simply covers the bottom of it — which, with the
+  // Add-series panel open, is the list the panel exists to show. Measured on a
+  // 390×844 viewport: a 336px keyboard left the picker's list 2px tall.
+  // `interactive-widget` in index.html asks the browser to do this for us and
+  // Chrome obliges; this is for the ones that don't.
+  //
+  // **Gated on the scale, because pinch-zoom shrinks the visual viewport too.**
+  // Zooming in on a graph would otherwise re-lay-out the app to the magnified
+  // region, which is a rearrangement nobody asked for. A keyboard leaves the
+  // scale at 1, so that is the tell.
+  let appHeight = $state<number | null>(null);
+  $effect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const measure = () => {
+      appHeight = vv.scale > 1.01 ? null : Math.round(vv.height);
+    };
+    measure();
+    vv.addEventListener('resize', measure);
+    return () => vv.removeEventListener('resize', measure);
+  });
+  const heightStyle = $derived(appHeight === null ? null : `${appHeight}px`);
+
   // The panes sharing one cell in this arrangement, and which of them has it.
   // Deliberately not in the URL — it answers "what am I looking at on this
   // screen", not "what am I looking at", and a shared link that forced a
@@ -126,7 +154,11 @@
      also where `inert` goes: it is a DOM-tree property and grid placement is a
      layout one, and giving each pane its own box lets the two be set
      independently, which is what the narrow case needs. -->
-<main data-layout={layout} data-pane={panes.length > 0 ? activePane : null}>
+<main
+  data-layout={layout}
+  data-pane={panes.length > 0 ? activePane : null}
+  style:height={heightStyle}
+>
   {#if panes.length > 0}
     <!-- Some panes can't be beside each other here, so they take turns and this
          says whose turn it is. A segmented group because it is an exclusive
@@ -187,7 +219,7 @@
        closing it would be a trap rather than an escape hatch. Done, the close
        button and Escape are the ways out. The dim is still here — it's what
        says the graph behind is out of play while the list beside it isn't. -->
-  <div class="overlay" data-layout={layout}>
+  <div class="overlay" data-layout={layout} style:height={heightStyle}>
     <div class="overlay-panel" role="dialog" aria-label="Add series">
       <AddSeriesPicker
         onadd={handleAdd}
@@ -353,7 +385,12 @@
      whole and the sticky table header scrolls out of view with it. */
   .overlay {
     position: fixed;
-    inset: 0 0 0 var(--sidebar-width);
+    /* `bottom: auto` and a height, rather than pinning both edges: the height is
+       what `appHeight` overrides inline when a keyboard has taken the bottom of
+       the window, and an over-constrained box (top + bottom + height) resolves by
+       silently dropping one of them. Say which. */
+    inset: 0 0 auto var(--sidebar-width);
+    height: 100dvh;
     /* Docking to the right of the list only means something while the list is
        a column. At narrow widths it is one pane of three, so the panel takes
        the window — which is what it was before it learned to dock, and the
@@ -369,7 +406,7 @@
     z-index: 10;
   }
   .overlay[data-layout='narrow'] {
-    inset: 0;
+    inset: 0 0 auto 0;
     padding: 0;
   }
   .overlay[data-layout='narrow'] .overlay-panel {

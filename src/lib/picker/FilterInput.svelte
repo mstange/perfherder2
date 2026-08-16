@@ -7,6 +7,7 @@
     type FilterChip,
   } from './filter';
   import CrossIcon from '../shared/CrossIcon.svelte';
+  import { mediaMatcher, shouldAutofocus } from '../shared/pointer';
 
   type Props = {
     filter: Filter;
@@ -197,12 +198,17 @@
 
   const chipClass = (field: string) => `chip-field chip-field-${field}`;
 
-  // Take focus on mount. This used to be the `autofocus` attribute, but that
-  // is unreliable when the input appears in a panel rather than on initial
-  // page load, and it needed an a11y suppression. Reading `inputEl` makes
-  // this run once when the binding lands.
+  // Take focus on mount, where that is a courtesy rather than a hijack. This
+  // used to be the `autofocus` attribute, but that is unreliable when the input
+  // appears in a panel rather than on initial page load, and it needed an a11y
+  // suppression. Reading `inputEl` makes this run once when the binding lands.
+  //
+  // The condition is `shouldAutofocus` in shared/pointer.ts, and it is there for
+  // the reason recorded beside it: on a phone this line was opening the on-screen
+  // keyboard over the list the panel exists to show, before the user had decided
+  // whether they were typing or scrolling.
   $effect(() => {
-    inputEl?.focus();
+    if (shouldAutofocus(mediaMatcher)) inputEl?.focus();
   });
 </script>
 

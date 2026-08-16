@@ -327,3 +327,27 @@ export function pickCachedForRepo(
     cache.get(cacheKey(repo, false, intervalSeconds))
   );
 }
+
+/**
+ * The load row in one line, for the panel too narrow to keep it open: which
+ * repositories are being fetched, and over what window.
+ *
+ * Two repositories are named and three or more are counted. The names are what
+ * the reader wants — "autoland, mozilla-central" is the answer to "am I looking
+ * at the right thing" — but four of them do not fit a phone's width beside the
+ * time range, and an ellipsis in the middle of a list of names says less than
+ * the count does. `repos` arrives in the order the chips are drawn in, so the
+ * line doesn't reshuffle as one is checked.
+ *
+ * Nothing selected is a state the panel is already loud about (the list says "No
+ * repositories selected — check one above"), so this only has to not lie.
+ */
+export function loadSummary(repos: readonly string[], rangeLabel: string): string {
+  const which =
+    repos.length === 0
+      ? 'no repositories'
+      : repos.length <= 2
+        ? repos.join(', ')
+        : `${repos.length} repositories`;
+  return `${which} · last ${rangeLabel}`;
+}

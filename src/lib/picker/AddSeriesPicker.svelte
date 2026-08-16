@@ -6,9 +6,11 @@ import { TIME_RANGES } from './pickerOptions';
   import {
     chipToString,
     graphContextState,
+    loadSummary,
     type FilterField,
     type SortColumn,
   } from './filter';
+  import { CONTROL_BLOCK_NARROW } from '../shared/layout';
   import { PickerState } from './pickerState.svelte';
   import {
     EMPTY_GRAPH_CONTEXT,
@@ -86,8 +88,13 @@ import { TIME_RANGES } from './pickerOptions';
 
   // Read three times by the status row's bulk button. Here rather than an
   // `{@const}` in the markup: that tag has to be the immediate child of a
-  // block, and the button sits in a plain <div>.
+  // block, and the button sits in a plain <div>. Same for the two counts beside
+  // it, which are read twice each — once per wording.
   const bulk = $derived(picker.bulkAction);
+  const matchingLabel = $derived(picker.filteredParents.length.toLocaleString());
+  const loadedLabel = $derived(
+    picker.combined.filter((r) => !r.isSubtest).length.toLocaleString(),
+  );
 
   // "Derive filter": what it can do, and what it says it will do. The label
   // can't say what it derives *from*, so every string here does, and each one
@@ -114,6 +121,37 @@ import { TIME_RANGES } from './pickerOptions';
           .join(' · ')}`;
     }
   });
+
+  // ---- The panel too narrow for its own chrome --------------------------
+  // On a 390px phone the header, the control card and the status row spent 461
+  // of 844px before a single row was drawn — eight rows of list, five when a
+  // derived filter's chips stacked one per line, and none at all with the
+  // keyboard up. The filter box and the list are what the panel is *for*, so
+  // everything else gives way to them here: the hint paragraph goes (a CSS rule
+  // below), the counts shorten, and the load row — the repositories and the time
+  // range, which are set once and then left alone — folds behind a line that
+  // says what it is set to.
+  //
+  // Measured in JS rather than left to the container query that already drops
+  // the block's label rail, because what happens here is not only a matter of
+  // style: the summary line is a control that either exists or doesn't, and it
+  // carries the `aria-expanded` that says so. `CONTROL_BLOCK_NARROW` is the one
+  // number both halves read.
+  let panelEl = $state<HTMLElement | null>(null);
+  let panelWidth = $state(Infinity);
+  $effect(() => {
+    if (!panelEl) return;
+    const ro = new ResizeObserver(([entry]) => {
+      panelWidth = entry.contentRect.width;
+    });
+    ro.observe(panelEl);
+    return () => ro.disconnect();
+  });
+  const chromeFolded = $derived(panelWidth < CONTROL_BLOCK_NARROW);
+  // Transient: which repositories to fetch is not a question anyone answers
+  // twice in a session, so this starts closed and nothing tries to remember it.
+  let loadOpen = $state(false);
+  const loadShown = $derived(!chromeFolded || loadOpen);
 
   // ---- Virtual scrolling ------------------------------------------------
   // Broad filters can produce 25k rows; even one expanded parent adds a few
@@ -270,7 +308,7 @@ import { TIME_RANGES } from './pickerOptions';
   }}
 />
 
-<div class="picker" style:--row-height="{ROW_HEIGHT}px">
+<div class="picker" style:--row-height="{ROW_HEIGHT}px" bind:this={panelEl}>
   <header>
     <div class="header-text">
       <h2>Add series</h2>
@@ -343,8 +381,26 @@ import { TIME_RANGES } from './pickerOptions';
       </label>
     </div>
 
-    <span class="control-label">Load from</span>
-    <div class="chips">
+    {#if chromeFolded}
+      <!-- The load row's one-line stand-in. It states the two things it folded
+           away — which repositories, over what window — rather than saying
+           "Load from ▾" and making the reader open it to find out, which is the
+           tap folding it was meant to save. Same bargain as the graph header's
+           collapsed bar; see docs/graphs.md, "A pane too short for the bar". -->
+      <button
+        type="button"
+        class="load-summary"
+        aria-expanded={loadOpen}
+        aria-controls="picker-load-row"
+        onclick={() => (loadOpen = !loadOpen)}
+      >
+        <span>{loadSummary(picker.repoChips.filter((r) => picker.selectedRepos.has(r)), rangeLabel)}</span>
+        <span aria-hidden="true">{loadOpen ? '▴' : '▾'}</span>
+      </button>
+    {/if}
+
+    <span class="control-label" hidden={!loadShown}>Load from</span>
+    <div class="chips" id="picker-load-row" hidden={!loadShown}>
       {#each picker.repoChips as repo}
         {@const count = picker.countForRepoChip(repo)}
         <label class="chip" class:chip-on={picker.selectedRepos.has(repo)}>
@@ -363,7 +419,7 @@ import { TIME_RANGES } from './pickerOptions';
         </label>
       {/each}
     </div>
-    <div class="control-aside">
+    <div class="control-aside" hidden={!loadShown}>
       <!-- "last" completes the row's sentence — *load from* these repos, last
            14 days — rather than being a second label in the style of the rail's.
            It is decorative for that reason, and the select carries the real
@@ -389,15 +445,29 @@ import { TIME_RANGES } from './pickerOptions';
        are clicked — so the primary button just leaves, and Escape or the
        backdrop no longer throw away work the user thought they had done. -->
   <div class="status">
-    <span>
-      {picker.filteredParents.length.toLocaleString()} matching / {picker.combined.filter(
-        (r) => !r.isSubtest,
-      ).length.toLocaleString()} total
-    </span>
+    <!-- The same two numbers either way. Folded, they lose the words that name
+         them and keep them in a `title`: at a phone's width this row wrapped to
+         two lines, and the pair of counts is the part a reader recognises by
+         shape rather than by reading. -->
+    {#if chromeFolded}
+      <span title="{matchingLabel} matching of {loadedLabel} loaded"
+        >{matchingLabel} / {loadedLabel}</span
+      >
+    {:else}
+      <span>{matchingLabel} matching / {loadedLabel} total</span>
+    {/if}
     {#if picker.anyLoading}<span class="loading-note">Loading…</span>{/if}
-    <span class="plotted-count" class:muted={picker.plotted.size === 0}>
-      {picker.plotted.size} on the graph
-    </span>
+    <!-- Dropped when folded, which is the one thing on this row that gives way:
+         the counts say what the list is, and `Add all` and `Done` are the row's
+         two actions, so a running total is what is left to lose. At 390px the
+         four of them wrapped to a second line and cost 38px — a whole row of
+         list — and the feedback is not gone, since the row a tap acted on turns
+         into a tinted `Remove` with the series' own colour on it. -->
+    {#if !chromeFolded}
+      <span class="plotted-count" class:muted={picker.plotted.size === 0}>
+        {picker.plotted.size} on the graph
+      </span>
+    {/if}
     <!-- Right-aligned, and the count is in the label rather than a tooltip:
          "Add all 24,913" has to be able to talk the user out of it. Growing
          the label eats the gap to its left instead of shoving Done sideways. -->
@@ -802,6 +872,60 @@ import { TIME_RANGES } from './pickerOptions';
     padding: 0 3px;
     border-radius: 3px;
     font-size: 12px;
+  }
+  /* Everything this panel gives up when it is a phone wide. The threshold is
+     `CONTROL_BLOCK_NARROW`, which the script reads too — see the note there;
+     these are the parts that are only a matter of style.
+     - The hint is four lines and ~70px of a 844px screen, spent explaining
+       affordances (a badge filters, a caret expands) that a tap discovers in one
+       go. It stays where there is room, because on a desktop it costs nothing.
+     - The two reserved widths exist so a growing label can't shove `Done`
+       sideways; there is no slack to protect here, and 27ch of reserved count is
+       what made the row wrap to two lines in the first place. */
+  @container picker-panel (width < 560px) {
+    .hint {
+      display: none;
+    }
+    .bulk {
+      min-width: 0;
+    }
+  }
+  /* Hidden, not unmounted, so the summary's `aria-controls` points at something
+     that exists — and `[hidden]`'s UA rule is zero-specificity, so the class
+     rules on these three would otherwise win and the attribute would do nothing.
+     Same trap as the graph header's collapsed block. */
+  .control-label[hidden],
+  .chips[hidden],
+  .control-aside[hidden] {
+    display: none;
+  }
+  /* The folded load row's line. A button, because that is what it is, but it
+     reads as the text it replaced: full width so the chevron sits at the far
+     edge, and quiet enough that the filter box above it stays the loudest thing
+     in the card. */
+  .load-summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    width: 100%;
+    padding: 4px 8px;
+    background: var(--bg-canvas);
+    border: 1px solid var(--border-default);
+    border-radius: 6px;
+    font: inherit;
+    color: var(--fg-muted);
+    text-align: left;
+    cursor: pointer;
+  }
+  .load-summary:hover {
+    color: var(--fg-default);
+  }
+  .load-summary > span:first-child {
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
   }
   /* Two groups, one grid row each; the alignment is `.control-grid` in
      app.css, which the graph header shares. What's left here is this block's

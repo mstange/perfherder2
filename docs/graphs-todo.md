@@ -205,6 +205,17 @@ Living checklist. Update in the same commit as the work it describes.
   the selection survives, and the detail graph explains itself when the dots are
   off with no band on. See graphs.md, "Replicates".
 
+- The Add-series panel folds its loading group away below `CONTROL_BLOCK_NARROW`,
+  drops the hint and shortens the status row: 461px of chrome before the first row
+  becomes 244px, and the list goes from **8 rows to 14** on a 390×844 phone. See
+  design.md, "A panel a phone wide folds the loading group away"
+- The on-screen keyboard takes height from the app instead of covering it —
+  `shouldAutofocus` (+ test) so a touch device doesn't get a keyboard it never
+  asked for, `interactive-widget=resizes-content`, and `appHeight` from
+  `visualViewport` for iOS, which ignores it. The picker's list under a 336px
+  keyboard: **2px → 202px**. The iOS half is checked by shrinking the viewport
+  rather than on a device. See design.md, "The on-screen keyboard has to take
+  height from the app, not cover it"
 - The graph header collapses to one line — `Feb 10 – Aug 9 · run means`, plus a
   Controls toggle — where the pane is shorter than `GRAPH_MIN_HEIGHT`. 35px against
   114–188, which is a landscape phone's detail plot at 228px instead of 126px and a
@@ -238,29 +249,6 @@ rather than estimated. The five items are meant to land in order: the first two
 are independent and cheap, the middle two are the picker and want to land
 together, and the sweep goes last so it is checked once against the final
 arrangements.
-
-- [ ] **The Add-series panel spends 461 of 844px before it draws a row.** Measured
-      on a fresh open with nothing plotted: header + hint 105px, control card
-      299px, status row 57px (it wraps) → 321px of list, **8 rows**. Open it from a
-      two-series graph and the derived filter's six chips stack one per line, the
-      card grows to 411px and the list is down to **5 rows**. Mocked in the
-      browser, dropping the hint, folding the `LOAD FROM` row behind a summary line
-      (`autoland, mozilla-central · last 14 days ▾`) and putting the status row on
-      one line takes the list to **604px / 16 rows**, and to **268px / 7 rows** with
-      a keyboard up. The filter box stays out in the open: it is the control this
-      panel is for.
-
-- [ ] **The keyboard covers the list, and nothing accounts for it.**
-      `FilterInput` focuses its input on mount unconditionally, so on a phone the
-      keyboard opens before the user has decided to type. Nothing reads
-      `visualViewport`, and the shell is sized in `dvh` inside a `position: fixed`
-      overlay — which is exactly what iOS does *not* shrink for a keyboard, so it
-      covers the bottom of a pane that cannot scroll. Measured with the viewport
-      shortened by a 336px keyboard, i.e. the best case if the app followed it at
-      all: the list gets **2px**. Three parts — gate the autofocus on
-      `(pointer: fine)`, add `interactive-widget=resizes-content` to the viewport
-      meta for the browsers that honour it, and drive the shell's height from
-      `visualViewport` for iOS, which doesn't.
 
 - [ ] **The picker's list is an 832px table in a 390px window.** `min-width: 64em`,
       so a phone shows Add / Suite-Test / Repo and half of Platform, with

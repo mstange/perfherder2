@@ -3,7 +3,17 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- `interactive-widget=resizes-content` asks the browser to take the
+         on-screen keyboard's height out of the layout viewport, so a shell laid
+         out to the window's height shrinks instead of being covered. The app is
+         one non-scrolling screen with its own scrollers inside, so there is
+         nothing for the default (`resizes-visual`, which slides a viewport the
+         page can't see) to reveal. Not honoured by every browser — see
+         `appHeight` in App.svelte for the half that covers the rest. -->
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, interactive-widget=resizes-content"
+    />
     <!-- Replaced by App.svelte with something that names the plotted series;
          this is only what shows before the app mounts. -->
     <title>Perfherder Graphs</title>

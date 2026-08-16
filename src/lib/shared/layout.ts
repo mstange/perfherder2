@@ -57,6 +57,17 @@ export const DETAILS_MIN_ROW = 200;
 export const DETAILS_ROW_FRACTION = 0.4;
 export const DETAILS_ROW_MAX = 320;
 
+/**
+ * The width at which a control block gives up its label rail and becomes a
+ * single column. **Must match the `@container (width < 560px)` rule in
+ * app.css**, the way the two constants above must match their custom properties:
+ * a container query's condition cannot be a custom property, so the number is
+ * written twice and this is the copy the picker reads to decide whether to fold
+ * its load row away as well. Same reasoning as the rail: below this the block
+ * costs more than it says.
+ */
+export const CONTROL_BLOCK_NARROW = 560;
+
 /** Below this the details pane cannot be a column. */
 export const THREE_COLUMN_MIN = SIDEBAR_WIDTH + GRAPH_MIN_WIDTH + DETAILS_WIDTH;
 /** Below this the series list cannot be a column either. */

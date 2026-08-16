@@ -29,7 +29,7 @@ change is wrong for a reason the code doesn't show:
 | A URL parameter | three sections that have to agree: "Architecture" below (`urlState.ts` owns the whole schema), graphs.md "URL state", comparison.md "URL state" |
 | `FilterInput.svelte`, or anything holding filter state | "The one component that owns state" — this has bitten us twice |
 | When the picker's filter gets written for the user | "Opening the picker prefills its filter" and "Deriving the filter, and clearing it" — deciding *when* to overwrite a filter by inspecting it has been wrong once already; the rule is now one `isFilterActive` check plus a button |
-| Adding a control above the picker's list, or to the graph header | "The control block is two groups: what loads, and what shows" — which row it goes on follows from whether it fetches, and the last arrangement that was decided by eye put two controls in each other's group. Both blocks share `.control-*` in `src/app.css`; the header's own departures are in graphs.md, "The header is two groups" |
+| Adding a control above the picker's list, or to the graph header | "The control block is two groups: what loads, and what shows" (and "A panel a phone wide folds the loading group away" — which group a control joins decides whether it survives a phone) — which row it goes on follows from whether it fetches, and the last arrangement that was decided by eye put two controls in each other's group. Both blocks share `.control-*` in `src/app.css`; the header's own departures are in graphs.md, "The header is two groups" |
 | Markup with two adjacent badges | "Whitespace between adjacent badges (Svelte gotcha)" |
 | A color, anywhere | "Theming: one resolved attribute, one exception" — there are exactly two, and neither is new |
 | A button | "One button, defined once" |
@@ -37,6 +37,7 @@ change is wrong for a reason the code doesn't show:
 | A hover explanation | "Tooltips: for what the canvas paints". Ordinary controls use `title`; the drawn box is for the marks in the graph's canvas, which have no element to hang one on |
 | A percentage or a delta in the details pane | graphs.md, "The three change cards say it the same way" — one component draws all three headlines, and the sign is the measurement's, never the verdict's |
 | Anything that renders before its data arrives | "Layout stability" |
+| A text field that takes focus, or anything sized to the window's height | "The on-screen keyboard has to take height from the app, not cover it" — `100dvh` is not what a keyboard shrinks, and an autofocus is a keyboard nobody asked for |
 | Where a pane sits, how wide it is, or a border between two panes | "The shell has four arrangements, and the graph keeps its size" — there are four, the thresholds are computed from the pane sizes in `shared/layout.ts` rather than chosen (*both* axes: a pane that becomes a row needs height the way a column needs width), and a pane that draws its own border draws a doubled one as soon as the arrangement moves it |
 | A fetch, or a new endpoint | "Validating API responses" and [api-assumptions.md](api-assumptions.md); plus "Cache key" if the result is cached, and "The picker's caches live at module scope" if it is the picker doing the fetching — a cache on `PickerState` does not survive the panel closing |
 | `SeriesMeta`, or anything that reads a series' metadata | "Two endpoints describe a series" below. It arrives from one of two responses, `source` says which, and two of its fields are answerable by only one of them — api-assumptions.md, "Two null fields mean different things depending on `source`" |
@@ -936,6 +937,86 @@ round.
   of neither). That wrapper repeats `flex: 1; min-height: 0`, which every
   level of the chain has to carry; see "The Add-series dialog has exactly
   one scroller".
+
+#### A panel a phone wide folds the loading group away
+
+The block is two groups, and on a 390px panel it was 299px tall before a chip
+had been added to it — with the header and the status row, 461 of an 844px screen
+spent before the first row of the list. So below `CONTROL_BLOCK_NARROW`, the same
+560px at which the label rail goes, the `LOAD FROM` group folds behind one line
+that states it:
+
+```
+[ speedometer3 .................................... ]
+[Derive filter] [Clear filter]
+☐ Match inside subtests
+[ autoland, mozilla-central · last 14 days       ▾ ]
+```
+
+The list goes from 321px to 538px — 8 rows to 14 — and from nothing at all to 5
+rows with a keyboard up. Which group folds is not a matter of taste either:
+
+- **The filter group stays open, all of it.** It is what the panel is for, and
+  the two buttons and the subtest switch are all things a phone user reaches for
+  *while* searching. The loading group is set once and then left alone — and it
+  is the expensive one to draw, since four repository chips with their counts
+  take three lines at this width.
+- **The line says what it folded.** `loadSummary` in filter.ts, unit-tested:
+  two repositories are named, three or more are counted, and the time range
+  follows. A control that folds without saying what it is set to makes the reader
+  open it to find out, which is the tap folding it was meant to save. Same rule
+  as the graph header's collapsed bar (graphs.md, "A pane too short for the bar").
+- **The threshold is read from JS as well as from the container query**, because
+  the summary line is a control that either exists or doesn't and carries the
+  `aria-expanded` saying whether it is open. `CONTROL_BLOCK_NARROW` in layout.ts
+  is the one copy of the number, and it must match the `@container` rule in
+  app.css the way `SIDEBAR_WIDTH` must match `--sidebar-width` — a container
+  query's condition can't be a custom property.
+- **The folded group is hidden, not unmounted**, so `aria-controls` points at
+  something real. That needs an explicit `display: none` per element: `[hidden]`'s
+  UA rule is zero-specificity and every one of these carries a class that sets
+  `display`.
+- **The hint paragraph goes too**, and the status row's counts lose the words
+  that name them (`19 / 11,925`, with the wording in a `title`). The one thing
+  that gives way rather than shrinking is the *N* on the graph count: the row's
+  other three items are two actions and the pair of counts, and at 390px the four
+  of them wrapped to a second line and cost 38px, a whole row of list. What a tap
+  did is still visible on the row it acted on, which turns into a tinted `Remove`
+  carrying the series' colour.
+
+### The on-screen keyboard has to take height from the app, not cover it
+
+Three things, because no single one of them is enough:
+
+- **`FilterInput` only takes focus where the primary pointer is fine**
+  (`shouldAutofocus` in shared/pointer.ts). On a mouse it saves a click and costs
+  nothing. On a phone it summoned the keyboard over the list the panel exists to
+  show, before the user had decided whether they were typing or scrolling.
+- **`interactive-widget=resizes-content` in the viewport meta**, which asks the
+  browser to take the keyboard's height out of the *layout* viewport. The app is
+  one non-scrolling screen with its own scrollers inside it, so the default
+  (`resizes-visual`, which slides a viewport the page cannot see) has nothing to
+  reveal by scrolling.
+- **`appHeight` in App.svelte for the browsers that ignore it**, iOS Safari being
+  the one that matters: it leaves the layout viewport alone, so `100dvh` stays the
+  whole window, a `position: fixed` panel keeps its full height, and the keyboard
+  covers the bottom of a pane that cannot scroll. `visualViewport.height` is the
+  part actually on screen, and `main` and the overlay are sized from it.
+
+  **Gated on `visualViewport.scale`**, because pinch-zoom shrinks the visual
+  viewport too — following it there would re-lay-out the app to the magnified
+  region, which is a rearrangement nobody asked for. A keyboard leaves the scale
+  at 1.
+
+  The overlay carries `bottom: auto` plus a height for this, rather than pinning
+  both edges: top + bottom + height is over-constrained, and the browser resolves
+  it by dropping one of the three silently.
+
+Measured on a 390×844 viewport with a 336px keyboard: the picker's list was 2px
+tall, and is 202px — five rows — with the panel's chrome folded as above. **The
+iOS half of this is the one thing here not verified on the device it is for**;
+Chrome's emulation cannot produce a real keyboard, so it was checked by shrinking
+the viewport to what one would leave.
 
 ### Deriving the filter, and clearing it
 

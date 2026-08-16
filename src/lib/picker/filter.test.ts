@@ -12,6 +12,7 @@ import {
   groupChildrenByParent,
   hasChip,
   isFilterActive,
+  loadSummary,
   matchesRow,
   matchParentWithChildren,
   parseChip,
@@ -550,5 +551,22 @@ describe('pickCachedForRepo', () => {
       [cacheKey('autoland', false, interval), noSub],
     ]);
     expect(pickCachedForRepo(cache, 'autoland', 172800)).toBeUndefined();
+  });
+});
+
+describe('loadSummary', () => {
+  it('names one or two repositories', () => {
+    expect(loadSummary(['autoland'], '14 days')).toBe('autoland · last 14 days');
+    expect(loadSummary(['autoland', 'mozilla-central'], '30 days')).toBe(
+      'autoland, mozilla-central · last 30 days',
+    );
+  });
+
+  it('counts three or more, which would not fit beside the range', () => {
+    expect(loadSummary(['a', 'b', 'c'], '1 year')).toBe('3 repositories · last 1 year');
+  });
+
+  it('says so when nothing is selected, rather than reading as one repository', () => {
+    expect(loadSummary([], '14 days')).toBe('no repositories · last 14 days');
   });
 });
