@@ -579,6 +579,12 @@ const locate: Command = {
 
     const loaded = await loadSeriesOrError(refs[0], span);
     const { atMs, revision, revisionRepository } = await resolveSplit(at, refs);
+    // Guarded on `found`, where `step` runs the same check unguarded, and the
+    // difference is the shape of the two commands. `locate` is one series: if it
+    // does not exist, its "no such signature" row is the whole answer, and
+    // aborting over the range instead would answer a question the reader did not
+    // ask. `step` takes many, so one missing series is not a reason to withhold
+    // the others' rows, and the range is wrong for all of them at once.
     if (loaded.found && (atMs < span.start || atMs > span.end)) {
       throw new UsageError(
         `the point ${formatUtcDate(atMs)} is outside the range ` +
@@ -1053,7 +1059,8 @@ function topLevelHelp(): string[] {
     '  --verbose       print timing and cache statistics to stderr',
     '  --base <url>    the app to build links against ' +
       `(default ${DEFAULT_APP_BASE}, or $PERFHERDER2_BASE_URL)`,
-    '  --cache-dir <d> where to cache responses (default $XDG_CACHE_HOME/perfherder-cli)',
+    '  --cache-dir <d> where to cache responses',
+    '                  (default $PERFHERDER2_CACHE_DIR, else $XDG_CACHE_HOME/perfherder-cli)',
     '',
     'Ranges are given as --range 90d / 6mo / 1y / 36h, or as --from and --to with',
     `YYYY-MM-DD dates. The default is ${DEFAULT_RANGE_SECONDS / 86400} days, and every command prints the range it`,

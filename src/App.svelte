@@ -308,12 +308,6 @@
       'list pane';
   }
 
-  /* One pane at a time. All three slots share the cell and the inactive two are
-     taken out — `display: none` rather than `visibility` or a `hidden`
-     attribute, because it is also what takes them out of the tab order and the
-     accessibility tree, and the switcher is the only honest way to reach them.
-     The charts come back correctly sized: ScatterChart observes its wrapper, so
-     0×0 and back is a resize like any other. */
   /* One pane at a time, and the switcher is at the *bottom* here — the only
      arrangement where it is. It is the app's primary navigation on the device
      least able to reach the top of its own screen, and a bar along the bottom
@@ -340,7 +334,14 @@
   }
   /* One rule for both arrangements that switch, and it reads the slot's own
      attribute rather than naming panes: which slots are sharing a cell is
-     `switchedPanes`' answer, and it differs between the two. */
+     `switchedPanes`' answer, and it differs between the two — three slots in
+     `narrow`, two in `short`.
+
+     The inactive slots are taken out with `display: none` rather than
+     `visibility` or a `hidden` attribute, because it is also what takes them out
+     of the tab order and the accessibility tree, and the switcher is the only
+     honest way to reach them. The charts come back correctly sized: ScatterChart
+     observes its wrapper, so 0×0 and back is a resize like any other. */
   main[data-layout='short'] > .slot:not([data-active]),
   main[data-layout='narrow'] > .slot:not([data-active]) {
     display: none;

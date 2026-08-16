@@ -8,7 +8,7 @@
 // docs/comparison.md, "The inline pushlog".
 
 import { bugsInComment, splitCommitMessage } from '../shared/links';
-import { MAX_RANGE_PUSHES, type Push } from './graphApi';
+import { MAX_RANGE_PUSHES, MAX_REVISIONS_PER_PUSH, type Push } from './graphApi';
 
 export type Commit = {
   revision: string;
@@ -62,8 +62,8 @@ export function authorName(author: string): string {
 //     wrong on its own terms rather than merely inconsistent: the base push is
 //     the "before" side of the comparison, so listing its commit among the
 //     candidates blames it for a change it is the reference for.
-//   - **`revisions` is capped at 20 per push by the serializer**, while
-//     `revision_count` carries the real total. On autoland almost every push is
+//   - **`revisions` is capped at `MAX_REVISIONS_PER_PUSH` by the serializer**,
+//     while `revision_count` carries the real total. On autoland almost every push is
 //     one commit and this never fires; on mozilla-central it fires constantly —
 //     14 of 30 sampled pushes were merges, the largest naming 20 of its 164
 //     commits. Counting the gap is what lets the card say "20 of 164" instead
@@ -119,8 +119,9 @@ export function commitsOfPush(push: Push): { commits: Commit[]; hiddenRevisions:
       pushTimestamp: push.push_timestamp,
     };
   });
-  // `revision_count` is the truth and `revisions` is capped at 20 by the
-  // serializer, so this gap is the only way to know a merge was abbreviated —
+  // `revision_count` is the truth and `revisions` is capped at
+  // `MAX_REVISIONS_PER_PUSH` by the serializer, so this gap is the only way to
+  // know a merge was abbreviated —
   // `revisions.length` alone can never exceed the cap and so can never report
   // one. See graphApi.ts, `PushSchema`.
   return { commits, hiddenRevisions: Math.max(0, push.revision_count - push.revisions.length) };
@@ -180,7 +181,10 @@ export function pushlogCaveat(range: PushlogRange): string | null {
   }
   if (range.hiddenRevisions > 0) {
     const n = range.hiddenRevisions;
-    return `${n} further ${n === 1 ? 'commit is' : 'commits are'} in these pushes; treeherder names at most 20 per push.`;
+    return (
+      `${n} further ${n === 1 ? 'commit is' : 'commits are'} in these pushes; ` +
+      `treeherder names at most ${MAX_REVISIONS_PER_PUSH} per push.`
+    );
   }
   return null;
 }

@@ -44,14 +44,18 @@
     series: SeriesEntry[];
     xDomain: Range;
     yDomain: Range;
-    dotRadius?: number;
+    // Required, along with the three `show*` flags and `pad` below: the pane is
+    // this component's only caller and passes every one of them, so a default
+    // here is a second opinion nothing reads — and `pad`'s was a byte-for-byte
+    // copy of GraphPane's `DETAIL_PAD`.
+    dotRadius: number;
     // Whether the series' dots are drawn *and* hit-tested. Off is `pointMode:
     // 'none'` (see AppState), and the two have to travel together: a dot that
     // can be clicked but not seen is a selection out of nowhere, and a ring
     // appearing on empty space as the pointer crosses it is worse.
-    showPoints?: boolean;
-    showLines?: boolean;
-    showAxes?: boolean;
+    showPoints: boolean;
+    showLines: boolean;
+    showAxes: boolean;
     // Alert markers, on the detail graph only: the overview is 84px tall and
     // may hold a year of pushes, where a row of triangles would be most of what
     // the map shows.
@@ -60,7 +64,7 @@
     // a bar hugging the floor of an 84px overview would be most of the map.
     showChanges?: boolean;
     // Shared across both graphs so their plot areas line up.
-    pad?: Padding;
+    pad: Padding;
     // Selection, pinned comparison and hover, in data coordinates. An array
     // rather than one, because up to three of them can be on screen at once and
     // the chart doesn't care which is which — chartDraw's `kind` decides how
@@ -125,13 +129,13 @@
     series,
     xDomain,
     yDomain,
-    dotRadius = 2,
-    showPoints = true,
-    showLines = false,
-    showAxes = true,
+    dotRadius,
+    showPoints,
+    showLines,
+    showAxes,
+    pad,
     showAlerts = false,
     showChanges = false,
-    pad = { left: 56, right: 12, top: 8, bottom: 20 },
     highlights = [],
     selectedAlert = null,
     selectedChange = null,

@@ -20,7 +20,11 @@ import type { Scale } from '../shared/chart';
 // Row packing
 // ---------------------------------------------------------------------------
 
-export type Span = { start: number; end: number };
+// A horizontal interval in *pixels*. Named for the unit because two other
+// modules export a `Span` in epoch milliseconds (shared/timeRange.ts,
+// cli/args.ts) and the three are structurally identical, so nothing would stop
+// one being passed where another is meant.
+export type PixelSpan = { start: number; end: number };
 
 // Assign each span the first row it fits in, given `gap` pixels of clearance
 // between neighbours. Returns one row index per input span, in input order.
@@ -34,7 +38,7 @@ export type Span = { start: number; end: number };
 // wall of triangles, and the overlap it falls back to is exactly the behaviour
 // every mark had before rows existed.
 export function packRows(
-  spans: readonly Span[],
+  spans: readonly PixelSpan[],
   gap: number,
   maxRows: number,
 ): number[] {

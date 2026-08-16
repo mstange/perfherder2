@@ -242,6 +242,13 @@ export function fetchPush(
 // detected change's window is 24 pushes and "since previous" is one.
 export const MAX_RANGE_PUSHES = 200;
 
+// How many of a push's commits the serializer will name in `revisions`, however
+// many `revision_count` says there are. Theirs, not ours — it is why
+// `hiddenRevisions` exists, and it is stated in a sentence the user reads, so it
+// is a constant rather than a number typed into three comments and a string.
+// See api-assumptions.md and pushlog.ts's header.
+export const MAX_REVISIONS_PER_PUSH = 20;
+
 // The *list* route of the push endpoint, which is how a range is asked for. It
 // wraps its rows in `{meta, results}`, unlike the detail route above.
 export const PushListSchema = v.object({ results: v.array(PushSchema) });

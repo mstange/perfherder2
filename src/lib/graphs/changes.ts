@@ -226,7 +226,10 @@ export function clearsFloor(
   afterValue: number,
   relative: number,
 ): boolean {
-  const floor = threshold.value * THRESHOLD_FRACTION;
+  // Through `detectionFloor`, so the number tested against here and the number
+  // the CLI prints as "the floor" are the same arithmetic and not two copies of
+  // it.
+  const floor = detectionFloor(threshold).value;
   return threshold.kind === 'absolute'
     ? Math.abs(afterValue - beforeValue) >= floor
     : Math.abs(relative) * 100 >= floor;
@@ -473,6 +476,16 @@ function deltaStandardError(n1: number, n2: number): number {
   return Math.sqrt((n1 + n2 + 1) / (3 * n1 * n2));
 }
 
+// |Cliff's δ| less one null standard error of it — the number every split in a
+// relocation is ranked by, written once. Two places compute it (the candidate
+// list, and the incumbent's own score, which is deliberately not looked up among
+// the candidates — see `relocateBoundary`), and the rule they rank by has to be
+// the same rule or the incumbent competes on a different scale from its
+// challengers.
+function splitScore(test: MannWhitneyResult, nBefore: number, nAfter: number): number {
+  return Math.abs(test.cliffsDelta) - deltaStandardError(nBefore, nAfter);
+}
+
 // A proposed cut is not a reliable index. One bad run walks it: observed on
 // autoland signature 299010 (tresize, 2026-07-23), where one push's three runs came
 // back 8.20 / 6.26 / 8.29 and the boundary landed on *it* rather than on the real
@@ -594,7 +607,7 @@ export function boundaryCandidates(
       nBefore,
       nAfter,
       test,
-      score: Math.abs(test.cliffsDelta) - deltaStandardError(nBefore, nAfter),
+      score: splitScore(test, nBefore, nAfter),
     });
   }
   return out;
@@ -610,7 +623,7 @@ export function relocateBoundary(
   const separation = (cut: number): number => {
     const test = mannWhitneyU(values.slice(windowStart, cut), values.slice(cut, windowEnd));
     if (!test) return -1;
-    return Math.abs(test.cliffsDelta) - deltaStandardError(cut - windowStart, windowEnd - cut);
+    return splitScore(test, cut - windowStart, windowEnd - cut);
   };
   // The candidate is the incumbent, which is what settles a tie at any distance
   // from it — including a tie with itself. It is scored directly rather than

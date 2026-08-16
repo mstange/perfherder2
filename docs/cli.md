@@ -133,7 +133,8 @@ one page of ten (graphs-todo.md).
 
 ### Responses are cached on disk
 
-Under `$XDG_CACHE_HOME/perfherder-cli`, keyed by request URL, pruned at 24
+In `--cache-dir`, else `$PERFHERDER2_CACHE_DIR`, else
+`$XDG_CACHE_HOME/perfherder-cli`. Keyed by request URL, pruned at 24
 hours. TTLs by how fast the thing behind them changes: a day for frameworks,
 option collections and the repository list; an hour for signature lists; ten
 minutes for performance data, alerts and pushes. `--no-cache` bypasses it.

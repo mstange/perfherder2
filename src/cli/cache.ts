@@ -49,8 +49,12 @@ export function ttlForUrl(url: string): number {
 // megabytes and a week of them is a gigabyte nobody asked for.
 const MAX_AGE_MS = 24 * 3600 * 1000;
 
+// `PERFHERDER2_CACHE_DIR` to match `PERFHERDER2_BASE_URL` — it was
+// `PERFHERDER_CLI_CACHE_DIR`, which is a second prefix for one tool's
+// environment, and it was documented nowhere and named in no help line, so
+// `--cache-dir`'s stated default was wrong for anyone who had set it.
 export function defaultCacheDir(): string {
-  const explicit = process.env.PERFHERDER_CLI_CACHE_DIR;
+  const explicit = process.env.PERFHERDER2_CACHE_DIR;
   if (explicit) return explicit;
   const xdg = process.env.XDG_CACHE_HOME;
   if (xdg) return join(xdg, 'perfherder-cli');

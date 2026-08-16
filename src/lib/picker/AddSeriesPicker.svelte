@@ -182,6 +182,20 @@ import { TIME_RANGES } from './pickerOptions';
   let loadOpen = $state(false);
   const loadShown = $derived(!loadFolded || loadOpen);
 
+  // What the list says when it has no rows, in one place for both row layouts —
+  // they had a string each, and they had drifted. **The instruction is
+  // conditional on the fold, not on the layout**: which layout is in effect is a
+  // question about width and whether the load group is folded is a question
+  // about height (see `foldPickerLoadRow`), so the card layout's copy was
+  // telling the reader to open a row that was frequently already open.
+  const emptyMessage = $derived(
+    picker.listStatus === 'no-repos'
+      ? loadShown
+        ? 'No repositories selected — check one above.'
+        : 'No repositories selected — open the load line above and check one.'
+      : 'No matching series.',
+  );
+
   // ---- Virtual scrolling ------------------------------------------------
   // Broad filters can produce 25k rows; even one expanded parent adds a few
   // hundred subtests. We render only a scroll-window over a flat row list.
@@ -784,13 +798,7 @@ import { TIME_RANGES } from './pickerOptions';
             </div>
           {/each}
         {:else if picker.listStatus !== 'rows'}
-          <p class="empty">
-            {#if picker.listStatus === 'no-repos'}
-              No repositories selected — open the load line above and check one.
-            {:else}
-              No matching series.
-            {/if}
-          </p>
+          <p class="empty">{emptyMessage}</p>
         {/if}
       </div>
     {:else}
@@ -1006,13 +1014,7 @@ import { TIME_RANGES } from './pickerOptions';
             </tr>
           {/each}
         {:else if picker.listStatus !== 'rows'}
-          <tr><td colspan="9" class="empty">
-            {#if picker.listStatus === 'no-repos'}
-              No repositories selected — check one above.
-            {:else}
-              No matching series.
-            {/if}
-          </td></tr>
+          <tr><td colspan="9" class="empty">{emptyMessage}</td></tr>
         {/if}
       </tbody>
     </table>

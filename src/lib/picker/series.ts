@@ -20,6 +20,14 @@ export type Series = {
   test: string;
   application: string;
   options: string[];
+  // The three below are **not read outside this module and its tests**, and are
+  // kept for the same reason `framework` is (see "Framework is searchable but
+  // not shown" in design.md): they are what the row came in as, they cost a
+  // reference each, and a reader asking "what does a signature carry" should
+  // find the answer here rather than in signaturesApi.ts. `extraOptions` is the
+  // unresolved half of `options`; `parentSignature` and `signatureHash` are the
+  // raw hashes that `parentKey` and `key` exist to replace — **never key
+  // anything by them**, see the comment on `key`.
   extraOptions: string[];
   measurementUnit: string;
   hasSubtests: boolean;
