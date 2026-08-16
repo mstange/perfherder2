@@ -44,12 +44,12 @@ import type { Commit, PushlogRange } from '../lib/graphs/pushlog';
 import { commitTitle, pushlogCaveat, pushlogLabel } from '../lib/graphs/pushlog';
 import type { Activity } from '../lib/picker/activity';
 import {
+  chipToString,
   compareRows,
   matchesRow,
   type Filter,
   type SortState,
 } from '../lib/picker/filter';
-import { chipToString } from '../lib/picker/filter';
 import type { Series } from '../lib/picker/series';
 import { pushLogRangeUrl, type RepoLinkInfo } from '../lib/shared/links';
 import {
@@ -797,6 +797,21 @@ function describeEntry(
   };
 }
 
+// A pushlog `Commit` as the report carries it: `commitTitle` collapses the
+// message to its first line, and everything else passes through. Both commands
+// that list commits — `changes --commits` and `commits` — project the same way,
+// so a field added to `CommitSummary` reaches both.
+function commitSummary(commit: Commit): CommitSummary {
+  return {
+    revision: commit.revision,
+    author: commit.author,
+    title: commitTitle(commit),
+    bugs: commit.bugs,
+    pushId: commit.pushId,
+    pushTimestamp: commit.pushTimestamp,
+  };
+}
+
 // Does this commit answer `--commit-grep`? Title, author and bug number, because
 // the question the flag exists for — "which of these twenty commits could have
 // caused this" — is asked of a subsystem ("quota|indexeddb"), a person, or a
@@ -847,16 +862,7 @@ export function attachCommits(
   range: PushlogRange,
   options: CommitOptions,
 ): ChangeEntry {
-  const all = range.commits.map(
-    (commit: Commit): CommitSummary => ({
-      revision: commit.revision,
-      author: commit.author,
-      title: commitTitle(commit),
-      bugs: commit.bugs,
-      pushId: commit.pushId,
-      pushTimestamp: commit.pushTimestamp,
-    }),
-  );
+  const all = range.commits.map(commitSummary);
   const matched = options.grep ? all.filter((c) => commitMatches(c, options.grep!)) : all;
   const shown = matched.slice(0, options.limit);
   return {
@@ -1664,14 +1670,7 @@ export function buildCommitsReport(
   // nothing" and "no pattern ran" stay distinguishable in the report.
   grep: RegExp | null = null,
 ): CommitsReport {
-  const all = range.commits.map((commit) => ({
-    revision: commit.revision,
-    author: commit.author,
-    title: commitTitle(commit),
-    bugs: commit.bugs,
-    pushId: commit.pushId,
-    pushTimestamp: commit.pushTimestamp,
-  }));
+  const all = range.commits.map(commitSummary);
   const matched = grep ? all.filter((c) => commitMatches(c, grep)) : all;
   return {
     repository,

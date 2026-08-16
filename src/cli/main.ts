@@ -15,6 +15,7 @@
 // tests are.
 
 import { HttpError, SchemaError } from '../lib/shared/http';
+import { shortRevision } from '../lib/shared/links';
 import { DEFAULT_REPOS, PINNED_REPOS } from '../lib/picker/pickerOptions';
 import { FILTER_FIELDS } from '../lib/picker/filter';
 import type { PushGroup } from '../lib/graphs/graphData';
@@ -754,7 +755,7 @@ function resolvePush(loaded: LoadedSeries, arg: SeriesArg, text: string): PushGr
   }
   const at: PointSelector = arg.at ?? { kind: 'last' };
   if (!arg.at) {
-    warn(`"${text}" names no push; using the last one in the range (${pushes[pushes.length - 1].revision.slice(0, 12)}).`);
+    warn(`"${text}" names no push; using the last one in the range (${shortRevision(pushes[pushes.length - 1].revision)}).`);
   }
 
   switch (at.kind) {

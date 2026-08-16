@@ -22,6 +22,7 @@
   import {
     attrChips,
     attrsForEntry,
+    chipText,
     commonMeasurement,
     isEmptyAttrs,
     measurementForEntry,
@@ -48,16 +49,6 @@
   const measurementBits = $derived(
     measurementParts(commonMeasurement(app.series.map((e) => measurementForEntry(e.meta)))),
   );
-
-  // A card shows only the differences, so its hover text spells the series out
-  // in full.
-  function fullText(a: SeriesAttrs | null): string {
-    return a
-      ? attrChips(a)
-          .map((c) => c.value)
-          .join(' · ')
-      : '';
-  }
 
   // Drag-to-reorder, on pointer events rather than HTML5 drag-and-drop.
   //
@@ -329,7 +320,9 @@
           >
         </div>
         <div class="text">
-          <div class="attrs" title={fullText(attrs[i])}>
+          <!-- A card shows only the differences, so its hover text spells the
+               series out in full — which is what `chipText` is for. -->
+          <div class="attrs" title={chipText(attrs[i])}>
             {#if own && !isEmptyAttrs(own)}
               {@render chipRow(attrChips(own))}
             {:else}

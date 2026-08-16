@@ -19,7 +19,7 @@ import {
   formatSignedValue,
   formatValue,
 } from '../lib/shared/chart';
-import { bugUrl } from '../lib/shared/links';
+import { bugUrl, shortRevision } from '../lib/shared/links';
 // The detector's own numbers, interpolated rather than typed out: this file
 // prints them at the reader, and a printed α that has drifted from the one the
 // gate uses is a worse error than a wrong number in a comment.
@@ -55,6 +55,7 @@ import type {
   ChangeEntry,
   ChangesReport,
   ClusterReport,
+  CommitSummary,
   CommitsReport,
   CompareReport,
   CompareSideReport,
@@ -128,6 +129,20 @@ function alertsUnavailableLines(column: string): string[] {
     `! Perfherder's alerts could not be fetched, so the ${column} column is blank`,
     '  everywhere rather than empty where there is no alert.',
   ];
+}
+
+// The point a `step` or `locate` was asked about: the instant, plus the revision
+// that named it and the repository the revision was found in. `--at` takes a
+// revision that may have landed on a different repo from the series, so saying
+// which is part of the answer. Both commands print it, identically.
+function describeSplitPoint(at: {
+  atMs: number;
+  revision: string | null;
+  revisionRepository: string | null;
+}): string {
+  if (!at.revision) return formatUtc(at.atMs);
+  const repo = at.revisionRepository ? ` on ${at.revisionRepository}` : '';
+  return `${formatUtc(at.atMs)} (${shortRevision(at.revision)}${repo})`;
 }
 
 // Only ever printed for a series that came back. `placeholderMeta` fills the
@@ -313,11 +328,7 @@ function renderDiagnosis(report: SearchReport): string[] {
 
 export function renderStep(report: StepReport): string[] {
   const out: string[] = [];
-  const at = report.revision
-    ? `${formatUtc(report.atMs)} (${report.revision.slice(0, 12)}${
-        report.revisionRepository ? ` on ${report.revisionRepository}` : ''
-      })`
-    : formatUtc(report.atMs);
+  const at = describeSplitPoint(report);
   out.push(`step at ${at} · up to ${report.windowPushes} pushes a side`);
   if (report.across) out.push(...describeAcross(report.across));
   if (report.common) out.push(`all series: ${report.common}`);
@@ -467,11 +478,7 @@ export function renderLocate(report: LocateReport): string[] {
   const out: string[] = [];
   out.push(describeSeries(report.series));
   out.push(`${report.series.ref} · ${measurementLine(report.series)}`);
-  const at = report.revision
-    ? `${formatUtc(report.atMs)} (${report.revision.slice(0, 12)}${
-        report.revisionRepository ? ` on ${report.revisionRepository}` : ''
-      })`
-    : formatUtc(report.atMs);
+  const at = describeSplitPoint(report);
   out.push(
     `candidates around ${at} · ${report.windowPushCount} pushes ` +
       `(±${report.windowPushes} of the split)`,
@@ -496,7 +503,7 @@ export function renderLocate(report: LocateReport): string[] {
   const rows = report.candidates.map((c) => [
     String(c.rank),
     formatUtc(c.atMs),
-    c.revision.slice(0, 12),
+    shortRevision(c.revision),
     `${c.nBefore}/${c.nAfter}`,
     formatValue(c.beforeValue),
     formatValue(c.afterValue),
@@ -554,9 +561,9 @@ export function renderLocate(report: LocateReport): string[] {
     for (const c of alerted) {
       out.push(
         c.rank === 1
-          ? `Perfherder alerted on ${c.revision.slice(0, 12)}, which is row 1 — the two analyses ` +
+          ? `Perfherder alerted on ${shortRevision(c.revision)}, which is row 1 — the two analyses ` +
             'agree about the push.'
-          : `Perfherder alerted on ${c.revision.slice(0, 12)}: row ${c.rank} of ` +
+          : `Perfherder alerted on ${shortRevision(c.revision)}: row ${c.rank} of ` +
             `${report.totalCandidates}, score ${c.score.toFixed(3)} against ` +
             `${best.score.toFixed(3)} at row 1, ${formatDurationMs(Math.abs(c.atMs - best.atMs))} ` +
             'apart.',
@@ -694,7 +701,7 @@ function renderPushTable(pushes: readonly PushRow[]): string[] {
     ['WHEN', 'REVISION', 'RUNS', 'VALUES', 'MEAN', 'MEDIAN'],
     pushes.map((push) => [
       formatUtc(push.atMs),
-      push.revision.slice(0, 12),
+      shortRevision(push.revision),
       String(push.runCount),
       String(push.valueCount),
       formatValue(push.mean),
@@ -760,7 +767,7 @@ export function renderChanges(report: ChangesReport, legend = true, brief = fals
     const d = entry.detected;
     return [
       formatUtc(entry.atMs),
-      entry.revision.slice(0, 12),
+      shortRevision(entry.revision),
       d ? formatValue(d.beforeValue) : entry.alert ? formatValue(entry.alert.prevValue) : NONE,
       d ? formatValue(d.afterValue) : entry.alert ? formatValue(entry.alert.newValue) : NONE,
       d
@@ -828,7 +835,7 @@ function describeSource(entry: ChangeEntry): string {
 
 function renderChangeDetail(entry: ChangeEntry): string[] {
   const out: string[] = [];
-  const head = `${formatUtc(entry.atMs)}  ${entry.revision.slice(0, 12)}  ${
+  const head = `${formatUtc(entry.atMs)}  ${shortRevision(entry.revision)}  ${
     entry.isRegression ? 'regression' : 'improvement'
   }`;
   out.push(head);
@@ -856,7 +863,7 @@ function renderChangeDetail(entry: ChangeEntry): string[] {
     );
   }
   if (entry.prevRevision) {
-    out.push(`  between ${entry.prevRevision.slice(0, 12)} and ${entry.revision.slice(0, 12)}`);
+    out.push(`  between ${shortRevision(entry.prevRevision)} and ${shortRevision(entry.revision)}`);
   }
 
   out.push(...commitLines(entry));
@@ -871,7 +878,7 @@ function renderChangeDetail(entry: ChangeEntry): string[] {
 function renderChangeCommits(entry: ChangeEntry): string[] {
   if (!entry.commits) return [];
   const out = [
-    `${formatUtc(entry.atMs)}  ${entry.revision.slice(0, 12)}  ${
+    `${formatUtc(entry.atMs)}  ${shortRevision(entry.revision)}  ${
       entry.isRegression ? 'regression' : 'improvement'
     }`,
   ];
@@ -1010,8 +1017,8 @@ function renderLanding(landing: Landing): string[] {
           truncate(event.label, 40),
           formatUtc(event.atMs),
           event.prevRevision
-            ? `${event.prevRevision.slice(0, 12)}..${event.revision.slice(0, 12)}`
-            : event.revision.slice(0, 12),
+            ? `${shortRevision(event.prevRevision)}..${shortRevision(event.revision)}`
+            : shortRevision(event.revision),
           event.relativeChange === null ? NONE : formatSignedPercent(event.relativeChange),
           event.isRegression ? 'regression' : 'improvement',
           event.alertSummaryId
@@ -1246,7 +1253,7 @@ function renderCompareSide(
   const out: string[] = [];
   out.push(showSeries ? `${side.label}: ${describeSeries(side.series)}` : `${side.label}`);
   out.push(
-    `  ${side.revision.slice(0, 12)} · push ${side.pushId} · ${formatUtc(side.pushTimeMs)} · ` +
+    `  ${shortRevision(side.revision)} · push ${side.pushId} · ${formatUtc(side.pushTimeMs)} · ` +
       `${side.runCount} ${side.runCount === 1 ? 'run' : 'runs'}, ${side.valueCount} values`,
   );
   if (side.pushCount > 1) {
@@ -1314,7 +1321,7 @@ function renderDensityPlot(report: CompareReport): string[] {
 export function renderCommits(report: CommitsReport): string[] {
   const out: string[] = [];
   out.push(
-    `${report.repository}: ${report.fromRevision.slice(0, 12)} → ${report.toRevision.slice(0, 12)}`,
+    `${report.repository}: ${shortRevision(report.fromRevision)} → ${shortRevision(report.toRevision)}`,
   );
   out.push(
     `${report.label} across ${report.pushCount} ${report.pushCount === 1 ? 'push' : 'pushes'} ` +
@@ -1345,12 +1352,12 @@ export function renderCommits(report: CommitsReport): string[] {
 // `SUMMARY` cost a session a column of `undefined`: it read the headers, reached
 // for `commit.bug` and `commit.summary` in `--json`, and got neither — the same
 // trap as the `APP` header for `application`, and the same fix.
-function renderCommitTable(commits: readonly { revision: string; author: string; title: string; bugs: number[]; pushTimestamp: number }[]): string[] {
+function renderCommitTable(commits: readonly CommitSummary[]): string[] {
   return table(
     ['WHEN', 'REVISION', 'BUGS', 'AUTHOR', 'TITLE'],
     commits.map((c) => [
       formatUtcDate(c.pushTimestamp * 1000),
-      c.revision.slice(0, 12),
+      shortRevision(c.revision),
       // Every bug, not the first of them: a commit citing two is not a commit
       // citing one, and dropping the rest here is a truncation nothing declares.
       c.bugs.length > 0 ? c.bugs.join(',') : NONE,
