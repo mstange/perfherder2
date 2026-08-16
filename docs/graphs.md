@@ -29,6 +29,36 @@ Three panes, filling the viewport, no page scroll:
 The "Add series" picker opens as an overlay panel over the whole area rather
 than living in the left pane — it needs the full width for its table.
 
+### With nothing plotted, the pane is a call to action
+
+There is no graph to draw and no controls worth showing, so the middle pane
+holds one centred block: what this app is, and an **Add series…** button.
+
+What it replaced was the two charts drawn as usual — a full 0-to-1 axis pair
+with *"Add a series to see data."* as an overlay note in the middle of the
+detail plot — under the complete `RANGE` / `SHOW` header. Every control in that
+header describes a drawing that doesn't exist, the axes were labelled with a
+domain nobody chose, and the one sentence that mattered was 12px of grey in the
+centre of it. On a phone that arrangement filled the screen: 188px of header,
+84px of empty overview, and a 529px plot rectangle holding a note, with the way
+to act on it a pane away in the switcher.
+
+- **The button is a second door to the panel**, beside the series list's own.
+  It exists only while nothing is plotted, so the two are never both the answer
+  to "how do I start" — the list's button is the permanent affordance and this
+  one is the one where the eye already is.
+- **The first pane at narrow widths is still the graph**, deliberately. Making
+  it the series list — where the Add button lives — was the other way to solve
+  the same problem, and it costs a pane switch on the way *back*: the panel
+  covers the window at that width, so a user who starts on the graph adds a
+  series and is looking at it the moment they press Done. The empty state puts
+  the door on the pane they are already on, which leaves nothing for the initial
+  choice to fix.
+- **`app.series` is populated from the URL synchronously**, so a shared link
+  never flashes this block on its way to a graph. It appears on a first visit
+  and after Remove all — the second of which is a click of the user's, which is
+  the one moment "Layout stability" allows an arrangement to change.
+
 ### The header is two groups: what loads, and what shows
 
 The bar over the graphs holds nine controls, and the line between its two rows

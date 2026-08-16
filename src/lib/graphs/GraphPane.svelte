@@ -241,213 +241,242 @@
 />
 
 <section class="graph-pane">
-  <!-- Two groups, one grid row each, and the split is the same one the
-       Add-series panel's control block draws: what gets *loaded*, then what of
-       it gets *shown*. The range is the fetch — `dataKey` is series plus range,
-       so changing it sends requests — which is why the loading count is its
-       row's aside, while the zoom, a window onto data already in hand, is the
-       drawing row's. The alignment is `.control-grid` in app.css, shared with
-       the panel; see docs/design.md, "The control block is two groups". -->
-  <header class="control-grid no-aside">
-    <span class="control-label">Range</span>
-    <div class="row">
-      <div class="ranges">
-        <!-- Finishes the row's sentence — *range: last 14 days* — rather than
-             being a second thing in the rail's style naming a group. It sits
-             outside the track: the track holds the options and nothing else. -->
-        <span class="control-word" aria-hidden="true">last</span>
-        <div class="btn-group" role="group" aria-label="Time range">
-          {#each RANGE_PRESETS as preset (preset.seconds)}
-            <button
-              type="button"
-              class="btn btn-compact"
-              class:btn-selected={activePreset?.seconds === preset.seconds}
-              aria-pressed={activePreset?.seconds === preset.seconds}
-              onclick={() => app.setRangePreset(preset.seconds)}
-            >
-              {preset.label}
-            </button>
-          {/each}
-        </div>
-      </div>
-      <span class="span-text" title="The URL pins these absolute bounds">
-        {describeSpan(app.range)}
-      </span>
-      <!-- Always present, so the header doesn't reflow when a fetch starts or
-           finishes. On this row because the range is what causes the fetching. -->
-      <span class="loading-slot trailing" class:visible={app.anyLoading}>
-        Loading {app.loadingCount}…
-      </span>
-    </div>
+  <!-- Nothing plotted: the pane is a call to action rather than a pair of empty
+       axes. What was here before was a full 0-to-1 axis pair with a note in the
+       middle of it, under a header of range and points controls that had nothing
+       to control — furniture drawn at full size around the one sentence that
+       mattered, and on a phone it filled the screen while the way to act on it
+       was a pane away.
 
-    <span class="control-label">Show</span>
-    <div class="row draw-options">
-      <!-- All drawing switches, not fetch switches: replicates are always
-           fetched, both analyses run on data already in hand, so every one of
-           these is instant and the details pane is unaffected by all of them. -->
-      <div class="points">
-        <span class="control-word" aria-hidden="true">points</span>
-        <div class="btn-group" role="group" aria-label="Data points">
-          {#each POINT_CHOICES as choice (choice.mode)}
-            <button
-              type="button"
-              class="btn btn-compact"
-              class:btn-selected={app.pointMode === choice.mode}
-              aria-pressed={app.pointMode === choice.mode}
-              title={choice.title}
-              onclick={() => app.setPointMode(choice.mode)}
-            >
-              {choice.label}
-            </button>
-          {/each}
-        </div>
-      </div>
-      <!-- Steps this app found for itself, as opposed to the alert markers,
-           which are perfherder's. See changes.ts. -->
-      <label
-        class="control-toggle"
-        title="Mark steps detected in the data itself — not perfherder's alerts"
+       The button is a second door to the panel, next to the series list's own.
+       That is not a duplicate control so much as the same control where the eye
+       is: this one exists only while there is nothing plotted, and the list's is
+       the permanent one. -->
+  {#if app.series.length === 0}
+    <div class="blank">
+      <h2>Nothing plotted yet</h2>
+      <p>
+        Pick tests from one flat, searchable list across repositories — suites,
+        subtests and platforms together — and they are drawn here.
+      </p>
+      <button
+        type="button"
+        class="btn btn-primary"
+        onclick={() => app.setPickerOpen(true)}
       >
-        <input
-          type="checkbox"
-          checked={app.changeDetection}
-          onchange={(e) => app.setChangeDetection(e.currentTarget.checked)}
-        />
-        Detected changes
-      </label>
-      <!-- The shape of a drift the series-list badge states as one number. Off by
-           default, unlike the switches around it — see AppState.showTrend. -->
-      <!-- Concrete about the window and the statistic, because the first question
-           anyone asked about this feature was "what is that line?" — and the honest
-           answer is short: a rolling median, not a fit and not a moving average. -->
-      <label
-        class="control-toggle"
-        title="Draw a rolling quartile band: for each push, the median and the middle half (p25–p75) of the 24 pushes centred on it. A rolling median, so it steps between levels rather than gliding like a moving average."
-      >
-        <input
-          type="checkbox"
-          checked={app.showTrend}
-          onchange={(e) => app.setShowTrend(e.currentTarget.checked)}
-        />
-        Trend band
-      </label>
-      <!-- Both the label and the button stay put whether or not there's a zoom:
-           swapping in a longer string used to push this whole group onto a second
-           row, shoving the graphs down mid-interaction. -->
-      <div class="control-aside-line trailing">
-        <span class="zoom-label" class:hint={!app.zoom}>
-          {app.zoom ? `Zoomed: ${describeSpan(app.zoom)}` : 'Drag the overview to zoom'}
-        </span>
-        <button
-          type="button"
-          class="btn btn-compact"
-          disabled={!app.zoom}
-          onclick={() => app.resetZoom()}
-        >
-          Reset zoom
-        </button>
-      </div>
+        Add series…
+      </button>
     </div>
-  </header>
-
-  {#if app.failedSeries.length > 0}
-    <div class="errors" role="alert">
-      <div class="error-list">
-        {#each app.failedSeries as entry (entry.key)}
-          <div>
-            <strong>{entry.ref.repository} / {entry.ref.signatureId}</strong>: {entry.error}
+  {:else}
+    <!-- Two groups, one grid row each, and the split is the same one the
+         Add-series panel's control block draws: what gets *loaded*, then what of
+         it gets *shown*. The range is the fetch — `dataKey` is series plus range,
+         so changing it sends requests — which is why the loading count is its
+         row's aside, while the zoom, a window onto data already in hand, is the
+         drawing row's. The alignment is `.control-grid` in app.css, shared with
+         the panel; see docs/design.md, "The control block is two groups". -->
+    <header class="control-grid no-aside">
+      <span class="control-label">Range</span>
+      <div class="row">
+        <div class="ranges">
+          <!-- Finishes the row's sentence — *range: last 14 days* — rather than
+               being a second thing in the rail's style naming a group. It sits
+               outside the track: the track holds the options and nothing else. -->
+          <span class="control-word" aria-hidden="true">last</span>
+          <div class="btn-group" role="group" aria-label="Time range">
+            {#each RANGE_PRESETS as preset (preset.seconds)}
+              <button
+                type="button"
+                class="btn btn-compact"
+                class:btn-selected={activePreset?.seconds === preset.seconds}
+                aria-pressed={activePreset?.seconds === preset.seconds}
+                onclick={() => app.setRangePreset(preset.seconds)}
+              >
+                {preset.label}
+              </button>
+            {/each}
           </div>
-        {/each}
+        </div>
+        <span class="span-text" title="The URL pins these absolute bounds">
+          {describeSpan(app.range)}
+        </span>
+        <!-- Always present, so the header doesn't reflow when a fetch starts or
+             finishes. On this row because the range is what causes the fetching. -->
+        <span class="loading-slot trailing" class:visible={app.anyLoading}>
+          Loading {app.loadingCount}…
+        </span>
       </div>
-      <button type="button" class="btn btn-compact" onclick={() => app.retryAllFailed()}>Retry</button>
+
+      <span class="control-label">Show</span>
+      <div class="row draw-options">
+        <!-- All drawing switches, not fetch switches: replicates are always
+             fetched, both analyses run on data already in hand, so every one of
+             these is instant and the details pane is unaffected by all of them. -->
+        <div class="points">
+          <span class="control-word" aria-hidden="true">points</span>
+          <div class="btn-group" role="group" aria-label="Data points">
+            {#each POINT_CHOICES as choice (choice.mode)}
+              <button
+                type="button"
+                class="btn btn-compact"
+                class:btn-selected={app.pointMode === choice.mode}
+                aria-pressed={app.pointMode === choice.mode}
+                title={choice.title}
+                onclick={() => app.setPointMode(choice.mode)}
+              >
+                {choice.label}
+              </button>
+            {/each}
+          </div>
+        </div>
+        <!-- Steps this app found for itself, as opposed to the alert markers,
+             which are perfherder's. See changes.ts. -->
+        <label
+          class="control-toggle"
+          title="Mark steps detected in the data itself — not perfherder's alerts"
+        >
+          <input
+            type="checkbox"
+            checked={app.changeDetection}
+            onchange={(e) => app.setChangeDetection(e.currentTarget.checked)}
+          />
+          Detected changes
+        </label>
+        <!-- The shape of a drift the series-list badge states as one number. Off by
+             default, unlike the switches around it — see AppState.showTrend. -->
+        <!-- Concrete about the window and the statistic, because the first question
+             anyone asked about this feature was "what is that line?" — and the honest
+             answer is short: a rolling median, not a fit and not a moving average. -->
+        <label
+          class="control-toggle"
+          title="Draw a rolling quartile band: for each push, the median and the middle half (p25–p75) of the 24 pushes centred on it. A rolling median, so it steps between levels rather than gliding like a moving average."
+        >
+          <input
+            type="checkbox"
+            checked={app.showTrend}
+            onchange={(e) => app.setShowTrend(e.currentTarget.checked)}
+          />
+          Trend band
+        </label>
+        <!-- Both the label and the button stay put whether or not there's a zoom:
+             swapping in a longer string used to push this whole group onto a second
+             row, shoving the graphs down mid-interaction. -->
+        <div class="control-aside-line trailing">
+          <span class="zoom-label" class:hint={!app.zoom}>
+            {app.zoom ? `Zoomed: ${describeSpan(app.zoom)}` : 'Drag the overview to zoom'}
+          </span>
+          <button
+            type="button"
+            class="btn btn-compact"
+            disabled={!app.zoom}
+            onclick={() => app.resetZoom()}
+          >
+            Reset zoom
+          </button>
+        </div>
+      </div>
+    </header>
+
+    {#if app.failedSeries.length > 0}
+      <div class="errors" role="alert">
+        <div class="error-list">
+          {#each app.failedSeries as entry (entry.key)}
+            <div>
+              <strong>{entry.ref.repository} / {entry.ref.signatureId}</strong>: {entry.error}
+            </div>
+          {/each}
+        </div>
+        <button type="button" class="btn btn-compact" onclick={() => app.retryAllFailed()}>Retry</button>
+      </div>
+    {/if}
+
+    <div class="overview">
+      <ScatterChart
+        series={app.visibleSeries}
+        xDomain={xFull}
+        yDomain={app.fullYDomain}
+        pad={OVERVIEW_PAD}
+        dotRadius={OVERVIEW_DOT}
+        showPoints={app.drawPoints}
+        showLines={false}
+        showAxes={true}
+        interaction="brush"
+        brush={app.zoom}
+        onbrush={(span, live) => app.setZoom(span, live)}
+        ariaLabel="Overview graph showing the full time range"
+      />
+    </div>
+
+    <!-- The pad is handed to the CSS so the overlay notes below can sit inside the
+         plot rectangle rather than over the axis gutters. -->
+    <div
+      class="detail"
+      style="--plot-left: {DETAIL_PAD.left}px; --plot-right: {DETAIL_PAD.right}px; --plot-top: {DETAIL_PAD.top}px; --plot-bottom: {DETAIL_PAD.bottom}px"
+    >
+      {#if unitLabel}<span class="unit">{unitLabel}</span>{/if}
+      <ScatterChart
+        series={app.visibleSeries}
+        xDomain={xDetail}
+        yDomain={app.detailYDomain}
+        pad={DETAIL_PAD}
+        dotRadius={DETAIL_DOT}
+        showPoints={app.drawPoints}
+        showLines={app.drawPoints}
+        showAxes={true}
+        showAlerts={true}
+        showChanges={app.changeDetection}
+        interaction="select"
+        {highlights}
+        {selectedAlert}
+        {selectedChange}
+        onselect={onDetailSelect}
+        onalertselect={onAlertSelect}
+        onchangeselect={onChangeSelect}
+        alertTip={(hit) => {
+          const entry = app.visibleSeries[hit.seriesIndex];
+          const alert = entry?.alerts[hit.alertIndex];
+          return entry && alert ? alertTooltip(alert, markContext(entry)) : null;
+        }}
+        changeTip={(hit) => {
+          const entry = app.visibleSeries[hit.seriesIndex];
+          const change = entry?.changes[hit.changeIndex];
+          return entry && change ? changeTooltip(change, markContext(entry)) : null;
+        }}
+        onhover={(hit, modifiers) => {
+          shiftHeld = modifiers.shift;
+          app.setHoveredPoint(pointFor(hit));
+        }}
+        onbrush={(span) => app.setZoom(span)}
+        onkeymove={(axis, delta) =>
+          axis === 'run' ? app.stepRun(delta) : app.stepReplicate(delta)}
+        onkeycompare={() => app.comparePoint(app.selectedPoint)}
+        onkeyalert={(delta) => app.stepAlert(delta)}
+        onkeyprevious={() => app.compareWithPreviousPush()}
+        ariaLabel="Detail graph; click a point to inspect it, shift-click a second to compare, click an alert marker or a detected-change bar to compare the two pushes it spans, P to compare with the previous push, A and shift-A to step between alerts, or use the arrow keys and C to mark a point for comparison"
+      />
+      <!-- No "add a series" case here any more: with nothing plotted this whole
+           branch is replaced by the pane's own empty state, above. Everything
+           left is a graph that exists and has nothing to draw. -->
+      {#if app.visibleSeries.length === 0}
+        <p class="overlay-note">Every series is hidden.</p>
+      {:else if !app.hasData}
+        <p class="overlay-note">
+          {app.anyLoading ? 'Loading…' : 'No data in this time range.'}
+        </p>
+      {:else if app.noValuesDrawn}
+        <!-- Last in the chain, because it is the only one of these that is not a
+             problem: the data is there and the user asked for it not to be drawn.
+             It exists because `points: None` with the band off is otherwise
+             indistinguishable from a broken graph, and it names the two switches
+             that lead back out. The marks may still be on the plot underneath — the
+             note is pointer-transparent and sits in the middle, clear of the alert
+             row at the top and the change bars along the floor. -->
+        <p class="overlay-note">
+          Data points are hidden. Turn on the trend band, or show run means.
+        </p>
+      {/if}
     </div>
   {/if}
-
-  <div class="overview">
-    <ScatterChart
-      series={app.visibleSeries}
-      xDomain={xFull}
-      yDomain={app.fullYDomain}
-      pad={OVERVIEW_PAD}
-      dotRadius={OVERVIEW_DOT}
-      showPoints={app.drawPoints}
-      showLines={false}
-      showAxes={true}
-      interaction="brush"
-      brush={app.zoom}
-      onbrush={(span, live) => app.setZoom(span, live)}
-      ariaLabel="Overview graph showing the full time range"
-    />
-  </div>
-
-  <!-- The pad is handed to the CSS so the overlay notes below can sit inside the
-       plot rectangle rather than over the axis gutters. -->
-  <div
-    class="detail"
-    style="--plot-left: {DETAIL_PAD.left}px; --plot-right: {DETAIL_PAD.right}px; --plot-top: {DETAIL_PAD.top}px; --plot-bottom: {DETAIL_PAD.bottom}px"
-  >
-    {#if unitLabel}<span class="unit">{unitLabel}</span>{/if}
-    <ScatterChart
-      series={app.visibleSeries}
-      xDomain={xDetail}
-      yDomain={app.detailYDomain}
-      pad={DETAIL_PAD}
-      dotRadius={DETAIL_DOT}
-      showPoints={app.drawPoints}
-      showLines={app.drawPoints}
-      showAxes={true}
-      showAlerts={true}
-      showChanges={app.changeDetection}
-      interaction="select"
-      {highlights}
-      {selectedAlert}
-      {selectedChange}
-      onselect={onDetailSelect}
-      onalertselect={onAlertSelect}
-      onchangeselect={onChangeSelect}
-      alertTip={(hit) => {
-        const entry = app.visibleSeries[hit.seriesIndex];
-        const alert = entry?.alerts[hit.alertIndex];
-        return entry && alert ? alertTooltip(alert, markContext(entry)) : null;
-      }}
-      changeTip={(hit) => {
-        const entry = app.visibleSeries[hit.seriesIndex];
-        const change = entry?.changes[hit.changeIndex];
-        return entry && change ? changeTooltip(change, markContext(entry)) : null;
-      }}
-      onhover={(hit, modifiers) => {
-        shiftHeld = modifiers.shift;
-        app.setHoveredPoint(pointFor(hit));
-      }}
-      onbrush={(span) => app.setZoom(span)}
-      onkeymove={(axis, delta) =>
-        axis === 'run' ? app.stepRun(delta) : app.stepReplicate(delta)}
-      onkeycompare={() => app.comparePoint(app.selectedPoint)}
-      onkeyalert={(delta) => app.stepAlert(delta)}
-      onkeyprevious={() => app.compareWithPreviousPush()}
-      ariaLabel="Detail graph; click a point to inspect it, shift-click a second to compare, click an alert marker or a detected-change bar to compare the two pushes it spans, P to compare with the previous push, A and shift-A to step between alerts, or use the arrow keys and C to mark a point for comparison"
-    />
-    {#if app.series.length === 0}
-      <p class="overlay-note">Add a series to see data.</p>
-    {:else if app.visibleSeries.length === 0}
-      <p class="overlay-note">Every series is hidden.</p>
-    {:else if !app.hasData}
-      <p class="overlay-note">
-        {app.anyLoading ? 'Loading…' : 'No data in this time range.'}
-      </p>
-    {:else if app.noValuesDrawn}
-      <!-- Last in the chain, because it is the only one of these that is not a
-           problem: the data is there and the user asked for it not to be drawn.
-           It exists because `points: None` with the band off is otherwise
-           indistinguishable from a broken graph, and it names the two switches
-           that lead back out. The marks may still be on the plot underneath — the
-           note is pointer-transparent and sits in the middle, clear of the alert
-           row at the top and the change bars along the floor. -->
-      <p class="overlay-note">
-        Data points are hidden. Turn on the trend band, or show run means.
-      </p>
-    {/if}
-  </div>
 </section>
 
 <style>
@@ -606,6 +635,32 @@
   .error-list {
     min-width: 0;
     overflow-wrap: anywhere;
+  }
+  /* The pane with nothing plotted. It takes the whole pane rather than sitting
+     in a plot rectangle, because there is no plot: one column, centred both
+     ways, and the paragraph capped at a readable measure so it doesn't run the
+     width of a desktop pane. Nothing here is reserved or placeheld — the pane
+     swaps to the graph on a click of the user's, which is the one moment
+     "Layout stability" allows the arrangement to change. */
+  .blank {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    padding: 24px;
+    text-align: center;
+  }
+  .blank h2 {
+    margin: 0;
+    font-size: 16px;
+  }
+  .blank p {
+    margin: 0;
+    max-width: 46ch;
+    color: var(--fg-muted);
   }
   .overview {
     height: 84px;

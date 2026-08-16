@@ -205,6 +205,12 @@ Living checklist. Update in the same commit as the work it describes.
   the selection survives, and the detail graph explains itself when the dots are
   off with no band on. See graphs.md, "Replicates".
 
+- An empty state for the graph pane: with nothing plotted it is one centred
+  block naming the app with a primary **Add series…** in it, in place of a
+  0-to-1 axis pair and a header full of controls for a drawing that doesn't
+  exist. The narrow tier's first pane stays the graph — the door is now on it, and
+  the panel covers the window at that width, so Done lands the user on their new
+  graph. See graphs.md, "With nothing plotted, the pane is a call to action"
 - A fourth shell arrangement, `short`, for a window that can afford columns but
   not rows — and the tier is now a function of both axes rather than of width.
   A landscape phone (844×390) took the stacking tier and got a **12px** detail
@@ -227,18 +233,6 @@ rather than estimated. The five items are meant to land in order: the first two
 are independent and cheap, the middle two are the picker and want to land
 together, and the sweep goes last so it is checked once against the final
 arrangements.
-
-- [ ] **The empty app has to say what to do.** At narrow the first pane is picked
-      by a constant (`'graph'`), and the graph pane draws a full 0-to-1 axis pair
-      with "Add a series to see data." painted in the middle of it, under 188px of
-      range/points/zoom controls that have nothing to control. So the way forward
-      is a tab away and has to be found. Two parts: choose the first pane from
-      state (no series → the pane the Add button is on) as a one-time initial
-      choice, so removing the last series doesn't yank the user out of the graph
-      they are looking at; and give the graph pane a real empty state at every
-      width — a named block with a primary **Add series…** in it, and no header
-      above it, since every control in that header describes a drawing that does
-      not exist.
 
 - [ ] **The Add-series panel spends 461 of 844px before it draws a row.** Measured
       on a fresh open with nothing plotted: header + hint 105px, control card
