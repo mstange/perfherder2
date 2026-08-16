@@ -11,8 +11,11 @@ import {
   STACKED_MIN_HEIGHT,
   THREE_COLUMN_MIN,
   TWO_COLUMN_MIN,
+  PICKER_LIST_MIN,
+  foldPickerLoadRow,
   isPaneVisible,
   layoutFor,
+  pickerChromeCost,
   resolvePane,
   switchedPanes,
 } from './layout';
@@ -162,5 +165,64 @@ describe('resolvePane', () => {
 
   it('leaves the other panes alone when there is no selection', () => {
     expect(resolvePane('series', false, narrow)).toBe('series');
+  });
+});
+
+// The panel's fold is a question about height — what folding buys is list — with
+// width entering only as "how tall is the block here". Each case is a real
+// viewport, with the panel's content box worked out from it: a narrow window
+// gives the panel the whole width (less its 16px padding either side), and a
+// wider one docks it past the sidebar and inside the overlay's 16px.
+describe('foldPickerLoadRow', () => {
+  const phone = { w: 390 - 32, h: 844 - 32 };
+  const phoneWithKeyboard = { w: 390 - 32, h: 508 - 32 };
+  const phoneSe = { w: 375 - 32, h: 667 - 32 };
+  const tallNarrowWindow = { w: 596 - 32, h: 900 - 32 };
+  const shortNarrowWindow = { w: 596 - 32, h: 400 - 32 };
+  const dockedSmallLaptop = { w: 900 - 280 - 32 - 32, h: 900 - 32 - 32 };
+  const desktop = { w: 1440 - 280 - 32 - 32, h: 900 - 32 - 32 };
+  const desktopStrip = { w: 1440 - 280 - 32 - 32, h: 500 - 32 - 32 };
+  const fold = (v: { w: number; h: number }) => foldPickerLoadRow(v.w, v.h);
+
+  it('keeps the group open where the window has the height for it', () => {
+    expect(fold(tallNarrowWindow)).toBe(false);
+    expect(fold(dockedSmallLaptop)).toBe(false);
+    expect(fold(desktop)).toBe(false);
+  });
+
+  // The case that made this a height question: same 596px width, and the answer
+  // has to differ.
+  it('folds the same width when the window is short', () => {
+    expect(fold(shortNarrowWindow)).toBe(true);
+  });
+
+  it('folds a phone, whose chrome is three lines of repository chips tall', () => {
+    expect(fold(phone)).toBe(true);
+    expect(fold(phoneSe)).toBe(true);
+  });
+
+  it('folds when a keyboard has taken half the window', () => {
+    expect(fold(phoneWithKeyboard)).toBe(true);
+  });
+
+  it('folds a desktop window dragged down to a strip', () => {
+    expect(fold(desktopStrip)).toBe(true);
+  });
+
+  // The property the constants exist for: whatever the panel, an unfolded block
+  // leaves the list its floor.
+  it('never leaves the list under its floor with the group open', () => {
+    for (const width of [358, 420, 556, 564, 700, 756, 1096]) {
+      for (let height = 200; height <= 1400; height += 10) {
+        if (foldPickerLoadRow(width, height)) continue;
+        expect(height - pickerChromeCost(width)).toBeGreaterThanOrEqual(PICKER_LIST_MIN);
+      }
+    }
+  });
+
+  it('estimates the chrome as a step, in the direction that folds', () => {
+    // Three lines of chips, two, one — and each tier takes its band's worst case.
+    expect(pickerChromeCost(358)).toBeGreaterThan(pickerChromeCost(556));
+    expect(pickerChromeCost(556)).toBeGreaterThan(pickerChromeCost(1096));
   });
 });

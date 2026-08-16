@@ -219,10 +219,12 @@ Living checklist. Update in the same commit as the work it describes.
   reads it back, so the virtualizer still has one number; sorting moves to a select
   with `setSortColumn` / `toggleSortDirection` (+ tests). See design.md, "A panel a
   phone wide lists cards, not columns"
-- The Add-series panel folds its loading group away below `CONTROL_BLOCK_NARROW`,
-  drops the hint and shortens the status row: 461px of chrome before the first row
-  becomes 244px, and the list goes from **8 rows to 14** on a 390×844 phone. See
-  design.md, "A panel a phone wide folds the loading group away"
+- The Add-series panel folds its loading group away when the list would otherwise
+  drop below five rows (`foldPickerLoadRow`, from a measured chrome cost — a height
+  question, since what folding buys is list), drops the hint and shortens the status
+  row: 461px of chrome before the first row becomes 264px, and the list goes from
+  **8 rows to 6 cards** on a 390×844 phone — while a 596×900 window keeps the whole
+  block. See design.md, "A panel with no room for the loading group folds it away"
 - The on-screen keyboard takes height from the app instead of covering it —
   `shouldAutofocus` (+ test) so a touch device doesn't get a keyboard it never
   asked for, `interactive-widget=resizes-content`, and `appHeight` from

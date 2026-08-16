@@ -14,6 +14,7 @@
   import type { PointMode, SelectedPoint } from '../urlState';
   import { CONTROL_BLOCK_NARROW, GRAPH_MIN_HEIGHT } from '../shared/layout';
   import { describeSpan, matchingPreset, RANGE_PRESETS } from '../shared/timeRange';
+  import ChevronIcon from '../shared/ChevronIcon.svelte';
 
   type Props = { app: AppState };
   let { app }: Props = $props();
@@ -318,14 +319,14 @@
        The button is a second door to the panel, next to the series list's own.
        That is not a duplicate control so much as the same control where the eye
        is: this one exists only while there is nothing plotted, and the list's is
-       the permanent one. -->
+       the permanent one.
+
+       A sentence describing what the panel contains used to sit between the two.
+       It was answering a question the next tap answers better — the panel opens
+       on the list it was describing — so the block is a heading and the door. -->
   {#if app.series.length === 0}
     <div class="blank">
       <h2>Nothing plotted yet</h2>
-      <p>
-        Pick tests from one flat, searchable list across repositories — suites,
-        subtests and platforms together — and they are drawn here.
-      </p>
       <button
         type="button"
         class="btn btn-primary"
@@ -351,7 +352,7 @@
           title="Range, points and the drawing switches"
           onclick={() => (controlsOpen = !controlsOpen)}
         >
-          Controls {controlsOpen ? '▴' : '▾'}
+          Controls <ChevronIcon dir={controlsOpen ? 'up' : 'down'} />
         </button>
       </div>
     {/if}
@@ -625,6 +626,13 @@
     border-bottom: 1px solid var(--border-default);
     font: 13px/1.4 system-ui, sans-serif;
   }
+  /* The label and the chevron on one line, centred on each other — a drawn icon
+     is a box, not a glyph on a baseline. */
+  .header-bar .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+  }
   .header-summary {
     min-width: 0;
     overflow: hidden;
@@ -772,11 +780,6 @@
   .blank h2 {
     margin: 0;
     font-size: 16px;
-  }
-  .blank p {
-    margin: 0;
-    max-width: 46ch;
-    color: var(--fg-muted);
   }
   .overview {
     height: 84px;

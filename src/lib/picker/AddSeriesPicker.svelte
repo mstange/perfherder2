@@ -11,7 +11,7 @@ import { TIME_RANGES } from './pickerOptions';
     type FilterField,
     type SortColumn,
   } from './filter';
-  import { CONTROL_BLOCK_NARROW } from '../shared/layout';
+  import { CONTROL_BLOCK_NARROW, foldPickerLoadRow } from '../shared/layout';
   import { PickerState } from './pickerState.svelte';
   import {
     EMPTY_GRAPH_CONTEXT,
@@ -21,6 +21,7 @@ import { TIME_RANGES } from './pickerOptions';
   } from '../urlState';
   import FilterInput from './FilterInput.svelte';
   import CrossIcon from '../shared/CrossIcon.svelte';
+  import ChevronIcon from '../shared/ChevronIcon.svelte';
 
   type Props = {
     onadd?: (series: Series[]) => void;
@@ -123,32 +124,43 @@ import { TIME_RANGES } from './pickerOptions';
     }
   });
 
-  // ---- The panel too narrow for its own chrome --------------------------
+  // ---- The panel too small for its own chrome ---------------------------
   // On a 390px phone the header, the control card and the status row spent 461
   // of 844px before a single row was drawn — eight rows of list, five when a
   // derived filter's chips stacked one per line, and none at all with the
   // keyboard up. The filter box and the list are what the panel is *for*, so
-  // everything else gives way to them here: the hint paragraph goes (a CSS rule
-  // below), the counts shorten, and the load row — the repositories and the time
-  // range, which are set once and then left alone — folds behind a line that
-  // says what it is set to.
+  // everything else gives way to them: the hint paragraph goes, the counts
+  // shorten, and the loading group — the repositories and the time range, which
+  // are set once and then left alone — folds behind a line that says what it is
+  // set to.
   //
-  // Measured in JS rather than left to the container query that already drops
-  // the block's label rail, because what happens here is not only a matter of
-  // style: the summary line is a control that either exists or doesn't, and it
-  // carries the `aria-expanded` that says so. `CONTROL_BLOCK_NARROW` is the one
-  // number both halves read.
+  // **The three give way for different reasons, so they ask different
+  // questions.** The hint and the counts' wording are about horizontal room, and
+  // the hint's rule is a container query in the stylesheet. The fold is about
+  // *vertical* room — what folding buys is list — so it asks `foldPickerLoadRow`,
+  // which is a floor under the list with the block's own height subtracted; see
+  // layout.ts. Asking it about width folded a 596×900 window that had all the
+  // room in the world for the block.
+  //
+  // The width half is measured here rather than left to the container query,
+  // because what happens is not only a matter of style: the summary line is a
+  // control that either exists or doesn't, and it carries the `aria-expanded`
+  // that says so.
   let panelEl = $state<HTMLElement | null>(null);
   let panelWidth = $state(Infinity);
+  let panelHeight = $state(Infinity);
   $effect(() => {
     if (!panelEl) return;
     const ro = new ResizeObserver(([entry]) => {
+      // Both from the content box, which is what layout.ts's numbers are
+      // relative to: the panel's own 16px padding is outside them.
       panelWidth = entry.contentRect.width;
+      panelHeight = entry.contentRect.height;
     });
     ro.observe(panelEl);
     return () => ro.disconnect();
   });
-  const chromeFolded = $derived(panelWidth < CONTROL_BLOCK_NARROW);
+  const chromeNarrow = $derived(panelWidth < CONTROL_BLOCK_NARROW);
 
   // The status row is four things — the counts, the sort control, the bulk button
   // and `Done` — and below about 600px of panel it cannot hold them on one line:
@@ -164,10 +176,11 @@ import { TIME_RANGES } from './pickerOptions';
   // everything.
   const STATUS_ROW_ONE_LINE = 600;
   const statusRoomy = $derived(panelWidth >= STATUS_ROW_ONE_LINE);
+  const loadFolded = $derived(foldPickerLoadRow(panelWidth, panelHeight));
   // Transient: which repositories to fetch is not a question anyone answers
   // twice in a session, so this starts closed and nothing tries to remember it.
   let loadOpen = $state(false);
-  const loadShown = $derived(!chromeFolded || loadOpen);
+  const loadShown = $derived(!loadFolded || loadOpen);
 
   // ---- Virtual scrolling ------------------------------------------------
   // Broad filters can produce 25k rows; even one expanded parent adds a few
@@ -525,7 +538,7 @@ import { TIME_RANGES } from './pickerOptions';
       </label>
     </div>
 
-    {#if chromeFolded}
+    {#if loadFolded}
       <!-- The load row's one-line stand-in. It states the two things it folded
            away — which repositories, over what window — rather than saying
            "Load from ▾" and making the reader open it to find out, which is the
@@ -538,8 +551,13 @@ import { TIME_RANGES } from './pickerOptions';
         aria-controls="picker-load-row"
         onclick={() => (loadOpen = !loadOpen)}
       >
-        <span>{loadSummary(picker.repoChips.filter((r) => picker.selectedRepos.has(r)), rangeLabel)}</span>
-        <span aria-hidden="true">{loadOpen ? '▴' : '▾'}</span>
+        <span
+          >{loadSummary(
+            picker.repoChips.filter((r) => picker.selectedRepos.has(r)),
+            rangeLabel,
+          )}</span
+        >
+        <ChevronIcon dir={loadOpen ? 'up' : 'down'} />
       </button>
     {/if}
 
@@ -593,7 +611,7 @@ import { TIME_RANGES } from './pickerOptions';
          them and keep them in a `title`: at a phone's width this row wrapped to
          two lines, and the pair of counts is the part a reader recognises by
          shape rather than by reading. -->
-    {#if chromeFolded}
+    {#if chromeNarrow}
       <span title="{matchingLabel} matching of {loadedLabel} loaded"
         >{matchingLabel} / {loadedLabel}</span
       >
@@ -628,8 +646,9 @@ import { TIME_RANGES } from './pickerOptions';
           aria-label={picker.sort?.direction === 'desc' ? 'Sort ascending' : 'Sort descending'}
           title={picker.sort?.direction === 'desc' ? 'Sort ascending' : 'Sort descending'}
           onclick={() => picker.toggleSortDirection()}
-          >{picker.sort?.direction === 'desc' ? '▼' : '▲'}</button
         >
+          <ChevronIcon size={11} dir={picker.sort?.direction === 'desc' ? 'down' : 'up'} />
+        </button>
       </label>
     {/if}
     <!-- Dropped where the row is too tight for four things, which is a narrower
@@ -1105,6 +1124,14 @@ import { TIME_RANGES } from './pickerOptions';
      edge, and quiet enough that the filter box above it stays the loudest thing
      in the card. */
   .load-summary {
+    /* Its own row, across every column. Auto-placement puts a grid item in the
+       next free cell, which for this one is the *label rail* of the second row —
+       and the rail is an `auto` track, so a full-width button in it grew the
+       first column and took the width straight out of the filter box beside it.
+       Measured at a 656×619 window, which is a panel wide enough to keep the rail
+       and short enough to fold: the box lost ~200px. Spanning the row is also what
+       it means: the line stands in for a whole group, not for a label. */
+    grid-column: 1 / -1;
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -1225,9 +1252,9 @@ import { TIME_RANGES } from './pickerOptions';
     font-size: 12px;
   }
   .sort-dir {
+    display: inline-grid;
+    place-items: center;
     padding: 2px 6px;
-    font-size: 10px;
-    line-height: 1.4;
   }
   /* With the bulk button gone, `Done` is what holds the trailing edge. */
   .done.trailing {

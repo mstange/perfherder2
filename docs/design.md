@@ -29,7 +29,7 @@ change is wrong for a reason the code doesn't show:
 | A URL parameter | three sections that have to agree: "Architecture" below (`urlState.ts` owns the whole schema), graphs.md "URL state", comparison.md "URL state" |
 | `FilterInput.svelte`, or anything holding filter state | "The one component that owns state" — this has bitten us twice |
 | When the picker's filter gets written for the user | "Opening the picker prefills its filter" and "Deriving the filter, and clearing it" — deciding *when* to overwrite a filter by inspecting it has been wrong once already; the rule is now one `isFilterActive` check plus a button |
-| Adding a control above the picker's list, or to the graph header | "The control block is two groups: what loads, and what shows" (and "A panel a phone wide folds the loading group away" — which group a control joins decides whether it survives a phone) — which row it goes on follows from whether it fetches, and the last arrangement that was decided by eye put two controls in each other's group. Both blocks share `.control-*` in `src/app.css`; the header's own departures are in graphs.md, "The header is two groups" |
+| Adding a control above the picker's list, or to the graph header | "The control block is two groups: what loads, and what shows" (and "A panel with no room for the loading group folds it away" — which group a control joins decides whether it survives a small panel, and nothing in the middle column may carry a `min-width`) — which row it goes on follows from whether it fetches, and the last arrangement that was decided by eye put two controls in each other's group. Both blocks share `.control-*` in `src/app.css`; the header's own departures are in graphs.md, "The header is two groups" |
 | Markup with two adjacent badges | "Whitespace between adjacent badges (Svelte gotcha)" |
 | A color, anywhere | "Theming: one resolved attribute, one exception" — there are exactly two, and neither is new |
 | A button | "One button, defined once", and "Touch: a floor under the controls a thumb drives" if it is smaller than `.btn` |
@@ -932,6 +932,14 @@ round.
   which is what the old `TIME RANGE` inline label did. The `<select>`
   carries `aria-label="Time range"`, so the accessible name is the real
   one.
+- **Nothing in the middle column may carry a `min-width`.** That track is
+  `minmax(0, 1fr)` and the right rail's is `auto`, which does not shrink — so a
+  floor on the filter box does not make the row wider, it makes the box overflow
+  its own track and run *under* the rail. Measured before it was removed: at a
+  596px window "Derive filter" sat 32px inside the filter box, and it was still
+  8px over at 620. The chips' own min-content width is the honest floor, and below
+  the widths where even that fits, the container query has already folded the
+  block to one column.
 - **The status row belongs to the list.** It counts the rows below it and
   acts on them in bulk, so it sits in the same flex column as the
   scroller, 6px above it, rather than floating equidistant between the
@@ -940,13 +948,12 @@ round.
   level of the chain has to carry; see "The Add-series dialog has exactly
   one scroller".
 
-#### A panel a phone wide folds the loading group away
+#### A panel with no room for the loading group folds it away
 
 The block is two groups, and on a 390px panel it was 299px tall before a chip
 had been added to it — with the header and the status row, 461 of an 844px screen
-spent before the first row of the list. So below `CONTROL_BLOCK_NARROW`, the same
-560px at which the label rail goes, the `LOAD FROM` group folds behind one line
-that states it:
+spent before the first row of the list. So the `LOAD FROM` group folds behind one
+line that states it:
 
 ```
 [ speedometer3 .................................... ]
@@ -955,8 +962,34 @@ that states it:
 [ autoland, mozilla-central · last 14 days       ▾ ]
 ```
 
-The list goes from 321px to 538px — 8 rows to 14 — and from nothing at all to 5
-rows with a keyboard up. Which group folds is not a matter of taste either:
+The list goes from 321px to 518px — 8 table rows to 6 cards, and to 2 with a
+keyboard up, from none at all.
+
+**Whether to fold is a question about height, not width** — what folding buys is
+list, and the list is what the panel is for. The first version asked about width
+(`CONTROL_BLOCK_NARROW`, because that is where the block gives up its label rail)
+and folded a 596×900 window that had all the room in the world for the block.
+`foldPickerLoadRow` in layout.ts asks instead whether the list would keep
+`PICKER_LIST_MIN` — five card rows — with the group open. Width still comes into
+it, but only through `pickerChromeCost`, as *how tall is the block here*: the four
+repository chips wrap to three lines on a phone and one on a desktop, so the block
+is 438px there and 291 here. Three tiers, each taking the largest cost measured in
+its band (`tools/visual/picker-chrome-cost.mjs`), because the estimate should err
+towards folding — a fold is one tap from being undone and a squeezed list is not.
+
+Where it lands, measured with `tools/visual/picker-fold-cases.mjs`:
+
+| Viewport | Folds | List |
+| --- | --- | --- |
+| 390×844 phone | yes | 6 cards |
+| 390×508 (phone, keyboard up) | yes | 2 cards |
+| 596×900 | **no** | 6 cards |
+| 596×400 | yes | 1 card |
+| 900×900, panel docked | no | 5 cards |
+| 1440×900 | no | 16 table rows |
+| 1440×500 | yes | 5 table rows |
+
+Which group folds is not a matter of taste either:
 
 - **The filter group stays open, all of it.** It is what the panel is for, and
   the two buttons and the subtest switch are all things a phone user reaches for
@@ -968,12 +1001,21 @@ rows with a keyboard up. Which group folds is not a matter of taste either:
   follows. A control that folds without saying what it is set to makes the reader
   open it to find out, which is the tap folding it was meant to save. Same rule
   as the graph header's collapsed bar (graphs.md, "A pane too short for the bar").
-- **The threshold is read from JS as well as from the container query**, because
-  the summary line is a control that either exists or doesn't and carries the
-  `aria-expanded` saying whether it is open. `CONTROL_BLOCK_NARROW` in layout.ts
-  is the one copy of the number, and it must match the `@container` rule in
-  app.css the way `SIDEBAR_WIDTH` must match `--sidebar-width` — a container
-  query's condition can't be a custom property.
+- **The three things that give way ask three different questions.** The fold asks
+  about height, as above. The hint paragraph and the two reserved widths in the
+  status row are about horizontal room and stay in the container query in app.css.
+  The counts' wording is horizontal too but has to be read in JS, because it is a
+  different string and not a different style — `CONTROL_BLOCK_NARROW` is the one
+  copy of that number, and it must match the `@container` rule the way
+  `SIDEBAR_WIDTH` must match `--sidebar-width`, since a container query's
+  condition cannot be a custom property.
+- **The summary line spans every column of the grid.** Auto-placement puts a grid
+  item in the next free cell, which for this one is the *label rail* of the second
+  row — and the rail is an `auto` track, so a full-width button in it grew the
+  first column and took ~200px straight out of the filter box beside it (seen at a
+  656×619 window: wide enough to keep the rail, short enough to fold).
+  `grid-column: 1 / -1` is also what the line means: it stands in for a whole
+  group, not for a label.
 - **The folded group is hidden, not unmounted**, so `aria-controls` points at
   something real. That needs an explicit `display: none` per element: `[hidden]`'s
   UA rule is zero-specificity and every one of these carries a class that sets
@@ -1712,6 +1754,17 @@ previous push". Read once at component init — a mouse plugged in mid-session i
 not worth a listener. It is a separate query from `shouldAutofocus`'s
 `(pointer: fine)` and deliberately not its negation: a device can answer no to
 both.
+
+**A control that opens something carries `ChevronIcon`, not `▾`.** The text
+triangles (`▾ ▴ ▲ ▼`) are the wrong size at every font size this app uses: at
+13px they draw about 6px of ink beside a 13px label, and the obvious fix — shrink
+the label's font so the glyph looks proportionate — makes a control whose *text*
+is too small instead. A drawn chevron is sized in px, so it can be as big as the
+line it sits on. One component for the three places that need one (the graph
+header's Controls toggle, the panel's load-row summary, the card list's sort
+direction), for the same reason `CrossIcon` is one component: they sit at
+different sizes and have to read as the same mark. Its two directions are one
+path with a rotation, so neither can be adjusted without the other.
 
 ### Two loading cues, and which wait each one is for
 

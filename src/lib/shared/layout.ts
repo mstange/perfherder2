@@ -68,6 +68,60 @@ export const DETAILS_ROW_MAX = 320;
  */
 export const CONTROL_BLOCK_NARROW = 560;
 
+// ---------------------------------------------------------------------------
+// The Add-series panel's own fold
+//
+// The panel's control block has two groups, and the loading one — the repository
+// chips and the time range — folds behind a line that states it when there isn't
+// room to keep it open. **That is a question about height, not width**: what
+// folding buys is list, and the list is what the panel is for. A 596×900 window
+// has plenty of room for the block and used to fold it anyway, because the first
+// version asked about width.
+//
+// Width still comes into it, but only as "how tall is the block here" — the four
+// repository chips take three lines on a phone and one on a desktop.
+
+/**
+ * What the panel spends above its list, with the loading group open, at a given
+ * panel *content* width — so the panel's own 16px padding is already outside
+ * these numbers. Measured with `tools/visual/picker-chrome-cost.mjs`:
+ *
+ * | content width | cost |
+ * | --- | --- |
+ * | 358 | 438 |
+ * | 416–556 | 402 |
+ * | 564–668 | ~362 |
+ * | 756 | 291 |
+ * | 1096 | 237 |
+ *
+ * Three tiers rather than a fit through those points, because what the cost
+ * really tracks is how many lines the repository chips wrap to — three, two, one
+ * — which is a step. Each tier takes the *largest* cost in its band, so the
+ * estimate errs towards folding, which is the recoverable direction: the fold is
+ * one tap from being undone and a squeezed list is not.
+ */
+export function pickerChromeCost(contentWidth: number): number {
+  // The boundaries are where the chips were *measured* to rewrap — 358 takes
+  // three lines, 416 takes two, 1096 takes one — rather than round numbers near
+  // them, so a panel just inside a band is not charged the cheaper tier.
+  if (contentWidth < 416) return 438;
+  if (contentWidth < 700) return 402;
+  return 291;
+}
+
+/**
+ * The list's floor: five card rows at `CARD_ROW_HEIGHT`. Below that the list
+ * stops being a list and becomes a preview of one — and five is also where a
+ * phone lands once the loading group is folded away, which is the case this
+ * threshold exists to catch.
+ */
+export const PICKER_LIST_MIN = 400;
+
+/** Does the panel have to fold its loading group to keep the list usable? */
+export function foldPickerLoadRow(contentWidth: number, contentHeight: number): boolean {
+  return contentHeight - pickerChromeCost(contentWidth) < PICKER_LIST_MIN;
+}
+
 /** Below this the details pane cannot be a column. */
 export const THREE_COLUMN_MIN = SIDEBAR_WIDTH + GRAPH_MIN_WIDTH + DETAILS_WIDTH;
 /** Below this the series list cannot be a column either. */

@@ -255,7 +255,16 @@
     /* Grow to fill the filter row (previously on the .filter-column
        wrapper we dropped when removing the Fields hint). */
     flex: 1;
-    min-width: 300px;
+    /* **No `min-width` here, and that is load-bearing.** This box sits in the
+       control block's middle grid track, which is `minmax(0, 1fr)`; the right
+       rail's track is `auto` and does not shrink. A floor on the box therefore
+       does not make the row wider, it makes the box *overflow its own track* and
+       run under the rail — measured: at a 596px window the "Derive filter" button
+       sat 32px inside the filter box, and it was still 8px at 620. The chips'
+       own min-content width is the honest floor (a long platform chip is ~230px),
+       and below the widths where even that fits, the container query in app.css
+       has already folded the block to one column. */
+    min-width: 0;
   }
   /* A derived filter can be six chips, and at a phone's width each one takes a
      line of its own — 300px of panel, most of it spent restating the graph the
@@ -277,7 +286,9 @@
   }
   .filter-text {
     flex: 1;
-    min-width: 160px;
+    /* Enough to see a token being typed, and no more: this is the other floor
+       that can push the box past its track (see above). */
+    min-width: 120px;
     border: 0;
     outline: 0;
     padding: 4px 4px;

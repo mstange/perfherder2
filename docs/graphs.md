@@ -32,7 +32,12 @@ than living in the left pane — it needs the full width for its table.
 ### With nothing plotted, the pane is a call to action
 
 There is no graph to draw and no controls worth showing, so the middle pane
-holds one centred block: what this app is, and an **Add series…** button.
+holds one centred block: a heading and an **Add series…** button.
+
+A sentence describing what the panel contains sat between the two for a while.
+It was answering a question the next tap answers better — the panel opens *on*
+the list it was describing — so it went; the call to action was already clear
+without it.
 
 What it replaced was the two charts drawn as usual — a full 0-to-1 axis pair
 with *"Add a series to see data."* as an overlay note in the middle of the
