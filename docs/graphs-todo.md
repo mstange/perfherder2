@@ -231,10 +231,11 @@ Living checklist. Update in the same commit as the work it describes.
   rather than on a device. See design.md, "The on-screen keyboard has to take
   height from the app, not cover it"
 - The graph header collapses to one line — `Feb 10 – Aug 9 · run means`, plus a
-  Controls toggle — where the pane is shorter than `GRAPH_MIN_HEIGHT`. 35px against
-  114–188, which is a landscape phone's detail plot at 228px instead of 126px and a
-  1440×420 window's at 301px instead of ~200px. See graphs.md, "A pane too short
-  for the bar collapses it to one line"
+  Controls toggle — where the pane is too small for it in either axis: shorter than
+  `GRAPH_MIN_HEIGHT` or narrower than `CONTROL_BLOCK_NARROW`. 35–41px against
+  114–213, which is a phone's detail plot at 658px instead of 480 and a landscape
+  phone's at 204 instead of 126. See graphs.md, "A pane too small for the bar
+  collapses it to one line"
 - An empty state for the graph pane: with nothing plotted it is one centred
   block naming the app with a primary **Add series…** in it, in place of a
   0-to-1 axis pair and a header full of controls for a drawing that doesn't

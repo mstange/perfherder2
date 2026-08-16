@@ -12,7 +12,7 @@
     type ChartHit,
   } from './ScatterChart.svelte';
   import type { PointMode, SelectedPoint } from '../urlState';
-  import { GRAPH_MIN_HEIGHT } from '../shared/layout';
+  import { CONTROL_BLOCK_NARROW, GRAPH_MIN_HEIGHT } from '../shared/layout';
   import { describeSpan, matchingPreset, RANGE_PRESETS } from '../shared/timeRange';
 
   type Props = { app: AppState };
@@ -79,13 +79,23 @@
   // a timer that exists only to un-highlight a button.
   const activePreset = $derived(matchingPreset(app.range, Date.now()));
 
-  // ---- The header, where the pane is too short to keep it open --------------
-  // Nine controls in two rows is 138–188px, which is affordable over a graph
-  // and not over a strip: a landscape phone put a 138px header and an 84px
-  // overview over a 126px plot. Below the height the arrangements try to
-  // guarantee the graph (`GRAPH_MIN_HEIGHT`, and a pane under it means the
-  // window had nothing left to give) the header collapses to one line that
-  // *says* what it is set to, and a button that opens it.
+  // ---- The header, where the pane is too small to keep it open --------------
+  // Nine controls in two rows is 138–213px, which is affordable over a graph and
+  // not over a strip: a landscape phone put a 138px header and an 84px overview
+  // over a 126px plot. So the header collapses to one line that *says* what it is
+  // set to, plus a button that opens it, whenever the pane is too small for it in
+  // *either* axis — the same two-axis rule the shell's own arrangements follow:
+  //
+  // - shorter than `GRAPH_MIN_HEIGHT`, the height the arrangements try to
+  //   guarantee the graph, so a pane under it is a window with nothing left to
+  //   give. A landscape phone, or a desktop window dragged down to a strip.
+  // - narrower than `CONTROL_BLOCK_NARROW`, which is the width at which this
+  //   block already gives up its label rail — it is the block's own admission
+  //   that it doesn't fit. At a phone's 390px the presets wrap to two rows and
+  //   the touch floor makes every one of them 32px, so the bar is 213px of an
+  //   844px screen: a quarter of the window spent on controls that are read once
+  //   a session, above the graph they describe. Collapsed it is 35px, and the
+  //   summary line carries what the reader needs to read the plot.
   //
   // Measured here rather than in a container query, for the reason the shell's
   // tier is measured in JS: two things that are not CSS have to agree with it —
@@ -95,15 +105,19 @@
   // cannot change it and there is no loop to guard against.
   let paneEl = $state<HTMLElement | null>(null);
   let paneHeight = $state(Infinity);
+  let paneWidth = $state(Infinity);
   $effect(() => {
     if (!paneEl) return;
     const ro = new ResizeObserver(([entry]) => {
       paneHeight = entry.contentRect.height;
+      paneWidth = entry.contentRect.width;
     });
     ro.observe(paneEl);
     return () => ro.disconnect();
   });
-  const collapsible = $derived(paneHeight < GRAPH_MIN_HEIGHT);
+  const collapsible = $derived(
+    paneHeight < GRAPH_MIN_HEIGHT || paneWidth < CONTROL_BLOCK_NARROW,
+  );
   // Transient, and not in the URL: it answers "am I fiddling with the controls
   // right now", which is not part of what a shared link shows.
   let controlsOpen = $state(false);

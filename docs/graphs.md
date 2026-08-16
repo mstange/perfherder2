@@ -195,20 +195,36 @@ header settles and the plot keeps more height than its chrome, and it is
 tier, where the graph has the whole window — a second container query gives up
 the zoom label's reserved width, the last unwrappable item.
 
-#### A pane too short for the bar collapses it to one line
+#### A pane too small for the bar collapses it to one line
 
-Everything above is about width. A 138px header is affordable over a graph and
-not over a strip: a landscape phone gave the pane 347px, and the header plus the
-84px overview left a **126px** plot. So below `GRAPH_MIN_HEIGHT` — the height the
-shell's arrangements try to guarantee the graph, so a pane under it means the
-window had nothing left to give — the block collapses to a single line:
+Everything above is about how the bar *fits* a width. Whether it is worth its
+space is a second question, and it has to be asked in both axes — the same
+two-axis rule the shell's arrangements follow. A 138px header is affordable over a
+graph and not over a strip: a landscape phone gave the pane 347px, and the header
+plus the 84px overview left a **126px** plot. And at a phone's 390px the presets
+wrap to two rows and the touch floor makes each one 32px, so the bar is 213px of
+an 844px screen — a quarter of the window spent on controls that are read once a
+session, above the graph they describe.
+
+So the block collapses to a single line whenever the pane is under
+`GRAPH_MIN_HEIGHT` tall (the height the arrangements try to guarantee the graph,
+so a pane below it is a window with nothing left to give) **or** under
+`CONTROL_BLOCK_NARROW` wide (the width at which this block already gives up its
+label rail — its own admission that it doesn't fit):
 
 ```
 Feb 10 – Aug 9 · run means                                    [Controls ▾]
 ```
 
-35px instead of 114–188, which took that plot from 126px to 228px and a 1440×420
-desktop window's from ~200px to 301px.
+35–41px instead of 114–213. Measured, by case:
+
+| Window | Pane | Detail plot before | After |
+| --- | --- | --- | --- |
+| 390×844 phone | 390 wide | 480px | **658px** |
+| 844×390 landscape phone | 347 tall | 126px | **204px** |
+| 768×1024 tablet | 488 wide | 427px | **579px** |
+| 1440×420 strip | 420 tall | ~200px | **301px** |
+| 1440×900 desktop | — | 702px | unchanged, no collapse |
 
 - **The line says what it collapsed, not just that it collapsed.** A bare
   "Controls" button makes the reader open it to find out what the graph is set
@@ -218,7 +234,7 @@ desktop window's from ~200px to 301px.
   is appended because it is the one setting that makes the axis disagree with the
   range printed beside it.
 - **Opening it costs the graph height, and that is the bargain.** In landscape the
-  plot goes to 90px while the block is open. It is a click of the user's, on a
+  plot goes to 45px while the block is open. It is a click of the user's, on a
   control they can close again, which is the case "Layout stability" allows — as
   against the header changing size because a fetch landed.
 - **The threshold is measured in JS, not in a container query**, for the reason
