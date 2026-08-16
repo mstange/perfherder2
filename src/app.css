@@ -420,6 +420,65 @@ button {
   padding-block: 2px;
 }
 
+/* Touch sizing.
+   ------------
+   Every control in this app was sized for a pointer you can place on a 24px
+   target: `.btn` comes out at 26px tall, `.btn-compact` at 24, a checkbox at 13
+   square. On a finger those are all misses waiting to happen — Apple asks for
+   44px, Material for 48 — so `(pointer: coarse)` puts a floor under the ones a
+   thumb actually drives.
+
+   **A floor, not the guideline's number.** 44px on every button in a control
+   block that already stacks to four rows on a phone spends the screen the last
+   two commits just bought back; 36px is what a fingertip hits reliably in
+   practice, and the controls that are *primary* navigation get the full 44 where
+   they are declared (the pane switcher in App.svelte). Adjacent-target spacing
+   does as much work as size here, and the block gaps were already generous.
+
+   **Scoped by `pointer`, not by width.** The question is what is driving the app,
+   not how big the window is: a touchscreen laptop at 1400px needs these and a
+   400px browser window on a desktop does not. The queries elsewhere in this file
+   are container-width queries about layout, which is a different question with a
+   different answer.
+
+   One thing this rule must not do is grow a control inside a fixed-height row.
+   The picker's table gives every row exactly `--row-height` and puts a
+   `.btn-compact` in it; AddSeriesPicker takes the floor back off there, which is
+   sound because the card layout — the one a touch device gets on a phone — has
+   the room and gets these sizes. */
+@media (pointer: coarse) {
+  .btn {
+    min-height: 36px;
+    padding-block: 6px;
+  }
+  .btn-compact {
+    min-height: 32px;
+    padding-block: 4px;
+  }
+  /* Inside a segmented track the segments keep their own tighter block padding
+     (see above) but still need the height. */
+  .btn-group > .btn {
+    padding-block: 2px;
+  }
+  /* A 13px checkbox is the smallest target in the app, and there are eight of
+     them. `accent-color` is untouched, so they still follow the theme. */
+  .control-toggle input[type='checkbox'],
+  .chip input[type='checkbox'] {
+    width: 20px;
+    height: 20px;
+  }
+  /* iOS zooms the page when a field with text under 16px takes focus, which
+     scales the layout viewport up and pushes half the panel off screen — the
+     app's own sizes are 13–14px throughout. Raising the two form controls that
+     can be focused is the fix; `maximum-scale=1` in the viewport meta is the
+     other one and it takes pinch-zoom away from everybody. */
+  input[type='text'],
+  select,
+  textarea {
+    font-size: 16px;
+  }
+}
+
 /* Control blocks.
    --------------
    The shape both of this app's control clusters take: the Add-series panel's

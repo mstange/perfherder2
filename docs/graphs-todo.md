@@ -205,6 +205,14 @@ Living checklist. Update in the same commit as the work it describes.
   the selection survives, and the detail graph explains itself when the dots are
   off with no band on. See graphs.md, "Replicates".
 
+- A touch floor under every control a thumb drives — one `(pointer: coarse)`
+  block in app.css plus the sizes components own, 16px form fields so iOS stops
+  zooming on focus, safe-area insets, `overscroll-behavior: contain` on all three
+  scrollers, and the pane switcher moved to the bottom edge at narrow widths with
+  44px targets. The copy that named a click or a key now names a tap where the
+  pointer is coarse (`isCoarsePointer`, + tests). Nineteen targets under 30px on a
+  phone, and now one — a checkbox whose label is the real target. See design.md,
+  "Touch: a floor under the controls a thumb drives"
 - The picker's rows are cards below the table's 832px floor — two lines, every
   badge on screen, no sideways scroll, fed by the same `flatRows` through three
   snippets both layouts share. `rowHeight` is per layout (36px / 80px) and the CSS
@@ -255,19 +263,6 @@ rather than estimated. The five items are meant to land in order: the first two
 are independent and cheap, the middle two are the picker and want to land
 together, and the sweep goes last so it is checked once against the final
 arrangements.
-
-- [ ] **Touch sizing and pointer-appropriate copy, once.** The switcher is 26px
-      tall at the thumb-far top edge; the series list's eye/↑/↓/× buttons are
-      20×18, chip removes 21×18, checkboxes 13×13, and every `.btn` is 24–28px
-      against a 44px guideline. The filter input is 14px, so iOS zooms the page on
-      focus. There are no safe-area insets, so the plot runs under the notch in
-      landscape, and no `overscroll-behavior` on either scroller. The copy assumes
-      a mouse and a keyboard: the Selection pane's empty state says "Click a
-      point… Shift-click a second point", and the comparison hint offers the `C`
-      key. The `(pointer: coarse)` rules have to be checked at every arrangement,
-      not just the phone: the series card's 2×2 action block at 40px per button is
-      88px wide, which does not fit a 280px sidebar, so that block goes to one row
-      at narrow.
 
 - [ ] **File the treeherder bug for `/performance/alertsummary/<id>/`.** Its
       batched queries were only ever wired into `list()`, so the detail route does

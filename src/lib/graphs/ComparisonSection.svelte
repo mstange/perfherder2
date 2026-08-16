@@ -60,9 +60,13 @@
   import CommitList from './CommitList.svelte';
   import { pushlogCaveat, pushlogLabel } from './pushlog';
   import { SIGNIFICANCE_ALPHA } from '../shared/stats';
+  import { isCoarsePointer, mediaMatcher } from '../shared/pointer';
 
   type Props = { app: AppState };
   let { app }: Props = $props();
+
+  // Which gestures this reader has. See the hint below.
+  const coarsePointer = isCoarsePointer(mediaMatcher);
 
   const cmp = $derived(app.comparison);
 
@@ -273,10 +277,23 @@
         Compare with the previous push
       </button>
     {/if}
-    <p class="muted">
-      Shift-click another point to compare it with this one, or press
-      <kbd>C</kbd> to mark this one and walk away with the arrow keys.
-    </p>
+    <!-- Both sentences name gestures the reader's own device has. On touch
+         neither shift-click nor a keystroke exists, and an instruction that
+         cannot be followed reads as a broken feature rather than as a feature
+         for somebody else; what a finger *can* do is the button above and the
+         change bars along the plot floor. See design.md, "Copy that names a
+         gesture has to name one the reader has". -->
+    {#if coarsePointer}
+      <p class="muted">
+        Or tap a detected-change bar along the bottom of the graph to compare the
+        two pushes it spans.
+      </p>
+    {:else}
+      <p class="muted">
+        Shift-click another point to compare it with this one, or press
+        <kbd>C</kbd> to mark this one and walk away with the arrow keys.
+      </p>
+    {/if}
   </div>
 {/snippet}
 

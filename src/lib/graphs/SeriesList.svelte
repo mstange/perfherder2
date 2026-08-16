@@ -521,6 +521,9 @@
   .list {
     flex: 1;
     overflow-y: auto;
+    /* As in the picker's scroller: the end of this list is the end of the
+       gesture, not the start of a rubber-band over the document. */
+    overscroll-behavior: contain;
     padding: 8px;
     display: flex;
     flex-direction: column;
@@ -732,6 +735,25 @@
     height: 18px;
     line-height: 1;
     font-size: 12px;
+  }
+  /* 20×18 is a fingertip miss. These four and the drag handle are the smallest
+     targets in the pane, and they are the ones that *do* things — hide, reorder,
+     remove — so they get the touch floor from app.css in both axes. The 2×2 block
+     grows from 42px wide to 66px, which the 280px sidebar can afford; the card's
+     text column keeps the rest. The `min-height` in app.css's coarse rule would
+     otherwise stretch these to 36px tall while leaving them 20px wide, which is a
+     worse target than the one we started with. */
+  @media (pointer: coarse) {
+    button.icon {
+      width: 32px;
+      height: 32px;
+      min-height: 32px;
+      font-size: 14px;
+    }
+    .handle {
+      width: 32px;
+      padding: 8px 0;
+    }
   }
   button.eye {
     color: var(--fg-muted);

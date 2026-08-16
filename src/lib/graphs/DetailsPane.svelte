@@ -42,8 +42,15 @@
   import { jobDuration, shortJobType } from './job';
   import { commitsOfPush } from './pushlog';
 
+  import { isCoarsePointer, mediaMatcher } from '../shared/pointer';
+
   type Props = { app: AppState };
   let { app }: Props = $props();
+
+  // Which gestures this reader has, for the empty state's instruction. See
+  // shared/pointer.ts, and design.md, "Copy that names a gesture has to name one
+  // the reader has".
+  const coarsePointer = isCoarsePointer(mediaMatcher);
 
   // Said in two places — over the selected replicate's rank and over each run's
   // list of values — so it lives in one. See `Run.values`: the index is a rank
@@ -183,8 +190,13 @@
 
   {#if !sel}
     <p class="empty">
-      Click a point in the graph to see its build, run and value. Shift-click a second
-      point to compare the two.
+      {#if coarsePointer}
+        Tap a point in the graph to see its build, run and value. Tap a
+        detected-change bar to compare the two pushes it spans.
+      {:else}
+        Click a point in the graph to see its build, run and value. Shift-click a
+        second point to compare the two.
+      {/if}
     </p>
   {:else}
     <div class="scroll">
@@ -732,6 +744,10 @@
   .scroll {
     flex: 1;
     overflow-y: auto;
+    /* The third of the app's three scrollers, and the same rule: reaching the
+       bottom of a selection ends the gesture rather than rubber-banding the
+       document behind it. */
+    overscroll-behavior: contain;
     padding: 10px 12px 24px;
   }
   section.series {

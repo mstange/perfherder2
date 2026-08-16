@@ -68,6 +68,15 @@
     background: var(--bg-canvas);
     cursor: pointer;
   }
+  /* A 54×24 switch is a fingertip miss, and the thumb slides by half the width,
+     so both halves have to grow together — the fixed width is the point of the
+     control (see above), so this is a second fixed size rather than a floor. */
+  @media (pointer: coarse) {
+    .theme-toggle {
+      width: 72px;
+      height: 36px;
+    }
+  }
   .theme-toggle:hover {
     background: var(--bg-hover);
   }

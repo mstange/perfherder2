@@ -257,6 +257,20 @@
     flex: 1;
     min-width: 300px;
   }
+  /* A derived filter can be six chips, and at a phone's width each one takes a
+     line of its own — 300px of panel, most of it spent restating the graph the
+     user came from. Capped at three lines and scrolled: every chip stays present
+     and removable, which a "+3 more" summary would not manage, and the box stops
+     competing with the list. The container is the picker panel (`picker-panel`,
+     declared in AddSeriesPicker), so this fires on the same width as the rest of
+     the panel's folding. */
+  @container picker-panel (width < 560px) {
+    .filter-input {
+      max-height: 96px;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+    }
+  }
   .filter-input:focus-within {
     border-color: var(--accent-emphasis);
     box-shadow: 0 0 0 3px var(--accent-focus-ring);
@@ -331,5 +345,26 @@
   .chip-remove:hover {
     background: var(--bg-overlay-active);
     color: var(--fg-default);
+  }
+
+  /* Touch sizing for the two controls in here, and both have to come *after* the
+     base rules: a media query adds no specificity, so an earlier block loses to a
+     later declaration of the same property. (It did, and the taps stayed 18px.)
+     - `.chip-remove` at 21×18, in a row of them, is a mis-tap that removes the
+       wrong filter. The pill grows with it, which is a touch-only cost.
+     - `.filter-text` inherits the panel's 14px, and iOS zooms the page when a
+       field under 16px takes focus — scaling the layout viewport up and pushing
+       half the panel off screen. app.css's coarse rule can't reach this one:
+       `font: inherit` in a scoped component style outranks a global
+       `input[type='text']`, so the override belongs where the shorthand is. */
+  @media (pointer: coarse) {
+    .chip-remove {
+      padding: 0 10px;
+      height: 30px;
+    }
+    .filter-text {
+      font-size: 16px;
+      min-height: 32px;
+    }
   }
 </style>

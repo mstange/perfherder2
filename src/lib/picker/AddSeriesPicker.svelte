@@ -630,16 +630,31 @@ import { TIME_RANGES } from './pickerOptions';
     {/if}
     <!-- Right-aligned, and the count is in the label rather than a tooltip:
          "Add all 24,913" has to be able to talk the user out of it. Growing
-         the label eats the gap to its left instead of shoving Done sideways. -->
+         the label eats the gap to its left instead of shoving Done sideways.
+
+         Not rendered when the panel is folded, which is the second thing this row
+         gives up. Plotting seventeen series onto a 390px graph is not a thing
+         anyone wants, and both halves of the button have another home: a row's own
+         Add is one tap away in the card beside it, and the series list's footer
+         carries `Remove all`. Keeping it would put this row on two lines — with
+         36px touch targets, 76px of panel — for the action least likely to be
+         wanted here. -->
+    {#if !chromeFolded}
+      <button
+        type="button"
+        class="btn bulk"
+        disabled={bulk.rows.length === 0}
+        onclick={() => (bulk.kind === 'add' ? onadd?.(bulk.rows) : onremove?.(bulk.rows))}
+        >{bulk.kind === 'add' ? 'Add all' : 'Remove all'}
+        {bulk.rows.length.toLocaleString()}</button
+      >
+    {/if}
     <button
       type="button"
-      class="btn bulk"
-      disabled={bulk.rows.length === 0}
-      onclick={() => (bulk.kind === 'add' ? onadd?.(bulk.rows) : onremove?.(bulk.rows))}
-      >{bulk.kind === 'add' ? 'Add all' : 'Remove all'}
-      {bulk.rows.length.toLocaleString()}</button
+      class="btn btn-primary done"
+      class:trailing={chromeFolded}
+      onclick={() => onclose?.()}>Done</button
     >
-    <button type="button" class="btn btn-primary" onclick={() => onclose?.()}>Done</button>
   </div>
 
   {#if picker.errors.length > 0}
@@ -1031,6 +1046,15 @@ import { TIME_RANGES } from './pickerOptions';
     color: var(--fg-muted);
     font-size: 13px;
   }
+  /* app.css's floor makes this 36px tall and leaves it 28px wide, which is a
+     rectangle where a square was intended. Both axes, and after the base rule —
+     a media query adds no specificity. */
+  @media (pointer: coarse) {
+    .close {
+      width: 36px;
+      height: 36px;
+    }
+  }
   .hint code {
     background: var(--bg-subtle);
     padding: 0 3px;
@@ -1192,6 +1216,10 @@ import { TIME_RANGES } from './pickerOptions';
     font-size: 10px;
     line-height: 1.4;
   }
+  /* With the bulk button gone, `Done` is what holds the trailing edge. */
+  .done.trailing {
+    margin-left: auto;
+  }
   .muted {
     color: var(--fg-muted);
     font-weight: 400;
@@ -1211,6 +1239,11 @@ import { TIME_RANGES } from './pickerOptions';
     border: 1px solid var(--border-default);
     border-radius: 6px;
     overflow: auto;
+    /* A flick that reaches the end of the list stops there, instead of handing
+       the rest of the gesture to the document — which on a phone is a rubber-band
+       over a page that has nothing to scroll, and on some browsers a pull-to-
+       refresh that throws the panel away. */
+    overscroll-behavior: contain;
   }
   /* The card list: the same rows as the table, two lines each, for a panel
      narrower than `TABLE_MIN`. See docs/design.md, "A panel a phone wide lists
@@ -1516,6 +1549,18 @@ import { TIME_RANGES } from './pickerOptions';
     border: 1px solid var(--series-color);
     border-radius: 3px;
     background: var(--series-color);
+  }
+  /* The touch floor in app.css must not apply in here: a table row is exactly
+     `--row-height` tall by construction (see `rowHeight`), and a 32px button in a
+     36px slot pushes the border out and desynchronises the virtualizer. The
+     layout a touch device gets on a phone is the card list, which has the room —
+     so nothing is lost by exempting the table, and the exemption is scoped to the
+     rows rather than to the panel. */
+  @media (pointer: coarse) {
+    tbody .btn {
+      min-height: 0;
+      padding-block: 0;
+    }
   }
   .col-check {
     /* Tighter than the 8px the other cells get: the button inside brings its

@@ -25,3 +25,16 @@ export const mediaMatcher: MediaMatcher = (query) => window.matchMedia(query);
 export function shouldAutofocus(match: MediaMatcher): boolean {
   return match('(pointer: fine)').matches;
 }
+
+/**
+ * Is the primary pointer a finger?
+ *
+ * For *copy*, not for layout: an instruction that names a gesture the reader's
+ * device does not have ("shift-click", "press C") reads as a broken feature
+ * rather than as a feature for somebody else. Read once when a component
+ * initialises — a mouse being plugged in mid-session is not worth a listener,
+ * and the strings it picks are all in panes that re-render constantly anyway.
+ */
+export function isCoarsePointer(match: MediaMatcher): boolean {
+  return match('(pointer: coarse)').matches;
+}

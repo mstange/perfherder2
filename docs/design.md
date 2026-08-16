@@ -32,7 +32,8 @@ change is wrong for a reason the code doesn't show:
 | Adding a control above the picker's list, or to the graph header | "The control block is two groups: what loads, and what shows" (and "A panel a phone wide folds the loading group away" — which group a control joins decides whether it survives a phone) — which row it goes on follows from whether it fetches, and the last arrangement that was decided by eye put two controls in each other's group. Both blocks share `.control-*` in `src/app.css`; the header's own departures are in graphs.md, "The header is two groups" |
 | Markup with two adjacent badges | "Whitespace between adjacent badges (Svelte gotcha)" |
 | A color, anywhere | "Theming: one resolved attribute, one exception" — there are exactly two, and neither is new |
-| A button | "One button, defined once" |
+| A button | "One button, defined once", and "Touch: a floor under the controls a thumb drives" if it is smaller than `.btn` |
+| A size for a control, or an instruction naming a click or a key | "Touch: a floor under the controls a thumb drives, and copy that names a gesture the reader has" — the floor is one `pointer: coarse` block in app.css, a media query adds no specificity, and a scoped `font: inherit` outranks it |
 | A spinner, a skeleton, or any "still loading" mark | "Two loading cues, and which wait each one is for" — there are two classes in app.css, the choice between them is what the wait *is*, and a third hand-rolled one is the mistake |
 | A hover explanation | "Tooltips: for what the canvas paints". Ordinary controls use `title`; the drawn box is for the marks in the graph's canvas, which have no element to hang one on |
 | A percentage or a delta in the details pane | graphs.md, "The three change cards say it the same way" — one component draws all three headlines, and the sign is the measurement's, never the verdict's |
@@ -1639,6 +1640,71 @@ Sizes used in one place only stay in that component, composed on top of
 the series list's icon buttons, the details pane's inline `.unpin` /
 `.cmp-prev`, and the replicate chips, whose width is a measured value (see the
 comment above `.replicates`) rather than a size anyone else should reuse.
+
+### Touch: a floor under the controls a thumb drives, and copy that names a gesture the reader has
+
+Every control here was sized for a pointer you can put on a 24px target. `.btn`
+comes out 26px tall, `.btn-compact` 24, the series list's icon buttons 20×18, a
+chip's remove 21×18, a checkbox 13 square. Apple asks for 44px and Material for
+48, and the survey that started this work found nineteen distinct targets under
+30px on a phone.
+
+**The floor is in one `@media (pointer: coarse)` block in app.css**, beside
+`.btn` for the reason `.btn` is in one place: 36px on `.btn`, 32 on
+`.btn-compact`, 20 on the checkboxes, and 16px on text inputs and selects.
+Components add to it only where they own a size the global rule can't express —
+the pane switcher takes the full 44px (it is the app's primary navigation, driven
+by a thumb at the far end of its reach), the series list's icon buttons and drag
+handle go to 32 square, the theme toggle to 72×36, the picker's close button to
+36 square.
+
+Four things about this that are not obvious:
+
+- **`pointer: coarse`, not a width.** The question is what is driving the app: a
+  touchscreen laptop at 1400px needs the floor and a 400px window on a desktop
+  does not. Every other query in this file is a *container* query about layout,
+  which is a different question with a different answer.
+- **A media query adds no specificity.** A `@media (pointer: coarse)` block
+  placed *above* the rule it means to override loses to it — the later
+  declaration of the same property wins at equal specificity. This bit twice in
+  one pass, and both times the symptom was a rule that was obviously present and
+  did nothing. Coarse blocks go last.
+- **A scoped `font: inherit` beats a global `input[type='text']`.** Svelte adds
+  its own class to component selectors, so `.filter-text` is `(0,2,0)` against
+  the global rule's `(0,1,1)`. The 16px override for the filter box therefore has
+  to live in FilterInput. It matters because **iOS zooms the page when a field
+  under 16px takes focus**, which scales the layout viewport up and pushes half
+  the panel off screen; `maximum-scale=1` is the other fix and it takes
+  pinch-zoom away from everybody.
+- **The floor must not reach inside a fixed-height row.** The picker's table
+  gives every row exactly `--row-height` and puts a `.btn-compact` in it, so
+  AddSeriesPicker takes the floor back off `tbody .btn`. That is sound rather
+  than a hack: the layout a touch device gets on a phone is the card list, which
+  has the room and gets the full sizes.
+
+Two more platform facts, both cheap and both invisible where they don't apply:
+
+- **Safe-area insets on `main`**, so the plot doesn't run under a notch in
+  landscape and the switcher's bottom edge clears the home indicator. `env()`
+  resolves to 0 where there is no inset, and `box-sizing: border-box` keeps the
+  padding inside the `100dvh` instead of adding to it.
+- **`overscroll-behavior: contain` on all three scrollers** (the picker's list,
+  the series list, the details pane). A flick that reaches the end of a list
+  should end there rather than handing the rest of the gesture to a document with
+  nothing to scroll — or, on some browsers, to a pull-to-refresh that throws the
+  panel away.
+
+**And the copy has to name a gesture the reader's device has.** The details
+pane's empty state said *"Click a point… Shift-click a second point to compare"*
+and the comparison hint offered the `C` key — on a phone, three instructions
+none of which can be followed, which reads as a broken feature rather than as a
+feature for somebody else. `isCoarsePointer` (shared/pointer.ts, unit-tested
+alongside `shouldAutofocus`) picks the wording, and the touch version names what
+a finger *can* do: tap a point, tap a change bar, or use "Compare with the
+previous push". Read once at component init — a mouse plugged in mid-session is
+not worth a listener. It is a separate query from `shouldAutofocus`'s
+`(pointer: fine)` and deliberately not its negation: a device can answer no to
+both.
 
 ### Two loading cues, and which wait each one is for
 

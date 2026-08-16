@@ -245,6 +245,15 @@
     display: grid;
     height: 100vh;
     height: 100dvh;
+    /* The notch, the rounded corners and the home indicator. In landscape on a
+       phone the plot would otherwise run under the camera housing, and the
+       switcher's bottom row under the gesture bar. `env()` resolves to 0 where
+       there is no inset and on every browser that doesn't know it, so this costs
+       nothing anywhere else — and `border-box` is what keeps the padding inside
+       the 100dvh rather than adding to it. */
+    box-sizing: border-box;
+    padding: env(safe-area-inset-top) env(safe-area-inset-right)
+      env(safe-area-inset-bottom) env(safe-area-inset-left);
     overflow: hidden;
     background: var(--bg-canvas);
     color: var(--fg-default);
@@ -305,12 +314,22 @@
      accessibility tree, and the switcher is the only honest way to reach them.
      The charts come back correctly sized: ScatterChart observes its wrapper, so
      0×0 and back is a resize like any other. */
+  /* One pane at a time, and the switcher is at the *bottom* here — the only
+     arrangement where it is. It is the app's primary navigation on the device
+     least able to reach the top of its own screen, and a bar along the bottom
+     edge is where every phone platform puts one. `short` keeps it on top,
+     because there it spans one column of a landscape window rather than the
+     window, and nothing about that reach is hard. */
   main[data-layout='narrow'] {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) auto;
     grid-template-areas:
-      'switch'
-      'pane';
+      'pane'
+      'switch';
+  }
+  main[data-layout='narrow'] > .switcher {
+    border-top: 1px solid var(--border-default);
+    border-bottom: 0;
   }
   main[data-layout='narrow'] > .slot {
     grid-area: pane;
@@ -373,8 +392,16 @@
     display: flex;
     flex: 1;
   }
+  /* The full 44px on a coarse pointer, rather than app.css's 36px floor: this is
+     the app's primary navigation, and it is the control most often driven by a
+     thumb at the far end of its reach. */
   .switcher .btn {
     flex: 1;
+  }
+  @media (pointer: coarse) {
+    .switcher .btn {
+      min-height: 44px;
+    }
   }
   /* Starts where the series list ends, so the list is neither dimmed nor
      covered. The panel is stretched to exactly the space between the
