@@ -256,7 +256,7 @@
            it. Read-only: creating and triaging alerts needs an authenticated
            session, which this app deliberately doesn't have. -->
       {#if alert}
-        <section class="alert-card">
+        <section class="alert-card card-box">
           <div class="cmp-head">
             <h3>Alert</h3>
             <a href={alertSummaryUrl(alert.summaryId)} target="_blank" rel="noopener">
@@ -348,7 +348,7 @@
            the dot. Most of the time only one of the two cards exists — that is
            rather the point of having this one. -->
       {#if change}
-        <section class="change-card">
+        <section class="change-card card-box">
           <div class="cmp-head"><h3>Detected change</h3></div>
           <ChangeHeadline
             percent={change.relativeChange}
@@ -507,7 +507,7 @@
                nothing here loads or moves on its own: the fold only ever opens
                because someone opened it. -->
           {#if runGroups.length > MANY_RUNS}
-            <details class="run-fold">
+            <details class="run-fold fold">
               <summary>
                 {runGroups.length} runs
                 <span class="muted">· push mean {formatValue(sel.push.mean)}</span>
@@ -843,26 +843,10 @@
   .push-mean {
     margin-top: 8px;
   }
-  /* Same disclosure idiom as the comparison card's pushlog: no native marker,
-     a triangle that turns, and a summary line whose height doesn't change with
-     its state. */
+  /* The disclosure idiom is `.fold` in detailsPane.css, shared with the
+     comparison card's pushlog. Only the line height is local. */
   .run-fold > summary {
-    cursor: pointer;
-    list-style: none;
-    user-select: none;
     line-height: 18px;
-  }
-  .run-fold > summary::-webkit-details-marker {
-    display: none;
-  }
-  .run-fold > summary::before {
-    content: '▸';
-    display: inline-block;
-    width: 12px;
-    color: var(--fg-subtle);
-  }
-  .run-fold[open] > summary::before {
-    content: '▾';
   }
   /* One profile per line. A run has one or two of these and their labels are
      test names, so a wrapped inline run of them would read as one phrase —
@@ -910,28 +894,22 @@
      an alert is somebody else's finding about this build rather than something
      this pane computed. */
   section.alert-card {
-    padding: 8px 10px 10px;
-    border: 1px solid var(--attention-border);
-    border-radius: 6px;
+    border-color: var(--attention-border);
     background: var(--bg-canvas);
   }
   section.alert-card dl {
     grid-template-columns: 6.5em minmax(0, 1fr);
-    font-size: 11px;
   }
   /* The same card, in the app's own voice: a plain border rather than the
      alert card's attention color, because this is something the pane computed
      and not a finding a sheriff has looked at. The two can be on screen
      together and the difference has to survive that. */
   section.change-card {
-    padding: 8px 10px 10px;
-    border: 1px solid var(--border-default);
-    border-radius: 6px;
+    border-color: var(--border-default);
     background: var(--bg-canvas);
   }
   section.change-card dl {
     grid-template-columns: 9em minmax(0, 1fr);
-    font-size: 11px;
   }
   section.change-card .cmp-sub:last-child {
     margin-top: 6px;

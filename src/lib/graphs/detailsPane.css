@@ -98,3 +98,54 @@
 .details .cmp-lede .value {
   margin: 2px 0 0;
 }
+
+/* The box a two-push statement wears: the comparison card, the alert card and
+   the detected-change card. All three sit above a run of single-point sections
+   and all three had this spelled out in full, in two components — and the
+   padding and border *width* in particular have to be identical, or the chart
+   under the comparison's lede would sit at a different y from the two cards
+   that don't have one.
+
+   Transparent by default because the comparison card is a box in every state,
+   including the ones with nothing to frame (`.cmp-block.carded` tints it once
+   there are two points). Each card adds its own border color and fill and
+   nothing else — which is the entire difference between them, and each one
+   explains its own choice where it makes it. */
+.details .card-box {
+  padding: 8px 10px 10px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+}
+
+/* A card's definition list is denser than the pane's, and its label column is a
+   fixed width rather than the pane-wide `max-content` — a label here can be a
+   platform string, and `max-content` on one of those makes the grid wider than
+   the pane and pushes the values out of sight. The width stays local (6.5em fits
+   the comparison's and the alert's labels, 9em the detected change's); only the
+   size is shared. */
+.details .card-box dl {
+  font-size: 11px;
+}
+
+/* The pane's disclosure idiom: no native marker, a triangle that turns, and a
+   summary whose height doesn't change with its state. Two sections use it — the
+   run fold and the comparison's pushlog — and they had a copy each, which is
+   how one of them came to name a `--text-muted` custom property that does not
+   exist. `line-height` stays local, since the two sit in different type scales. */
+.details .fold > summary {
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+.details .fold > summary::-webkit-details-marker {
+  display: none;
+}
+.details .fold > summary::before {
+  content: '▸';
+  display: inline-block;
+  width: 12px;
+  color: var(--fg-subtle);
+}
+.details .fold[open] > summary::before {
+  content: '▾';
+}

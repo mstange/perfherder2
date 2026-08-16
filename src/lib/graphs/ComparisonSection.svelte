@@ -299,7 +299,7 @@
 
 <!-- One structure for every state, so only the *contents* of the two reserved
      slots change as the pointer moves. See the note at the top of this file. -->
-<section class="cmp-block" class:carded={!!cmp} class:preview={!!cmp && !pinned}>
+<section class="cmp-block card-box" class:carded={!!cmp} class:preview={!!cmp && !pinned}>
   <div class="cmp-lede">
     <!-- The other three states, stacked in the same cell and hidden. They are
          what makes the slot as tall as its tallest state without anyone having
@@ -480,7 +480,7 @@
          to find out how much is behind it saves nothing. The row's height is one
          line in every state, so loading it moves nothing below it. -->
     {#if app.pushlogStatus !== 'absent'}
-      <details class="pushlog">
+      <details class="pushlog fold">
         <summary>
           {#if app.pushlogStatus === 'loading'}
             <span class="muted">loading commits…</span>
@@ -509,15 +509,11 @@
 </section>
 
 <style>
-  /* One box for every state, with constant padding and a constant border width
-     so the chart below the lede sits at the same y whether or not there is a
-     comparison to frame. Only the border's *color* and the fill change. */
-  .cmp-block {
-    padding: 8px 10px 10px;
-    border: 1px solid transparent;
-    border-radius: 6px;
-    margin-bottom: 14px;
-  }
+  /* The box itself is `.card-box` in detailsPane.css, shared with the alert and
+     detected-change cards — constant padding and border width across all three,
+     so the chart below this lede sits at the same y whether or not there is a
+     comparison to frame. Only the border's *color* and the fill change here.
+     (The bottom margin comes from `.details section`.) */
   /* Tinted once there are two points, so the two-point reading is visibly a
      different thing from the single-point sections under it. */
   .cmp-block.carded {
@@ -662,7 +658,6 @@
      and pushes every value out of sight. Fixed label column, wrapping values. */
   .cmp-block dl {
     grid-template-columns: 6.5em minmax(0, 1fr);
-    font-size: 11px;
   }
   .cmp-block dt,
   .cmp-block dd {
@@ -747,26 +742,10 @@
     font-size: 11px;
   }
 
+  /* The marker, the triangle and the turn are `.fold` in detailsPane.css. Only
+     the line height is this section's, since it sits in the 11px scale. */
   .pushlog > summary {
-    cursor: pointer;
-    list-style: none;
-    user-select: none;
     line-height: 16px;
-  }
-
-  .pushlog > summary::-webkit-details-marker {
-    display: none;
-  }
-
-  .pushlog > summary::before {
-    content: '▸';
-    display: inline-block;
-    width: 12px;
-    color: var(--fg-subtle);
-  }
-
-  .pushlog[open] > summary::before {
-    content: '▾';
   }
 
   .pushlog-caveat {
