@@ -762,7 +762,7 @@
     content: '▸';
     display: inline-block;
     width: 12px;
-    color: var(--text-muted);
+    color: var(--fg-subtle);
   }
 
   .pushlog[open] > summary::before {
