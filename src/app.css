@@ -444,7 +444,8 @@ button {
    different answer.
 
    Components add to this only where they own a size it can't express, and the
-   full register is: the pane switcher takes 44 (the app's primary navigation,
+   full register is: the bottom bar's pane switcher and series-sheet handle take 44
+   (the app's primary navigation,
    driven by a thumb at the far end of its reach); the Add-series panel's four
    non-`.btn` shapes take the 32 by hand, as does its filter box's chip remover;
    the series list's icon buttons and drag handle take it in *both* axes, since a

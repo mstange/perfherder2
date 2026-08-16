@@ -32,8 +32,13 @@
     type SeriesAttrs,
   } from './seriesSummary';
 
-  type Props = { app: AppState };
-  let { app }: Props = $props();
+  // `onclose` is present only where the list is a *sheet* rather than a column —
+  // the one-column arrangements, where it opens over the window from the bottom
+  // bar's button. Its presence is the whole signal: a column has nowhere for
+  // closing to go, so the button isn't rendered there. See shared/layout.ts,
+  // `listIsSheet`.
+  type Props = { app: AppState; onclose?: () => void };
+  let { app, onclose }: Props = $props();
 
   // Null for a series we have no real metadata for; `splitCommonAttrs` leaves
   // those out of the intersection rather than letting them collapse it.
@@ -249,6 +254,15 @@
     >
       Add series…
     </button>
+    <!-- Only as a sheet. The cross, not "Done": nothing here is staged, so
+         closing is a dismissal rather than a commit — the same mark and the same
+         meaning as the Add-series panel's own close button, which is why it is
+         the shared CrossIcon at the shared 32px square. -->
+    {#if onclose}
+      <button type="button" class="btn close" title="Close" aria-label="Close" onclick={onclose}>
+        <CrossIcon size={14} />
+      </button>
+    {/if}
   </header>
 
   {#if split.hasCommon || measurementBits.length > 0}
@@ -481,11 +495,25 @@
     border-bottom: 1px solid var(--border-default);
   }
   h2 {
-    margin: 0;
+    /* `auto` on the right rather than relying on `space-between`, which would
+       centre the middle child once the sheet's close button makes three of
+       them: the heading goes left and the two controls travel together. */
+    margin: 0 auto 0 0;
     font-size: 13px;
     text-transform: uppercase;
     letter-spacing: 0.04em;
     color: var(--fg-muted);
+  }
+  /* Same shape, size and mark as the Add-series panel's close button, because it
+     is the same control: dismiss the thing that is covering the window. Chrome
+     comes from `.btn`; only the square is local. */
+  header .close {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    padding: 0;
   }
   .common {
     padding: 8px 12px;
@@ -752,6 +780,13 @@
     .handle {
       width: 32px;
       padding: 8px 0;
+    }
+    /* app.css's floor gives this its height and nothing gives it its width, so
+       both axes here — and after the base rule, since a media query adds no
+       specificity. The same 32px square the panel's close button takes. */
+    header .close {
+      width: 32px;
+      height: 32px;
     }
   }
   button.eye {

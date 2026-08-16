@@ -7,7 +7,12 @@ import {
   DETAILS_ROW_MAX,
   DETAILS_WIDTH,
   GRAPH_MIN_HEIGHT,
+  GRAPH_MIN_HEIGHT_COMPACT,
   GRAPH_MIN_WIDTH,
+  BOTTOM_BAR_HEIGHT,
+  NARROW_DETAILS_ROW_FRACTION,
+  NARROW_GRAPH_RESERVE,
+  NARROW_STACK_MIN_HEIGHT,
   SIDEBAR_WIDTH,
   STACKED_MIN_HEIGHT,
   THREE_COLUMN_MIN,
@@ -16,6 +21,7 @@ import {
   foldPickerLoadRow,
   isPaneVisible,
   layoutFor,
+  listIsSheet,
   pickerChromeCost,
   resolvePane,
   switchedPanes,
@@ -36,10 +42,31 @@ describe('layoutFor', () => {
     expect(layoutFor(TWO_COLUMN_MIN, TALL)).toBe('medium');
   });
 
-  it('drops to one pane exactly where the list would take the graph under', () => {
+  it('drops to one column exactly where the list would take the graph under', () => {
     expect(layoutFor(TWO_COLUMN_MIN - 1, TALL)).toBe('narrow');
     expect(layoutFor(390, TALL)).toBe('narrow');
     expect(layoutFor(0, TALL)).toBe('narrow');
+  });
+
+  // The phones the one-column arrangement is for, and the point of deriving its
+  // threshold from the *collapsed* header floor rather than reusing `medium`'s:
+  // at 717 the 667px phone would have gone to the switching tier.
+  it('stacks every phone held upright, down to a 667px one', () => {
+    expect(layoutFor(390, 844)).toBe('narrow');
+    expect(layoutFor(430, 932)).toBe('narrow');
+    expect(layoutFor(375, 667)).toBe('narrow');
+    expect(NARROW_STACK_MIN_HEIGHT).toBeLessThan(667);
+  });
+
+  it('unstacks one column exactly where the graph would go under', () => {
+    expect(layoutFor(390, NARROW_STACK_MIN_HEIGHT)).toBe('narrow');
+    expect(layoutFor(390, NARROW_STACK_MIN_HEIGHT - 1)).toBe('narrow-short');
+  });
+
+  // A phone with the on-screen keyboard up: `appHeight` hands the shell the
+  // visual viewport, which is roughly half of an 844px window.
+  it('unstacks a phone whose keyboard has taken the bottom of the window', () => {
+    expect(layoutFor(390, 508)).toBe('narrow-short');
   });
 
   it('unstacks the details pane exactly where the graph would go under', () => {
@@ -76,9 +103,9 @@ describe('layoutFor', () => {
     }
   });
 
-  // Same property in the other axis, and the only tier that can break it is the
-  // one that puts a pane in a row: everywhere else the graph has the window's
-  // full height.
+  // Same property in the other axis, for the two tiers that put a pane in a row:
+  // everywhere else the graph has the window's full height. Each is held to the
+  // floor its own retreat justifies — see `GRAPH_MIN_HEIGHT_COMPACT`.
   it('never leaves the graph below its minimum height', () => {
     for (let height = 200; height <= 2000; height++) {
       if (layoutFor(900, height) !== 'medium') continue;
@@ -86,12 +113,28 @@ describe('layoutFor', () => {
     }
   });
 
-  // And the pane on the other side of that division gets enough to be worth
-  // stacking. Not a term in the threshold — this is the check that it didn't
+  // Here the row itself holds the property, by reserving the graph's floor and
+  // the bar before taking its share — so this passes at every height rather than
+  // only above the threshold. It is the check that the `calc()` in App.svelte and
+  // the reserve here are the same number: an earlier version sized the row as a
+  // bare 45% and a 667px phone stacked with a 310px graph.
+  it('never leaves a stacked one-column graph below its collapsed minimum', () => {
+    for (let height = 200; height <= 2000; height++) {
+      if (layoutFor(390, height) !== 'narrow') continue;
+      const graph = height - narrowDetailsRow(height) - BOTTOM_BAR_HEIGHT;
+      expect(graph).toBeGreaterThanOrEqual(GRAPH_MIN_HEIGHT_COMPACT);
+    }
+  });
+
+  // And the pane on the other side of those divisions gets enough to be worth
+  // stacking. Not a term in either threshold — this is the check that it didn't
   // need to be.
   it('never stacks a details row too short to say anything', () => {
     for (let height = STACKED_MIN_HEIGHT; height <= 2000; height++) {
       expect(detailsRow(height)).toBeGreaterThanOrEqual(DETAILS_MIN_ROW);
+    }
+    for (let height = NARROW_STACK_MIN_HEIGHT; height <= 2000; height++) {
+      expect(narrowDetailsRow(height)).toBeGreaterThanOrEqual(DETAILS_MIN_ROW);
     }
   });
 
@@ -99,6 +142,25 @@ describe('layoutFor', () => {
   function detailsRow(height: number): number {
     return Math.min(DETAILS_ROW_FRACTION * height, DETAILS_ROW_MAX);
   }
+  /** And `min(45%, calc(100% - 382px))` in its narrow one. */
+  function narrowDetailsRow(height: number): number {
+    return Math.min(NARROW_DETAILS_ROW_FRACTION * height, height - NARROW_GRAPH_RESERVE);
+  }
+});
+
+describe('listIsSheet', () => {
+  it('gives the list a column wherever there is room beside something', () => {
+    expect(listIsSheet('wide')).toBe(false);
+    expect(listIsSheet('medium')).toBe(false);
+    expect(listIsSheet('short')).toBe(false);
+  });
+
+  // Both one-column tiers, and it is width that decides: what makes the list the
+  // pane to demote is that there is nothing to put it beside.
+  it('demotes it to a sheet at one column, however tall the window', () => {
+    expect(listIsSheet('narrow')).toBe(true);
+    expect(listIsSheet('narrow-short')).toBe(true);
+  });
 });
 
 describe('switchedPanes', () => {
@@ -107,16 +169,28 @@ describe('switchedPanes', () => {
     expect(switchedPanes('medium')).toEqual([]);
   });
 
-  it('switches all three when nothing fits beside anything', () => {
-    expect(switchedPanes('narrow')).toEqual(['series', 'graph', 'selection']);
+  // One column and the height to stack in: the graph and the selection are both
+  // on screen, so there is nothing to take turns.
+  it('switches nothing at one column when it can stack instead', () => {
+    expect(switchedPanes('narrow')).toEqual([]);
   });
 
-  it('leaves the series list a column when only height is short', () => {
+  it('switches the two data panes wherever there is no height to stack', () => {
     expect(switchedPanes('short')).toEqual(['graph', 'selection']);
+    expect(switchedPanes('narrow-short')).toEqual(['graph', 'selection']);
   });
 
-  it('always offers the graph, which is what the fallbacks return', () => {
-    for (const mode of ['narrow', 'short'] as const) {
+  // It used to, at the one tier that switched all three, and that made "what is
+  // plotted" cost the same tap as "what did I just select". The list is a sheet
+  // now; see `listIsSheet`.
+  it('never offers the series list', () => {
+    for (const mode of ['wide', 'medium', 'short', 'narrow', 'narrow-short'] as const) {
+      expect(switchedPanes(mode)).not.toContain('series');
+    }
+  });
+
+  it('always offers the graph, which is what the fallback returns', () => {
+    for (const mode of ['short', 'narrow-short'] as const) {
       expect(switchedPanes(mode)).toContain('graph');
     }
   });
@@ -130,9 +204,9 @@ describe('isPaneVisible', () => {
   });
 
   it('shows only the active one among the switched panes', () => {
-    const panes = switchedPanes('narrow');
-    expect(isPaneVisible('series', 'series', panes)).toBe(true);
-    expect(isPaneVisible('graph', 'series', panes)).toBe(false);
+    const panes = switchedPanes('narrow-short');
+    expect(isPaneVisible('selection', 'selection', panes)).toBe(true);
+    expect(isPaneVisible('graph', 'selection', panes)).toBe(false);
   });
 
   // The case a single active-pane comparison gets wrong: the list is a column
@@ -146,26 +220,25 @@ describe('isPaneVisible', () => {
 });
 
 describe('resolvePane', () => {
-  const narrow = switchedPanes('narrow');
   const short = switchedPanes('short');
 
   it('honours the pane the user asked for', () => {
-    expect(resolvePane('series', false, narrow)).toBe('series');
-    expect(resolvePane('graph', false, narrow)).toBe('graph');
-    expect(resolvePane('selection', true, narrow)).toBe('selection');
+    expect(resolvePane('graph', short)).toBe('graph');
+    expect(resolvePane('selection', short)).toBe('selection');
   });
 
-  it('falls back to the graph when the selection it would show is gone', () => {
-    expect(resolvePane('selection', false, narrow)).toBe('graph');
+  // The tap that used to be swallowed. There is nothing selected in either of
+  // these — that is not this function's business any more, because it cannot tell
+  // a tap the user just made from a selection that has since gone. App.svelte
+  // moves the switcher off Selection when the point goes; see the doc comment.
+  it('shows the selection pane whether or not anything is selected', () => {
+    expect(resolvePane('selection', short)).toBe('selection');
   });
 
   it('falls back to the graph for a pane this arrangement does not switch', () => {
-    expect(resolvePane('series', false, short)).toBe('graph');
-    expect(resolvePane('series', false, [])).toBe('graph');
-  });
-
-  it('leaves the other panes alone when there is no selection', () => {
-    expect(resolvePane('series', false, narrow)).toBe('series');
+    expect(resolvePane('series', short)).toBe('graph');
+    expect(resolvePane('selection', [])).toBe('graph');
+    expect(resolvePane('series', [])).toBe('graph');
   });
 });
 

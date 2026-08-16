@@ -208,7 +208,7 @@ Living checklist. Update in the same commit as the work it describes.
 - A touch floor under every control a thumb drives — one `(pointer: coarse)`
   block in app.css plus the sizes components own, 16px form fields so iOS stops
   zooming on focus, safe-area insets, `overscroll-behavior: contain` on all three
-  scrollers, and the pane switcher moved to the bottom edge at narrow widths with
+  scrollers, and the pane switcher moved to the bottom edge at one column with
   44px targets. The copy that named a click or a key now names a tap where the
   pointer is coarse (`isCoarsePointer`, + tests). Nineteen targets under 30px on a
   phone, and now one — a checkbox whose label is the real target. See design.md,
@@ -241,10 +241,21 @@ Living checklist. Update in the same commit as the work it describes.
 - An empty state for the graph pane: with nothing plotted it is one centred
   block naming the app with a primary **Add series…** in it, in place of a
   0-to-1 axis pair and a header full of controls for a drawing that doesn't
-  exist. The narrow tier's first pane stays the graph — the door is now on it, and
-  the panel covers the window at that width, so Done lands the user on their new
+  exist. A one-column window opens on the graph — the door is now on it, and the
+  panel covers the window at that width, so Done lands the user on their new
   graph. See graphs.md, "With nothing plotted, the pane is a call to action"
-- A fourth shell arrangement, `short`, for a window that can afford columns but
+- A fifth arrangement for the phone: at one column the **series list stops being a
+  pane** and becomes a sheet behind a `●● 2 series` button in the bottom bar, and
+  the selection takes a reserved row under the graph instead of a turn in a
+  switcher. Reading a point no longer costs a trip out of the graph and back, and
+  the row is sized by a *reserve* (`min(45%, 100% − 382px)`) rather than a cap, so
+  a 667px phone stacks with the graph exactly on its collapsed-header floor. The
+  tier below it, `narrow-short`, is the one that still switches. Tapping Selection
+  with nothing selected now shows the pane and its instruction instead of being
+  swallowed — the stale-selection fallback moved out of `resolvePane` into the
+  effect that watches the point go. See design.md, "At one column the series list
+  is the pane that stops being a pane"
+- A shell arrangement, `short`, for a window that can afford columns but
   not rows — and the tier is now a function of both axes rather than of width.
   A landscape phone (844×390) took the stacking tier and got a **12px** detail
   plot; it gets 126px now, and `layout.test.ts` asserts the graph's height floor

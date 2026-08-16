@@ -39,7 +39,7 @@ change is wrong for a reason the code doesn't show:
 | A percentage or a delta in the details pane | graphs.md, "The three change cards say it the same way" — one component draws all three headlines, and the sign is the measurement's, never the verdict's |
 | Anything that renders before its data arrives | "Layout stability" |
 | A text field that takes focus, or anything sized to the window's height | "The on-screen keyboard has to take height from the app, not cover it" — `100dvh` is not what a keyboard shrinks, and an autofocus is a keyboard nobody asked for |
-| Where a pane sits, how wide it is, or a border between two panes | "The shell has four arrangements, and the graph keeps its size" — there are four, the thresholds are computed from the pane sizes in `shared/layout.ts` rather than chosen (*both* axes: a pane that becomes a row needs height the way a column needs width), and a pane that draws its own border draws a doubled one as soon as the arrangement moves it |
+| Where a pane sits, how wide it is, or a border between two panes | "The shell has five arrangements, and the graph keeps its size" — there are five, the thresholds are computed from the pane sizes in `shared/layout.ts` rather than chosen (*both* axes: a pane that becomes a row needs height the way a column needs width), a pane that draws its own border draws a doubled one as soon as the arrangement moves it, and at one column the series list is not a pane at all but a sheet behind the bottom bar's button — see that section's "At one column the series list is the pane that stops being a pane" |
 | A fetch, or a new endpoint | "Validating API responses" and [api-assumptions.md](api-assumptions.md); plus "Cache key" if the result is cached, and "The picker's caches live at module scope" if it is the picker doing the fetching — a cache on `PickerState` does not survive the panel closing |
 | `SeriesMeta`, or anything that reads a series' metadata | "Two endpoints describe a series" below. It arrives from one of two responses, `source` says which, and two of its fields are answerable by only one of them — api-assumptions.md, "Two null fields mean different things depending on `source`" |
 | A treeherder *list* endpoint | its default page is 10 rows and truncation is silent — a partial answer is shaped exactly like a complete one. comparison.md, "The inline pushlog", and the `getCommonAlerts` note in graphs-todo.md |
@@ -1318,7 +1318,7 @@ Consequences worth knowing:
   common state where the subtest payload hasn't loaded and there is no
   count to show.
 
-### The shell has four arrangements, and the graph keeps its size
+### The shell has five arrangements, and the graph keeps its size
 
 `main` is a series list, a graph and a details pane. The two side panes are a
 fixed 600px between them, and for a long time that was a hard floor the graph
@@ -1330,16 +1330,17 @@ read a graph somebody linked in a bug.
 
 The rule is the other way round: **the graph is the content, the side panes are
 apparatus, and a pane that no longer fits stops being a column rather than
-squeezing the graph.** That gives four arrangements, and the thresholds are
+squeezing the graph.** That gives five arrangements, and the thresholds are
 arithmetic rather than taste — each tier ends exactly where its columns or rows
 would push the graph below `GRAPH_MIN_WIDTH` / `GRAPH_MIN_HEIGHT`:
 
-| Window | Arrangement | Graph gets |
-| --- | --- | --- |
-| w ≥ 1040 | `list │ graph │ details` | w − 600 |
-| w 720–1039, h ≥ 717 | `list │ graph`, details in a row **under** the graph | w − 280, h − 40% |
-| w 720–1039, h < 717 | `list │ graph`, details taking turns with the graph | w − 280, h |
-| w < 720 | one pane at a time, chosen by a switcher | the window |
+| Window | Tier | Arrangement | Graph gets |
+| --- | --- | --- | --- |
+| w ≥ 1040 | `wide` | `list │ graph │ details` | w − 600 |
+| w 720–1039, h ≥ 717 | `medium` | `list │ graph`, details in a row **under** the graph | w − 280, h − 40% |
+| w 720–1039, h < 717 | `short` | `list │ graph`, details taking turns with the graph | w − 280, h |
+| w < 720, h ≥ 582 | `narrow` | graph over a details row, list behind a **bar button** | w, h − 45% − 57 |
+| w < 720, h < 582 | `narrow-short` | graph and details taking turns, list behind the same button | w, h − 57 |
 
 **Both axes are consulted, and the height one was missing until a phone was
 turned sideways.** The tier used to be a function of width alone, which is right
@@ -1355,6 +1356,69 @@ the series list stays a column, because width is not what is short, and the
 details pane goes back to taking turns with the graph. Which makes the switcher's
 contents a question with more than one answer — `switchedPanes` — rather than the
 fixed list of three it was.
+
+#### At one column the series list is the pane that stops being a pane
+
+The two one-column tiers used to be one, and it switched all three panes. That
+arrangement charged the same tap for two questions that are not worth the same:
+**"what did I just select" is asked once per point and "what is plotted" once a
+session.** So a phone paid a round trip out of the graph and back for every dot it
+inspected, while the pane it was paying for was mostly the empty space in the
+screenshot above — two series in an 844px column.
+
+The list is therefore demoted, and the selection promoted, whenever nothing fits
+beside anything (`listIsSheet`):
+
+- **The list becomes a sheet behind one button in the bottom bar**, which states
+  its count and carries the series' colors as overlapping dots. The dots are a
+  count cue and not a legend — a swatch identifies a series by *shape* as well as
+  color (see the series list and the details pane), and half of that would be
+  worse than none; the number beside them is the real answer. The sheet opens over
+  the window, and a cross in its header dismisses it, as does Escape.
+- **The selection gets a permanent row under the graph**, which is `medium`'s
+  bargain in one column: both panes on screen, nothing to switch, and a tap on a
+  point has its effect where the finger already is.
+- **The bar is at the bottom, and this is the only place in the app it is.** It is
+  the app's primary navigation on the device least able to reach the top of its own
+  screen. `short` keeps it on top, because there it spans one column of a landscape
+  window rather than the window, and nothing about that reach is hard.
+- **`narrow-short` is what is left when there is no height to stack in** — a window
+  dragged small in both axes, a phone with the keyboard up — and there the graph and
+  the details pane go back to taking turns. The list is still a sheet: a window this
+  size has *less* to spare for a pane read once a session, not more. The bar holds
+  the button and the switcher side by side, which is why there is one bar element
+  rather than two grid items; two items in one grid area stack on top of each other.
+- **The row's share is a reserve, not `medium`'s cap.** `min(45%, 100% − 382px)`,
+  where 382 is the graph's collapsed-header floor plus the bar. A cap protects the
+  graph on a *tall* window and does nothing on a short one, and here it is the short
+  one that needs protecting: a 667px phone lands the graph exactly on its 325px floor
+  and spends the remaining 285 on the pane, while a 932px one takes its 45% with room
+  over. 45% is the one number in this section chosen by eye rather than derived — past
+  about half the screen the plot stops having the vertical range to tell two levels
+  apart, and every point in it is a tap target.
+- **The graph's floor here is the collapsed-header one, 325 rather than 430**, and
+  that is a second floor rather than a correction of the first. `GRAPH_MIN_HEIGHT` is
+  what the graph is worth drawing at with its controls *open*, and `medium` holds out
+  for it because its retreat — `short` — costs only the details pane's column. The
+  retreat from `narrow` costs two taps per point, which is dearer, so this tier pays
+  for stacking with a one-line header instead. It is a bargain the graph pane strikes
+  for itself anyway: `collapsible` fires at exactly `GRAPH_MIN_HEIGHT`, so a stacked
+  narrow graph under 430px has a one-line header whether the constant exists or not.
+  What the constant does is stop the *threshold* from turning away a 667px phone that
+  would have been fine.
+- **`NARROW_STACK_MIN_HEIGHT` is a sum, not a division**, which is the opposite of
+  `medium`. The reserve above has already guaranteed the graph its floor at every
+  height, so the question left is whether what remains is a pane worth stacking:
+  325 + 57 + 200 = 582. `DETAILS_MIN_ROW` decides this tier, where in `medium` it is
+  a checked consequence.
+- **With nothing plotted the details row goes and the graph takes the window.**
+  Otherwise a phone shows two empty states stacked — "tap a point in the graph" in
+  380px, under "Nothing plotted yet" in 400. This is the layout change that
+  reserving space exists to prevent, and it is allowed because of *where the user is
+  when it happens*: every path between nothing plotted and something plotted runs
+  through the Add-series panel or the sheet, and at this width both cover the whole
+  window, so the row appears and disappears behind something opaque. The bar stays
+  either way, which keeps the one always-tappable piece of chrome from moving.
 
 - **The middle tier moves the details pane rather than hiding it**, and that
   buys the graph the pane's whole 320px of *width* at the cost of height. The
@@ -1376,31 +1440,54 @@ fixed list of three it was.
   therefore a checked consequence rather than a term in the arithmetic, and
   `layout.test.ts` asserts both halves, so a fraction changed in App.svelte and not
   mirrored in layout.ts fails a test instead of quietly stacking a useless row.
-- **The switching tiers switch rather than stack.** Three cramped panes in one
-  column is worse than one pane with the window, and stacking would have to
-  reserve height for a details pane that is empty until you click. A click on
-  the graph moves the switcher to Selection, because wherever the selection is
-  switched that click's only visible effect is in a pane you would otherwise
-  have to go and find — but only on a *change of point*, so zooming or toggling a
-  switch leaves you where you are. `resolvePane` handles the two ways that choice
-  can go stale: a `selection` pane whose selection has been dropped, and a pane
-  this arrangement doesn't switch at all (resizing from `narrow` to `short` while
-  on Series would otherwise press neither button and hide the graph). Both fall
-  back to the graph.
+- **The switching tiers switch rather than stack.** Where a tier switches at all
+  it is because there is no height to stack in, and two cramped panes are worse
+  than one with the window. A click on the graph moves the switcher to Selection,
+  because wherever the selection is switched that click's only visible effect is
+  in a pane you would otherwise have to go and find — but only on a *change of
+  point*, so zooming or toggling a switch leaves you where you are.
+
+  **The reverse move belongs in the same place, and putting it in `resolvePane`
+  instead was a switcher button that ate the tap.** A selection can go away
+  without the user asking — removing the last series, a Back that drops the point
+  — and leaving the switcher pressed on a pane that now only says "tap a point" is
+  not what they were reading. But that is a reason to move *off* Selection at the
+  moment the point goes, which is one `$effect` in App.svelte beside the one that
+  moves onto it. Deciding it on every render could not tell a stale request from a
+  deliberate tap, so tapping Selection with nothing selected showed the graph: a
+  pressed button, an unpressed button, and on a touchscreen a leftover `:hover`
+  the finger had no way to clear. The pane's empty state is worth reading — it is
+  the instruction for how to fill it, and the only place the *gesture* is named.
+
+  **The leftover `:hover` is not a bug in this app and was deliberately left
+  alone.** A touchscreen browser matches `:hover` on the element you tapped and
+  keeps matching it until you tap something else; that is how the platform
+  behaves, and every idle hover in the app inherits it. Putting them all behind
+  `@media (hover: hover)` was tried and reverted as too heavy-handed for what it
+  buys — it is eighteen rules across six files, `pointer: coarse` cannot stand in
+  for it (a touchscreen laptop is coarse *and* hover), and the `:active:hover`
+  pressed rules have to stay outside the query or a finger loses its only press
+  feedback. What made the switcher's leftover read as damage was the tap doing
+  nothing underneath it, and that is what is fixed here.
+  `resolvePane` is now the one fallback that is genuinely about the arrangement: a
+  pane this tier doesn't switch can't be the active one.
 - **A slot asks whether it is visible, not whether it is the active pane.**
   `isPaneVisible` is `!switched || active`, which is what keeps one CSS rule for
-  hiding the rest across two arrangements that switch *different* panes: in
-  `short` the series list is a column while the other two take turns, and a plain
-  `pane === active` test hides it.
+  hiding the rest across arrangements that hide *different* slots for different
+  reasons: in `short` the series list is a column while the other two take turns,
+  and a plain `pane === active` test hides it. The list slot's `data-active` means
+  something else again where the list is a sheet — "the sheet is open" — and
+  resolving that in the shell is what lets one CSS rule cover both.
 - **The tier is decided in JS and published as `data-layout`, not written as
   media queries.** Two things that are not CSS have to agree with it: which
   panes the Add-series panel covers, and therefore which are `inert` while it's
-  open — a DOM property no media query can set — and whether the switcher is
-  rendered at all. A media query plus a matching `matchMedia` is the same two
-  numbers written twice, and the failure is silent. The numbers live in
+  open — a DOM property no media query can set — and whether the switcher and the
+  bar are rendered at all. A media query plus a matching `matchMedia` is the same
+  two numbers written twice, and the failure is silent. The numbers live in
   [layout.ts](../src/lib/shared/layout.ts) with a unit test that asserts the
   property they exist for: whatever the window, the graph is at or above its
-  minimum.
+  minimum — its 430 where the header is open, its 325 where the tier has already
+  collapsed it.
 - **The panes don't draw their own borders; the slots do.** Which of a pane's
   sides faces another pane is a fact about the arrangement, and the arrangement
   changes: the details pane drew its own `border-left` until it moved under the
@@ -1410,10 +1497,10 @@ fixed list of three it was.
 - **Each pane gets a slot `div` that is the grid item.** The panes are
   components with scoped styles, so the shell can't place them without reaching
   through `:global` for a class name three files away. The slot is also where
-  `inert` goes, which is what lets the list be live beside the panel in two
-  tiers and covered in the third.
+  `inert` goes, which is what lets the list be live beside the panel in three
+  tiers and covered in the two where it is a sheet.
 
-The narrow tier is also the one that found two long-standing bugs in the picker,
+The one-column tiers are also the ones that found two long-standing bugs in the picker,
 both of which bit at any window under ~1150px and are described in the next
 section.
 
@@ -1460,13 +1547,18 @@ that exists only inside a dialog.
 - **Left-aligned, still capped at 1400px.** On a display wide enough for
   the cap to bite, the leftover is graph — dimmed, but visible, and
   better company than empty backdrop.
-- **At narrow widths there is no beside, so the panel takes the window** and
+- **At one column there is no beside, so the panel takes the window** and
   the list's slot goes `inert` with the other two. This is the case the
   original version of this section ruled out — "no breakpoint that hands the
   sidebar back, inert-ness would then have to depend on the viewport, which
   CSS can't drive". The objection was right about CSS and wrong about the
   conclusion: the viewport *is* what decides, so the deciding moved to JS. See
   the previous section.
+
+  The overlay asks `listIsSheet`, published as `data-full`, rather than naming
+  the two tiers: whether the panel docks past the list or takes the window is
+  the single question "is the list there", and naming tiers here would be a
+  third copy of that list to keep in step.
 - The panel is ~280px narrower than it was. The table's `min-width: 64em`
   and its wrapper's `overflow: auto` were supposed to handle that — at a 1152px
   window the table fits exactly, and below that it should scroll horizontally
@@ -1753,10 +1845,12 @@ square, and 16px on the fields that can be *typed into*. Components add to it on
 where they own a size it can't express, and they all use the same 32: the series
 list's icon buttons and drag handle 32 square, the theme toggle 72×32 (its width is
 the point of the control, so it is a fixed size rather than a floor), the filter
-box's chip removers 32, the picker's close button 32 square, and the panel's three
-other shapes below. **There is exactly one exception, and it is declared as one**:
-the pane switcher takes 44, being the app's primary navigation, driven by a thumb
-at the far end of its reach. Two numbers in the whole app.
+box's chip removers 32, the series list's sheet close 32 square (the same shape and
+mark as the panel's, because it is the same control), and the panel's three other
+shapes below. **There is exactly one exception, and it is declared as one**: the
+bottom bar's two controls — the pane switcher and the series sheet's handle — take
+44, being the app's primary navigation, driven by a thumb at the far end of its
+reach. Two numbers in the whole app.
 
 **This app is not phone-first, and the floor should not pretend otherwise.** What
 a phone gets here is a list of performance data to read; the four px between 36
@@ -1880,7 +1974,7 @@ Three more platform facts, all cheap and all invisible where they don't apply:
   a mouse by definition; the coarse block is for the rules that cost list height,
   and this one costs nothing.
 - **Safe-area insets on `main`**, so the plot doesn't run under a notch in
-  landscape and the switcher's bottom edge clears the home indicator. `env()`
+  landscape and the bottom bar's edge clears the home indicator. `env()`
   resolves to 0 where there is no inset, and `box-sizing: border-box` keeps the
   padding inside the `100dvh` instead of adding to it.
 - **`overscroll-behavior: contain` on all three scrollers** (the picker's list,

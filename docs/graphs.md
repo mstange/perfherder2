@@ -29,6 +29,27 @@ Three panes, filling the viewport, no page scroll:
 The "Add series" picker opens as an overlay panel over the whole area rather
 than living in the left pane — it needs the full width for its table.
 
+That is the widest arrangement of five. As the window narrows the details pane
+becomes a row under the graph, then takes turns with it, and at one column the
+*series list* stops being a pane at all — it becomes a sheet behind a button in a
+bottom bar, and the selection takes the row under the graph:
+
+```
+┌────────────────────────────────┐
+│ Feb 10 – Aug 9 · run means  [Controls ▾] │
+│ overview (thin)                │
+│ detail graph                   │
+├────────────────────────────────┤
+│ SELECTION                      │
+│ value / push / run / build     │
+├────────────────────────────────┤
+│ ●● 2 series                  ⌃ │
+└────────────────────────────────┘
+```
+
+The thresholds, the reasoning and the two floors the graph is held to are in
+design.md, "The shell has five arrangements, and the graph keeps its size".
+
 ### With nothing plotted, the pane is a call to action
 
 There is no graph to draw and no controls worth showing, so the middle pane
@@ -46,19 +67,22 @@ header describes a drawing that doesn't exist, the axes were labelled with a
 domain nobody chose, and the one sentence that mattered was 12px of grey in the
 centre of it. On a phone that arrangement filled the screen: 188px of header,
 84px of empty overview, and a 529px plot rectangle holding a note, with the way
-to act on it a pane away in the switcher.
+to act on it a pane away in the switcher the list then lived in.
 
 - **The button is a second door to the panel**, beside the series list's own.
   It exists only while nothing is plotted, so the two are never both the answer
   to "how do I start" — the list's button is the permanent affordance and this
   one is the one where the eye already is.
-- **The first pane at narrow widths is still the graph**, deliberately. Making
-  it the series list — where the Add button lives — was the other way to solve
-  the same problem, and it costs a pane switch on the way *back*: the panel
-  covers the window at that width, so a user who starts on the graph adds a
-  series and is looking at it the moment they press Done. The empty state puts
-  the door on the pane they are already on, which leaves nothing for the initial
-  choice to fix.
+- **The graph is what a one-column window shows first**, deliberately. Opening on
+  the series list — where the Add button lives — was the other way to solve the
+  same problem, and it costs a trip back: the panel covers the window at that
+  width, so a user who starts on the graph adds a series and is looking at it the
+  moment they press Done. The empty state puts the door on what they are already
+  looking at. Since the list stopped being a pane and became a sheet behind the
+  bottom bar's button (design.md, "At one column the series list is the pane that
+  stops being a pane"), the graph is the *only* thing a one-column window can open
+  on — and with nothing plotted the details row is dropped as well, so this block
+  gets the window rather than sharing it with a second empty state.
 - **`app.series` is populated from the URL synchronously**, so a shared link
   never flashes this block on its way to a graph. It appears on a first visit
   and after Remove all — the second of which is a click of the user's, which is
