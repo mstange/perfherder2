@@ -213,6 +213,87 @@ Living checklist. Update in the same commit as the work it describes.
 
 ## Next
 
+### The app on a phone
+
+Surveyed in a 390×844 touch viewport, and at 375×667, 844×390, 915×412 and
+768×1024, with `tools/visual/mobile-review*.mjs`. Every number below is measured
+rather than estimated. The five items are meant to land in order: the first two
+are independent and cheap, the middle two are the picker and want to land
+together, and the sweep goes last so it is checked once against the final
+arrangements.
+
+- [ ] **The shell has to fit the window in both axes.** `layoutForWidth` chooses an
+      arrangement from width alone, so a landscape phone (844×390) took the
+      `medium` tier — details pane as a 156px row, graph header 138px, overview
+      84px — and the detail plot got **12px** (25px at 915×412). `medium`'s
+      bargain is that the graph pays for the pane's width in height, and that
+      assumes there is height to pay with. Fixed by making the tier a function of
+      both axes, with a fourth arrangement for a window that is wide enough for
+      columns but too short to stack: the series list stays a column, and the graph
+      and the selection share the rest through the switcher.
+
+- [ ] **The empty app has to say what to do.** At narrow the first pane is picked
+      by a constant (`'graph'`), and the graph pane draws a full 0-to-1 axis pair
+      with "Add a series to see data." painted in the middle of it, under 188px of
+      range/points/zoom controls that have nothing to control. So the way forward
+      is a tab away and has to be found. Two parts: choose the first pane from
+      state (no series → the pane the Add button is on) as a one-time initial
+      choice, so removing the last series doesn't yank the user out of the graph
+      they are looking at; and give the graph pane a real empty state at every
+      width — a named block with a primary **Add series…** in it, and no header
+      above it, since every control in that header describes a drawing that does
+      not exist.
+
+- [ ] **The Add-series panel spends 461 of 844px before it draws a row.** Measured
+      on a fresh open with nothing plotted: header + hint 105px, control card
+      299px, status row 57px (it wraps) → 321px of list, **8 rows**. Open it from a
+      two-series graph and the derived filter's six chips stack one per line, the
+      card grows to 411px and the list is down to **5 rows**. Mocked in the
+      browser, dropping the hint, folding the `LOAD FROM` row behind a summary line
+      (`autoland, mozilla-central · last 14 days ▾`) and putting the status row on
+      one line takes the list to **604px / 16 rows**, and to **268px / 7 rows** with
+      a keyboard up. The filter box stays out in the open: it is the control this
+      panel is for.
+
+- [ ] **The keyboard covers the list, and nothing accounts for it.**
+      `FilterInput` focuses its input on mount unconditionally, so on a phone the
+      keyboard opens before the user has decided to type. Nothing reads
+      `visualViewport`, and the shell is sized in `dvh` inside a `position: fixed`
+      overlay — which is exactly what iOS does *not* shrink for a keyboard, so it
+      covers the bottom of a pane that cannot scroll. Measured with the viewport
+      shortened by a 336px keyboard, i.e. the best case if the app followed it at
+      all: the list gets **2px**. Three parts — gate the autofocus on
+      `(pointer: fine)`, add `interactive-widget=resizes-content` to the viewport
+      meta for the browsers that honour it, and drive the shell's height from
+      `visualViewport` for iOS, which doesn't.
+
+- [ ] **The picker's list is an 832px table in a 390px window.** `min-width: 64em`,
+      so a phone shows Add / Suite-Test / Repo and half of Platform, with
+      application, options, unit and the runs strip behind a horizontal scroll
+      nested inside a vertical one. The badges *are* the filtering mechanism and
+      most of them are off screen — and their `+`/`×` cue, plus the hover-to-reveal
+      `.cell-flow` spill for clipped text, are hover affordances that do not exist
+      on touch. At narrow the row becomes a two-line card fed by the same
+      `flatRows` (`[+ Add] suite · test` over `repo · platform · application ·
+      options`, runs trailing), which needs `ROW_HEIGHT` to become
+      `rowHeightFor(mode)` so the virtualizer's constant and `--row-height` still
+      cannot drift, and sorting to move to a select since a card list has no header
+      row. Keeping the table and accepting the horizontal scroll is the cheaper
+      option and was rejected: it leaves the panel's primary control off screen.
+
+- [ ] **Touch sizing and pointer-appropriate copy, once.** The switcher is 26px
+      tall at the thumb-far top edge; the series list's eye/↑/↓/× buttons are
+      20×18, chip removes 21×18, checkboxes 13×13, and every `.btn` is 24–28px
+      against a 44px guideline. The filter input is 14px, so iOS zooms the page on
+      focus. There are no safe-area insets, so the plot runs under the notch in
+      landscape, and no `overscroll-behavior` on either scroller. The copy assumes
+      a mouse and a keyboard: the Selection pane's empty state says "Click a
+      point… Shift-click a second point", and the comparison hint offers the `C`
+      key. The `(pointer: coarse)` rules have to be checked at every arrangement,
+      not just the phone: the series card's 2×2 action block at 40px per button is
+      88px wide, which does not fit a 280px sidebar, so that block goes to one row
+      at narrow.
+
 - [ ] **File the treeherder bug for `/performance/alertsummary/<id>/`.** Its
       batched queries were only ever wired into `list()`, so the detail route does
       several sequential queries per alert and costs ~30 ms each: 2.7 s at 94
