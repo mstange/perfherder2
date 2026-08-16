@@ -289,7 +289,7 @@ export class PickerState {
 
   // True when this row is shown but not directly pickable — a parent that
   // only survived the filter via a matching child. The template greys the
-  // row out and disables its checkbox / badge clicks; the disclosure caret
+  // row out and disables its Add button / badge clicks; the disclosure caret
   // stays live so users can still collapse the subtest tree.
   isRowDisabled(row: Series): boolean {
     return !row.isSubtest && this.autoExpanded.has(row.key);

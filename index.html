@@ -20,7 +20,7 @@
     <!-- Resolve the theme before the first paint, or a dark-mode user gets a
          white flash for as long as it takes the module graph to load. This
          deliberately duplicates the storage key and the resolution rule from
-         src/lib/theme.ts — a module import can't run early enough, and the two
+         src/lib/shared/theme.ts — a module import can't run early enough, and the two
          copies are three lines. Keep them in step. -->
     <script>
       (function () {

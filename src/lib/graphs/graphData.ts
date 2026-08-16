@@ -208,7 +208,8 @@ export type SeriesMeta = {
 //   claim as "this signature declares none"** — the fields' own comments spell
 //   out why that difference matters. Nothing may read either field off one of
 //   these; everything that does is reached only once the data has landed, and
-//   `metaTest` in graphData.test.ts pins that.
+//   graphData.test.ts pins that ("agrees field for field with the summary
+//   response for the same signature", "claims a parent id only for a parent").
 // - `none` — the stand-in we synthesize when a signature has no data in the
 //   range *and* no signature row came back: every field is empty or made up.
 //   Code that *displays* the fields can ignore this; code that would act on them

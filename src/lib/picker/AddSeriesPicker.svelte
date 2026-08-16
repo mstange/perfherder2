@@ -186,18 +186,18 @@ import { TIME_RANGES } from './pickerOptions';
   // Broad filters can produce 25k rows; even one expanded parent adds a few
   // hundred subtests. We render only a scroll-window over a flat row list.
   //
-  // Every row is exactly `rowHeight` tall, whichever layout it is in. That
-  // constant is exported to CSS as the `--row-height` custom property on the
-  // .picker root, and `tbody td` / `.card-row` use it as an explicit `height` —
-  // so the JS-side number and the CSS-side row height cannot drift apart. Vertical centering is
-  // driven by `height + vertical-align: middle`, not by text metrics or
-  // padding, so changing fonts or badge styling doesn't move rows around.
-  // Column widths are pinned via <colgroup> + `table-layout: fixed` so
-  // they don't horizontally re-flow as new rows scroll in either.
-  // Two row heights, because there are two row layouts (see `cardRows` below).
-  // One line of cells, or two lines of a card: the Add button and the name, then
-  // the attributes. Both are exported to CSS through `--row-height` and used as
-  // an explicit `height`, so neither can drift from the virtualizer.
+  // Every row is exactly `rowHeight` tall, whichever layout it is in. There are
+  // two of them because there are two row layouts (see `cardRows` below): one
+  // line of cells, or two lines of a card — the Add button and the name, then
+  // the attributes. Whichever is in effect is exported to CSS as the
+  // `--row-height` custom property on the .picker root, and `tbody td` /
+  // `.card-row` use it as an explicit `height`, so the JS-side number and the
+  // CSS-side row height cannot drift apart.
+  //
+  // Vertical centering is driven by `height + vertical-align: middle`, not by
+  // text metrics or padding, so changing fonts or badge styling doesn't move
+  // rows around. Column widths are pinned via <colgroup> + `table-layout:
+  // fixed` so they don't horizontally re-flow as new rows scroll in either.
   const TABLE_ROW_HEIGHT = 36;
   const CARD_ROW_HEIGHT = 80;
   const OVERSCAN = 6;

@@ -762,8 +762,7 @@
   }
   /* The pane with nothing plotted. It takes the whole pane rather than sitting
      in a plot rectangle, because there is no plot: one column, centred both
-     ways, and the paragraph capped at a readable measure so it doesn't run the
-     width of a desktop pane. Nothing here is reserved or placeheld — the pane
+     ways. Nothing here is reserved or placeheld — the pane
      swaps to the graph on a click of the user's, which is the one moment
      "Layout stability" allows the arrangement to change. */
   .blank {

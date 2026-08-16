@@ -435,8 +435,6 @@ type Confirmation = Pick<
   | 'effectSize'
 >;
 
-// Which cut in this window separates it best? The step's index, re-estimated.
-//
 // Could the rank test clear α at these pool sizes at all?
 //
 // The Mann-Whitney U is a rank statistic, so each pair of pool sizes has a floor on
@@ -596,6 +594,7 @@ export function boundaryCandidates(
   return out;
 }
 
+// Which cut in this window separates it best? The step's index, re-estimated.
 export function relocateBoundary(
   values: readonly number[],
   windowStart: number,

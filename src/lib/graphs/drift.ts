@@ -102,7 +102,7 @@ export function buildDrift(pushes: readonly PushGroup[]): DriftSummary | null {
 // what counts as a real move is exactly what changes.ts exists to prevent:
 //
 //   - **The detector's floor** — a quarter of the signature's own alerting
-//     threshold (changes.ts, "The floor comes from the signature"). With enough
+//     threshold (graphs.md, "The floor comes from the signature"). With enough
 //     pushes a rank test will certify a 0.05% drift, which is true and useless.
 //   - **The detector's α** — `CHANGE_ALPHA`, not `SIGNIFICANCE_ALPHA`, for the
 //     multiple-comparisons reason given there: this asks once per plotted series,

@@ -443,18 +443,24 @@ button {
    are container-width queries about layout, which is a different question with a
    different answer.
 
-   Components add to this only where they own a size it can't express: the pane
-   switcher takes 44 (the app's primary navigation, driven by a thumb at the far
-   end of its reach), and the Add-series panel's four non-`.btn` shapes take the
-   32 by hand. See docs/design.md, "Touch". */
+   Components add to this only where they own a size it can't express, and the
+   full register is: the pane switcher takes 44 (the app's primary navigation,
+   driven by a thumb at the far end of its reach); the Add-series panel's four
+   non-`.btn` shapes take the 32 by hand, as does its filter box's chip remover;
+   the series list's icon buttons and drag handle take it in *both* axes, since a
+   20×18 target is short in width rather than height; and the theme toggle takes
+   it as a fixed square. See docs/design.md, "Touch". */
 @media (pointer: coarse) {
   /* `.btn-compact` and `.btn-group`'s segments carry `.btn` too, so this is the
      only height in here. */
   .btn {
     min-height: 32px;
   }
-  /* A 13px checkbox is the smallest target in the app, and there are eight of
-     them. `accent-color` is untouched, so they still follow the theme. */
+  /* A 13px checkbox is the smallest target in the app: the picker's repository
+     chips, its "Match inside subtests" switch, and the graph header's two. (A
+     count would be wrong as written — `repoChips` grows with `extraRepos`, so
+     how many there are is a function of the URL.) `accent-color` is untouched,
+     so they still follow the theme. */
   .control-toggle input[type='checkbox'],
   .chip input[type='checkbox'] {
     width: 18px;

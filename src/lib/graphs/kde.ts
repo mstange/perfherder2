@@ -125,7 +125,9 @@ export function gaussianKde(
   const twoVar = 2 * bandwidth * bandwidth;
   // The kernel is negligible past its practical support; skipping the tail
   // turns the inner loop from "every sample" into "the nearby ones", which is
-  // what keeps a 300-value pool on a 1024-point grid off the frame budget.
+  // what keeps a 300-value pool off the frame budget on the 256-point grid the
+  // details pane draws (`distribution.ts::GRID_POINTS`) — and on the wider ones
+  // the tests hand it, since the grid is the caller's to choose.
   const reach = gaussianSupport(bandwidth);
   const sorted = [...values].sort((a, b) => a - b);
   let lo = 0;
