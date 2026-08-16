@@ -371,7 +371,7 @@
   @media (pointer: coarse) {
     .chip-remove {
       padding: 0 10px;
-      height: 30px;
+      height: 32px;
     }
     .filter-text {
       font-size: 16px;

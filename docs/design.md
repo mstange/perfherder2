@@ -33,7 +33,7 @@ change is wrong for a reason the code doesn't show:
 | Markup with two adjacent badges | "Whitespace between adjacent badges (Svelte gotcha)" |
 | A color, anywhere | "Theming: one resolved attribute, one exception" — there are exactly two, and neither is new |
 | A button | "One button, defined once", and "Touch: a floor under the controls a thumb drives" if it is smaller than `.btn` |
-| A size for a control, or an instruction naming a click or a key | "Touch: a floor under the controls a thumb drives, and copy that names a gesture the reader has" — the floor is one `pointer: coarse` block in app.css, neither a media query nor a `@container` query adds any specificity (so both go *after* what they override, and four rules have been silently dead for this), a scoped `font: inherit` outranks the global rule, and a control that isn't a `.btn` gets no floor at all until someone writes one for it |
+| A size for a control, or an instruction naming a click or a key | "Touch: a floor under the controls a thumb drives, and copy that names a gesture the reader has" — the floor is **one number, 32**, in one `pointer: coarse` block in app.css, and raising it is how three now-deleted workaround rules got written the first time; also: neither a media query nor a `@container` query adds any specificity (so both go *after* what they override, and four rules have been silently dead for this), a scoped `font: inherit` outranks the global rule, and a control that isn't a `.btn` gets no floor at all until someone writes one for it |
 | A spinner, a skeleton, or any "still loading" mark | "Two loading cues, and which wait each one is for" — there are two classes in app.css, the choice between them is what the wait *is*, and a third hand-rolled one is the mistake |
 | A hover explanation | "Tooltips: for what the canvas paints". Ordinary controls use `title`; the drawn box is for the marks in the graph's canvas, which have no element to hang one on |
 | A percentage or a delta in the details pane | graphs.md, "The three change cards say it the same way" — one component draws all three headlines, and the sign is the measurement's, never the verdict's |
@@ -1003,18 +1003,18 @@ Where it lands, measured with `tools/visual/picker-fold-cases.mjs`:
 | 390×844 phone | yes | 6 cards |
 | 390×508 (phone, keyboard up) | yes | 2 cards |
 | 375×667 phone SE | yes | 4 cards |
-| 596×900 | **no** | 5 cards |
+| 596×900 | **no** | 6 cards |
 | 596×400 | yes | 1 card |
 | 768×1024 iPad portrait, docked | no | 7 cards |
 | 900×900, panel docked | no | 6 cards |
 | 1440×900 | no | 16 table rows |
 | 1440×500 | yes | 5 table rows |
 
-The touch cases each pay ~18px for the panel's chrome having a touch floor under
-it (see "Touch" below) and keep their row count anyway; 596×900 is the one that
-lost a row to it. Two of them went the other way: at 556px of content and below,
-a group's secondary controls now wrap as a row instead of stacking as a rail that
-isn't there, which is a card back at 900×900 and 26px at an iPad.
+Every one of these is at or above where it was before the panel's chrome got a
+touch floor, and 900×900 gained a row: at 556px of content and below, a group's
+secondary controls now wrap as a row instead of stacking as a rail that isn't
+there. See "Touch" below for the table of what the floor's height costs — it is
+the reason that floor is 32 and not 36.
 
 Which group folds is not a matter of taste either:
 
@@ -1096,6 +1096,15 @@ Same rows, same badges, same actions, nothing sideways. What holds it together:
   under an expanded parent: the table's got that free from `tbody td`, the card
   list says it explicitly, and `tools/visual/picker-card-pitch.mjs` checks that the
   rendered heights sum to `rows × slot`.
+- **Which layout is chosen from `panelWidth`, which starts at `Infinity`** — so
+  the panel's *first* paint is the table, however narrow it is, until the
+  ResizeObserver fires. It corrects within a frame or two in practice and nothing
+  measures wrong afterwards, but it is worth knowing about for two reasons. It is a
+  layout shift at the moment the panel opens, in a panel whose other shifts this
+  file is careful about. And it makes any script that samples the panel after a
+  *fixed* delay unreliable: `picker-fold-cases.mjs` reported 36px rows in a 424px
+  panel twice in a row under load, which reads exactly like a real regression, and
+  now waits for the row height to agree with the panel's width instead.
 - **The attribute line is clamped to two lines, not left to wrap.** The number of
   options a row carries is unbounded, and a row three lines tall would put every
   row below it in the wrong place. Two lines fit the busiest realistic row —
@@ -1725,53 +1734,91 @@ chip's remove 21×18, a checkbox 13 square. Apple asks for 44px and Material for
 48, and the survey that started this work found nineteen distinct targets under
 30px on a phone.
 
-**The floor is in one `@media (pointer: coarse)` block in app.css**, beside
-`.btn` for the reason `.btn` is in one place: 36px on `.btn` and on `<select>`,
-32 on `.btn-compact` and on `.control-toggle`, 20 on the checkboxes, and 16px on
-text inputs and selects. Components add to it only where they own a size the
-global rule can't express — the pane switcher takes the full 44px (it is the app's
-primary navigation, driven by a thumb at the far end of its reach), the series
-list's icon buttons and drag handle go to 32 square, the theme toggle to 72×36,
-the picker's close button to 36 square, and the Add-series panel's own four
-shapes are listed below.
+**The floor is in one `@media (pointer: coarse)` block in app.css**, beside `.btn`
+for the reason `.btn` is in one place. **It is one number — 32 — and that matters
+more than which number it is.** The block started at 36 on `.btn`, and 36 is what
+made everything else in it necessary:
 
-**A pill, a summary line and a sort control are not `.btn`, and the first pass
+| Rule the 36 needed | Why it went away at 32 |
+| --- | --- |
+| `.btn-compact { min-height: 32 }` | it carries `.btn`, so it inherits the floor |
+| `.btn-group > .btn { padding-block: 2px }` | existed to claw back `.btn`'s matching `padding-block`, which a `min-height` never needed — a `<button>` centres its own content |
+| `tbody .btn { min-height: 0 }` in the picker | a 32px button fits a 36px table row; a 36px one did not, and desynchronised the virtualizer |
+
+So the whole thing is now `.btn` at 32, `<select>` at 32, the checkboxes at 18
+square, and 16px on the fields that can be *typed into*. Components add to it only
+where they own a size it can't express, and they all use the same 32: the series
+list's icon buttons and drag handle 32 square, the theme toggle 72×32 (its width is
+the point of the control, so it is a fixed size rather than a floor), the filter
+box's chip removers 32, the picker's close button 32 square, and the panel's three
+other shapes below. **There is exactly one exception, and it is declared as one**:
+the pane switcher takes 44, being the app's primary navigation, driven by a thumb
+at the far end of its reach. Two numbers in the whole app.
+
+**This app is not phone-first, and the floor should not pretend otherwise.** What
+a phone gets here is a list of performance data to read; the four px between 36
+and 32 were coming straight out of that list, and at 36 the panel's chrome cost
+~20px of it on every phone and a whole card row at a 596px window. 32 is what a
+fingertip hits reliably in practice. Adjacent-target spacing does as much work as
+size anyway, and these blocks' gaps were already generous.
+
+**A pill, a summary line and a direction button are not `.btn`, and the first pass
 missed all three.** The panel's chrome had four targets under the floor because
-none of them carries the class the floor is written against: the repository chips
-at 30px, the folded load row's summary line at 30, the time-range `<select>` at
-29, and the card list's sort `<select>` at 22 with a 25×36 direction button
-beside it. Each is now in AddSeriesPicker's own coarse block. Three of them are
-worth knowing about beyond the number:
+none of them carries the class it is written against: the repository chips at
+30px, the folded load row's summary line at 30, the time-range `<select>` at 29,
+and the card list's sort `<select>` at 22 with a 25×32 direction button beside it.
+Each is now one declaration in AddSeriesPicker's coarse block — **a `min-height`,
+and nothing else.** All three centre their own content, so a floor needs no
+matching padding, and the first version's paddings and gaps were either redundant
+or paid for in width: 12px of chip padding cost a whole *line* of chips, because
+`mozilla-beta` and `try` then came to 336px against 334px of card.
+
+Two of them are worth knowing about beyond the number:
 
 - **A floor on a checkbox does not float the pill it is in.** The chips' 4px of
-  padding was sized around a 13px checkbox; once the global rule grew the box to
-  20px the pill had collapsed onto it — 30px tall, the checkbox touching both
-  edges of a 999px radius. The padding is what makes it read as a pill again, and
-  it is *vertical* padding: 12px horizontal was tried and cost a line, because
-  `mozilla-beta` and `try` then came to 336px against 334px of card and the four
-  chips took four lines on a phone instead of three.
-- **The sort control was 12px because it was sized for a mouse, in a layout only
-  a phone gets.** It is rendered for the card layout alone, and its padding and
-  font-size were chosen to fit four things on the status row. On touch that is
-  both an unhittable target *and* the page-zoom-on-focus bug the 16px rule exists
-  to avoid — a scoped selector outranks that rule, so it had quietly opted out of
-  it. Raising it to 16px cost 23px of width, which the status row did not have:
-  the decorative `sort` word goes at `CONTROL_BLOCK_NARROW` (it is `aria-hidden`,
-  and the select carries `aria-label` and `title`), and the row's gap and inset
-  come down. Without those two the row wrapped, and a wrap there is 44px of list.
-- **`.control-toggle` is 32 rather than 36**, matching `.btn-compact`: a switch
-  beside a control is secondary to it, and the pair then reads as one column of
-  targets. A/B'd with `tools/visual/toggle-floor-header.mjs` — it costs the graph
-  header 0px at a landscape phone, an iPad and a touchscreen laptop, and 12px on
-  a 390px phone, where the two switches wrap to a line of their own.
+  padding was sized around a 13px checkbox; once the global rule grew the box the
+  pill had collapsed onto it — 30px tall, the checkbox touching both edges of a
+  999px radius. What was wrong there was the collapse, not the height.
+- **A `<select>` is not the iOS zoom case, and was treated as one.** app.css put
+  16px on `input`, `select` and `textarea` alike; a select opens a native picker
+  rather than taking a caret, so it is not the field that rule is about. 16px there
+  was expensive in a way it is not on a text field — it is the widest thing in the
+  picker's status row, whose width decides whether that row wraps, and a wrap is
+  44px of list. It also read as oversized, being the one 16px string in a block of
+  13–14px ones. **Height was what these needed, not size.** While they were at
+  16px the row had to drop its `sort` word and tighten its gap to fit; both came
+  back with the font.
+
+`.control-toggle` gets **no** floor, and one was tried: the checkbox is sized by
+the global rule and the label beside it is part of the target, so "Match inside
+subtests" is already 167px wide and the graph header's two are wider. Giving the
+label 32px cost 12px of the picker's list in every case measured and 12px of the
+graph header on a phone — the worst ratio of list spent to mis-tap avoided here.
+Height is not the axis a 167px-wide target is short in.
 
 Beyond the chrome, the card list's disclosure caret goes to 28×32 on touch: a
 20×20 target 6px from a button that puts a series on the graph is a mis-tap with a
 visible consequence, the height is free because the card's head line is already as
-tall as the `.btn-compact` in it, and the width costs 8px of the suite name. The
-attribute badges stay at 19px, which is the one thing here that is *not* a matter
-of adding a floor: they are two lines inside `CARD_ROW_HEIGHT`, and every row in
-the flat list has to be exactly that tall.
+tall as the `.btn` in it, and the width costs 8px of the suite name. The attribute
+badges stay at 19px, which is the one thing here that is *not* a matter of adding a
+floor: they are two lines inside `CARD_ROW_HEIGHT`, and every row in the flat list
+has to be exactly that tall.
+
+Where the panel lands, against never having done any of this
+(`tools/visual/picker-rollback-costs.mjs` and `picker-compact-tier.mjs` are the
+two that measure the trade):
+
+| Viewport | Before | At a 36 floor | At 32 |
+| --- | --- | --- | --- |
+| 390×844 | 518px (6 rows) | 500 (6) | **524 (6)** |
+| 390×844, load row open | 344 (4) | 308 (3) | **348 (4)** |
+| 596×900 | 493 (6) | 457 (5) | **489 (6)** |
+| 900×900 docked | 481 (5) | 507 (6) | **507 (6)** |
+
+Every target ends up at or above 32 and the list ends up *larger* than it was
+before the floor existed — the 900px gain is the `.control-aside` fix rather than
+the floor, and the phone's is the 4px times the several controls stacked in that
+block.
 
 Four things about this that are not obvious:
 
@@ -1799,12 +1846,17 @@ Four things about this that are not obvious:
   to live in FilterInput. It matters because **iOS zooms the page when a field
   under 16px takes focus**, which scales the layout viewport up and pushes half
   the panel off screen; `maximum-scale=1` is the other fix and it takes
-  pinch-zoom away from everybody.
-- **The floor must not reach inside a fixed-height row.** The picker's table
-  gives every row exactly `--row-height` and puts a `.btn-compact` in it, so
-  AddSeriesPicker takes the floor back off `tbody .btn`. That is sound rather
-  than a hack: the layout a touch device gets on a phone is the card list, which
-  has the room and gets the full sizes.
+  pinch-zoom away from everybody. This is the *only* place in the app that needs
+  the 16px — it is a real text-entry field, and the one the panel exists for. The
+  two `<select>`s were in the same rule and are not the same case; see above.
+- **The floor must fit inside a fixed-height row, or be taken back out of it.**
+  The picker's table gives every row exactly `--row-height` = 36px and puts a
+  `.btn` in it. At a 36 floor that overflowed its own slot and desynchronised the
+  virtualizer, and AddSeriesPicker carried a `tbody .btn { min-height: 0 }`
+  exemption for it; at 32 it fits and the exemption is gone. Whichever way it
+  goes, `tools/visual/picker-card-pitch.mjs` and `picker-table-touch-pitch.mjs`
+  are what check it — the second one is a *touchscreen wide enough for the table*,
+  which is the only configuration where the floor and a fixed row height meet.
 
 Two more platform facts, both cheap and both invisible where they don't apply:
 

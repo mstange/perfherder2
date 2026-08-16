@@ -85,16 +85,16 @@ export const CONTROL_BLOCK_NARROW = 560;
  * What the panel spends above its list, with the loading group open, at a given
  * panel *content* width — so the panel's own 16px padding is already outside
  * these numbers. Measured with `tools/visual/picker-chrome-cost.mjs`, at **both
- * pointer types**, because the touch floor in app.css is worth ~50px of this
+ * pointer types**, because the touch floor in app.css is worth ~20px of this
  * block and these widths are overwhelmingly phones:
  *
  * | content width | coarse | fine | chips |
  * | --- | --- | --- | --- |
- * | 358 | 482 | 422 | 3 lines |
- * | 416–556 | 402 | 361 | 2 |
- * | 564–668 | 445 | 396 | 4 — see below |
- * | 756 | 359 | 323 | 2 |
- * | 1096 | 299 | 269 | 1 |
+ * | 358 | 446 | 422 | 3 lines |
+ * | 416–556 | 382 | 361 | 2 |
+ * | 564–668 | 413 | 396 | 4 — see below |
+ * | 756 | 335 | 323 | 2 |
+ * | 1096 | 278 | 269 | 1 |
  *
  * Bands rather than a fit through those points, because what the cost really
  * tracks is how many lines the repository chips wrap to — and that is a step.
@@ -109,18 +109,18 @@ export const CONTROL_BLOCK_NARROW = 560;
  * come back, and between them they take enough width off the chips to cost a
  * line that a 528px panel with no rails does not pay — so 564 is dearer than 556.
  * Folding one band over the two of them charges a docked 900px window the 564px
- * case's 445, which is 43px it does not spend, and 43px there is the difference
- * between five card rows and a fold. The boundary is `CONTROL_BLOCK_NARROW`
- * itself rather than a number near it, because that threshold *is* the cause.
+ * case's cost, which is ~30px it does not spend, and 30px there is the difference
+ * between five card rows and six. The boundary is `CONTROL_BLOCK_NARROW` itself
+ * rather than a number near it, because that threshold *is* the cause.
  */
 export function pickerChromeCost(contentWidth: number): number {
   // The other boundaries are where the chips were *measured* to rewrap — 358
   // takes three lines, 416 takes two, 1096 takes one — rather than round numbers
   // near them, so a panel just inside a band is not charged the cheaper tier.
-  if (contentWidth < 416) return 482;
-  if (contentWidth < CONTROL_BLOCK_NARROW) return 402;
-  if (contentWidth < 700) return 445;
-  return 359;
+  if (contentWidth < 416) return 446;
+  if (contentWidth < CONTROL_BLOCK_NARROW) return 382;
+  if (contentWidth < 700) return 413;
+  return 335;
 }
 
 /**

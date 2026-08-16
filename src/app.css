@@ -428,12 +428,22 @@ button {
    44px, Material for 48 — so `(pointer: coarse)` puts a floor under the ones a
    thumb actually drives.
 
-   **A floor, not the guideline's number.** 44px on every button in a control
-   block that already stacks to four rows on a phone spends the screen the last
-   two commits just bought back; 36px is what a fingertip hits reliably in
-   practice, and the controls that are *primary* navigation get the full 44 where
-   they are declared (the pane switcher in App.svelte). Adjacent-target spacing
-   does as much work as size here, and the block gaps were already generous.
+   **A floor, not the guideline's number, and one floor rather than a tier per
+   control.** 44px on every button in a control block that already stacks to four
+   rows on a phone spends the screen two commits had just bought back. **32 is the
+   number**, and the reason it is one number is worth more than the four px: this
+   block started at 36 on `.btn`, and 36 is what made every other rule here
+   necessary. `.btn-compact` needed a smaller floor of its own, `.btn-group` needed
+   to claw the padding back so a bar of segments didn't grow 4px, and the picker's
+   table needed an explicit exemption because a 36px button does not fit a 36px
+   row. At 32 all three of those went away — `.btn-compact` and the segments
+   inherit it through `.btn`, and it fits the row. A phone here gets a list of
+   perf data to read, not a phone-first app, and the list is what the extra 4px
+   was coming out of.
+
+   **`min-height` and nothing else.** A `<button>` centres its own content in
+   whatever box it is given, so a floor needs no matching padding — the
+   `padding-block` this block used to carry was what `.btn-group` then had to undo.
 
    **Scoped by `pointer`, not by width.** The question is what is driving the app,
    not how big the window is: a touchscreen laptop at 1400px needs these and a
@@ -441,67 +451,61 @@ button {
    are container-width queries about layout, which is a different question with a
    different answer.
 
-   One thing this rule must not do is grow a control inside a fixed-height row.
-   The picker's table gives every row exactly `--row-height` and puts a
-   `.btn-compact` in it; AddSeriesPicker takes the floor back off there, which is
-   sound because the card layout — the one a touch device gets on a phone — has
-   the room and gets these sizes. */
+   Components add to this only where they own a size it can't express: the pane
+   switcher takes 44 (the app's primary navigation, driven by a thumb at the far
+   end of its reach), and the Add-series panel's four non-`.btn` shapes take the
+   32 by hand. See docs/design.md, "Touch". */
 @media (pointer: coarse) {
+  /* `.btn-compact` and `.btn-group`'s segments carry `.btn` too, so this is the
+     only height in here. */
   .btn {
-    min-height: 36px;
-    padding-block: 6px;
-  }
-  .btn-compact {
     min-height: 32px;
-    padding-block: 4px;
-  }
-  /* Inside a segmented track the segments keep their own tighter block padding
-     (see above) but still need the height. */
-  .btn-group > .btn {
-    padding-block: 2px;
   }
   /* A 13px checkbox is the smallest target in the app, and there are eight of
      them. `accent-color` is untouched, so they still follow the theme. */
   .control-toggle input[type='checkbox'],
   .chip input[type='checkbox'] {
-    width: 20px;
-    height: 20px;
+    width: 18px;
+    height: 18px;
   }
-  /* A 13px box grew to 20px above, and that is the whole target: the line it
-     sits on is 20px tall, so a checkbox 6px under a row of buttons is 6px of
-     clear space between two things a thumb is aiming at. The compact button's
-     height rather than `.btn`'s, because a switch beside a control is secondary
-     to it — same tier, so the pair reads as one column of targets.
-
-     Free where these share a line with a button, which is both of the graph
-     header's: a row holding a `.btn-compact` is already 32px tall. A/B'd with
-     `tools/visual/toggle-floor-header.mjs` — 0px at a landscape phone, an iPad
-     and a touchscreen laptop, and 12px on a 390px phone, where the two switches
-     wrap to a line of their own. That is the one place this is not free, and the
-     header there already collapses behind a bar. */
-  .control-toggle {
-    min-height: 32px;
-  }
-  /* iOS zooms the page when a field with text under 16px takes focus, which
+  /* **`.control-toggle` deliberately has no floor, and one was tried.** The
+     checkbox is sized by the rule above and the label beside it is part of the
+     target, so "Match inside subtests" is already 167px wide and the graph
+     header's two are wider still — a *short* target, but not a small one. Giving
+     the label 32px cost 12px of the picker's list in every case measured
+     (`tools/visual/picker-rollback-costs.mjs`) and 12px of the graph header on a
+     phone (`toggle-floor-header.mjs`): the worst ratio of list spent to mis-tap
+     avoided in this block. Height is not the axis a 167px-wide target is short in. */
+  /* iOS zooms the page when a *text-entry* field under 16px takes focus, which
      scales the layout viewport up and pushes half the panel off screen — the
-     app's own sizes are 13–14px throughout. Raising the two form controls that
-     can be focused is the fix; `maximum-scale=1` in the viewport meta is the
-     other one and it takes pinch-zoom away from everybody. */
+     app's own sizes are 13–14px throughout. Raising the fields that can be typed
+     into is the fix; `maximum-scale=1` in the viewport meta is the other one and
+     it takes pinch-zoom away from everybody.
+
+     **`select` is deliberately not in this list, and was.** A `<select>` opens a
+     native picker rather than taking a caret, so it is not the case this rule is
+     about — and 16px there is expensive in a way it is not on a text field: it is
+     the widest thing in the picker's status row, where the width it takes is what
+     decides whether that row wraps (and a wrap there is 44px of list). It also
+     read as oversized, being the one 16px string in a block of 13–14px ones. The
+     height below is what these actually needed. */
   input[type='text'],
-  select,
   textarea {
     font-size: 16px;
   }
-  /* And the height, which the font-size above does not buy: a `<select>` at
-     16px is 29px tall, which was the smallest thing on the picker's status row.
-     There are two in the app, both in that panel, but this belongs here for the
-     reason the font-size does — it is a fact about the control, not about the
-     panel. A height and not more padding, because padding here would be dead
-     on arrival: both of those selects sit in a scoped `select { padding }` rule,
-     which is `(0,1,1)` against this one's `(0,0,1)`. A `<select>` centres its
-     own text in whatever box it is given, so the height is all it needs. */
+  /* What the two selects in the app did need: a height. At the app's own font
+     they come out 22–29px, which made the picker's sort control the smallest
+     target on the panel. There are only two and both are in that panel, but this
+     belongs here for the reason the rule above does — it is a fact about the
+     control, not about the panel.
+
+     A height and not more padding, because padding here would be dead on
+     arrival: both of them sit in a scoped `select { padding }` rule, which is
+     `(0,1,1)` against this one's `(0,0,1)`. A `<select>` centres its own text in
+     whatever box it is given, so the height is all it takes — the same reason
+     `.btn` above needs none. */
   select {
-    min-height: 36px;
+    min-height: 32px;
   }
 }
 
