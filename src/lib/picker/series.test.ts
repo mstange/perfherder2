@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { buildOptionMap, type OptionCollection, type RawSignature } from './signaturesApi';
 import { toSeries } from './series';
-import { seriesKey } from '../graphs/graphData';
+import { seriesKey, type SeriesRef } from '../graphs/graphData';
 
 const frameworks = new Map<number, string>([
   [1, 'talos'],
@@ -46,9 +46,8 @@ describe('toSeries', () => {
   // and the marks would silently vanish.
   it('builds a key the graphs view can look up with seriesKey', () => {
     const [s] = toSeries({ '5259007': raw({ id: 5259007 }) }, 'autoland', frameworks, optionMap);
-    expect(s.key).toBe(
-      seriesKey({ repository: 'autoland', signatureId: 5259007, frameworkId: 13 }),
-    );
+    const ref: SeriesRef = { repository: 'autoland', signatureId: 5259007, frameworkId: 13 };
+    expect(s.key).toBe(seriesKey(ref));
   });
 
   it('resolves framework name from the id', () => {

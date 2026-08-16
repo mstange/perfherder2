@@ -1712,8 +1712,11 @@ import { TIME_RANGES } from './pickerOptions';
   .subtest-row:hover td {
     background: var(--bg-nested-hover);
   }
+  /* The indent that says "this row is under the one above". No `!important`: the
+     only thing it competes with is `tbody td`'s padding, and a class beats a
+     type-plus-type selector on specificity alone. */
   .subtest-cell {
-    padding-left: 24px !important;
+    padding-left: 24px;
   }
   .subtest-note td {
     padding: 4px 8px 4px 40px;

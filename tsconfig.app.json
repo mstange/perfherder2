@@ -10,12 +10,9 @@
     // imports directly.
     "resolveJsonModule": true,
     "noEmit": true,
-    /**
-     * Typecheck JS in `.svelte` and `.js` files by default.
-     * Disable checkJs if you'd like to use dynamic types in JS.
-     * Note that setting allowJs false does not prevent the use
-     * of JS in `.svelte` files.
-     */
+    // What type-checks the `<script>` of a `.svelte` file that omits
+    // `lang="ts"`. There is no hand-written JavaScript under src/, so the
+    // `src/**/*.js` include below is currently empty.
     "allowJs": true,
     "checkJs": true,
     "moduleDetection": "force"

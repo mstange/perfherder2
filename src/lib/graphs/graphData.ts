@@ -224,24 +224,33 @@ export function isPlaceholder(meta: SeriesMeta): boolean {
   return meta.source === 'none';
 }
 
-export function seriesKey(ref: SeriesRef): string {
+// The one definition of a series' row identity. `Pick` rather than `SeriesRef`
+// because the recipe never reads `frameworkId`, and the callers that need it most
+// are the ones holding a `SelectedPoint` or a `SeriesEntryState` — which carry
+// the same two fields and were composing the string by hand for want of a type
+// that accepted them.
+export function seriesKey(ref: Pick<SeriesRef, 'repository' | 'signatureId'>): string {
   return `${ref.repository}|${ref.signatureId}`;
 }
 
+// Every field read here without a fallback is `v.string()` in
+// `RawSummarySchema`, so a `?? ''` on it would be unreachable — and would say
+// the opposite of what the schema says. `measurement_unit` is the one that is
+// genuinely `v.nullable`.
 export function metaFromSummary(summary: RawSummary): SeriesMeta {
-  const suite = summary.suite ?? '';
+  const suite = summary.suite;
   // The API repeats the suite in `test` for non-subtest signatures; that
   // would render as "ts_paint · ts_paint" everywhere.
   const test = summary.test && summary.test !== summary.suite ? summary.test : '';
   return {
     suite,
     test,
-    platform: summary.platform ?? '',
-    application: summary.application ?? '',
+    platform: summary.platform,
+    application: summary.application,
     measurementUnit: summary.measurement_unit ?? '',
     lowerIsBetter: summary.lower_is_better !== false,
-    name: summary.name ?? '',
-    options: optionsFromName(summary.name ?? '', suite, test),
+    name: summary.name,
+    options: optionsFromName(summary.name, suite, test),
     parentSignatureId:
       summary.parent_signature ?? (summary.has_subtests ? summary.signature_id : null),
     alertThreshold: alertThresholdFromSummary(summary),
@@ -434,6 +443,11 @@ export function jitterForSelection(
   return pointJitter(dots, datumId, replicateIndex);
 }
 
+// Deliberately not `shared/stats.ts::mean`, which returns NaN for an empty
+// input. A `Run` or `PushGroup` here is only ever built from at least one value,
+// so the case doesn't arise — but these means are assigned to `run.mean` /
+// `push.mean` and go straight into chart arithmetic, where one NaN propagates
+// into an axis domain and blanks a plot. 0 keeps that failure local.
 function mean(values: number[]): number {
   if (values.length === 0) return 0;
   let sum = 0;
@@ -451,9 +465,11 @@ export function buildSeriesData(summary: RawSummary | null): SeriesData {
   // change in server-side ordering can't silently split a run in two.
   const runByDatumId = new Map<number, Run>();
   for (const row of summary.data) {
-    if (row.value === null || row.value === undefined || !Number.isFinite(row.value)) {
-      continue;
-    }
+    // `Number.isFinite` is the whole guard: the schema's `v.number()` already
+    // rejects null and NaN, and Infinity is the one value that gets past it.
+    // (It catches null and NaN as well, which is why the explicit checks that
+    // used to sit here were unreachable even from the test that feeds them.)
+    if (!Number.isFinite(row.value)) continue;
     let run = runByDatumId.get(row.id);
     if (!run) {
       run = {

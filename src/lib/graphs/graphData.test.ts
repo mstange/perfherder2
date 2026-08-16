@@ -722,8 +722,10 @@ describe('thresholdParentRef', () => {
 
 describe('seriesKey', () => {
   it('is scoped by repo, since signature ids are per-repo rows', () => {
-    expect(seriesKey({ repository: 'autoland', signatureId: 1, frameworkId: 1 })).toBe(
-      'autoland|1',
-    );
+    // Through a `SeriesRef`, because the framework id is deliberately not part
+    // of the key — `seriesKey` takes the two fields it reads, so a caller
+    // holding a `SelectedPoint` can pass that instead.
+    const ref: SeriesRef = { repository: 'autoland', signatureId: 1, frameworkId: 1 };
+    expect(seriesKey(ref)).toBe('autoland|1');
   });
 });

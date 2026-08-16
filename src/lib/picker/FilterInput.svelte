@@ -320,10 +320,8 @@
     background: var(--field-repo-chip-bg);
     color: var(--field-repo-fg);
   }
-  .chip-field-platform {
-    background: var(--field-platform-chip-bg);
-    color: var(--field-platform-fg);
-  }
+  /* No `.chip-field-platform`: platform's colours are `.chip-field`'s own
+     default above, and a rule restating them was two spellings of one pair. */
   .chip-field-application {
     background: var(--field-app-bg);
     color: var(--field-app-fg);

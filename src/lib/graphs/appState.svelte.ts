@@ -636,15 +636,15 @@ export class AppState {
   selectedPush = $derived.by((): Push | null => {
     const sel = this.selection;
     if (!sel) return null;
-    return this.pushCache.get(`${sel.entry.ref.repository}|${sel.push.pushId}`) ?? null;
+    return this.pushCache.get(pushKey(sel.entry.ref.repository, sel.push.pushId)) ?? null;
   });
 
   // A run's job record, once the lookup has landed. Two runs want one now — the
-  // selection, and the pinned comparison's other end — so the cache key recipe
-  // is written once here rather than at each reader.
+  // selection, and the pinned comparison's other end — so the lookup is written
+  // once here rather than at each reader.
   private jobOf(repository: string, jobId: number | null): Job | null {
     if (jobId === null) return null;
-    return this.jobCache.get(`${repository}|${jobId}`) ?? null;
+    return this.jobCache.get(jobKey(repository, jobId)) ?? null;
   }
 
   selectedJob = $derived.by((): Job | null => {
@@ -661,7 +661,7 @@ export class AppState {
     if (!sel) return 'loading';
     if (sel.run.jobId === null) return 'expired';
     if (this.selectedJob) return 'loaded';
-    return this.jobLookupFailed.has(`${sel.entry.ref.repository}|${sel.run.jobId}`)
+    return this.jobLookupFailed.has(jobKey(sel.entry.ref.repository, sel.run.jobId))
       ? 'failed'
       : 'loading';
   });
@@ -1278,12 +1278,13 @@ export class AppState {
   }
 
   private async loadPush(repository: string, pushId: number): Promise<void> {
-    const key = `push|${repository}|${pushId}`;
-    if (this.pushCache.has(`${repository}|${pushId}`) || this.detailRequests.has(key)) return;
+    const cacheKey = pushKey(repository, pushId);
+    const key = `push|${cacheKey}`;
+    if (this.pushCache.has(cacheKey) || this.detailRequests.has(key)) return;
     this.detailRequests.add(key);
     try {
       const push = await fetchPush(repository, pushId);
-      this.pushCache = new Map(this.pushCache).set(`${repository}|${pushId}`, push);
+      this.pushCache = new Map(this.pushCache).set(cacheKey, push);
     } catch {
       // The details pane degrades to "loading…" rather than showing an error:
       // a failed metadata lookup should never take the graph down with it.
@@ -1296,7 +1297,7 @@ export class AppState {
     // Nothing to look up for an expired job. Requesting `/jobs/null/` is not
     // harmless either — treeherder answers it with a 500.
     if (jobId === null) return;
-    const cacheKey = `${repository}|${jobId}`;
+    const cacheKey = jobKey(repository, jobId);
     const key = `job|${cacheKey}`;
     if (
       this.jobCache.has(cacheKey) ||
@@ -1456,19 +1457,14 @@ export class AppState {
   // user action and has to be one history entry — a loop over the single-ref
   // form would cost 49 Back presses to undo.
   removeSeries(refs: SeriesRef | SeriesRef[]): void {
-    const gone = new Set(
-      (Array.isArray(refs) ? refs : [refs]).map((r) => `${r.repository}|${r.signatureId}`),
-    );
+    const gone = new Set((Array.isArray(refs) ? refs : [refs]).map(seriesKey));
     if (gone.size === 0) return;
-    this.seriesRefs = this.seriesRefs.filter(
-      (s) => !gone.has(`${s.repository}|${s.signatureId}`),
-    );
+    this.seriesRefs = this.seriesRefs.filter((s) => !gone.has(seriesKey(s)));
     // A selection — or a comparison end — belonging to a removed series is now
     // meaningless. `selection` would resolve to null anyway once its data is
     // pruned, but leaving the point in the URL means a Back to the range that
     // still has it would silently resurrect a selection on a series that's gone.
-    const belongsToRemoved = (p: SelectedPoint | null) =>
-      !!p && gone.has(`${p.repository}|${p.signatureId}`);
+    const belongsToRemoved = (p: SelectedPoint | null) => !!p && gone.has(seriesKey(p));
     if (belongsToRemoved(this.selectedPoint)) this.selectedPoint = null;
     if (belongsToRemoved(this.comparedPoint)) this.comparedPoint = null;
     this.pruneSeriesCache();
@@ -1971,6 +1967,18 @@ function taskRunOf(job: Job | null): TaskRun | null {
 
 // The `artifactCache` key. A run, not a task: a retried task keeps its task id
 // and uploads a fresh set of files under a new run number.
+// The push and job caches' keys, beside the artifact and pushlog ones for the
+// same reason those exist: the recipe was written inline at six sites, three per
+// cache, and a cache whose key is composed by its callers has as many
+// definitions of "the same push" as it has readers.
+function pushKey(repository: string, pushId: number): string {
+  return `${repository}|${pushId}`;
+}
+
+function jobKey(repository: string, jobId: number): string {
+  return `${repository}|${jobId}`;
+}
+
 function artifactKey(run: TaskRun): string {
   return `${run.taskId}|${run.runId}`;
 }
