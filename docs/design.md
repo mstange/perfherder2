@@ -1858,8 +1858,24 @@ Four things about this that are not obvious:
   are what check it — the second one is a *touchscreen wide enough for the table*,
   which is the only configuration where the floor and a fixed row height meet.
 
-Two more platform facts, both cheap and both invisible where they don't apply:
+Three more platform facts, all cheap and all invisible where they don't apply:
 
+- **`touch-action: manipulation` on the root**, which turns off double-tap-to-zoom
+  and, with it, the ~300ms every tap waits to find out whether a second one is
+  coming. They are one behaviour, not two: a tap can't be delivered until it is
+  known not to be the first half of a zoom gesture, so the symptom is a button that
+  feels broken and a caret that lands late. Nothing here wants a double-tap — the
+  layout is laid out for the width it is on, and the app's one `dblclick` handler
+  (reset the graph's zoom) sits on ScatterChart's `.chart` wrapper, which declares
+  `touch-action: none` on that same element.
+  **`manipulation` is the value that keeps pinch-zoom**, which is the whole reason
+  to reach for it instead of `user-scalable=no` or `maximum-scale=1`: a reader who
+  needs the text bigger can still get it. It goes on the root because
+  `touch-action` is not inherited but *is* intersected up the ancestor chain — one
+  declaration covers every target, and the two elements that want the stricter
+  `none` still get it. It also takes no `(pointer: coarse)` guard, being inert for
+  a mouse by definition; the coarse block is for the rules that cost list height,
+  and this one costs nothing.
 - **Safe-area insets on `main`**, so the plot doesn't run under a notch in
   landscape and the switcher's bottom edge clears the home indicator. `env()`
   resolves to 0 where there is no inset, and `box-sizing: border-box` keeps the

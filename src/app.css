@@ -257,6 +257,28 @@ body {
   margin: 0;
   padding: 0;
   min-height: 100%;
+  /* Double-tap-to-zoom off, and with it the ~300ms every tap waits to find out
+     whether a second one is coming. Both are the same browser behaviour: the tap
+     can't be delivered until it is known not to be the first half of a zoom
+     gesture, so a phone user gets a button that feels broken and a caret that
+     lands late. There is nothing here to double-tap for — the layout is laid out
+     for the width it is on, and the one dblclick handler in the app (resetting
+     the graph's zoom) sits on ScatterChart's `.chart` wrapper, which sets
+     `touch-action: none` on the same element.
+
+     `manipulation` is the value that does *only* this. It keeps scrolling,
+     panning and **pinch-zoom**, which is the accessibility line: a reader who
+     needs the text bigger can still get it, unlike `user-scalable=no` or
+     `maximum-scale=1` in the viewport meta. Set here rather than per-control
+     because it is not inherited but *is* intersected up the ancestor chain, so
+     one declaration on the root covers every target — and the two elements that
+     want the stricter `touch-action: none` (the chart canvas, the series list's
+     drag handles) still win, `none` being the narrower of the two.
+
+     No `(pointer: coarse)` guard: `touch-action` only ever describes touch
+     input, so this is inert for a mouse and does not belong in the block that
+     spends list height on a floor. */
+  touch-action: manipulation;
 }
 
 *,
