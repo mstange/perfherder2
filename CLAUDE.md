@@ -107,7 +107,7 @@ Notes that save a round trip:
   both of which can't reach a custom property: the graphs' canvas palette
   (see "Theming" in docs/design.md) and `public/favicon.svg`.
 - **Plain buttons use `.btn` from `src/app.css`**, plus `.btn-compact` /
-  `.btn-primary` / `.btn-confirm`. Don't re-declare border, radius, fill,
+  `.btn-primary` / `.btn-selected`. Don't re-declare border, radius, fill,
   hover or disabled in a component — that recipe was copied five times and
   drifted five ways. Bespoke buttons (badges, swatches, icon toggles) skip
   `.btn` entirely; see "One button, defined once" in docs/design.md.

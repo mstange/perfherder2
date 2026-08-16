@@ -1683,9 +1683,9 @@ choice, which is not worth taking the app down for.
 
 `.btn` in [app.css](../src/app.css) is the app's button chrome — border,
 radius, canvas fill, hover, pressed, disabled — plus `.btn-compact` for the
-toolbar size, three fills (`.btn-primary` accent, `.btn-confirm` success,
-`.btn-selected` for the option in a group that is in effect), and `.btn-group`,
-the recessed track that makes a one-of-several choice read as one control.
+toolbar size, two fills (`.btn-primary` accent, and `.btn-selected` for the
+option in a group that is in effect), and `.btn-group`, the recessed track that
+makes a one-of-several choice read as one control.
 
 It exists because the same six-line recipe had been copied into five
 components, and the copies had drifted: paddings of `4px 12px`, `4px 10px`,

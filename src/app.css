@@ -78,14 +78,9 @@
   --accent-tint-hover: #e3effd;
   --accent-focus-ring: rgba(9, 105, 218, 0.15);
 
-  /* Success — the Add button, and "improvement" */
+  /* Success — "improvement" */
   --success-fg: #116329;
   --success-strong-fg: #0a5c2b;
-  --success-emphasis: #1f883d;
-  --success-emphasis-hover: #1a7f37;
-  --success-emphasis-active: #176f30;
-  --success-emphasis-disabled: #94d3a2;
-  --success-fg-on-emphasis-disabled: #ffffffcc;
   --success-subtle: #dafbe1;
 
   /* Danger — errors, and "regression" */
@@ -96,7 +91,6 @@
 
   /* Attention — selected rows, caveats */
   --attention-subtle: #fff8c5;
-  --attention-subtle-hover: #f7ecac;
   --attention-border: #d4a72c;
 
   /* Field colors. Every badge, chip and pill that names a signature attribute
@@ -183,15 +177,6 @@
 
   --success-fg: #3fb950;
   --success-strong-fg: #4ac26b;
-  --success-emphasis: #238636;
-  --success-emphasis-hover: #2ea043;
-  /* Darker than idle, for the reason recorded on `--accent-emphasis-active`. */
-  --success-emphasis-active: #1a692b;
-  /* Light mode washes the disabled Add button out towards white; the dark
-     equivalent is towards the page, not a slightly duller green — at #1c4b28 it
-     still read as "enabled, just a bit off". */
-  --success-emphasis-disabled: #1b3a24;
-  --success-fg-on-emphasis-disabled: rgba(255, 255, 255, 0.55);
   --success-subtle: #12261c;
 
   --danger-fg: #f85149;
@@ -200,7 +185,6 @@
   --danger-border: #5c2426;
 
   --attention-subtle: #272115;
-  --attention-subtle-hover: #332a17;
   --attention-border: #9e6a03;
 
   --field-suite-bg: #12261c;
@@ -308,11 +292,14 @@ button {
 
    Sizes: `.btn` is the default; `.btn-compact` is the toolbar size. Anything
    smaller is used in one place only and stays there, composed on top of `.btn`
-   so the chrome is still defined once. Three fills, deliberately distinct
-   rather than classes all called `primary`: `.btn-primary` (accent) is the
-   action that takes you somewhere, `.btn-confirm` (success) is the one that
-   commits what you picked, and `.btn-selected` (accent) is not an action at
-   all — it's the option in a group that is currently in effect.
+   so the chrome is still defined once. Two fills, deliberately distinct rather
+   than classes both called `primary`: `.btn-primary` (accent) is the action
+   that takes you somewhere, and `.btn-selected` (accent) is not an action at
+   all — it's the option in a group that is currently in effect. (There was a
+   third, `.btn-confirm` in success green, for the picker's "Add 12" footer
+   button. Adds went immediate, the button went with them, and the variant sat
+   dead — along with five `--success-emphasis*` tokens — for long enough that
+   two documents were still teaching it.)
 
    Every filled variant needs its own `:hover` **and its own `:active:hover`**.
    `.btn:hover` sets `background`, so a variant that sets only the idle fill
@@ -363,23 +350,6 @@ button {
 }
 .btn-primary:active:hover:not(:disabled) {
   background: var(--accent-emphasis-active);
-}
-.btn-confirm {
-  background: var(--success-emphasis);
-  border-color: var(--success-emphasis);
-  color: var(--fg-on-emphasis);
-}
-.btn-confirm:hover:not(:disabled) {
-  background: var(--success-emphasis-hover);
-}
-.btn-confirm:active:hover:not(:disabled) {
-  background: var(--success-emphasis-active);
-}
-.btn-confirm:disabled {
-  opacity: 1;
-  background: var(--success-emphasis-disabled);
-  border-color: var(--success-emphasis-disabled);
-  color: var(--success-fg-on-emphasis-disabled);
 }
 /* Same fill as `.btn-primary`, and it hovers the same way: pointing at the
    option that is already in effect must not make it look deselected. */
