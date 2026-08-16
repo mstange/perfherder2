@@ -686,6 +686,23 @@ export class PickerState {
     this.sort = cycleSort(this.sort, column);
   }
 
+  // The other two ways in, for the card list, which has no column headers to
+  // click: a select for the column and a button for the direction. Deliberately
+  // not the `cycleSort` three-state cycle — a select can offer "As loaded" as an
+  // option of its own, so the state that a third click on a header means is
+  // reachable directly, and a direction the user set survives changing column.
+  setSortColumn(column: SortColumn | null): void {
+    this.sort = column === null ? null : { column, direction: this.sort?.direction ?? 'asc' };
+  }
+
+  toggleSortDirection(): void {
+    if (!this.sort) return;
+    this.sort = {
+      column: this.sort.column,
+      direction: this.sort.direction === 'asc' ? 'desc' : 'asc',
+    };
+  }
+
   toggleRepo(repo: string): void {
     const next = new Set(this.selectedRepos);
     if (next.has(repo)) next.delete(repo);

@@ -410,6 +410,48 @@ describe('PickerState.clearFilter', () => {
     ));
 });
 
+// The card list's two controls, which stand in for clicking a column header.
+describe('PickerState sorting without headers', () => {
+  it('sorts ascending on a column chosen from nothing', () =>
+    withPicker(
+      () => {},
+      (p) => {
+        p.setSortColumn('platform');
+        expect(p.sort).toEqual({ column: 'platform', direction: 'asc' });
+      },
+    ));
+
+  it('keeps the direction the user set when the column changes', () =>
+    withPicker(
+      () => {},
+      (p) => {
+        p.setSortColumn('platform');
+        p.toggleSortDirection();
+        p.setSortColumn('unit');
+        expect(p.sort).toEqual({ column: 'unit', direction: 'desc' });
+      },
+    ));
+
+  it('offers unsorted as a choice rather than a third click', () =>
+    withPicker(
+      () => {},
+      (p) => {
+        p.setSortColumn('suite');
+        p.setSortColumn(null);
+        expect(p.sort).toBe(null);
+      },
+    ));
+
+  it('has no direction to toggle while unsorted', () =>
+    withPicker(
+      () => {},
+      (p) => {
+        p.toggleSortDirection();
+        expect(p.sort).toBe(null);
+      },
+    ));
+});
+
 describe('PickerState.view', () => {
   it('resolves whatever the seed left unspecified', () =>
     withPicker(

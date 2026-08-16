@@ -205,6 +205,12 @@ Living checklist. Update in the same commit as the work it describes.
   the selection survives, and the detail graph explains itself when the dots are
   off with no band on. See graphs.md, "Replicates".
 
+- The picker's rows are cards below the table's 832px floor — two lines, every
+  badge on screen, no sideways scroll, fed by the same `flatRows` through three
+  snippets both layouts share. `rowHeight` is per layout (36px / 80px) and the CSS
+  reads it back, so the virtualizer still has one number; sorting moves to a select
+  with `setSortColumn` / `toggleSortDirection` (+ tests). See design.md, "A panel a
+  phone wide lists cards, not columns"
 - The Add-series panel folds its loading group away below `CONTROL_BLOCK_NARROW`,
   drops the hint and shortens the status row: 461px of chrome before the first row
   becomes 244px, and the list goes from **8 rows to 14** on a 390×844 phone. See
@@ -249,20 +255,6 @@ rather than estimated. The five items are meant to land in order: the first two
 are independent and cheap, the middle two are the picker and want to land
 together, and the sweep goes last so it is checked once against the final
 arrangements.
-
-- [ ] **The picker's list is an 832px table in a 390px window.** `min-width: 64em`,
-      so a phone shows Add / Suite-Test / Repo and half of Platform, with
-      application, options, unit and the runs strip behind a horizontal scroll
-      nested inside a vertical one. The badges *are* the filtering mechanism and
-      most of them are off screen — and their `+`/`×` cue, plus the hover-to-reveal
-      `.cell-flow` spill for clipped text, are hover affordances that do not exist
-      on touch. At narrow the row becomes a two-line card fed by the same
-      `flatRows` (`[+ Add] suite · test` over `repo · platform · application ·
-      options`, runs trailing), which needs `ROW_HEIGHT` to become
-      `rowHeightFor(mode)` so the virtualizer's constant and `--row-height` still
-      cannot drift, and sorting to move to a select since a card list has no header
-      row. Keeping the table and accepting the horizontal scroll is the cheaper
-      option and was rejected: it leaves the panel's primary control off screen.
 
 - [ ] **Touch sizing and pointer-appropriate copy, once.** The switcher is 26px
       tall at the thumb-far top edge; the series list's eye/↑/↓/× buttons are

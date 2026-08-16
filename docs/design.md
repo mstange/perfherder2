@@ -47,6 +47,7 @@ change is wrong for a reason the code doesn't show:
 | Canvas drawing | graphs.md "Rendering" and "Dots are translucent, and jittered sideways" |
 | The change detector's constants | graphs.md "Detected changes", and the reasoning and measurements recorded beside each constant in `changes.ts`. **Open the graph first**: graphs.md "The series behind the tuning" is a table of URLs, one per signature those constants were measured on, and every constant that has been wrong was wrong because it was reasoned about instead of loaded. `drift.ts` borrows the floor and `CHANGE_ALPHA` too, so a change moves the series-list drift badge as well as the bars |
 | A statistic | comparison.md "Statistics" and "Deviations from PerfCompare" |
+| A row in the picker's list, or the virtualizer's row height | "A panel a phone wide lists cards, not columns" — there are two row layouts over one flat list, three snippets are shared by both, and every row in the list has to be exactly `rowHeight` tall, notes included |
 | Anything under `src/lib` | cli.md — `bin/perfherder-cli` is built from the same modules, so a change here changes its answers too, and it is checked by a third tsconfig `npm run check` runs |
 
 ## What this is
@@ -983,6 +984,64 @@ rows with a keyboard up. Which group folds is not a matter of taste either:
   of them wrapped to a second line and cost 38px, a whole row of list. What a tap
   did is still visible on the row it acted on, which turns into a tinted `Remove`
   carrying the series' colour.
+
+### A panel a phone wide lists cards, not columns
+
+The table has a floor — `TABLE_MIN`, 832px, which is the `64em` its `min-width`
+used to spell — and below it the scroller handed out a horizontal scrollbar. On a
+390px phone that meant `Add`, `Suite / Test`, `Repo` and half of `Platform` on
+screen, with the platform, the application, the options and the runs strip
+reachable only by dragging a horizontal scrollbar that lives inside a vertical
+one. Four of those five hidden columns are filter controls — every badge is a
+chip toggle (see "Every badge in the table is a filter toggle") — so the panel's
+whole mechanism was off screen.
+
+Below that floor each row is a card of two lines instead:
+
+```
+[+ Add] ▶ speedometer3                                    90 ▁▃▂▅▃▁
+autoland  android-hw-a55-14-0-aarch64-shippable  fenix
+opt  webrender  score
+```
+
+Same rows, same badges, same actions, nothing sideways. What holds it together:
+
+- **The three pieces of a row are snippets shared by both layouts** — the pick
+  button, the activity mark, and the attribute badges. The table wraps each in a
+  `<td>`; the card puts them on two lines. A second copy of what a row *says* is
+  how the two would drift apart, and the badge snippet in particular carries the
+  `fromSubtest` nudge described under "'Match inside subtests'".
+- **`rowHeight` is per layout and the CSS reads it back.** 36px for a table row,
+  80px for a card — a 26px head and two 20px badge lines inside 8px of padding.
+  The virtualizer's arithmetic is unchanged, because it was never about tables; it
+  needs one number and both `--row-height` and every height in the stylesheet come
+  from it. **Every row in the flat list has to honour it, including the notes**
+  under an expanded parent: the table's got that free from `tbody td`, the card
+  list says it explicitly, and `tools/visual/picker-card-pitch.mjs` checks that the
+  rendered heights sum to `rows × slot`.
+- **The attribute line is clamped to two lines, not left to wrap.** The number of
+  options a row carries is unbounded, and a row three lines tall would put every
+  row below it in the wrong place. Two lines fit the busiest realistic row —
+  speedometer3 on an android platform with five options, which is the case that
+  was clipping before the clamp — measured rather than chosen.
+- **80px against 60px was the deliberate trade.** A one-line attribute row fits 8
+  cards on a phone instead of 6, and clipped the tail of every one of them. All of
+  the information on 6 rows beats most of it on 8 in a panel whose job is telling
+  two near-identical series apart.
+- **What still gives way is a long subtest name**, against the run count and its
+  strip on the same line. The strip stays — whether a series has runs at all is
+  the reason it is on the card — and the name carries a `title`.
+- **Two things the table had, replaced rather than dropped.** Sorting was a click
+  on a column header, so the card list gets a select and a direction button on the
+  status row (`setSortColumn` / `toggleSortDirection`, which offer "as loaded" as
+  a choice rather than as the third click of `cycleSort`'s cycle). And the badges'
+  `+` cue, which reserves 10px in every badge so a hover can't resize it, is
+  dropped for inactive badges here: there is no hover on the devices this layout
+  is for, and the reserve costs 10px six times on the tightest line of the card.
+- **This bites before the phone**, at any panel under 832px — a docked panel in a
+  1100px window. That is on purpose: horizontal scrolling inside a vertical
+  scroller is bad on a trackpad too, and the card shows what the scrolled-away
+  columns did.
 
 ### The on-screen keyboard has to take height from the app, not cover it
 

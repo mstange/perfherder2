@@ -7,6 +7,7 @@ import { TIME_RANGES } from './pickerOptions';
     chipToString,
     graphContextState,
     loadSummary,
+    SORT_COLUMNS,
     type FilterField,
     type SortColumn,
   } from './filter';
@@ -157,16 +158,36 @@ import { TIME_RANGES } from './pickerOptions';
   // Broad filters can produce 25k rows; even one expanded parent adds a few
   // hundred subtests. We render only a scroll-window over a flat row list.
   //
-  // Rows are constrained to a single visual line. ROW_HEIGHT is exported
-  // to CSS as the `--row-height` custom property on the .picker root, and
-  // `tbody td` uses it as an explicit `height` — so the JS-side constant
-  // and the CSS-side row height cannot drift apart. Vertical centering is
+  // Every row is exactly `rowHeight` tall, whichever layout it is in. That
+  // constant is exported to CSS as the `--row-height` custom property on the
+  // .picker root, and `tbody td` / `.card-row` use it as an explicit `height` —
+  // so the JS-side number and the CSS-side row height cannot drift apart. Vertical centering is
   // driven by `height + vertical-align: middle`, not by text metrics or
   // padding, so changing fonts or badge styling doesn't move rows around.
   // Column widths are pinned via <colgroup> + `table-layout: fixed` so
   // they don't horizontally re-flow as new rows scroll in either.
-  const ROW_HEIGHT = 36;
+  // Two row heights, because there are two row layouts (see `cardRows` below).
+  // One line of cells, or two lines of a card: the Add button and the name, then
+  // the attributes. Both are exported to CSS through `--row-height` and used as
+  // an explicit `height`, so neither can drift from the virtualizer.
+  const TABLE_ROW_HEIGHT = 36;
+  const CARD_ROW_HEIGHT = 80;
   const OVERSCAN = 6;
+
+  // The table's floor, and the width below which it stops being a table at all.
+  // Nine columns of badges do not compress: below this the wrapper used to scroll
+  // sideways, which on a 390px phone meant Add, Suite/Test, Repo and half of
+  // Platform on screen and the other five columns — the platform, the
+  // application, the options, every one of them a filter control — reachable only
+  // by dragging a horizontal scrollbar that lives inside a vertical one.
+  //
+  // So below it each row is a card of two lines instead, carrying the same
+  // badges. The number is `64em` at the table's 13px, and it is here rather than
+  // in the CSS because the JS decides the layout; the stylesheet reads it back
+  // out of `--table-min`.
+  const TABLE_MIN = 832;
+  const cardRows = $derived(panelWidth < TABLE_MIN);
+  const rowHeight = $derived(cardRows ? CARD_ROW_HEIGHT : TABLE_ROW_HEIGHT);
 
   // Run-activity strip geometry, in px. Fixed, so a row's activity cell
   // occupies exactly the same space before and after its data arrives.
@@ -231,13 +252,13 @@ import { TIME_RANGES } from './pickerOptions';
     return () => ro.disconnect();
   });
 
-  const totalHeight = $derived(flatRows.length * ROW_HEIGHT);
+  const totalHeight = $derived(flatRows.length * rowHeight);
   const startIndex = $derived(
     Math.max(
       0,
       Math.min(
         flatRows.length,
-        Math.floor(scrollTop / ROW_HEIGHT) - OVERSCAN,
+        Math.floor(scrollTop / rowHeight) - OVERSCAN,
       ),
     ),
   );
@@ -246,12 +267,12 @@ import { TIME_RANGES } from './pickerOptions';
       0,
       Math.min(
         flatRows.length,
-        Math.ceil((scrollTop + viewportHeight) / ROW_HEIGHT) + OVERSCAN,
+        Math.ceil((scrollTop + viewportHeight) / rowHeight) + OVERSCAN,
       ),
     ),
   );
-  const topPadding = $derived(startIndex * ROW_HEIGHT);
-  const bottomPadding = $derived(Math.max(0, totalHeight - endIndex * ROW_HEIGHT));
+  const topPadding = $derived(startIndex * rowHeight);
+  const bottomPadding = $derived(Math.max(0, totalHeight - endIndex * rowHeight));
   const visibleWindow = $derived(flatRows.slice(startIndex, endIndex));
 
   // Placeholder rows for the loading state: as many as fit the scroller, so
@@ -260,7 +281,7 @@ import { TIME_RANGES } from './pickerOptions';
   // header shares the scroller — it also means the loading state carries the
   // same vertical scrollbar the loaded list does, so no column shifts when the
   // rows arrive.
-  const skeletonCount = $derived(Math.max(1, Math.floor(viewportHeight / ROW_HEIGHT)));
+  const skeletonCount = $derived(Math.max(1, Math.floor(viewportHeight / rowHeight)));
 
   // The label the Time range select is showing, for the column header and the
   // hover text. Taken from TIME_RANGES rather than a second abbreviation
@@ -308,7 +329,115 @@ import { TIME_RANGES } from './pickerOptions';
   }}
 />
 
-<div class="picker" style:--row-height="{ROW_HEIGHT}px" bind:this={panelEl}>
+<!-- The three pieces of a row, declared out here because two layouts render
+     them: the table's cells wrap each one in a `<td>`, and the card list puts
+     the same three on two lines. Everything that decides what a row *says* is in
+     here once — a second copy is how the two would drift. -->
+
+<!-- Every badge is a filter toggle. Same visual as a plain tag, with a "+" cue on
+     hover and always when the chip is active. -->
+{#snippet badge(
+  field: FilterField,
+  value: string,
+  cls: string,
+  fromSubtest: boolean = false,
+)}
+  {@const active = picker.isChipActive(field, value)}
+  <button
+    type="button"
+    class="badge {cls}"
+    class:badge-active={active}
+    title={active ? `Remove filter ${field}:${value}` : `Filter to only ${field}:${value}`}
+    onclick={() => picker.toggleFilterChip(field, value, { fromSubtest })}
+  >
+    <span class="badge-text">{value}</span>
+    <span class="badge-cue" aria-hidden="true">{active ? '×' : '+'}</span>
+  </button>
+{/snippet}
+
+<!-- The pick control for one row: a button with a verb on it, not a checkbox,
+     and it acts on the graph immediately rather than staging behind a footer
+     button. User testing found people didn't recognise the checkbox as "the way
+     to get this series", and reached for the disclosure caret instead — the only
+     control on the row that looked like it led somewhere. See docs/design.md,
+     "The row's pick control". Two buttons rather than one that flips label,
+     because Add and Remove are not two states of one toggle: each row is only
+     ever offered whichever one applies to it. -->
+{#snippet pickButton(row: Series, disabled: boolean)}
+  {@const color = picker.plotted.get(row.key)}
+  {#if color}
+    <button
+      type="button"
+      class="btn btn-compact pick"
+      style:--series-color={color}
+      title="Take this series off the graph"
+      onclick={() => onremove?.([row])}
+    >
+      <span class="pick-swatch" aria-hidden="true"></span>
+      <span>Remove</span>
+    </button>
+  {:else}
+    <button
+      type="button"
+      class="btn btn-compact pick"
+      {disabled}
+      title={disabled
+        ? 'This row is shown because a subtest matched. Widen the filter to add it.'
+        : 'Put this series on the graph'}
+      onclick={() => onadd?.([row])}
+    >
+      <span class="pick-cue" aria-hidden="true">+</span>
+      <span>Add</span>
+    </button>
+  {/if}
+{/snippet}
+
+<!-- Three states in one fixed-size box, so nothing moves as batches land: not
+     fetched yet, failed, and answered. The <svg> is always present at the same
+     width and height even when it draws nothing — an empty box is what keeps the
+     column from twitching row by row. `{@const}` takes no type annotation, so
+     `activity` is inferred as `Activity | null` from `activityFor`. -->
+{#snippet activityMark(row: Series)}
+  {@const activity = picker.activityFor(row)}
+  <span class="activity">
+    {#if activity === null}
+      <span class="runs runs-pending">·</span>
+    {:else if 'error' in activity}
+      <span class="runs runs-pending" title="Run activity failed: {activity.error}">—</span>
+    {:else}
+      <span class="runs" title={activityTitle(activity, rangeLabel, Date.now())}
+        >{activity.total.toLocaleString()}</span
+      >
+    {/if}
+    <svg
+      class="strip"
+      width={STRIP_W}
+      height={STRIP_H}
+      viewBox="0 0 {STRIP_W} {STRIP_H}"
+      aria-hidden="true"
+    >
+      {#if activity !== null && !('error' in activity)}
+        <path d={activityPath(activity.counts, STRIP_W, STRIP_H, activityScaleMax)} />
+      {/if}
+    </svg>
+  </span>
+{/snippet}
+
+<!-- A row's attributes, in the table's column order so the two layouts read the
+     same way round: what repository, what platform, what application, and the
+     options. The card list puts this on its second line. -->
+{#snippet attrBadges(row: Series, fromSubtest: boolean)}
+  {@render badge('repo', row.repository, 'badge-repo', fromSubtest)}{' '}
+  {@render badge('platform', row.platform, 'badge-platform', fromSubtest)}{' '}
+  {#if row.application}
+    {@render badge('application', row.application, 'badge-app', fromSubtest)}{' '}
+  {/if}
+  {#each row.options as o}
+    {@render badge('option', o, 'badge-option', fromSubtest)}{' '}
+  {/each}
+{/snippet}
+
+<div class="picker" style:--row-height="{rowHeight}px" style:--table-min="{TABLE_MIN}px" bind:this={panelEl}>
   <header>
     <div class="header-text">
       <h2>Add series</h2>
@@ -457,6 +586,37 @@ import { TIME_RANGES } from './pickerOptions';
       <span>{matchingLabel} matching / {loadedLabel} total</span>
     {/if}
     {#if picker.anyLoading}<span class="loading-note">Loading…</span>{/if}
+    <!-- Sorting, for the layout with no column headers to click. It lives on the
+         status row because that is the row that belongs to the list (see the
+         comment above it), and it is only rendered where the headers are gone —
+         two ways to sort on screen at once would be two places to look for the
+         current one. `As loaded` is a choice here rather than the third click of
+         a cycle. -->
+    {#if cardRows}
+      <label class="sort-select">
+        <span class="control-word">sort</span>
+        <select
+          aria-label="Sort by"
+          value={picker.sort?.column ?? ''}
+          onchange={(e) =>
+            picker.setSortColumn((e.currentTarget.value || null) as SortColumn | null)}
+        >
+          <option value="">as loaded</option>
+          {#each SORT_COLUMNS as column}
+            <option value={column}>{column}</option>
+          {/each}
+        </select>
+        <button
+          type="button"
+          class="btn btn-compact sort-dir"
+          disabled={!picker.sort}
+          aria-label={picker.sort?.direction === 'desc' ? 'Sort ascending' : 'Sort descending'}
+          title={picker.sort?.direction === 'desc' ? 'Sort ascending' : 'Sort descending'}
+          onclick={() => picker.toggleSortDirection()}
+          >{picker.sort?.direction === 'desc' ? '▼' : '▲'}</button
+        >
+      </label>
+    {/if}
     <!-- Dropped when folded, which is the one thing on this row that gives way:
          the counts say what the list is, and `Add all` and `Done` are the row's
          two actions, so a running total is what is left to lose. At 390px the
@@ -494,6 +654,99 @@ import { TIME_RANGES } from './pickerOptions';
     onscroll={onScroll}
     aria-busy={picker.listStatus === 'loading'}
   >
+    {#if cardRows}
+      <!-- The same rows, two lines each, for a panel narrower than the table's
+           floor. Divs and not a squeezed table: `table-layout: fixed` exists to
+           stop the columns re-flowing as rows scroll past, and there is no column
+           arrangement that fits nine of these in a phone's width — see `TABLE_MIN`
+           above, and docs/design.md, "A panel a phone wide lists cards, not
+           columns". Everything a row says comes from the same three snippets the
+           cells use. -->
+      <div class="cards" role="list">
+        {#if topPadding > 0}
+          <div class="spacer" aria-hidden="true" style="height: {topPadding}px"></div>
+        {/if}
+        {#each visibleWindow as item, i (rowKey(item, startIndex + i))}
+          {#if item.kind === 'note'}
+            <div class="card-note">{item.message}</div>
+          {:else}
+            {@const row = item.row}
+            {@const isChild = item.kind === 'child'}
+            {@const disabled = !isChild && picker.isRowDisabled(row)}
+            {@const isExpanded = picker.isRowExpanded(row.key)}
+            <div
+              class="card-row"
+              class:card-child={isChild}
+              class:row-disabled={disabled}
+              class:plotted={picker.plotted.has(row.key)}
+              role="listitem"
+            >
+              <div class="card-head">
+                {@render pickButton(row, disabled)}
+                <!-- Kept where the table puts it, at the leading edge of the
+                     name: it is the control that says a row has more inside it,
+                     and a caret trailing the name reads as decoration. A child
+                     row has nothing to expand and gets the indent instead. -->
+                {#if !isChild && row.hasSubtests}
+                  <button
+                    type="button"
+                    class="disclose"
+                    class:disclose-open={isExpanded}
+                    aria-expanded={isExpanded}
+                    aria-label={isExpanded ? 'Collapse subtests' : 'Expand subtests'}
+                    onclick={() => picker.toggleExpanded(row.key)}>▶</button
+                  >
+                {/if}
+                <!-- The one thing on the card that can still be cut: a long
+                     subtest name against the run count and its strip. The strip
+                     stays — whether a series has runs at all is why it is on the
+                     card — and the `title` carries the full name for the pointers
+                     that can show one. -->
+                <span class="card-name" title="{row.suite}{row.test ? ` / ${row.test}` : ''}">
+                  {#if isChild}
+                    {@render badge('test', row.test || row.suite, 'badge-test', true)}
+                  {:else}
+                    {@render badge('suite', row.suite, 'badge-suite')}{' '}
+                    {#if row.test}
+                      {@render badge('test', row.test, 'badge-test')}
+                    {/if}
+                  {/if}
+                </span>
+                <span class="card-measure">{@render activityMark(row)}</span>
+              </div>
+              <!-- The unit trails the attributes rather than sharing the first
+                   line with the run count, where it was taking ~40px away from
+                   the suite name — the one string on the card the panel is
+                   actually being searched by. It is a fact about the measurement
+                   and not a filter, so it is the one thing on this line that is
+                   not a badge. -->
+              <div class="card-attrs">
+                {@render attrBadges(row, isChild)}<span class="unit">{row.measurementUnit}</span>
+              </div>
+            </div>
+          {/if}
+        {/each}
+        {#if bottomPadding > 0}
+          <div class="spacer" aria-hidden="true" style="height: {bottomPadding}px"></div>
+        {/if}
+        {#if picker.listStatus === 'loading'}
+          {#each Array(skeletonCount) as _, i (i)}
+            <div class="card-row skeleton" aria-hidden="true">
+              <div class="card-head"><span class="skeleton-bar pulse"></span></div>
+              <div class="card-attrs"><span class="skeleton-bar pulse"></span></div>
+            </div>
+          {/each}
+        {:else if picker.listStatus !== 'rows'}
+          <p class="empty">
+            {#if picker.listStatus === 'no-repos'}
+              No repositories selected — open the load line above and check one.
+            {:else}
+              No matching series.
+            {/if}
+          </p>
+        {/if}
+      </div>
+    {:else}
     <table>
       <!-- Column widths are pinned via `table-layout: fixed` so the columns
            don't re-flow as new rows scroll into view. Percentages divide the
@@ -560,103 +813,13 @@ import { TIME_RANGES } from './pickerOptions';
         </tr>
       </thead>
       <tbody>
-        {#snippet badge(
-          field: FilterField,
-          value: string,
-          cls: string,
-          fromSubtest: boolean = false,
-        )}
-          {@const active = picker.isChipActive(field, value)}
-          <button
-            type="button"
-            class="badge {cls}"
-            class:badge-active={active}
-            title={active
-              ? `Remove filter ${field}:${value}`
-              : `Filter to only ${field}:${value}`}
-            onclick={() => picker.toggleFilterChip(field, value, { fromSubtest })}
-          >
-            <span class="badge-text">{value}</span>
-            <span class="badge-cue" aria-hidden="true">{active ? '×' : '+'}</span>
-          </button>
-        {/snippet}
 
-        <!-- The pick control for one row: a button with a verb on it, not a
-             checkbox, and it acts on the graph immediately rather than staging
-             behind a footer button. User testing found people didn't recognise
-             the checkbox as "the way to get this series", and reached for the
-             disclosure caret instead — the only control on the row that looked
-             like it led somewhere. See docs/design.md, "The row's pick
-             control". Two buttons rather than one that flips label, because
-             Add and Remove are not two states of one toggle: each row is only
-             ever offered whichever one applies to it. -->
         {#snippet pickCell(row: Series, disabled: boolean)}
-          {@const color = picker.plotted.get(row.key)}
-          <td class="col-check">
-            {#if color}
-              <button
-                type="button"
-                class="btn btn-compact pick"
-                style:--series-color={color}
-                title="Take this series off the graph"
-                onclick={() => onremove?.([row])}
-              >
-                <span class="pick-swatch" aria-hidden="true"></span>
-                <span>Remove</span>
-              </button>
-            {:else}
-              <button
-                type="button"
-                class="btn btn-compact pick"
-                {disabled}
-                title={disabled
-                  ? 'This row is shown because a subtest matched. Widen the filter to add it.'
-                  : 'Put this series on the graph'}
-                onclick={() => onadd?.([row])}
-              >
-                <span class="pick-cue" aria-hidden="true">+</span>
-                <span>Add</span>
-              </button>
-            {/if}
-          </td>
+          <td class="col-check">{@render pickButton(row, disabled)}</td>
         {/snippet}
 
-        <!-- Three states in one fixed-size cell, so nothing moves as batches
-             land: not fetched yet, failed, and answered. The <svg> is always
-             present at the same width and height even when it draws nothing —
-             an empty box is what keeps the column from twitching row by row.
-             `{@const}` takes no type annotation, so `activity` is inferred as
-             `Activity | null` from `activityFor`. -->
         {#snippet activityCell(row: Series)}
-          {@const activity = picker.activityFor(row)}
-          <td class="col-activity">
-            <span class="activity">
-              {#if activity === null}
-                <span class="runs runs-pending">·</span>
-              {:else if 'error' in activity}
-                <span class="runs runs-pending" title="Run activity failed: {activity.error}"
-                  >—</span
-                >
-              {:else}
-                <span class="runs" title={activityTitle(activity, rangeLabel, Date.now())}
-                  >{activity.total.toLocaleString()}</span
-                >
-              {/if}
-              <svg
-                class="strip"
-                width={STRIP_W}
-                height={STRIP_H}
-                viewBox="0 0 {STRIP_W} {STRIP_H}"
-                aria-hidden="true"
-              >
-                {#if activity !== null && !('error' in activity)}
-                  <path
-                    d={activityPath(activity.counts, STRIP_W, STRIP_H, activityScaleMax)}
-                  />
-                {/if}
-              </svg>
-            </span>
-          </td>
+          <td class="col-activity">{@render activityMark(row)}</td>
         {/snippet}
 
         {#if topPadding > 0}
@@ -806,6 +969,7 @@ import { TIME_RANGES } from './pickerOptions';
         {/if}
       </tbody>
     </table>
+    {/if}
   </div>
   </div>
 </div>
@@ -1011,6 +1175,23 @@ import { TIME_RANGES } from './pickerOptions';
     margin-left: auto;
     min-width: 13ch;
   }
+  /* The card list's sort control. A `<select>` and a direction button, sized to
+     sit on the status row without pushing `Done` off it. */
+  .sort-select {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    cursor: pointer;
+  }
+  .sort-select select {
+    padding: 2px 4px;
+    font-size: 12px;
+  }
+  .sort-dir {
+    padding: 2px 6px;
+    font-size: 10px;
+    line-height: 1.4;
+  }
   .muted {
     color: var(--fg-muted);
     font-weight: 400;
@@ -1031,12 +1212,134 @@ import { TIME_RANGES } from './pickerOptions';
     border-radius: 6px;
     overflow: auto;
   }
+  /* The card list: the same rows as the table, two lines each, for a panel
+     narrower than `TABLE_MIN`. See docs/design.md, "A panel a phone wide lists
+     cards, not columns".
+
+     Every card is exactly `--row-height` tall and says so, because the
+     virtualizer's arithmetic is the same in both layouts and a card that sized
+     itself to its content would put every row below it in the wrong place. That
+     is also why the attribute line is clamped rather than left to wrap freely: the
+     number of options a row carries is not bounded, and one row of three lines
+     would desynchronise the whole scroller. */
+  .cards {
+    display: flex;
+    flex-direction: column;
+  }
+  /* Two lines of badges, which is what `CARD_ROW_HEIGHT` is: a 26px head and two
+     20px badge lines inside 8px of padding. Measured against the busiest
+     realistic row rather than chosen — speedometer3 on a long android platform
+     with five options is the case that used to clip, and it fits. Beyond that the
+     clamp cuts the tail, which is the deal the table's columns already made. */
+  .card-row {
+    height: var(--row-height);
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 2px;
+    padding: 0 8px;
+    border-bottom: 1px solid var(--border-muted);
+    /* The same inheritance trick the table's cells use, so a badge's own
+       background sits on the row's colour rather than on the canvas. */
+    background-color: inherit;
+  }
+  .card-head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+  }
+  /* The name gets the slack, and the two ends keep their size: a long suite or
+     test is what the panel is being searched by. */
+  .card-name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+  }
+  .card-head .pick {
+    /* Not the table's full-column width — here the button is one item on a line
+       with the name, and 92px of it would leave a phone about twenty characters
+       of suite. */
+    flex: none;
+    width: auto;
+  }
+  .card-measure {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: 6px;
+  }
+  .card-attrs {
+    min-width: 0;
+    overflow: hidden;
+    white-space: normal;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+  }
+  /* The `+` cue reserves 10px in every badge so that hovering one can't resize
+     it. There is no hover here — this layout exists for touch — so the reserve is
+     10px per badge of a line that is already the tightest thing on the card, five
+     or six times over. An active chip still shows its `×`, and the badge growing
+     by 10px on that tap is a filter change, which redraws the list anyway. */
+  .card-row .badge:not(.badge-active) .badge-cue {
+    display: none;
+  }
+  /* Trailing the badges, in the muted monospace the table's unit column uses. */
+  .card-attrs .unit {
+    margin-left: 2px;
+  }
+  /* A subtest under its expanded parent: indented, and on the nested surface the
+     table's `.subtest-row` uses, so the tree reads the same way in both layouts. */
+  .card-child {
+    padding-left: 24px;
+    background: var(--bg-nested);
+  }
+  /* One slot tall, like every other row in the flat list — the virtualizer counts
+     notes as rows too, and the table's version gets this from `tbody td`'s
+     height. Two lines of it fit inside a card's height at a phone's width. */
+  .card-note {
+    height: var(--row-height);
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    overflow: hidden;
+    padding: 4px 8px 4px 24px;
+    color: var(--fg-muted);
+    font-style: italic;
+    background: var(--bg-nested);
+    border-bottom: 1px solid var(--border-muted);
+  }
+  .card-row.plotted {
+    background: var(--accent-tint);
+  }
+  .card-row.row-disabled {
+    color: var(--fg-subtle);
+  }
+  .card-row.row-disabled .badge {
+    pointer-events: none;
+    opacity: 0.55;
+  }
+  /* One bar per line rather than one per column. Same `.pulse` as everywhere. */
+  .card-row.skeleton .skeleton-bar {
+    width: 60%;
+  }
+  .card-row.skeleton .card-attrs .skeleton-bar {
+    width: 80%;
+    height: 10px;
+  }
   table {
     table-layout: fixed;
     width: 100%;
-    /* Floor for the whole table so columns never get too cramped. Below
-       this the wrapper (overflow: auto) shows a horizontal scrollbar. */
-    min-width: 64em;
+    /* Floor for the whole table so columns never get too cramped. It is also
+       the width below which there is no table at all: the script reads the same
+       number as `TABLE_MIN` and renders cards instead, so the horizontal
+       scrollbar this used to hand out now only appears in the band between the
+       floor and whatever the scrollbar itself takes. */
+    min-width: var(--table-min);
     border-collapse: collapse;
     /* Bounds how far a cell may pour its content out (see `.cell-flow`): at
        the table's own edge, not the scroller's. Without this, a spill past
@@ -1128,7 +1431,7 @@ import { TIME_RANGES } from './pickerOptions';
   }
   tbody td {
     /* Every cell is exactly one `--row-height` tall (the same constant
-       the virtualizer uses for scrollTop math — see ROW_HEIGHT). Content
+       the virtualizer uses for scrollTop math — see `rowHeight`). Content
        is vertically centered inside that fixed box, so we don't depend
        on padding + text metrics coincidentally landing at the right
        height. `padding-block: 0` is critical: any top/bottom padding
