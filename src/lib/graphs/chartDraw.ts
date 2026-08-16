@@ -6,6 +6,7 @@
 // coordinates.
 
 import {
+  clampLabelCenter,
   formatTickValue,
   jitterOffsetPx,
   lowerBound,
@@ -216,7 +217,15 @@ function drawAxisLabels(
   ctx.textAlign = 'center';
   ctx.textBaseline = 'top';
   for (const t of tTicks) {
-    ctx.fillText(t.label, geom.xScale.toPixel(t.value), geom.y1 + 5);
+    // Clamped to the canvas, because the outermost tick is at the plot's edge and
+    // a centred label there hangs half of itself over 12px of padding. See
+    // `clampLabelCenter`.
+    const x = clampLabelCenter(
+      geom.xScale.toPixel(t.value),
+      ctx.measureText(t.label).width,
+      geom.width,
+    );
+    ctx.fillText(t.label, x, geom.y1 + 5);
   }
 }
 

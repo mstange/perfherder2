@@ -429,6 +429,23 @@ export function hitTestAll(
 
 export type Padding = { left: number; right: number; top: number; bottom: number };
 
+/**
+ * Where to draw a centred axis label so it stays inside the canvas.
+ *
+ * The x ticks are centred on their value, and the outermost one sits within a
+ * hair of the plot's edge — which leaves half a label hanging over a padding of
+ * 12px. At a desktop width the last date was clipped by a couple of pixels; at a
+ * phone's 390px "Aug 9" lost its 9, which reads as a rendering fault rather than
+ * as a tight fit. Clamping the *text* rather than dropping the tick or growing
+ * the padding keeps the axis honest: the tick mark stays where its value is, and
+ * only the label shifts, by at most half its own width.
+ */
+export function clampLabelCenter(x: number, textWidth: number, canvasWidth: number): number {
+  const half = textWidth / 2;
+  if (canvasWidth < textWidth) return canvasWidth / 2;
+  return Math.min(Math.max(x, half), canvasWidth - half);
+}
+
 export type PlotGeometry = {
   width: number;
   height: number;

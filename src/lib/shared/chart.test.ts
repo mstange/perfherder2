@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  clampLabelCenter,
   formatPValue,
   formatSignedPercent,
   formatSignedValue,
@@ -473,5 +474,25 @@ describe('formatPValue', () => {
     expect(formatPValue(0.4)).toBe('0.400');
     expect(formatPValue(1)).toBe('1.000');
     expect(formatPValue(1e-9)).toBe('<0.001');
+  });
+});
+
+describe('clampLabelCenter', () => {
+  it('leaves a label alone when it fits where its tick is', () => {
+    expect(clampLabelCenter(200, 40, 400)).toBe(200);
+  });
+
+  it('pulls the last label in rather than letting the canvas cut it', () => {
+    // "Aug 9" (34px) centred on a tick 6px from the right edge of a 390px canvas.
+    expect(clampLabelCenter(384, 34, 390)).toBe(373);
+  });
+
+  it('pushes the first label in by the same rule', () => {
+    expect(clampLabelCenter(2, 34, 390)).toBe(17);
+  });
+
+  // Nothing sane to do, and the caller must not end up with a NaN or a negative.
+  it('centres a label wider than the canvas', () => {
+    expect(clampLabelCenter(10, 500, 390)).toBe(195);
   });
 });
