@@ -979,12 +979,19 @@ rows with a keyboard up. Which group folds is not a matter of taste either:
   UA rule is zero-specificity and every one of these carries a class that sets
   `display`.
 - **The hint paragraph goes too**, and the status row's counts lose the words
-  that name them (`19 / 11,925`, with the wording in a `title`). The one thing
-  that gives way rather than shrinking is the *N* on the graph count: the row's
-  other three items are two actions and the pair of counts, and at 390px the four
-  of them wrapped to a second line and cost 38px, a whole row of list. What a tap
-  did is still visible on the row it acted on, which turns into a tinted `Remove`
-  carrying the series' colour.
+  that name them (`19 / 11,925`, with the wording in a `title`).
+- **The status row has its own, wider threshold.** It carries four things once the
+  card layout adds a sort control — counts, sort, `Add all`, `Done` — and below
+  ~600px of panel they cannot share a line; a wrap costs 38px of list with 36px
+  touch targets in the row. So `STATUS_ROW_ONE_LINE` drops the two that have
+  somewhere else to be: the *N* on the graph count (what a tap did is still
+  visible on the row it acted on, which turns into a tinted `Remove` carrying the
+  series' colour) and the bulk button (a row's own Add is one tap away, and the
+  series list's footer carries `Remove all`). Above it, both stay — including at a
+  900px window, where the panel folds its load row but has room for the row.
+  Deliberately *not* the fold's threshold: in the table layout there is no sort
+  control, so three items fit all the way down to the fold, and reusing one number
+  would have taken the bulk button away from a desktop that had room for it.
 
 ### A panel a phone wide lists cards, not columns
 

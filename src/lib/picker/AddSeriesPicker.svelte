@@ -149,6 +149,21 @@ import { TIME_RANGES } from './pickerOptions';
     return () => ro.disconnect();
   });
   const chromeFolded = $derived(panelWidth < CONTROL_BLOCK_NARROW);
+
+  // The status row is four things — the counts, the sort control, the bulk button
+  // and `Done` — and below about 600px of panel it cannot hold them on one line:
+  // measured at the widest realistic labels, `26,298 / 26,298` plus the sort
+  // select plus `Add all 26,298` plus `Done` and their gaps come to ~560px, and a
+  // wrap costs 38px of list with 36px touch targets in the row.
+  //
+  // The number is above `CONTROL_BLOCK_NARROW` rather than equal to it because
+  // the sort control only exists in the card layout — in the table the row is
+  // three items and fits down to the fold. Measured at the three panels this
+  // distinguishes: a 390px phone (358px of content) drops both, a 900px window
+  // with the panel docked (556) drops both, and an 1100px window (756) keeps
+  // everything.
+  const STATUS_ROW_ONE_LINE = 600;
+  const statusRoomy = $derived(panelWidth >= STATUS_ROW_ONE_LINE);
   // Transient: which repositories to fetch is not a question anyone answers
   // twice in a session, so this starts closed and nothing tries to remember it.
   let loadOpen = $state(false);
@@ -617,13 +632,13 @@ import { TIME_RANGES } from './pickerOptions';
         >
       </label>
     {/if}
-    <!-- Dropped when folded, which is the one thing on this row that gives way:
-         the counts say what the list is, and `Add all` and `Done` are the row's
-         two actions, so a running total is what is left to lose. At 390px the
-         four of them wrapped to a second line and cost 38px — a whole row of
-         list — and the feedback is not gone, since the row a tap acted on turns
-         into a tinted `Remove` with the series' own colour on it. -->
-    {#if !chromeFolded}
+    <!-- Dropped where the row is too tight for four things, which is a narrower
+         panel than the one that folds the controls: the counts say what the list
+         is and `Done` is the way out, so a running total is what is left to lose.
+         At 390px the four of them wrapped to a second line and cost 38px — a whole
+         row of list — and the feedback is not gone, since the row a tap acted on
+         turns into a tinted `Remove` with the series' own colour on it. -->
+    {#if statusRoomy}
       <span class="plotted-count" class:muted={picker.plotted.size === 0}>
         {picker.plotted.size} on the graph
       </span>
@@ -632,14 +647,12 @@ import { TIME_RANGES } from './pickerOptions';
          "Add all 24,913" has to be able to talk the user out of it. Growing
          the label eats the gap to its left instead of shoving Done sideways.
 
-         Not rendered when the panel is folded, which is the second thing this row
-         gives up. Plotting seventeen series onto a 390px graph is not a thing
-         anyone wants, and both halves of the button have another home: a row's own
-         Add is one tap away in the card beside it, and the series list's footer
-         carries `Remove all`. Keeping it would put this row on two lines — with
-         36px touch targets, 76px of panel — for the action least likely to be
-         wanted here. -->
-    {#if !chromeFolded}
+         Gone with the plotted count on a panel too tight for four things, and it
+         is the right one to lose there: plotting seventeen series onto a 390px
+         graph is not a thing anyone wants, and both halves of the button have
+         another home — a row's own Add is one tap away in the card beside it, and
+         the series list's footer carries `Remove all`. -->
+    {#if statusRoomy}
       <button
         type="button"
         class="btn bulk"
@@ -652,7 +665,7 @@ import { TIME_RANGES } from './pickerOptions';
     <button
       type="button"
       class="btn btn-primary done"
-      class:trailing={chromeFolded}
+      class:trailing={!statusRoomy}
       onclick={() => onclose?.()}>Done</button
     >
   </div>
