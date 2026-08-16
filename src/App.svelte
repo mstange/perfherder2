@@ -392,12 +392,12 @@
     display: flex;
     flex: 1;
   }
-  /* The full 44px on a coarse pointer, rather than app.css's 36px floor: this is
-     the app's primary navigation, and it is the control most often driven by a
-     thumb at the far end of its reach. */
   .switcher .btn {
     flex: 1;
   }
+  /* The full 44px on a coarse pointer, rather than app.css's 32px floor: this is
+     the app's primary navigation, and it is the control most often driven by a
+     thumb at the far end of its reach. */
   @media (pointer: coarse) {
     .switcher .btn {
       min-height: 44px;

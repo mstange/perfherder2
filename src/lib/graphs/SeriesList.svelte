@@ -741,7 +741,7 @@
      remove — so they get the touch floor from app.css in both axes. The 2×2 block
      grows from 42px wide to 66px, which the 280px sidebar can afford; the card's
      text column keeps the rest. The `min-height` in app.css's coarse rule would
-     otherwise stretch these to 36px tall while leaving them 20px wide, which is a
+     otherwise stretch these to 32px tall while leaving them 20px wide, which is a
      worse target than the one we started with. */
   @media (pointer: coarse) {
     button.icon {

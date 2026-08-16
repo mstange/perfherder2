@@ -166,7 +166,7 @@ import { TIME_RANGES } from './pickerOptions';
   // and `Done` — and below about 600px of panel it cannot hold them on one line:
   // measured at the widest realistic labels, `26,298 / 26,298` plus the sort
   // select plus `Add all 26,298` plus `Done` and their gaps come to ~560px, and a
-  // wrap costs 38px of list with 36px touch targets in the row.
+  // wrap costs 44px of list (the number app.css's `select` note measures too).
   //
   // The number is above `CONTROL_BLOCK_NARROW` rather than equal to it because
   // the sort control only exists in the card layout — in the table the row is
@@ -1078,15 +1078,13 @@ import { TIME_RANGES } from './pickerOptions';
     color: var(--fg-muted);
     font-size: 13px;
   }
-  /* app.css's floor makes this 36px tall and leaves it 28px wide, which is a
-     rectangle where a square was intended. Both axes, and after the base rule —
-     a media query adds no specificity.
+  /* app.css's floor gives this its height but nothing gives it its width, so it
+     comes out 32×28: a rectangle where a square was intended. Both axes, then,
+     and after the base rule — a media query adds no specificity.
 
-     32 rather than the 36 the floor would give it, which is the size everything
-     else in this panel's chrome takes; `Done` is left as the only 36. It costs no
-     list either way — the header is 32px from its `<h2>` regardless, measured with
-     `tools/visual/picker-rollback-costs.mjs` — so this is only about a close box
-     in the corner not being the loudest thing in it.
+     It costs no list — the header is 32px from its `<h2>` regardless, measured
+     with `tools/visual/picker-rollback-costs.mjs` — so this is only about a close
+     box in the corner being square rather than being big.
 
      32 is also `.btn`'s own floor, so a `min-height` here would be redundant —
      but only while the two agree. Raise that floor and this goes back to being a

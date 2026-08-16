@@ -1051,8 +1051,8 @@ Which group folds is not a matter of taste either:
   that name them (`19 / 11,925`, with the wording in a `title`).
 - **The status row has its own, wider threshold.** It carries four things once the
   card layout adds a sort control — counts, sort, `Add all`, `Done` — and below
-  ~600px of panel they cannot share a line; a wrap costs 38px of list with 36px
-  touch targets in the row. So `STATUS_ROW_ONE_LINE` drops the two that have
+  ~600px of panel they cannot share a line; a wrap costs 44px of list. So
+  `STATUS_ROW_ONE_LINE` drops the two that have
   somewhere else to be: the *N* on the graph count (what a tap did is still
   visible on the row it acted on, which turns into a tinted `Remove` carrying the
   series' colour) and the bulk button (a row's own Add is one tap away, and the
