@@ -43,7 +43,7 @@
     app.removeSeries(series.map(refFor));
   }
 
-  // Which of the four arrangements the window can afford. The thresholds and
+  // Which of the five arrangements the window can afford. The thresholds and
   // the reasoning are in layout.ts; what is here is only the wiring.
   //
   // Driven from JS and published as `data-layout` rather than written as media
@@ -109,8 +109,48 @@
   // layout that has nowhere to put it.
   const sheeted = $derived(listIsSheet(layout));
   let listSheetOpen = $state(false);
+  // Hoisted rather than inlined in the markup, so the prop's identity changes only
+  // when `sheeted` does. Nothing downstream is keyed on it today; a fresh arrow per
+  // render is a prop that reads as changed on every update, which is the kind of
+  // thing that is free to fix now and awkward to find later.
+  const closeSheet = () => (listSheetOpen = false);
   $effect(() => {
     if (!sheeted) listSheetOpen = false;
+  });
+
+  // Everything the open sheet is covering, which has to go `inert` for the same
+  // reason the panel's panes do: it is on top of them, so Tab would otherwise walk
+  // into controls nobody can see — the bar's own button first, since the sheet is
+  // drawn over it. It is a DOM property, not a paint one, so `z-index` cannot say
+  // this and nor can the CSS that hides the rest.
+  const sheetCovers = $derived(sheeted && listSheetOpen);
+
+  // And focus, which `inert` would otherwise drop on the floor: blurring the
+  // element it is applied to sends focus to the body, so a keyboard user opening
+  // the sheet would land back at the top of the document and Tab their way in.
+  //
+  // **The sheet's own *slot* takes the focus, not a control inside it.** The slot
+  // is the shell's element, so this needs no prop threaded through SeriesList and
+  // no `:global` reach for a class name in another file — and a `tabindex="-1"`
+  // container is the right target anyway: Tab from there walks the sheet's
+  // controls in their own order rather than starting from whichever one the shell
+  // decided to pick. `tabindex="-1"` is unconditional — it takes nothing into the
+  // tab order, so it costs the three column arrangements nothing — while the
+  // `dialog` role and its label are not, because in those three the slot is an
+  // ordinary grid cell and calling it a dialog would be a lie to a screen reader.
+  //
+  // Coming back is the panel's `restoreFocusTo` pattern below, and simpler:
+  // exactly one control opens this, so the handle *is* where focus came from.
+  let handleEl = $state<HTMLButtonElement | null>(null);
+  let sheetEl = $state<HTMLElement | null>(null);
+  let sheetWasOpen = false;
+  $effect(() => {
+    if (listSheetOpen === sheetWasOpen) return;
+    sheetWasOpen = listSheetOpen;
+    const target = listSheetOpen ? () => sheetEl : () => handleEl;
+    // After the DOM settles: on open the slot is still `display: none`, and on
+    // close the handle is still `inert` — neither takes focus in that state.
+    queueMicrotask(() => target()?.focus());
   });
 
   // A click on the graph *is* a request to see the selection, and where the
@@ -215,7 +255,7 @@
          One element rather than two grid items because in `narrow-short` both
          are present and both belong at the bottom edge, and two items in one
          grid area stack on top of each other. -->
-    <div class="bar" inert={listCovered}>
+    <div class="bar" inert={listCovered || sheetCovers}>
       {#if sheeted}
         <!-- The series list, demoted to a button that states its count. This is
              the trade the one-column arrangements make: the list is opened once
@@ -230,6 +270,7 @@
              is what those two describe. -->
         <button
           type="button"
+          bind:this={handleEl}
           class="btn list-handle"
           class:sole={panes.length === 0}
           aria-expanded={listSheetOpen}
@@ -285,24 +326,28 @@
        list it is a sheet — it renders a close button only when there is
        somewhere for closing to go. -->
   <div
+    bind:this={sheetEl}
     class="slot slot-list"
     id="series-sheet"
     data-active={(sheeted ? listSheetOpen : true) || null}
     inert={listCovered}
+    tabindex="-1"
+    role={sheetCovers ? 'dialog' : null}
+    aria-label={sheetCovers ? 'Series' : null}
   >
-    <SeriesList {app} onclose={sheeted ? () => (listSheetOpen = false) : undefined} />
+    <SeriesList {app} onclose={sheeted ? closeSheet : undefined} />
   </div>
   <div
     class="slot slot-graph"
     data-active={isPaneVisible('graph', activePane, panes) || null}
-    inert={app.pickerOpen}
+    inert={app.pickerOpen || sheetCovers}
   >
     <GraphPane {app} />
   </div>
   <div
     class="slot slot-details"
     data-active={isPaneVisible('selection', activePane, panes) || null}
-    inert={app.pickerOpen}
+    inert={app.pickerOpen || sheetCovers}
   >
     <DetailsPane {app} />
   </div>

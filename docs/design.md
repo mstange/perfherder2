@@ -1375,6 +1375,18 @@ beside anything (`listIsSheet`):
   color (see the series list and the details pane), and half of that would be
   worse than none; the number beside them is the real answer. The sheet opens over
   the window, and a cross in its header dismisses it, as does Escape.
+
+  **What it covers goes `inert`, and focus makes the round trip** — the same two
+  things the Add-series panel does, for the same reason: `z-index` is a paint
+  order and Tab follows the DOM, so without `inert` the first thing Tab reached
+  behind the sheet was the button that had just opened it. `inert` blurs whatever
+  it is applied to, which would leave a keyboard user at the top of the document,
+  so the sheet's *slot* takes the focus — the shell's own element, so nothing has
+  to be threaded through SeriesList, and a `tabindex="-1"` container is the better
+  target anyway: Tab from there walks the sheet's controls in their own order.
+  Coming back is the handle, which is the one control that opens this. Both
+  focus moves are `queueMicrotask`ed, because on open the slot is still
+  `display: none` and on close the handle is still `inert`.
 - **The selection gets a permanent row under the graph**, which is `medium`'s
   bargain in one column: both panes on screen, nothing to switch, and a tap on a
   point has its effect where the finger already is.
