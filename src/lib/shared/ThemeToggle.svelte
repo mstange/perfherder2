@@ -15,9 +15,9 @@
 
   import { theme } from './theme.svelte';
 
-  // Glyphs, not words: the control shares the series pane's footer with "Remove
-  // all", inside a 280px column, and a spelled-out label would crowd it. The
-  // full name goes in `title` and `aria-label`.
+  // Marks, not words: the control sits in the shell's bottom-left corner at a
+  // fixed 54px, and a spelled-out label would not fit in half of it. The full
+  // name goes in `title` and `aria-label`.
   const isDark = $derived(theme.resolved === 'dark');
   const destination = $derived(isDark ? 'light' : 'dark');
   // The tooltip is where the third state goes. Worth saying, because it's the
@@ -43,13 +43,46 @@
   title={description}
   onclick={() => theme.toggle()}
 >
-  <!-- Both glyphs are always rendered, and the thumb travels between them: the
+  <!-- Both marks are always rendered, and the thumb travels between them: the
        one under the thumb is the theme you're in, the other is where a click
-       takes you. Swapping a single glyph would leave it ambiguous which of the
-       two a lone sun meant. -->
+       takes you. Swapping a single mark would leave it ambiguous which of the
+       two a lone sun meant.
+
+       Drawn, not the text glyphs `☼ ☾` these used to be, for the reason
+       ChevronIcon exists — except that here the font decided the *shape* and not
+       just the size: `☾` has no filled form to ask for, so on Android it came out
+       a hairline outline against the thumb's accent fill, and `☼` a ring with a
+       dot. Inline rather than two components in shared/, unlike CrossIcon and the
+       other two: those are one component each because they have three call sites
+       at three sizes to keep in step, and this pair has one call site and is only
+       legible as a pair. -->
   <span class="thumb" class:dark={isDark} aria-hidden="true"></span>
-  <span class="glyph" class:lit={!isDark} aria-hidden="true">☼</span>
-  <span class="glyph" class:lit={isDark} aria-hidden="true">☾</span>
+  <span class="glyph" class:lit={!isDark}>
+    <!-- Filled disc, stroked rays. The moon opposite it is solid, and a sun that
+         was also a ring would read as the lighter of the two marks rather than as
+         its equal. Rays are in viewBox units from r=5.1 out to r=6.6, so the
+         stroke width is the ~1.4px the other icons draw at. -->
+    <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+      <circle cx="8" cy="8" r="3.4" fill="currentColor" />
+      <path
+        d="M8 2.9V1.4M8 13.1v1.5M2.9 8H1.4M13.1 8h1.5M4.39 4.39 3.33 3.33M11.61 11.61l1.06 1.06M11.61 4.39l1.06-1.06M4.39 11.61l-1.06 1.06"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.6"
+        stroke-linecap="round"
+      />
+    </svg>
+  </span>
+  <span class="glyph" class:lit={isDark}>
+    <!-- One closed path: the long way around a r=6 circle at (8,8), then back
+         along a r=5.6 circle centred up and to the right, which is the bite. Two
+         arcs of one subpath rather than a disc with a masked-out second disc,
+         because a mask needs an id and this component is rendered once per app
+         but has no guarantee of that. -->
+    <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+      <path d="M13.8 9.6A6 6 0 1 1 6.4 2.2A5.6 5.6 0 0 0 13.8 9.6Z" fill="currentColor" />
+    </svg>
+  </span>
 </button>
 
 <style>

@@ -2176,6 +2176,22 @@ direction), for the same reason `CrossIcon` is one component: they sit at
 different sizes and have to read as the same mark. Its two directions are one
 path with a rotation, so neither can be adjusted without the other.
 
+**The theme toggle's sun and moon are drawn too, and there the font was choosing
+the *shape*.** They were `☼` and `☾`. A text glyph's design is the font's to make
+and there is no way to ask for a filled one, so on Android the moon arrived as a
+hairline outline and the sun as a ring with a dot — against the thumb's accent
+fill, at 24px, an outline mark on a saturated ground is the one thing that had to
+not happen, and nothing in the app could have specified otherwise. The drawn pair
+is a filled disc with stroked rays and a filled crescent (two arcs of one closed
+subpath — a disc with a second disc masked out would need an `id`, and a
+component has no promise of being rendered once). Unlike the three above they are
+inline in [ThemeToggle.svelte](../src/lib/shared/ThemeToggle.svelte) rather than
+components in `shared/`: those are each one component because they have three
+call sites at three sizes to hold in step, and this pair has one call site and is
+only legible as a pair. The sun is filled rather than a ring for the same reason
+the moon is — beside a solid crescent, an outlined sun reads as the lesser of the
+two states rather than its equal.
+
 ### Two loading cues, and which wait each one is for
 
 `.spinner` and `.pulse` in [app.css](../src/app.css) are the app's only two
