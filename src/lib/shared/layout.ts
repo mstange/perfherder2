@@ -295,7 +295,8 @@ export function listIsSheet(mode: LayoutMode): boolean {
 }
 
 /**
- * Does the sheet take the whole window, or open as a drawer over the left of it?
+ * Does the sheet rise from the bottom over both panes, or open as a drawer over
+ * the left of them?
  *
  * **A drawer wherever a drawer leaves the graph its width, which is exactly the
  * two-column tier**, and 280px of list beside 480px of graph at the tightest such
@@ -306,12 +307,17 @@ export function listIsSheet(mode: LayoutMode): boolean {
  * it reads as the list coming back rather than as a new screen.
  *
  * At one column there is no "beside" left to preserve — 280px of drawer would
- * leave a 110px sliver of graph on a phone — so there it takes the window. That
- * also decides whether the panes behind it go `inert`: a drawer leaves them
- * visible, so reaching them by Tab or by click is not reaching anything hidden,
- * and the sheet is non-modal for the same reason the Add-series panel is.
+ * leave a 110px sliver of graph on a phone — so there it is a **bottom sheet**
+ * across both panes instead. That also decides whether they go `inert`: a drawer
+ * leaves them reachable and hides nothing, so it is non-modal for the same reason
+ * the Add-series panel is, while a bottom sheet covers them and has to take them
+ * out of the DOM.
+ *
+ * **Neither presentation covers the bar**, which is why this asks about the panes
+ * and not, as it once did, about the window. See docs/design.md, "The sheet rises
+ * from the handle and leaves it on screen".
  */
-export function listSheetCoversWindow(mode: LayoutMode): boolean {
+export function listSheetCoversPanes(mode: LayoutMode): boolean {
   return mode === 'narrow' || mode === 'narrow-short';
 }
 

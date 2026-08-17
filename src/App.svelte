@@ -4,6 +4,8 @@
   // table, and mounting it lazily keeps its multi-megabyte signature fetch off
   // the critical path for someone opening a shared graph link.
 
+  import { fade, fly } from 'svelte/transition';
+
   import AddSeriesPicker from './lib/picker/AddSeriesPicker.svelte';
   import DetailsPane from './lib/graphs/DetailsPane.svelte';
   import GraphPane from './lib/graphs/GraphPane.svelte';
@@ -17,7 +19,7 @@
     isPaneVisible,
     layoutFor,
     listIsSheet,
-    listSheetCoversWindow,
+    listSheetCoversPanes,
     resolvePane,
     switchedPanes,
     type Pane,
@@ -104,7 +106,10 @@
   const activePane = $derived(resolvePane(requestedPane, panes));
 
   // The series list, where it is a sheet rather than a column: one button in the
-  // bottom bar opens it over the window, its own close button dismisses it.
+  // bottom bar reveals it, and that same button dismisses it again — as do its
+  // own close button, Escape, and a tap on the dimmed strip of graph it leaves
+  // showing. See docs/design.md, "The sheet rises from the handle and leaves it
+  // on screen".
   //
   // Local, and not in the URL, for the reason `requestedPane` is: it is a fact
   // about this screen. Reset when the arrangement gives the list a column back,
@@ -121,16 +126,25 @@
     if (!sheeted) listSheetOpen = false;
   });
 
-  // Is the open sheet *covering* the window, or is it the 280px drawer that leaves
-  // the graph beside it? Only the first has to take what it hides out of the DOM:
-  // it is on top of the bar and both panes, so Tab would otherwise walk into
-  // controls nobody can see — the button that opened it first of all. `z-index` is
-  // a paint order and cannot say that, which is why this is a property and not CSS.
+  // Is this a bottom sheet over both panes, or the 280px drawer that leaves the
+  // graph beside it? A question about the arrangement, not about whether the sheet
+  // is open, because the scrim and the peek have to exist in the DOM while it is
+  // closed too — that is what gives them something to animate *from*.
+  const bottomSheet = $derived(listSheetCoversPanes(layout));
+  // And the same question about the sheet as it stands. Only a bottom sheet has to
+  // take what it hides out of the DOM: it is on top of both panes, so Tab would
+  // otherwise walk into controls nobody can see. `z-index` is a paint order and
+  // cannot say that, which is why this is a property and not CSS.
+  //
+  // **The bar is not among them any more**, in either presentation: the sheet stops
+  // at the bar's top edge and slides away behind it, so the handle that opened it
+  // stays on screen, keeps its chevron pointed at where the sheet went, and is the
+  // control that brings it back. See docs/design.md.
   //
   // A drawer leaves everything it overlaps visible, so nothing there is hidden and
   // nothing needs to be inert; it is non-modal in the same way, and for the same
   // reason, as the Add-series panel docked beside this list in `wide`.
-  const sheetCovers = $derived(listSheetOpen && listSheetCoversWindow(layout));
+  const sheetCovers = $derived(listSheetOpen && bottomSheet);
   // Open in either presentation. What the slot announces itself as, and what the
   // focus round trip below is keyed on — a drawer is just as much a revealed region
   // as a full-window sheet, it simply hides nothing while it is there.
@@ -205,6 +219,25 @@
   const seriesDots = $derived(app.series.slice(0, MAX_DOTS).map((e) => e.color));
   const seriesCount = $derived(app.series.length);
 
+  // How long the Add-series panel takes to arrive and to leave, and the panel is
+  // the only thing here that needs the number in JS: it is mounted by an `{#if}`,
+  // so its exit has to be a Svelte transition rather than CSS — an element that
+  // has already been removed cannot transition out. The series sheet is only ever
+  // shown and hidden, never mounted and unmounted, so it animates in the style
+  // block below with no JS at all and reads `prefers-reduced-motion` the ordinary
+  // way. Same duration in both places; it is written twice because the two
+  // mechanisms cannot share it, so keep them in step.
+  const MOTION_MS = 220;
+  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+  let reduced = $state(reduceMotion.matches);
+  $effect(() => {
+    const measure = () => (reduced = reduceMotion.matches);
+    measure();
+    reduceMotion.addEventListener('change', measure);
+    return () => reduceMotion.removeEventListener('change', measure);
+  });
+  const motionMs = $derived(reduced ? 0 : MOTION_MS);
+
   // Send focus back where it came from when the panel closes, so dismissing
   // it doesn't dump the user at the top of the document.
   //
@@ -272,8 +305,13 @@
 
        One element rather than three grid items because in `narrow-short` all three
        are present and all belong at the bottom edge, and items sharing a grid area
-       stack on top of each other. -->
-  <div class="bar" inert={listCovered || sheetCovers}>
+       stack on top of each other.
+
+       **Live while the series sheet is open**, which is the whole point of the
+       sheet stopping at its top edge: the handle stays put and tapping it again is
+       the shortest way back, so the bar cannot be `inert` the way the panes are.
+       Only the Add-series panel, which does cover it, takes it out. -->
+  <div class="bar" inert={listCovered}>
     {#if sheeted}
       <!-- The series list, demoted to a button that states its count. This is
            the trade every arrangement below `wide` makes: the list is opened
@@ -336,6 +374,24 @@
     <ThemeToggle />
   </div>
 
+  {#if bottomSheet}
+    <!-- The dim over the strip of graph the bottom sheet leaves showing, and the
+         fourth way out of it. Its job is the hierarchy the sheet had no way to
+         state when it took the whole window: something is still back there, this is
+         on top of it, and it is out of play until you come back.
+
+         Rendered whenever the arrangement is a bottom sheet rather than whenever
+         one is open, so it has a previous state to fade from and to — see the
+         style block. Both panes are already `inert` behind it, so this adds no
+         keyboard trap of its own; it also adds no keyboard *exit*, which is why
+         it is a plain div and not a button. Escape, the handle and the header's
+         cross are the three that a keyboard has, and a fourth tab stop in front of
+         the sheet's own contents would cost more than it gives. -->
+    <!-- svelte-ignore a11y_click_events_have_key_events -->
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div class="scrim" data-active={listSheetOpen || null} onclick={closeSheet}></div>
+  {/if}
+
   <!-- The series list stays live while the panel is open — it's the only place
        the result of an Add or a Remove is visible, and it's the control the
        user will keep using once the panel closes. See docs/design.md, "The
@@ -385,8 +441,28 @@
        the series list or takes the window is whether the list is *there*, which is
        one question (`listIsSheet`) and two tiers. Naming the tiers here would be
        the third place that list has to be kept in step. -->
-  <div class="overlay" data-full={sheeted || null} style:height={heightStyle}>
-    <div class="overlay-panel" role="dialog" aria-label="Add series">
+  <!-- Two transitions rather than one, because the backdrop and the panel are
+       saying different things: the dim is the graph going out of play, and it only
+       ever fades, while the panel is the thing that arrives from somewhere. Where
+       it takes the window it rises from the bottom edge — the same motion as the
+       series sheet under it, from the same direction, because at that width it is
+       summoned from the same corner. Docked in `wide` it has nowhere to rise from,
+       so it fades with its backdrop and stays put.
+
+       `opacity: 1` on the fly: the backdrop's fade is already the panel's fade, and
+       two of them compound into a panel that is 25% opaque halfway through. -->
+  <div
+    class="overlay"
+    data-full={sheeted || null}
+    style:height={heightStyle}
+    transition:fade={{ duration: motionMs }}
+  >
+    <div
+      class="overlay-panel"
+      role="dialog"
+      aria-label="Add series"
+      transition:fly={{ y: sheeted ? '100%' : 0, opacity: 1, duration: motionMs }}
+    >
       <AddSeriesPicker
         onadd={handleAdd}
         onremove={handleRemove}
@@ -408,6 +484,12 @@
 
 <style>
   main {
+    /* How long the series sheet and its scrim take to arrive and to leave.
+       Mirrors `MOTION_MS` above, which the Add-series panel's Svelte transitions
+       read: the two mechanisms cannot share a number, so this is the copy CSS can
+       see. Here rather than at `:root` because it is this shell's motion and
+       app.css has no other use for it. */
+    --sheet-motion: 220ms;
     display: grid;
     height: 100vh;
     height: 100dvh;
@@ -564,15 +646,23 @@
   main[data-layout='narrow'] > .bar > .list-handle > .count {
     margin-right: auto;
   }
-  /* The sheet, in both presentations. It spans every row including the bar that
-     opened it, and carries its own background because it is the only slot with
-     something behind it. `border-right` is drawn here rather than by `.slot-list`'s
-     seam rule below, because in `wide` that edge faces the graph and here it faces
-     the graph *over* it — same line, different job, and the shadow beside it is
-     what says which. */
+  /* The sheet, in both presentations. It carries its own background because it is
+     the only slot with something behind it. `border-right` is drawn here rather
+     than by `.slot-list`'s seam rule below, because in `wide` that edge faces the
+     graph and here it faces the graph *over* it — same line, different job, and the
+     shadow beside it is what says which.
+
+     **`1 / -2`, so it stops at the bar rather than covering it.** It used to span
+     every row including the bar that opened it, which hid the handle behind the
+     thing the handle had just revealed — along with the chevron that flips to point
+     the way the sheet moves, so the one affordance saying "tap this again" was
+     never once on screen. Leaving the bar out gives the sheet a fixed edge to rise
+     from and settle back into, and makes summoning and dismissing the same tap in
+     the same place. See docs/design.md, "The sheet rises from the handle and leaves
+     it on screen". */
   main:not([data-layout='wide']) > .slot-list {
     grid-column: 1;
-    grid-row: 1 / -1;
+    grid-row: 1 / -2;
     z-index: 5;
     background: var(--bg-canvas);
   }
@@ -596,6 +686,91 @@
     border-right: 1px solid var(--border-default);
     box-shadow: var(--shadow-overlay);
   }
+  /* The bottom sheet: the one-column presentation, where the list rises over both
+     panes from the bar that summons it.
+     ---------------------------------------------------------------------------
+     Five things say "this is a layer on top of the graph, and it came from down
+     there" — and the version before this one had none of them, so the only reading
+     left was that the app had navigated to a page. The list's `--bg-subtle` is
+     *darker* than the graph's canvas in the light theme, which reads as behind
+     rather than above, so the tint cannot carry the elevation on its own here and
+     the other four have to. See docs/design.md.
+
+     The peek is the first: the graph is left showing above the sheet, under a dim,
+     so there is visibly something to come back to. Derived from what fits in it
+     rather than chosen — the graph pane's header collapses to a 41px bar
+     (graphs.md, "A pane too small for the bar collapses it to one line"), and in
+     `narrow` there is room for that plus a slice of the plot it labels, which is
+     what makes it read as a graph and not as a stray toolbar. In `narrow-short`
+     every pixel is already spoken for, so it is the header and nothing else. */
+  main[data-layout='narrow'] {
+    --sheet-peek: 80px;
+  }
+  main[data-layout='narrow-short'] {
+    --sheet-peek: 48px;
+  }
+  main[data-layout='narrow'] > .slot-list,
+  main[data-layout='narrow-short'] > .slot-list {
+    margin-top: var(--sheet-peek);
+    /* Two and three: a lifted edge, and the shadow it casts on the dim. `overflow`
+       because the pane inside draws its own square-cornered header against it. */
+    border-radius: 12px 12px 0 0;
+    overflow: hidden;
+    box-shadow: var(--shadow-overlay);
+    /* Four: it arrives from below and leaves the same way, so the handle is
+       visibly where it comes from and goes. `display` is in the transition because
+       the rule that hides an inactive slot uses `display: none` — one rule for
+       every slot, and worth keeping — and a discrete property has to be told to
+       wait for the rest of the animation before it takes effect. */
+    transition:
+      transform var(--sheet-motion) ease,
+      display var(--sheet-motion) allow-discrete;
+  }
+  main[data-layout='narrow'] > .slot-list:not([data-active]),
+  main[data-layout='narrow-short'] > .slot-list:not([data-active]) {
+    transform: translateY(100%);
+  }
+  /* The state it animates *from* on the way in. Without this the sheet has no
+     previous position — it goes straight from `display: none` to placed — and only
+     the exit would move. */
+  @starting-style {
+    main[data-layout='narrow'] > .slot-list[data-active],
+    main[data-layout='narrow-short'] > .slot-list[data-active] {
+      transform: translateY(100%);
+    }
+  }
+
+  /* Five: the dim itself, over the peek. Same rows as the sheet, so it stops at the
+     bar too — the bar is the one thing on screen that is never out of play, and
+     dimming the control that dismisses the sheet would be saying the opposite. */
+  .scrim {
+    grid-column: 1 / -1;
+    grid-row: 1 / -2;
+    z-index: 4;
+    background: var(--backdrop);
+    transition:
+      opacity var(--sheet-motion) ease,
+      display var(--sheet-motion) allow-discrete;
+  }
+  .scrim:not([data-active]) {
+    display: none;
+    opacity: 0;
+  }
+  @starting-style {
+    .scrim[data-active] {
+      opacity: 0;
+    }
+  }
+  /* Nothing here carries information that the movement is the only source of — the
+     sheet is opaque and the dim is a colour — so under this preference both simply
+     appear. `0s` rather than dropping the transition, so the `allow-discrete`
+     handling of `display` stays intact. */
+  @media (prefers-reduced-motion: reduce) {
+    main {
+      --sheet-motion: 0s;
+    }
+  }
+
   /* One rule for every arrangement where a slot can be off screen, and it reads
      the slot's own attribute rather than naming panes: what puts a slot off
      screen differs between them — a turn in the switcher for the graph and the
@@ -657,6 +832,13 @@
     padding: 6px 8px;
     border-top: 1px solid var(--border-default);
     background: var(--bg-subtle);
+    /* Above the sheet (5) and its scrim (4), which is what lets the sheet slide
+       away *behind* it: `translateY(100%)` moves the sheet down by exactly its own
+       height, and since the sheet stops at this bar's top edge that lands it over
+       the bar. A bar that vanished under a departing sheet and blinked back at the
+       end of the animation would undo the point of keeping it. Grid items take a
+       `z-index` without being positioned. */
+    z-index: 6;
   }
   .switcher {
     display: flex;
@@ -744,6 +926,10 @@
        graph — dimmed, but visible, and better company than empty backdrop. */
     justify-content: flex-start;
     padding: 16px;
+    /* Clips the panel while it is still rising from below the bottom edge. Without
+       it the document grows by the height of a panel that has not arrived yet, and
+       the page gets a scrollbar for a fifth of a second. */
+    overflow: hidden;
     z-index: 10;
   }
   .overlay[data-full] {

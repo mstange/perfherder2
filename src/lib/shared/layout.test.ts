@@ -19,7 +19,7 @@ import {
   isPaneVisible,
   layoutFor,
   listIsSheet,
-  listSheetCoversWindow,
+  listSheetCoversPanes,
   pickerChromeCost,
   resolvePane,
   switchedPanes,
@@ -172,20 +172,21 @@ describe('listIsSheet', () => {
   });
 });
 
-describe('listSheetCoversWindow', () => {
+describe('listSheetCoversPanes', () => {
   // A drawer wherever a drawer leaves the graph its width, which is the
   // two-column tier: 280px of list beside 480px of graph at the tightest such
   // window.
   it('opens as a drawer at two columns', () => {
-    expect(listSheetCoversWindow('medium')).toBe(false);
+    expect(listSheetCoversPanes('medium')).toBe(false);
     expect(TWO_COLUMN_MIN - SIDEBAR_WIDTH).toBeGreaterThanOrEqual(GRAPH_MIN_WIDTH);
   });
 
   // At one column there is no beside left to preserve: a 280px drawer would leave
-  // a 110px sliver of graph on a phone.
-  it('takes the window at one column', () => {
-    expect(listSheetCoversWindow('narrow')).toBe(true);
-    expect(listSheetCoversWindow('narrow-short')).toBe(true);
+  // a 110px sliver of graph on a phone, so it rises from the bottom over both.
+  // Neither presentation covers the bar — see `listSheetCoversPanes`.
+  it('covers both panes at one column', () => {
+    expect(listSheetCoversPanes('narrow')).toBe(true);
+    expect(listSheetCoversPanes('narrow-short')).toBe(true);
   });
 });
 

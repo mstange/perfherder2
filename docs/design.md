@@ -40,6 +40,7 @@ change is wrong for a reason the code doesn't show:
 | Anything that renders before its data arrives | "Layout stability" |
 | A text field that takes focus, or anything sized to the window's height | "The on-screen keyboard has to take height from the app, not cover it" — `100dvh` is not what a keyboard shrinks, and an autofocus is a keyboard nobody asked for |
 | Where a pane sits, how wide it is, or a border between two panes | "The shell has four arrangements, and the graph keeps its size" — there are four, the thresholds are computed from the pane sizes in `shared/layout.ts` rather than chosen, a pane that draws its own border draws a doubled one as soon as the arrangement moves it, and **below `wide` the series list is not a pane at all** but a sheet behind the bottom bar's button. Read that section's "The pane that stops being a pane is the series list" before adding a tier or moving a pane: two tiers were deleted for paying the list's 280px column out of the graph's *height*, and one of them was why an iPad in landscape could only show the graph or the selection |
+| An animation, or the series sheet's presentation | "The sheet rises from the handle and leaves it on screen" — a sheet that took the whole window with no motion, no shadow and no dim read as a *page*, and the fix is five cues rather than any one of them. Two mechanisms animate the shell (CSS `@starting-style` for the always-mounted sheet, Svelte transitions for the `{#if}`-mounted panel) and they duplicate one duration between `MOTION_MS` and `--sheet-motion`. The sheet must not cover the bar: that is what makes the handle its own dismissal |
 | A fetch, or a new endpoint | "Validating API responses" and [api-assumptions.md](api-assumptions.md); plus "Cache key" if the result is cached, and "The picker's caches live at module scope" if it is the picker doing the fetching — a cache on `PickerState` does not survive the panel closing |
 | `SeriesMeta`, or anything that reads a series' metadata | "Two endpoints describe a series" below. It arrives from one of two responses, `source` says which, and two of its fields are answerable by only one of them — api-assumptions.md, "Two null fields mean different things depending on `source`" |
 | A treeherder *list* endpoint | its default page is 10 rows and truncation is silent — a partial answer is shaped exactly like a complete one. comparison.md, "The inline pushlog", and the `getCommonAlerts` note in graphs-todo.md |
@@ -1393,33 +1394,109 @@ and 320×333, both on screen, where before it had to choose.
   its count and carries the series' colors as overlapping dots. The dots are a
   count cue and not a legend — a swatch identifies a series by *shape* as well as
   color (see the series list and the details pane), and half of that would be
-  worse than none; the number beside them is the real answer. A cross in its header
-  dismisses it, as does Escape.
-- **How much of the window it takes depends on how much there is to preserve**
-  (`listSheetCoversWindow`). At two columns it is a **drawer**: 280px over the left,
+  worse than none; the number beside them is the real answer. Four things dismiss
+  it: the handle again, a cross in its header, Escape, and a tap on the dimmed strip
+  of graph it leaves showing.
+- **How much of the panes it takes depends on how much there is to preserve**
+  (`listSheetCoversPanes`). At two columns it is a **drawer**: 280px over the left,
   the same width and the same place as the list's column in `wide`, so it reads as
   that column coming back rather than as a new screen. Sizing it to the window
   everywhere was the first version and it is plainly wrong at 1039px — three cards
   and a header stretched across a window wide enough for the arrangement it just
   replaced. At one column there is no "beside" left to preserve, since 280px would
-  leave a 110px sliver of graph on a phone, so there it takes the window.
+  leave a 110px sliver of graph on a phone, so there it is a **bottom sheet** across
+  both panes — see the next section for what makes it read as one.
 - **That same question decides whether it is modal.** A drawer leaves everything it
   overlaps visible, so reaching the graph behind it by Tab or by click is not
   reaching anything hidden: nothing goes `inert`, there is no backdrop, and the
   shadow is what says it is on top — non-modal in the same way, and for the same
   reason, as the Add-series panel docked beside this list in `wide`.
 
-  **A full-window sheet does have to take what it hides out of the DOM**, the same
-  two things the panel does and for the same reason: `z-index` is a paint order and
+  **A bottom sheet does have to take the panes it covers out of the DOM**, the same
+  two the panel does and for the same reason: `z-index` is a paint order and
   Tab follows the DOM, so without `inert` the first thing Tab reached behind the
   sheet was the button that had just opened it. `inert` blurs whatever it is applied
   to, which would leave a keyboard user at the top of the document, so the sheet's
   *slot* takes the focus — the shell's own element, so nothing has to be threaded
   through SeriesList, and a `tabindex="-1"` container is the better target anyway:
   Tab from there walks the sheet's controls in their own order. Coming back is the
-  handle, which is the one control that opens this. Both focus moves are
-  `queueMicrotask`ed, because on open the slot is still `display: none` and on close
-  the handle is still `inert`.
+  handle. Both focus moves are `queueMicrotask`ed, because on open the slot is still
+  `display: none` and on close the handle is still `inert`.
+
+  **The bar is not among the things either presentation covers**, so it is never
+  `inert` for the sheet's sake — only for the Add-series panel's, which does cover
+  it. See the next section.
+
+#### The sheet rises from the handle and leaves it on screen
+
+Everything above decides *what the sheet is*. This is about whether anyone can tell
+— and for one revision nobody could. At 400×684 the list arrived as a full-window,
+opaque, motionless replacement for the graph, and the honest reading of it was that
+the app had navigated to a page. Reported as: "I don't know how it relates
+hierarchically to the rest of the app… do I need to keep clicking to make
+progress?"
+
+**The presentation was carrying none of the load, and it takes five things to
+carry it.** Each is cheap on its own; the failure was that all five were absent at
+once, so no single one of them is the fix.
+
+- **It stops at the bar** (`grid-row: 1 / -2`), instead of spanning every row
+  including the one that opened it. This is the important one. The handle stays on
+  screen, keeps its place, and its chevron — which has always flipped to point the
+  way the sheet moves — is now visible to flip: under the old placement the sheet
+  covered the one affordance saying "tap this again", so the app implemented a
+  toggle and then hid half of it. Summoning and dismissing are the same tap in the
+  same place, which is what answers "the close button is at the opposite corner from
+  what I just tapped". The header's cross stays, because a sheet needs a dismissal
+  where the eye is as well as one where the thumb is.
+- **It leaves a peek of the graph** above it — 80px in `narrow`, 48px in
+  `narrow-short`. Derived rather than chosen: the graph pane's header collapses to a
+  41px bar, so `narrow-short` shows the header and nothing else, and `narrow` shows
+  it plus enough of the plot below to read as a graph rather than as a stray
+  toolbar. A fixed offset, not a sheet sized to its content: bottom-anchored content
+  sizing would move the whole sheet under the thumb every time a series was removed
+  from it, and "layout must not shift when the user first interacts" applies hardest
+  to the surface a thumb is already resting on.
+- **The peek is dimmed** with `--backdrop`, and tapping the dim closes the sheet.
+  The dim is the fourth exit and the only one that is also a statement: the graph is
+  still there and it is out of play. The dim stops at the bar with the sheet — the
+  bar is the one thing on screen that is never out of play, and dimming the control
+  that dismisses the sheet would say the opposite.
+- **It has a lifted edge**: 12px top corners and `--shadow-overlay`. Which is where
+  the tint problem shows up. The list pane is `--bg-subtle`, and in the light theme
+  that is *darker* than the graph's `--bg-canvas` — light comes from above, so a
+  darker surface reads as behind. (In the dark theme `--bg-subtle` is the lighter of
+  the two and it reads correctly, which is why this only ever looked wrong in one
+  theme.) **The tint stays as it is**, because it is the same pane in the same colour
+  as the `wide` column and forking it would mean forking the cards inside it too;
+  the shadow and the dim are what carry the elevation here instead.
+- **It slides**, 220ms, in from the bottom and back down *behind* the bar — which is
+  why the bar takes a `z-index` above it. `translateY(100%)` moves the sheet by
+  exactly its own height, and since it stops at the bar's top edge that lands it
+  over the bar; without the stacking order the bar would vanish under a departing
+  sheet and blink back at the end.
+
+**Two mechanisms animate this, and which one applies follows from how the element
+comes and goes.** The sheet is only ever shown and hidden — `display: none` on an
+always-mounted slot, one rule for every slot and worth keeping — so it animates in
+CSS with `@starting-style` for the entry and `transition-behavior: allow-discrete`
+on `display` for the exit, and reads `prefers-reduced-motion` in a media query. The
+Add-series panel is mounted by an `{#if}`, and an element that has already been
+removed from the DOM cannot transition out, so its entry and exit are Svelte
+`fly`/`fade` transitions with a duration that JS has to compute. The duration is
+therefore written twice — `MOTION_MS` in the script, `--sheet-motion` in the style
+block — because the two mechanisms cannot share it. Keep them in step.
+
+**The panel rises too, and only where it takes the window.** At one column it is
+summoned from the same corner as the sheet and arrives from the same direction,
+which is what makes a panel opened from *inside* the sheet legible as a third layer
+rather than as a second page. Docked in `wide` it has nowhere to rise from, so it
+fades with its backdrop and stays put. The panel keeps `opacity: 1` on its own
+transition: the backdrop it sits in is already fading, and two fades compound into a
+panel that is 25% opaque halfway through.
+
+Where `@starting-style` and `allow-discrete` are unsupported the sheet simply
+appears and disappears, which is the behaviour this replaced.
 - **The bar is in the bottom-left corner at every width, and it is the app's only
   chrome of its own.** Up to three things: the sheet's handle, the switcher where a
   tier switches, and the theme toggle — which is the one always present, and the
