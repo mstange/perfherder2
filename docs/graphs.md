@@ -19,20 +19,44 @@ Three panes, filling the viewport, no page scroll:
 ```
 ┌──────────────┬────────────────────────────────┬───────────────┐
 │ Series list  │  overview graph (thin, full    │ Selection     │
-│ (left)       │  time range, no lines)         │ details       │
+│ 🗑 + Add…     │  time range, no lines)         │ details       │
 │              ├────────────────────────────────┤ (right)       │
-│ + Add series │  detail graph (zoomed range)   │ value / push  │
+│              │  detail graph (zoomed range)   │ value / push  │
 │              │                                │ / run / build │
+├──────────────┤                                │               │
+│ ☀ ☾          │                                │               │
 └──────────────┴────────────────────────────────┴───────────────┘
 ```
+
+The strip under the series list is the shell's **bar** — the app's only chrome of
+its own. Here it holds just the theme toggle; below `wide` it also holds the button
+that opens the series sheet, and at the smallest size the pane switcher. It spans one
+column rather than the window in every arrangement, so the graph and the details pane
+keep their full height.
 
 The "Add series" picker opens as an overlay panel over the whole area rather
 than living in the left pane — it needs the full width for its table.
 
-That is the widest arrangement of five. As the window narrows the details pane
-becomes a row under the graph, then takes turns with it, and at one column the
-*series list* stops being a pane at all — it becomes a sheet behind a button in a
-bottom bar, and the selection takes the row under the graph:
+That is the widest of four arrangements, and the only one where the series list is
+a pane. **Below it the list is the first thing given up** — it is the apparatus of
+the three, opened once a session, where the graph is read continuously and the
+selection once per point. So it becomes a sheet behind a button in a bottom bar,
+and the two panes that are about the data keep their columns for as long as those
+fit (an iPad in landscape, a tiled half-screen window, a landscape phone):
+
+```
+┌───────────────────────────────┬───────────────┐
+│ overview (thin)               │ Selection     │
+├───────────────────────────────┤ details       │
+│ detail graph                  │ value / push  │
+│                               │ / run / build │
+├───────────────────────────────┤               │
+│ ●● 2 series ⌃            ☀ ☾  │               │
+└───────────────────────────────┴───────────────┘
+```
+
+Below *that* the details pane's column becomes a row, and below that a turn in a
+switcher. Each retreat gives up the least it can:
 
 ```
 ┌────────────────────────────────┐
@@ -43,12 +67,15 @@ bottom bar, and the selection takes the row under the graph:
 │ SELECTION                      │
 │ value / push / run / build     │
 ├────────────────────────────────┤
-│ ●● 2 series                  ⌃ │
+│ ●● 2 series          ⌃    ☀ ☾  │
 └────────────────────────────────┘
 ```
 
 The thresholds, the reasoning and the two floors the graph is held to are in
-design.md, "The shell has five arrangements, and the graph keeps its size".
+design.md, "The shell has four arrangements, and the graph keeps its size" — read
+it before adding a tier: two were deleted for charging the list's 280px column to
+the graph's *height*, which is what left an iPad in landscape able to show the
+graph or the selection but not both.
 
 ### With nothing plotted, the pane is a call to action
 
@@ -79,10 +106,10 @@ to act on it a pane away in the switcher the list then lived in.
   width, so a user who starts on the graph adds a series and is looking at it the
   moment they press Done. The empty state puts the door on what they are already
   looking at. Since the list stopped being a pane and became a sheet behind the
-  bottom bar's button (design.md, "At one column the series list is the pane that
-  stops being a pane"), the graph is the *only* thing a one-column window can open
-  on — and with nothing plotted the details row is dropped as well, so this block
-  gets the window rather than sharing it with a second empty state.
+  bottom bar's button (design.md, "The pane that stops being a pane is the series
+  list"), the graph is the *only* thing a one-column window can open on — and with
+  nothing plotted the details row is dropped as well, so this block gets the window
+  rather than sharing it with a second empty state.
 - **`app.series` is populated from the URL synchronously**, so a shared link
   never flashes this block on its way to a graph. It appears on a first visit
   and after Remove all — the second of which is a click of the user's, which is
@@ -229,9 +256,9 @@ the zoom label's reserved width, the last unwrappable item.
 Everything above is about how the bar *fits* a width. Whether it is worth its
 space is a second question, and it has to be asked in both axes — the same
 two-axis rule the shell's arrangements follow. A 138px header is affordable over a
-graph and not over a strip: a landscape phone gave the pane 347px, and the header
-plus the 84px overview left a **126px** plot. And at a phone's 390px the presets
-wrap to two rows and the touch floor makes each one 32px, so the bar is 213px of
+graph and not over a strip: a landscape phone gives the pane 333px, and the header
+plus the 84px overview leave a **49px** plot. And at a phone's 390px the presets
+wrap to two rows and the touch floor makes each one 32px, so the bar is 217px of
 an 844px screen — a quarter of the window spent on controls that are read once a
 session, above the graph they describe.
 
@@ -245,15 +272,23 @@ label rail — its own admission that it doesn't fit):
 Feb 10 – Aug 9 · run means                                    [Controls ▾]
 ```
 
-35–41px instead of 114–213. Measured, by case:
+35–41px instead of 114–217. Measured with
+`tools/visual/collapse-remeasure.mjs`, by case — and re-measured after the shell
+dropped to four arrangements, since what height the pane gets at a given viewport is
+the shell's answer and three of these five changed:
 
-| Window | Pane | Detail plot before | After |
-| --- | --- | --- | --- |
-| 390×844 phone | 390 wide | 480px | **658px** |
-| 844×390 landscape phone | 347 tall | 126px | **204px** |
-| 768×1024 tablet | 488 wide | 427px | **579px** |
-| 1440×420 strip | 420 tall | ~200px | **301px** |
-| 1440×900 desktop | — | 702px | unchanged, no collapse |
+| Window | Tier | Pane | Detail plot open | Collapsed |
+| --- | --- | --- | --- | --- |
+| 390×844 phone | `narrow` | 390×407 | 65px | **282px** |
+| 844×390 landscape phone | `medium` | 524×333 | 49px | **208px** |
+| 768×1024 tablet | `medium` | 448×967 | 649px | **842px** |
+| 1440×420 strip | `wide` | 840×420 | 187px | **301px** |
+| 1440×900 desktop | `wide` | 840×900 | 702px | unchanged, no collapse |
+
+The two phones are the cases where the collapse stopped being a nicety: open, the
+detail plot is 49–65px, which is a second copy of the overview with worse labels.
+Both are `narrow`/`medium` now rather than one pane with the window, so the pane is
+smaller than it was and the collapse buys proportionally more.
 
 - **The line says what it collapsed, not just that it collapsed.** A bare
   "Controls" button makes the reader open it to find out what the graph is set

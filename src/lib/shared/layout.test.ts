@@ -3,8 +3,6 @@ import { describe, expect, it } from 'vitest';
 import {
   CONTROL_BLOCK_NARROW,
   DETAILS_MIN_ROW,
-  DETAILS_ROW_FRACTION,
-  DETAILS_ROW_MAX,
   DETAILS_WIDTH,
   GRAPH_MIN_HEIGHT,
   GRAPH_MIN_HEIGHT_COMPACT,
@@ -14,7 +12,6 @@ import {
   NARROW_GRAPH_RESERVE,
   NARROW_STACK_MIN_HEIGHT,
   SIDEBAR_WIDTH,
-  STACKED_MIN_HEIGHT,
   THREE_COLUMN_MIN,
   TWO_COLUMN_MIN,
   PICKER_LIST_MIN,
@@ -22,6 +19,7 @@ import {
   isPaneVisible,
   layoutFor,
   listIsSheet,
+  listSheetCoversWindow,
   pickerChromeCost,
   resolvePane,
   switchedPanes,
@@ -37,19 +35,47 @@ describe('layoutFor', () => {
     expect(layoutFor(THREE_COLUMN_MIN, TALL)).toBe('wide');
   });
 
-  it('drops the details column exactly where the graph would go under', () => {
+  // The list's column is the first thing given up, and height has no say in it:
+  // both remaining panes are still columns, so there is nothing a taller or
+  // shorter window would rearrange.
+  it('drops the list to a sheet exactly where three columns stop fitting', () => {
     expect(layoutFor(THREE_COLUMN_MIN - 1, TALL)).toBe('medium');
     expect(layoutFor(TWO_COLUMN_MIN, TALL)).toBe('medium');
+    for (const height of [300, 390, 600, 717, 1200]) {
+      expect(layoutFor(900, height)).toBe('medium');
+    }
   });
 
-  it('drops to one column exactly where the list would take the graph under', () => {
+  // The iPad in landscape with Safari's chrome, which is the window that prompted
+  // this: it used to be the tier where the graph and the selection took turns, so
+  // you could only ever look at one of the two things the app is for.
+  it('keeps both data panes on screen for an iPad in landscape', () => {
+    expect(layoutFor(1024, 648)).toBe('medium');
+    expect(layoutFor(1024, 768)).toBe('medium');
+  });
+
+  // A landscape phone, too. It used to be the case that justified a whole tier —
+  // `short` — and nothing is in a row here, so there is nothing for it to guard.
+  it('keeps both data panes on screen for a landscape phone', () => {
+    expect(layoutFor(844, 390)).toBe('medium');
+    expect(layoutFor(915, 412)).toBe('medium');
+  });
+
+  it('drops to one column exactly where those two columns stop fitting', () => {
     expect(layoutFor(TWO_COLUMN_MIN - 1, TALL)).toBe('narrow');
     expect(layoutFor(390, TALL)).toBe('narrow');
     expect(layoutFor(0, TALL)).toBe('narrow');
   });
 
+  // `GRAPH_MIN_WIDTH + DETAILS_WIDTH`, not the old list-plus-graph sum: the pane
+  // keeping its column beside the graph is the details pane now.
+  it('measures the two-column floor from the two panes actually in it', () => {
+    expect(TWO_COLUMN_MIN).toBe(GRAPH_MIN_WIDTH + DETAILS_WIDTH);
+    expect(layoutFor(730, TALL)).toBe('narrow');
+  });
+
   // The phones the one-column arrangement is for, and the point of deriving its
-  // threshold from the *collapsed* header floor rather than reusing `medium`'s:
+  // threshold from the *collapsed* header floor rather than the open-header one:
   // at 717 the 667px phone would have gone to the switching tier.
   it('stacks every phone held upright, down to a 667px one', () => {
     expect(layoutFor(390, 844)).toBe('narrow');
@@ -69,27 +95,22 @@ describe('layoutFor', () => {
     expect(layoutFor(390, 508)).toBe('narrow-short');
   });
 
-  it('unstacks the details pane exactly where the graph would go under', () => {
-    expect(layoutFor(900, STACKED_MIN_HEIGHT)).toBe('medium');
-    expect(layoutFor(900, STACKED_MIN_HEIGHT - 1)).toBe('short');
-  });
-
-  // The case that started this: at 844×390 the old width-only tier said
-  // `medium`, and the details row plus the graph's own header left the detail
-  // plot 12px tall.
-  it('does not stack a landscape phone', () => {
-    expect(layoutFor(844, 390)).toBe('short');
-    expect(layoutFor(915, 412)).toBe('short');
-  });
-
-  it('still stacks a tablet held upright', () => {
-    expect(layoutFor(768, 1024)).toBe('medium');
-  });
-
-  // Three columns don't stack anything, so a short window has nothing to gain
-  // from a rearrangement and keeps the arrangement it can afford in width.
+  // Nothing is in a row at two columns or more, so a short window has nothing to
+  // gain from a rearrangement and keeps what it can afford in width. Height is
+  // consulted at exactly one boundary, and it is the one below.
   it('lets a wide window stay wide however short it is', () => {
     expect(layoutFor(1600, 300)).toBe('wide');
+  });
+
+  it('has exactly one boundary that height decides', () => {
+    const boundaries = new Set<number>();
+    for (let width = 200; width <= 2000; width += 1) {
+      for (const height of [300, 600, 900]) {
+        if (layoutFor(width, height) !== layoutFor(width, height + 1)) boundaries.add(width);
+      }
+    }
+    // Only widths below the two-column floor can answer differently by height.
+    for (const width of boundaries) expect(width).toBeLessThan(TWO_COLUMN_MIN);
   });
 
   // The point of the tiers: whatever the window, the graph is either at its
@@ -98,26 +119,21 @@ describe('layoutFor', () => {
   it('never leaves the graph below its minimum width', () => {
     for (let width = TWO_COLUMN_MIN; width <= 2000; width++) {
       const mode = layoutFor(width, TALL);
-      const apparatus = mode === 'wide' ? SIDEBAR_WIDTH + DETAILS_WIDTH : SIDEBAR_WIDTH;
+      // What the arrangement spends beside the graph. `medium` no longer spends
+      // the sidebar at all — that is the whole change — so its apparatus is the
+      // details column alone.
+      const apparatus =
+        mode === 'wide' ? SIDEBAR_WIDTH + DETAILS_WIDTH : DETAILS_WIDTH;
       expect(width - apparatus).toBeGreaterThanOrEqual(GRAPH_MIN_WIDTH);
     }
   });
 
-  // Same property in the other axis, for the two tiers that put a pane in a row:
-  // everywhere else the graph has the window's full height. Each is held to the
-  // floor its own retreat justifies — see `GRAPH_MIN_HEIGHT_COMPACT`.
-  it('never leaves the graph below its minimum height', () => {
-    for (let height = 200; height <= 2000; height++) {
-      if (layoutFor(900, height) !== 'medium') continue;
-      expect(height - detailsRow(height)).toBeGreaterThanOrEqual(GRAPH_MIN_HEIGHT);
-    }
-  });
-
-  // Here the row itself holds the property, by reserving the graph's floor and
-  // the bar before taking its share — so this passes at every height rather than
-  // only above the threshold. It is the check that the `calc()` in App.svelte and
-  // the reserve here are the same number: an earlier version sized the row as a
-  // bare 45% and a 667px phone stacked with a 310px graph.
+  // The other axis. Only one arrangement puts a pane in a row now, and there the
+  // row itself holds the property by reserving the graph's floor and the bar
+  // before taking its share — so this passes at every height rather than only
+  // above the threshold. It is the check that the `calc()` in App.svelte and the
+  // reserve here are the same number: an earlier version sized the row as a bare
+  // 45% and a 667px phone stacked with a 310px graph.
   it('never leaves a stacked one-column graph below its collapsed minimum', () => {
     for (let height = 200; height <= 2000; height++) {
       if (layoutFor(390, height) !== 'narrow') continue;
@@ -130,36 +146,46 @@ describe('layoutFor', () => {
   // stacking. Not a term in either threshold — this is the check that it didn't
   // need to be.
   it('never stacks a details row too short to say anything', () => {
-    for (let height = STACKED_MIN_HEIGHT; height <= 2000; height++) {
-      expect(detailsRow(height)).toBeGreaterThanOrEqual(DETAILS_MIN_ROW);
-    }
     for (let height = NARROW_STACK_MIN_HEIGHT; height <= 2000; height++) {
       expect(narrowDetailsRow(height)).toBeGreaterThanOrEqual(DETAILS_MIN_ROW);
     }
   });
 
-  /** What `min(40%, 320px)` in App.svelte's medium grid resolves to. */
-  function detailsRow(height: number): number {
-    return Math.min(DETAILS_ROW_FRACTION * height, DETAILS_ROW_MAX);
-  }
-  /** And `min(45%, calc(100% - 382px))` in its narrow one. */
+  /** What `min(45%, calc(100% - 382px))` in App.svelte's narrow grid resolves to. */
   function narrowDetailsRow(height: number): number {
     return Math.min(NARROW_DETAILS_ROW_FRACTION * height, height - NARROW_GRAPH_RESERVE);
   }
 });
 
 describe('listIsSheet', () => {
-  it('gives the list a column wherever there is room beside something', () => {
+  it('gives the list a column only where all three fit', () => {
     expect(listIsSheet('wide')).toBe(false);
-    expect(listIsSheet('medium')).toBe(false);
-    expect(listIsSheet('short')).toBe(false);
   });
 
-  // Both one-column tiers, and it is width that decides: what makes the list the
-  // pane to demote is that there is nothing to put it beside.
-  it('demotes it to a sheet at one column, however tall the window', () => {
-    expect(listIsSheet('narrow')).toBe(true);
-    expect(listIsSheet('narrow-short')).toBe(true);
+  // The moment three columns stop fitting, the list is the one that goes — it is
+  // the apparatus of the three. See layout.ts for what the arrangement this
+  // replaced was paying instead.
+  it('demotes it to a sheet everywhere below that', () => {
+    for (const mode of ['medium', 'narrow', 'narrow-short'] as const) {
+      expect(listIsSheet(mode)).toBe(true);
+    }
+  });
+});
+
+describe('listSheetCoversWindow', () => {
+  // A drawer wherever a drawer leaves the graph its width, which is the
+  // two-column tier: 280px of list beside 480px of graph at the tightest such
+  // window.
+  it('opens as a drawer at two columns', () => {
+    expect(listSheetCoversWindow('medium')).toBe(false);
+    expect(TWO_COLUMN_MIN - SIDEBAR_WIDTH).toBeGreaterThanOrEqual(GRAPH_MIN_WIDTH);
+  });
+
+  // At one column there is no beside left to preserve: a 280px drawer would leave
+  // a 110px sliver of graph on a phone.
+  it('takes the window at one column', () => {
+    expect(listSheetCoversWindow('narrow')).toBe(true);
+    expect(listSheetCoversWindow('narrow-short')).toBe(true);
   });
 });
 
@@ -175,23 +201,19 @@ describe('switchedPanes', () => {
     expect(switchedPanes('narrow')).toEqual([]);
   });
 
-  it('switches the two data panes wherever there is no height to stack', () => {
-    expect(switchedPanes('short')).toEqual(['graph', 'selection']);
+  // Exactly one arrangement left, and it is the smallest. Taking turns is the last
+  // retreat, after the list's column and after the details pane's.
+  it('switches the two data panes only where nothing else fits', () => {
     expect(switchedPanes('narrow-short')).toEqual(['graph', 'selection']);
+    expect(switchedPanes('narrow-short')).toContain('graph');
   });
 
   // It used to, at the one tier that switched all three, and that made "what is
   // plotted" cost the same tap as "what did I just select". The list is a sheet
   // now; see `listIsSheet`.
   it('never offers the series list', () => {
-    for (const mode of ['wide', 'medium', 'short', 'narrow', 'narrow-short'] as const) {
+    for (const mode of ['wide', 'medium', 'narrow', 'narrow-short'] as const) {
       expect(switchedPanes(mode)).not.toContain('series');
-    }
-  });
-
-  it('always offers the graph, which is what the fallback returns', () => {
-    for (const mode of ['short', 'narrow-short'] as const) {
-      expect(switchedPanes(mode)).toContain('graph');
     }
   });
 });
@@ -209,10 +231,12 @@ describe('isPaneVisible', () => {
     expect(isPaneVisible('graph', 'selection', panes)).toBe(false);
   });
 
-  // The case a single active-pane comparison gets wrong: the list is a column
-  // here, so it stays on screen while the other two take turns.
+  // The case a single active-pane comparison gets wrong. The list is never a
+  // switched pane, so a `pane === active` test would hide it whenever the switcher
+  // was on something else — and the shell would then have no way to say "the sheet
+  // is open" through the same attribute.
   it('keeps an unswitched pane on screen while others take turns', () => {
-    const panes = switchedPanes('short');
+    const panes = switchedPanes('narrow-short');
     expect(isPaneVisible('series', 'selection', panes)).toBe(true);
     expect(isPaneVisible('graph', 'selection', panes)).toBe(false);
     expect(isPaneVisible('selection', 'selection', panes)).toBe(true);
@@ -220,11 +244,11 @@ describe('isPaneVisible', () => {
 });
 
 describe('resolvePane', () => {
-  const short = switchedPanes('short');
+  const switched = switchedPanes('narrow-short');
 
   it('honours the pane the user asked for', () => {
-    expect(resolvePane('graph', short)).toBe('graph');
-    expect(resolvePane('selection', short)).toBe('selection');
+    expect(resolvePane('graph', switched)).toBe('graph');
+    expect(resolvePane('selection', switched)).toBe('selection');
   });
 
   // The tap that used to be swallowed. There is nothing selected in either of
@@ -232,11 +256,11 @@ describe('resolvePane', () => {
   // a tap the user just made from a selection that has since gone. App.svelte
   // moves the switcher off Selection when the point goes; see the doc comment.
   it('shows the selection pane whether or not anything is selected', () => {
-    expect(resolvePane('selection', short)).toBe('selection');
+    expect(resolvePane('selection', switched)).toBe('selection');
   });
 
   it('falls back to the graph for a pane this arrangement does not switch', () => {
-    expect(resolvePane('series', short)).toBe('graph');
+    expect(resolvePane('series', switched)).toBe('graph');
     expect(resolvePane('selection', [])).toBe('graph');
     expect(resolvePane('series', [])).toBe('graph');
   });

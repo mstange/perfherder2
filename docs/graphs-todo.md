@@ -244,23 +244,27 @@ Living checklist. Update in the same commit as the work it describes.
   exist. A one-column window opens on the graph — the door is now on it, and the
   panel covers the window at that width, so Done lands the user on their new
   graph. See graphs.md, "With nothing plotted, the pane is a call to action"
-- A fifth arrangement for the phone: at one column the **series list stops being a
-  pane** and becomes a sheet behind a `●● 2 series` button in the bottom bar, and
-  the selection takes a reserved row under the graph instead of a turn in a
-  switcher. Reading a point no longer costs a trip out of the graph and back, and
-  the row is sized by a *reserve* (`min(45%, 100% − 382px)`) rather than a cap, so
-  a 667px phone stacks with the graph exactly on its collapsed-header floor. The
-  tier below it, `narrow-short`, is the one that still switches. Tapping Selection
-  with nothing selected now shows the pane and its instruction instead of being
-  swallowed — the stale-selection fallback moved out of `resolvePane` into the
-  effect that watches the point go. See design.md, "At one column the series list
-  is the pane that stops being a pane"
-- A shell arrangement, `short`, for a window that can afford columns but
-  not rows — and the tier is now a function of both axes rather than of width.
-  A landscape phone (844×390) took the stacking tier and got a **12px** detail
-  plot; it gets 126px now, and `layout.test.ts` asserts the graph's height floor
-  the way it already asserted the width one. See design.md, "The shell has four
-  arrangements"
+- **Below `wide` the series list stops being a pane** and becomes a sheet behind a
+  `●● 2 series` button in a bottom bar: a 280px drawer over the left where one fits,
+  the whole window at one column. The graph and the selection keep their columns
+  instead, so reading a point no longer costs a trip out of the graph and back — the
+  case that prompted it was an iPad in landscape (1024×648), where they took turns
+  and you could only ever see one of the two things the app is for; it now gets
+  704×591 and 320×591. At one column the selection takes a reserved row under the
+  graph, sized by a *reserve* (`min(45%, 100% − 382px)`) rather than a cap, so a
+  667px phone stacks with the graph exactly on its collapsed-header floor. Tapping
+  Selection with nothing selected shows the pane and its instruction instead of
+  being swallowed — the stale-selection fallback moved out of `resolvePane` into the
+  effect that watches the point go. See design.md, "The pane that stops being a pane
+  is the series list"
+- That deleted two tiers and a height threshold. The old `medium` paid for the
+  list's 280px column out of 40% of the graph's *height*, forever — a column costs
+  its width once, so at 900px the graph goes from 620×432 to 580×843 — and `short`
+  existed only to guard that row on windows with no height for it. **The boundary
+  between them also ran backwards**: 900×716 gave the graph 620×655 and four more
+  pixels of height tipped it into `medium` and 620×432. Nothing is in a row above one
+  column now, so height decides exactly one boundary and `layout.test.ts` asserts
+  that. See design.md, "The shell has four arrangements"
 - The graph header rebuilt as two labelled groups, `RANGE` and `SHOW`, sharing the
   picker's control-block idiom (`.control-*` in app.css) and its rule for which row
   a control belongs on: what loads against what shows. Free at wide widths, ~30px

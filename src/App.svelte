@@ -9,6 +9,7 @@
   import GraphPane from './lib/graphs/GraphPane.svelte';
   import SeriesList from './lib/graphs/SeriesList.svelte';
   import ChevronIcon from './lib/shared/ChevronIcon.svelte';
+  import ThemeToggle from './lib/shared/ThemeToggle.svelte';
   import Tooltip from './lib/shared/Tooltip.svelte';
   import { AppState } from './lib/graphs/appState.svelte';
   import {
@@ -16,6 +17,7 @@
     isPaneVisible,
     layoutFor,
     listIsSheet,
+    listSheetCoversWindow,
     resolvePane,
     switchedPanes,
     type Pane,
@@ -43,7 +45,7 @@
     app.removeSeries(series.map(refFor));
   }
 
-  // Which of the five arrangements the window can afford. The thresholds and
+  // Which of the four arrangements the window can afford. The thresholds and
   // the reasoning are in layout.ts; what is here is only the wiring.
   //
   // Driven from JS and published as `data-layout` rather than written as media
@@ -53,8 +55,9 @@
   // switcher offers. A media query plus a matching `matchMedia` would be the
   // same numbers written twice, and the failure would be silent.
   //
-  // Both axes, because two of the arrangements put a pane in a *row* — see
-  // layout.ts, and `resize` fires for either dimension.
+  // Both axes, because one arrangement puts a pane in a *row*, and a row needs
+  // height the way a column needs width — see layout.ts. `resize` fires for either
+  // dimension, so one listener covers both.
   let layout = $state(layoutFor(window.innerWidth, window.innerHeight));
   $effect(() => {
     const measure = () => (layout = layoutFor(window.innerWidth, window.innerHeight));
@@ -118,12 +121,20 @@
     if (!sheeted) listSheetOpen = false;
   });
 
-  // Everything the open sheet is covering, which has to go `inert` for the same
-  // reason the panel's panes do: it is on top of them, so Tab would otherwise walk
-  // into controls nobody can see — the bar's own button first, since the sheet is
-  // drawn over it. It is a DOM property, not a paint one, so `z-index` cannot say
-  // this and nor can the CSS that hides the rest.
-  const sheetCovers = $derived(sheeted && listSheetOpen);
+  // Is the open sheet *covering* the window, or is it the 280px drawer that leaves
+  // the graph beside it? Only the first has to take what it hides out of the DOM:
+  // it is on top of the bar and both panes, so Tab would otherwise walk into
+  // controls nobody can see — the button that opened it first of all. `z-index` is
+  // a paint order and cannot say that, which is why this is a property and not CSS.
+  //
+  // A drawer leaves everything it overlaps visible, so nothing there is hidden and
+  // nothing needs to be inert; it is non-modal in the same way, and for the same
+  // reason, as the Add-series panel docked beside this list in `wide`.
+  const sheetCovers = $derived(listSheetOpen && listSheetCoversWindow(layout));
+  // Open in either presentation. What the slot announces itself as, and what the
+  // focus round trip below is keyed on — a drawer is just as much a revealed region
+  // as a full-window sheet, it simply hides nothing while it is there.
+  const sheetShown = $derived(sheeted && listSheetOpen);
 
   // And focus, which `inert` would otherwise drop on the floor: blurring the
   // element it is applied to sends focus to the body, so a keyboard user opening
@@ -245,74 +256,85 @@
   data-plotted={seriesCount > 0 || null}
   style:height={heightStyle}
 >
-  {#if sheeted || panes.length > 0}
-    <!-- One bar, at whichever edge the arrangement puts it, holding up to two
-         things: the button that opens the series sheet, and the switcher for the
-         panes that can't be beside each other here. Both are absent in the
-         column arrangements, where the list has a column and every pane has a
-         cell, so the bar isn't rendered at all.
+  <!-- The app's own chrome, in the bottom-left corner at every width. It holds up
+       to three things: the button that opens the series sheet, the switcher for
+       panes that can't be beside each other here, and the theme toggle — which is
+       the one always present, and the reason the bar is.
 
-         One element rather than two grid items because in `narrow-short` both
-         are present and both belong at the bottom edge, and two items in one
-         grid area stack on top of each other. -->
-    <div class="bar" inert={listCovered || sheetCovers}>
-      {#if sheeted}
-        <!-- The series list, demoted to a button that states its count. This is
-             the trade the one-column arrangements make: the list is opened once
-             a session and the selection is read once per tap, so the selection
-             gets a permanent row on screen and the list gets this. See
-             layout.ts.
+       **It spans one column, not the window.** Under the series list in `wide` and
+       under the graph in `medium`, so in both the details pane keeps its full
+       height: it is a column of a pane whose content runs past 1000px, and a bar
+       across the bottom would cost it 45px to say nothing about it. A bar spanning
+       the window also cost the graph that height in `wide` for one toggle, which is
+       what made the toggle end up smuggled into the series list's footer in the
+       first place — where it was app chrome reachable only by opening a data
+       control. At one column there is only one column to be under.
 
-             Full-width where it is alone in the bar, which is a sheet handle and
-             is meant to read as one; beside a switcher it shrinks to its
-             content. Aria says `expanded`/`controls` rather than `haspopup`: the
-             sheet is a region in this document that this button reveals, which
-             is what those two describe. -->
-        <button
-          type="button"
-          bind:this={handleEl}
-          class="btn list-handle"
-          class:sole={panes.length === 0}
-          aria-expanded={listSheetOpen}
-          aria-controls="series-sheet"
-          onclick={() => (listSheetOpen = !listSheetOpen)}
-        >
-          {#if seriesDots.length > 0}
-            <span class="dots" aria-hidden="true">
-              {#each seriesDots as color, i (i)}<span class="dot" style:background={color}
-                ></span>{/each}
-            </span>
-          {/if}
-          <span class="count">{seriesCount === 0 ? 'No series' : `${seriesCount} series`}</span>
-          <ChevronIcon dir={listSheetOpen ? 'down' : 'up'} />
-        </button>
-      {/if}
-      {#if panes.length > 0}
-        <!-- Some panes can't be beside each other here, so they take turns and
-             this says whose turn it is. A segmented group because it is an
-             exclusive choice — the same vocabulary as the graph header's tracks;
-             see docs/graphs.md, "The header is two groups". Its contents come
-             from `switchedPanes`, which never offers the series list: that is
-             the sheet's job now, and the two arrangements that switch anything
-             switch exactly the graph and the selection. -->
-        <nav class="switcher" aria-label="Pane">
-          <div class="btn-group" role="group">
-            {#each panes as pane (pane)}
-              <button
-                type="button"
-                class="btn"
-                class:btn-selected={activePane === pane}
-                aria-pressed={activePane === pane}
-                onclick={() => (requestedPane = pane)}
-              >
-                {PANE_LABELS[pane]}
-              </button>
-            {/each}
-          </div>
-        </nav>
-      {/if}
-    </div>
-  {/if}
+       One element rather than three grid items because in `narrow-short` all three
+       are present and all belong at the bottom edge, and items sharing a grid area
+       stack on top of each other. -->
+  <div class="bar" inert={listCovered || sheetCovers}>
+    {#if sheeted}
+      <!-- The series list, demoted to a button that states its count. This is
+           the trade every arrangement below `wide` makes: the list is opened
+           once a session, where the graph is read continuously and the selection
+           once per point, so those two keep their columns and the list gets
+           this. See layout.ts.
+
+           Full-width in `narrow` only, where the bar is a phone wide and holds
+           nothing else: there it is a sheet handle and reads as one. Aria says
+           `expanded`/`controls` rather than `haspopup`: the sheet is a region in
+           this document that this button reveals, which is what those two
+           describe. -->
+      <button
+        type="button"
+        bind:this={handleEl}
+        class="btn list-handle"
+        aria-expanded={listSheetOpen}
+        aria-controls="series-sheet"
+        onclick={() => (listSheetOpen = !listSheetOpen)}
+      >
+        {#if seriesDots.length > 0}
+          <span class="dots" aria-hidden="true">
+            {#each seriesDots as color, i (i)}<span class="dot" style:background={color}
+              ></span>{/each}
+          </span>
+        {/if}
+        <span class="count">{seriesCount === 0 ? 'No series' : `${seriesCount} series`}</span>
+        <ChevronIcon dir={listSheetOpen ? 'down' : 'up'} />
+      </button>
+    {/if}
+    {#if panes.length > 0}
+      <!-- Some panes can't be beside each other here, so they take turns and this
+           says whose turn it is. A segmented group because it is an exclusive
+           choice — the same vocabulary as the graph header's tracks; see
+           docs/graphs.md, "The header is two groups". Its contents come from
+           `switchedPanes`, which never offers the series list: that is the sheet's
+           job now, and the one arrangement that switches anything switches exactly
+           the graph and the selection. -->
+      <nav class="switcher" aria-label="Pane">
+        <div class="btn-group" role="group">
+          {#each panes as pane (pane)}
+            <button
+              type="button"
+              class="btn"
+              class:btn-selected={activePane === pane}
+              aria-pressed={activePane === pane}
+              onclick={() => (requestedPane = pane)}
+            >
+              {PANE_LABELS[pane]}
+            </button>
+          {/each}
+        </div>
+      </nav>
+    {/if}
+    <!-- An appearance preference, not a data control, which is why it is here and
+         not in a pane: this bar is the only chrome that belongs to the app rather
+         than to something the app is showing. Trailing edge, and last in the DOM,
+         so it is the last thing Tab reaches rather than sitting between the
+         navigation and the panes. -->
+    <ThemeToggle />
+  </div>
 
   <!-- The series list stays live while the panel is open — it's the only place
        the result of an Add or a Remove is visible, and it's the control the
@@ -332,8 +354,8 @@
     data-active={(sheeted ? listSheetOpen : true) || null}
     inert={listCovered}
     tabindex="-1"
-    role={sheetCovers ? 'dialog' : null}
-    aria-label={sheetCovers ? 'Series' : null}
+    role={sheetShown ? 'dialog' : null}
+    aria-label={sheetShown ? 'Series' : null}
   >
     <SeriesList {app} onclose={sheeted ? closeSheet : undefined} />
   </div>
@@ -414,47 +436,60 @@
   }
 
   /* Three columns. Fixed side panes, elastic middle: the graph absorbs every
-     extra pixel, and the panes must not resize as their content loads. */
+     extra pixel, and the panes must not resize as their content loads.
+
+     The bar takes a second row under the *list* only, so the graph and the details
+     pane both run the full height of the window. That is the same 45px in the same
+     corner the series list's own footer used to spend, so this arrangement is
+     unchanged on screen — what changed is which element owns it. */
   main[data-layout='wide'] {
     grid-template-columns: var(--sidebar-width) minmax(0, 1fr) var(--details-width);
-    grid-template-areas: 'list graph details';
+    grid-template-rows: minmax(0, 1fr) auto;
+    grid-template-areas:
+      'list graph details'
+      'bar graph details';
   }
 
-  /* Two columns, and the details pane goes under the graph rather than away:
-     the graph gains the pane's full 320px of width and pays in height, which is
-     the right way round for a time series — it is read across, and the y axis
-     is the one that can be squeezed without losing a date.
+  /* Two columns, and the one that goes is the series list: `graph │ selection`,
+     both full height, with the list behind the bar's button. An iPad in landscape,
+     a tiled half-screen window, a landscape phone.
 
-     The details row is *reserved*, not grown into. Sizing it to its content
-     would move the graph under the pointer on the click that fills it, which is
-     the thing this app doesn't do (docs/design.md, "Layout stability"); and it
-     is the same bargain the wide layout already strikes, where an empty pane
-     holds 320px of width open all day. */
+     **This replaced two tiers, and both were paying for the list's column out of
+     the graph's height.** `medium` used to keep `list │ graph` and put the details
+     pane in a *row* under the graph; `short` sat below it for windows with no
+     height for that row, where the details pane took turns with the graph in a
+     switcher — which is the arrangement where you could only ever see one of the
+     two things the app is for. A column costs its width once and a row costs 40%
+     of the height forever, so at a 900px window the old arrangement left the graph
+     620×432 and this one leaves it 580×843: 34% more plot for 40px less width, and
+     the same answer at every width in the band.
+
+     The old boundary between them also ran backwards. At 900×716 `short` gave the
+     graph 620×655, and four more pixels of window height tipped it into `medium`
+     and 620×432 — a window growing made the graph a third smaller. With nothing in
+     a row here, height has no say at this tier at all, which is what makes the old
+     `short` unnecessary rather than merely improved: it existed because a row needs
+     height the way a column needs width.
+
+     Height therefore gets the same answer it gets in `wide`: a short window makes
+     every column short, and no rearrangement helps. See layout.ts.
+
+     The bar sits under the graph rather than across the window, so the details
+     pane keeps its full height. The pane's content runs past 1000px, so those 45px
+     are worth more to it than to a bar that says nothing about it — and the bar's
+     contents are one button and a toggle, which fit in 440px at the tightest window
+     this tier covers. */
   main[data-layout='medium'] {
-    grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
-    grid-template-rows: minmax(0, 1fr) min(40%, 320px);
+    grid-template-columns: minmax(0, 1fr) var(--details-width);
+    grid-template-rows: minmax(0, 1fr) auto;
     grid-template-areas:
-      'list graph'
-      'list details';
+      'graph details'
+      'bar details';
   }
 
-  /* Two columns, and the window has no height to stack in: the details pane
-     stops being a row and takes turns with the graph in the second column
-     instead. The series list is a column exactly as it is in `medium` — width is
-     not what is short here — so it is *not* one of the panes taking turns, and
-     the switcher sits over the column that is. A landscape phone, or a window
-     dragged down to a strip. */
-  main[data-layout='short'] {
-    grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
-    grid-template-rows: auto minmax(0, 1fr);
-    grid-template-areas:
-      'list bar'
-      'list pane';
-  }
-
-  /* One column, and it strikes `medium`'s bargain rather than switching: the
-     graph over a details row, both on screen, and the series list demoted to a
-     sheet behind the bar's button. A phone in portrait.
+  /* One column: the details pane's column becomes a row, which is the next-least
+     thing to give up after the list's column. Both panes still on screen. A phone
+     in portrait.
 
      This used to be three panes taking turns, which charged the same tap for
      "what did I just select" and "what is plotted" — and made the first one cost
@@ -462,19 +497,12 @@
 
      The row takes 45% where there is 45% to spare and *everything above the
      graph's floor* where there isn't — `100% - 382px`, being the graph's
-     collapsed-header minimum plus the bar. Not `medium`'s fixed 320px cap: a cap
-     protects the graph on a tall window and does nothing on a short one, and it is
-     the short one that needs protecting here. Both numbers are mirrored in
-     layout.ts (`NARROW_DETAILS_ROW_FRACTION`, `NARROW_GRAPH_RESERVE`), which
-     computes this tier's threshold from them; a copy that drifts is a threshold
-     that has stopped meaning what it says.
-
-     The bar is at the *bottom* in both one-column arrangements, and this is the
-     only place in the app that it is. It is the app's primary navigation on the
-     device least able to reach the top of its own screen, and a bar along the
-     bottom edge is where every phone platform puts one. `short` keeps it on top,
-     because there it spans one column of a landscape window rather than the
-     window, and nothing about that reach is hard. */
+     collapsed-header minimum plus the bar. Not a fixed cap: a cap protects the
+     graph on a tall window and does nothing on a short one, and it is the short one
+     that needs protecting here. Both numbers are mirrored in layout.ts
+     (`NARROW_DETAILS_ROW_FRACTION`, `NARROW_GRAPH_RESERVE`), which computes this
+     tier's threshold from them; a copy that drifts is a threshold that has stopped
+     meaning what it says. */
   main[data-layout='narrow'] {
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: minmax(0, 1fr) min(45%, calc(100% - 382px)) auto;
@@ -484,8 +512,8 @@
       'bar';
   }
   /* With nothing plotted the details row would be a second empty state under the
-     graph's own — "tap a point in the graph" in 360px, below "Nothing plotted
-     yet" in 440. So it goes, and the graph takes the window: the same reasoning
+     graph's own — "tap a point in the graph" in 380px, below "Nothing plotted
+     yet" in 400. So it goes, and the graph takes the window: the same reasoning
      that makes the graph pane a call to action rather than a pair of empty axes
      (graphs.md, "With nothing plotted, the pane is a call to action").
 
@@ -519,27 +547,54 @@
       'pane'
       'bar';
   }
-  main[data-layout='narrow'] > .bar,
-  main[data-layout='narrow-short'] > .bar {
-    border-top: 1px solid var(--border-default);
-    border-bottom: 0;
-  }
-  main[data-layout='short'] > .slot-graph,
-  main[data-layout='short'] > .slot-details,
   main[data-layout='narrow-short'] > .slot-graph,
   main[data-layout='narrow-short'] > .slot-details {
     grid-area: pane;
   }
-  /* The sheet: the list over every row of the grid, and over the bar that opened
-     it. It carries its own background because it is the only slot that has
-     something behind it, and its own `border-right` would be an edge against the
-     window. */
-  main[data-layout='narrow'] > .slot-list,
-  main[data-layout='narrow-short'] > .slot-list {
+  /* The handle spans the bar in the one arrangement where the bar is a phone wide
+     and holds nothing else, because there it is a sheet handle and is meant to read
+     as one — chevron at the far edge, count beside its dots. Everywhere else it
+     sizes to its content: beside the switcher in `narrow-short` there is no room to
+     spare, and in `medium` the bar is 760–1039px and a button that wide is not a
+     handle, it is a mistake. After the base rule, since neither a class nor an
+     attribute selector here adds enough specificity to reorder safely. */
+  main[data-layout='narrow'] > .bar > .list-handle {
+    flex: 1;
+  }
+  main[data-layout='narrow'] > .bar > .list-handle > .count {
+    margin-right: auto;
+  }
+  /* The sheet, in both presentations. It spans every row including the bar that
+     opened it, and carries its own background because it is the only slot with
+     something behind it. `border-right` is drawn here rather than by `.slot-list`'s
+     seam rule below, because in `wide` that edge faces the graph and here it faces
+     the graph *over* it — same line, different job, and the shadow beside it is
+     what says which. */
+  main:not([data-layout='wide']) > .slot-list {
     grid-column: 1;
     grid-row: 1 / -1;
     z-index: 5;
     background: var(--bg-canvas);
+  }
+  /* The slot takes focus when the sheet opens (see `sheetEl`), and a UA focus ring
+     around a whole pane reads as a rendering fault rather than as "you are here" —
+     it is a 280px-wide blue box drawn over the pane's own border and shadow. The
+     ring is suppressed rather than restyled because the *reveal* is the indication:
+     the sheet was not there a moment ago. Every control inside it keeps its own
+     `:focus-visible`, which is what a keyboard user actually navigates by. */
+  main:not([data-layout='wide']) > .slot-list:focus {
+    outline: none;
+  }
+  /* Two columns: a drawer the width of the column the list has in `wide`, in the
+     same place, so it reads as that column coming back rather than as a new screen.
+     Sized to the window instead — the first version — it is three cards and a
+     header stretched across 1039px. Nothing behind it is hidden, so nothing behind
+     it is `inert` and there is no backdrop: the shadow is what says it is on top.
+     See layout.ts, `listSheetCoversWindow`. */
+  main[data-layout='medium'] > .slot-list {
+    width: var(--sidebar-width);
+    border-right: 1px solid var(--border-default);
+    box-shadow: var(--shadow-overlay);
   }
   /* One rule for every arrangement where a slot can be off screen, and it reads
      the slot's own attribute rather than naming panes: what puts a slot off
@@ -552,9 +607,7 @@
      of the tab order and the accessibility tree, and the bar is the only honest
      way to reach them. The charts come back correctly sized: ScatterChart
      observes its wrapper, so 0×0 and back is a resize like any other. */
-  main[data-layout='short'] > .slot:not([data-active]),
-  main[data-layout='narrow'] > .slot:not([data-active]),
-  main[data-layout='narrow-short'] > .slot:not([data-active]) {
+  main:not([data-layout='wide']) > .slot:not([data-active]) {
     display: none;
   }
 
@@ -576,29 +629,33 @@
      know that; the shell is the only thing that does. Exactly one rule per
      seam, on the slot above or to the left of it. */
   main[data-layout='wide'] > .slot-list,
-  main[data-layout='medium'] > .slot-list,
-  main[data-layout='short'] > .slot-list {
+  main[data-layout='wide'] > .bar {
     border-right: 1px solid var(--border-default);
   }
-  main[data-layout='wide'] > .slot-details {
+  main[data-layout='wide'] > .slot-details,
+  main[data-layout='medium'] > .slot-details {
     border-left: 1px solid var(--border-default);
   }
-  main[data-layout='medium'] > .slot-details,
   main[data-layout='narrow'] > .slot-details {
     border-top: 1px solid var(--border-default);
   }
   /* `narrow-short` draws none: one pane fills the column above the bar, so every
-     edge it has is the window's own or the bar's. */
+     edge it has is the window's own or the bar's. The drawer's own right edge is
+     up with the rest of its rules, because there it is not a seam between two
+     cells — it is the edge of something lying on top. */
 
-  /* The bar. One box at whichever edge the arrangement puts it, holding the
-     series button, the switcher, or both. */
+  /* The bar. One box in the bottom-left corner at every width, and the top edge is
+     the only rule it draws — it is the bottom of the window everywhere, so there is
+     never anything below it to draw a seam against. It is also the app's primary
+     navigation on the devices least able to reach the top of their own screen, and
+     the bottom is where every touch platform puts one. */
   .bar {
     grid-area: bar;
     display: flex;
     align-items: center;
     gap: 8px;
     padding: 6px 8px;
-    border-bottom: 1px solid var(--border-default);
+    border-top: 1px solid var(--border-default);
     background: var(--bg-subtle);
   }
   .switcher {
@@ -621,24 +678,14 @@
 
   /* The series sheet's handle. `.btn` for the chrome, plus the three things it
      owns: a row of color dots, the count, and a chevron that points the way the
-     sheet moves. It is `.sole` when the bar holds nothing else, where it spans
-     the bar and reads as the handle it is; beside a switcher it shrinks to its
-     content and the switcher takes the rest. */
+     sheet moves. It sits at the left of the bar, under where the list's own column
+     is in `wide` and where its drawer opens — so the handle and the thing it opens
+     share an edge. */
   .list-handle {
     display: flex;
     align-items: center;
     gap: 8px;
     min-width: 0;
-  }
-  .list-handle.sole {
-    flex: 1;
-    /* The chevron to the far edge, the count beside its dots. A handle spanning
-       the window with everything bunched at the left reads as a button that
-       happens to be wide. */
-    justify-content: flex-start;
-  }
-  .list-handle.sole .count {
-    margin-right: auto;
   }
   .list-handle .count {
     overflow: hidden;

@@ -39,7 +39,7 @@ change is wrong for a reason the code doesn't show:
 | A percentage or a delta in the details pane | graphs.md, "The three change cards say it the same way" — one component draws all three headlines, and the sign is the measurement's, never the verdict's |
 | Anything that renders before its data arrives | "Layout stability" |
 | A text field that takes focus, or anything sized to the window's height | "The on-screen keyboard has to take height from the app, not cover it" — `100dvh` is not what a keyboard shrinks, and an autofocus is a keyboard nobody asked for |
-| Where a pane sits, how wide it is, or a border between two panes | "The shell has five arrangements, and the graph keeps its size" — there are five, the thresholds are computed from the pane sizes in `shared/layout.ts` rather than chosen (*both* axes: a pane that becomes a row needs height the way a column needs width), a pane that draws its own border draws a doubled one as soon as the arrangement moves it, and at one column the series list is not a pane at all but a sheet behind the bottom bar's button — see that section's "At one column the series list is the pane that stops being a pane" |
+| Where a pane sits, how wide it is, or a border between two panes | "The shell has four arrangements, and the graph keeps its size" — there are four, the thresholds are computed from the pane sizes in `shared/layout.ts` rather than chosen, a pane that draws its own border draws a doubled one as soon as the arrangement moves it, and **below `wide` the series list is not a pane at all** but a sheet behind the bottom bar's button. Read that section's "The pane that stops being a pane is the series list" before adding a tier or moving a pane: two tiers were deleted for paying the list's 280px column out of the graph's *height*, and one of them was why an iPad in landscape could only show the graph or the selection |
 | A fetch, or a new endpoint | "Validating API responses" and [api-assumptions.md](api-assumptions.md); plus "Cache key" if the result is cached, and "The picker's caches live at module scope" if it is the picker doing the fetching — a cache on `PickerState` does not survive the panel closing |
 | `SeriesMeta`, or anything that reads a series' metadata | "Two endpoints describe a series" below. It arrives from one of two responses, `source` says which, and two of its fields are answerable by only one of them — api-assumptions.md, "Two null fields mean different things depending on `source`" |
 | A treeherder *list* endpoint | its default page is 10 rows and truncation is silent — a partial answer is shaped exactly like a complete one. comparison.md, "The inline pushlog", and the `getCommonAlerts` note in graphs-todo.md |
@@ -1059,7 +1059,7 @@ Which group folds is not a matter of taste either:
   somewhere else to be: the *N* on the graph count (what a tap did is still
   visible on the row it acted on, which turns into a tinted `Remove` carrying the
   series' colour) and the bulk button (a row's own Add is one tap away, and the
-  series list's footer carries `Remove all`). Above it, both stay — including at a
+  series list's header carries `Remove all`). Above it, both stay — including at a
   900px window, where the panel folds its load row but has room for the row.
   Deliberately *not* the fold's threshold: in the table layout there is no sort
   control, so three items fit all the way down to the fold, and reusing one number
@@ -1318,7 +1318,7 @@ Consequences worth knowing:
   common state where the subtest payload hasn't loaded and there is no
   count to show.
 
-### The shell has five arrangements, and the graph keeps its size
+### The shell has four arrangements, and the graph keeps its size
 
 `main` is a series list, a graph and a details pane. The two side panes are a
 fixed 600px between them, and for a long time that was a hard floor the graph
@@ -1330,77 +1330,142 @@ read a graph somebody linked in a bug.
 
 The rule is the other way round: **the graph is the content, the side panes are
 apparatus, and a pane that no longer fits stops being a column rather than
-squeezing the graph.** That gives five arrangements, and the thresholds are
+squeezing the graph.** That gives four arrangements, and the thresholds are
 arithmetic rather than taste — each tier ends exactly where its columns or rows
 would push the graph below `GRAPH_MIN_WIDTH` / `GRAPH_MIN_HEIGHT`:
 
 | Window | Tier | Arrangement | Graph gets |
 | --- | --- | --- | --- |
 | w ≥ 1040 | `wide` | `list │ graph │ details` | w − 600 |
-| w 720–1039, h ≥ 717 | `medium` | `list │ graph`, details in a row **under** the graph | w − 280, h − 40% |
-| w 720–1039, h < 717 | `short` | `list │ graph`, details taking turns with the graph | w − 280, h |
-| w < 720, h ≥ 582 | `narrow` | graph over a details row, list behind a **bar button** | w, h − 45% − 57 |
-| w < 720, h < 582 | `narrow-short` | graph and details taking turns, list behind the same button | w, h − 57 |
+| w 760–1039 | `medium` | `graph │ details`, list a **drawer** behind a bar button | w − 320, h − 57 |
+| w < 760, h ≥ 582 | `narrow` | graph over a details row, list behind the same button | w, h − 45% − 57 |
+| w < 760, h < 582 | `narrow-short` | graph and details taking turns, list behind the same button | w, h − 57 |
 
-**Both axes are consulted, and the height one was missing until a phone was
-turned sideways.** The tier used to be a function of width alone, which is right
-while every pane is a column and wrong the moment one becomes a *row*: an 844×390
-landscape phone is wide enough for two columns, so it took the stacking
-arrangement, and between the details row (156px), the graph's own header (138px)
-and the overview (84px) the detail plot was left **12px tall**. The stacking
-bargain is that the graph pays for the pane's width in *height*, and that assumes
-there is height to pay with.
+Read down the table as a sequence of retreats, each giving up the least it can:
+**the list's column goes first, then the details pane's column becomes a row, then
+the row becomes a turn in a switcher.** Which pane goes first is the whole design;
+the next section is about it.
 
-So `short` is the arrangement for a window that can afford columns but not rows:
-the series list stays a column, because width is not what is short, and the
-details pane goes back to taking turns with the graph. Which makes the switcher's
-contents a question with more than one answer — `switchedPanes` — rather than the
-fixed list of three it was.
+**Only one boundary is decided by height, and there used to be two.** Height only
+ever matters where a pane is a *row*, because a row needs height the way a column
+needs width — an 844×390 landscape phone is wide enough for two columns, and when
+it took an arrangement that stacked a row it was left with a **12px** detail plot.
+There is now exactly one arrangement with a row in it, so there is exactly one
+place to ask, and `wide` and `medium` both answer height the same way: a short
+window makes every column short and no rearrangement helps.
 
-#### At one column the series list is the pane that stops being a pane
+#### The pane that stops being a pane is the series list
 
-The two one-column tiers used to be one, and it switched all three panes. That
-arrangement charged the same tap for two questions that are not worth the same:
-**"what did I just select" is asked once per point and "what is plotted" once a
-session.** So a phone paid a round trip out of the graph and back for every dot it
-inspected, while the pane it was paying for was mostly the empty space in the
-screenshot above — two series in an 844px column.
+**The list is the apparatus of the three.** The graph is read continuously and the
+selection once per point; the list is opened once a session to add something or to
+check a color. So the moment three columns stop fitting, it is the one that goes
+(`listIsSheet`) — and the two panes that are about the data keep their columns for
+as long as those fit.
 
-The list is therefore demoted, and the selection promoted, whenever nothing fits
-beside anything (`listIsSheet`):
+That rule arrived in two steps, and the first one stopped short. It was applied at
+one column only, where all three panes had been taking turns in a switcher — an
+arrangement that charged the same tap for "what did I just select" as for "what is
+plotted", so a phone paid a round trip out of the graph and back for every dot it
+inspected. Two tiers above it kept the list as a column and paid for it in the
+graph's height instead, and **both were paying in the wrong currency**:
+
+- `medium` kept `list │ graph` and put the details pane in a **row** under the
+  graph. A column costs its width once; a row costs 40% of the height forever. At
+  a 900px window that arrangement left the graph 620×432, and dropping the list
+  leaves it 580×843 — **34% more plot for 40px less width**, and the comparison
+  goes the same way at every width in the band.
+- `short` sat below it for windows with no height for that row, and there the
+  details pane took turns with the graph. That is the arrangement where **you can
+  only ever see one of the two things the app is for** — which is what an iPad in
+  landscape got, Safari's chrome putting it at 1024×648.
+- Worse, the boundary between them ran backwards. At 900×716 `short` gave the graph
+  620×655; four more pixels of window height tipped it into `medium`, which spent
+  40% of the height on the row and left 620×432. **A window growing made the graph
+  a third smaller.**
+
+Applying the rule at every width below `wide` collapses those two tiers into one
+and deletes `short` outright — not because it was improved but because it existed
+to guard a row, and there is no row at two columns any more. An iPad in landscape
+now gets `graph │ selection`, 704×591 and 320×591; a landscape phone gets 524×333
+and 320×333, both on screen, where before it had to choose.
 
 - **The list becomes a sheet behind one button in the bottom bar**, which states
   its count and carries the series' colors as overlapping dots. The dots are a
   count cue and not a legend — a swatch identifies a series by *shape* as well as
   color (see the series list and the details pane), and half of that would be
-  worse than none; the number beside them is the real answer. The sheet opens over
-  the window, and a cross in its header dismisses it, as does Escape.
+  worse than none; the number beside them is the real answer. A cross in its header
+  dismisses it, as does Escape.
+- **How much of the window it takes depends on how much there is to preserve**
+  (`listSheetCoversWindow`). At two columns it is a **drawer**: 280px over the left,
+  the same width and the same place as the list's column in `wide`, so it reads as
+  that column coming back rather than as a new screen. Sizing it to the window
+  everywhere was the first version and it is plainly wrong at 1039px — three cards
+  and a header stretched across a window wide enough for the arrangement it just
+  replaced. At one column there is no "beside" left to preserve, since 280px would
+  leave a 110px sliver of graph on a phone, so there it takes the window.
+- **That same question decides whether it is modal.** A drawer leaves everything it
+  overlaps visible, so reaching the graph behind it by Tab or by click is not
+  reaching anything hidden: nothing goes `inert`, there is no backdrop, and the
+  shadow is what says it is on top — non-modal in the same way, and for the same
+  reason, as the Add-series panel docked beside this list in `wide`.
 
-  **What it covers goes `inert`, and focus makes the round trip** — the same two
-  things the Add-series panel does, for the same reason: `z-index` is a paint
-  order and Tab follows the DOM, so without `inert` the first thing Tab reached
-  behind the sheet was the button that had just opened it. `inert` blurs whatever
-  it is applied to, which would leave a keyboard user at the top of the document,
-  so the sheet's *slot* takes the focus — the shell's own element, so nothing has
-  to be threaded through SeriesList, and a `tabindex="-1"` container is the better
-  target anyway: Tab from there walks the sheet's controls in their own order.
-  Coming back is the handle, which is the one control that opens this. Both
-  focus moves are `queueMicrotask`ed, because on open the slot is still
-  `display: none` and on close the handle is still `inert`.
-- **The selection gets a permanent row under the graph**, which is `medium`'s
-  bargain in one column: both panes on screen, nothing to switch, and a tap on a
-  point has its effect where the finger already is.
-- **The bar is at the bottom, and this is the only place in the app it is.** It is
-  the app's primary navigation on the device least able to reach the top of its own
-  screen. `short` keeps it on top, because there it spans one column of a landscape
-  window rather than the window, and nothing about that reach is hard.
-- **`narrow-short` is what is left when there is no height to stack in** — a window
-  dragged small in both axes, a phone with the keyboard up — and there the graph and
-  the details pane go back to taking turns. The list is still a sheet: a window this
-  size has *less* to spare for a pane read once a session, not more. The bar holds
-  the button and the switcher side by side, which is why there is one bar element
-  rather than two grid items; two items in one grid area stack on top of each other.
-- **The row's share is a reserve, not `medium`'s cap.** `min(45%, 100% − 382px)`,
+  **A full-window sheet does have to take what it hides out of the DOM**, the same
+  two things the panel does and for the same reason: `z-index` is a paint order and
+  Tab follows the DOM, so without `inert` the first thing Tab reached behind the
+  sheet was the button that had just opened it. `inert` blurs whatever it is applied
+  to, which would leave a keyboard user at the top of the document, so the sheet's
+  *slot* takes the focus — the shell's own element, so nothing has to be threaded
+  through SeriesList, and a `tabindex="-1"` container is the better target anyway:
+  Tab from there walks the sheet's controls in their own order. Coming back is the
+  handle, which is the one control that opens this. Both focus moves are
+  `queueMicrotask`ed, because on open the slot is still `display: none` and on close
+  the handle is still `inert`.
+- **The bar is in the bottom-left corner at every width, and it is the app's only
+  chrome of its own.** Up to three things: the sheet's handle, the switcher where a
+  tier switches, and the theme toggle — which is the one always present, and the
+  reason the bar exists in `wide` at all (see "Theming", where it explains why the
+  toggle was previously smuggled into the series list's footer). The bottom is where
+  every touch platform puts primary navigation, and it is the reachable edge on the
+  devices least able to reach the top of their own screen. `short` used to keep its
+  copy on *top*; there is one bar and one place for it now.
+
+  **It spans one column, not the window** — under the series list in `wide`, under
+  the graph in `medium`. So the details pane keeps its full height wherever it is a
+  column, which matters because its content runs past 1000px and 45px is worth more
+  to it than to a bar that says nothing about it. Spanning the window also charged
+  the graph that height in `wide` for one toggle, which is the cost that made a
+  window-wide bar look unaffordable there in the first place. At one column there is
+  only one column to be under.
+
+  The handle sits at the bar's leading edge, under where the list's column is in
+  `wide` and where its drawer opens, so the handle and the thing it opens share an
+  edge. It spans the bar in `narrow` and only there — the one arrangement where the
+  bar is a phone wide and holds nothing but it and the toggle, so it is a sheet
+  handle and reads as one. In `narrow-short` there is a switcher beside it, and in
+  `medium` the bar is 440–719px, where a button that wide is not a handle but a
+  mistake.
+
+  **`Remove all` is not in it, and is no longer in a footer either.** It was, at the
+  bottom-left of the series pane — which is exactly where the handle that opens that
+  pane sits, so a double-tap on the handle landed its second tap on `Remove all` and
+  threw away every plotted series. (Recoverable: `clearSeries` pushes a history
+  entry. Not acceptable.) It is in the list's *header* now, beside the heading rather
+  than beside `Add series…` or the close — same scope as the heading, and away from
+  the two controls a hand reaches for quickly. As an icon, because at 280px the text
+  wrapped the header to a second row and the header sits outside the scroller; a
+  trash rather than the card's `×`, because the two are a few pixels apart and mean
+  different scopes.
+- **The selection gets a column at two columns and a row at one**, and either way it
+  is on screen at the same time as the graph. A tap on a point has its effect where
+  the finger already is.
+- **`narrow-short` is what is left when there is no height even for the row** — a
+  window dragged small in both axes, a phone with the keyboard up — and there the
+  graph and the details pane go back to taking turns. It is the only arrangement that
+  switches anything. The list is still a sheet: a window this size has *less* to
+  spare for a pane read once a session, not more. The bar holds the button and the
+  switcher side by side, which is why there is one bar element rather than two grid
+  items; two items in one grid area stack on top of each other.
+- **The row's share is a reserve, not a cap.** `min(45%, 100% − 382px)`,
   where 382 is the graph's collapsed-header floor plus the bar. A cap protects the
   graph on a *tall* window and does nothing on a short one, and here it is the short
   one that needs protecting: a 667px phone lands the graph exactly on its 325px floor
@@ -1408,21 +1473,23 @@ beside anything (`listIsSheet`):
   over. 45% is the one number in this section chosen by eye rather than derived — past
   about half the screen the plot stops having the vertical range to tell two levels
   apart, and every point in it is a tap target.
-- **The graph's floor here is the collapsed-header one, 325 rather than 430**, and
-  that is a second floor rather than a correction of the first. `GRAPH_MIN_HEIGHT` is
-  what the graph is worth drawing at with its controls *open*, and `medium` holds out
-  for it because its retreat — `short` — costs only the details pane's column. The
-  retreat from `narrow` costs two taps per point, which is dearer, so this tier pays
-  for stacking with a one-line header instead. It is a bargain the graph pane strikes
-  for itself anyway: `collapsible` fires at exactly `GRAPH_MIN_HEIGHT`, so a stacked
-  narrow graph under 430px has a one-line header whether the constant exists or not.
-  What the constant does is stop the *threshold* from turning away a 667px phone that
-  would have been fine.
-- **`NARROW_STACK_MIN_HEIGHT` is a sum, not a division**, which is the opposite of
-  `medium`. The reserve above has already guaranteed the graph its floor at every
-  height, so the question left is whether what remains is a pane worth stacking:
-  325 + 57 + 200 = 582. `DETAILS_MIN_ROW` decides this tier, where in `medium` it is
-  a checked consequence.
+- **The graph's floor for that row is the collapsed-header one, 325 rather than
+  430**, and that is a second floor rather than a correction of the first.
+  `GRAPH_MIN_HEIGHT` is what the graph is worth drawing at with its controls *open*;
+  325 is the same sum with the header collapsed to its one-line bar (graphs.md, "A
+  pane too small for the bar collapses it to one line"). Using the smaller one here
+  is not a concession, because it is a bargain the graph pane strikes for itself
+  anyway: `collapsible` fires at exactly `GRAPH_MIN_HEIGHT`, so a stacked graph under
+  430px has a one-line header whether the constant exists or not. What the constant
+  does is stop the *threshold* from turning away a 667px phone that would have been
+  fine.
+- **`NARROW_STACK_MIN_HEIGHT` is a sum, not a division.** The reserve above has
+  already guaranteed the graph its floor at every height, so the question left is
+  whether what remains is a pane worth stacking: 325 + 57 + 200 = 582.
+  `DETAILS_MIN_ROW` is therefore a term in the arithmetic. It used to be neither
+  that nor anything else — the deleted `medium` sized its row as a bare percentage,
+  so 200 was a number `layout.test.ts` confirmed the arithmetic had happened to
+  clear.
 - **With nothing plotted the details row goes and the graph takes the window.**
   Otherwise a phone shows two empty states stacked — "tap a point in the graph" in
   380px, under "Nothing plotted yet" in 400. This is the layout change that
@@ -1431,30 +1498,19 @@ beside anything (`listIsSheet`):
   through the Add-series panel or the sheet, and at this width both cover the whole
   window, so the row appears and disappears behind something opaque. The bar stays
   either way, which keeps the one always-tappable piece of chrome from moving.
+- **Wherever the details pane is a row, the row is reserved rather than grown
+  into.** Sizing it to its content would move the graph under the pointer on the
+  very click that fills it — the thing this app doesn't do (see "Layout stability").
+  It is the same bargain `wide` strikes, where an empty pane holds 320px of width
+  open all day, and the exception below is the one case where nothing can be
+  clicked yet anyway.
 
-- **The middle tier moves the details pane rather than hiding it**, and that
-  buys the graph the pane's whole 320px of *width* at the cost of height. The
-  right way round for a time series: it is read across, and the y axis is the
-  one that can be squeezed without losing a date. It also keeps the graph fully
-  visible and clickable, which an overlay docked over it would not — shift-click
-  to compare needs two reachable points.
-- **The details row is reserved, not grown into.** Sizing it to its content
-  would move the graph under the pointer on the very click that fills it. It is
-  the same bargain the wide layout already strikes, where an empty pane holds
-  320px of width open all day; the cap is `min(40%, 320px)`, so a tall window
-  spends the extra on the graph rather than on a taller empty pane.
-
-  **That percentage is why the height threshold is a division.**
-  `STACKED_MIN_HEIGHT` is `GRAPH_MIN_HEIGHT / (1 − 0.4)` = 717, not the sum of two
-  minimums: above it the graph keeps its floor by construction, and the row comes
-  out at 286px or more — comfortably past the 200px the pane needs for its header,
-  the selected series' identity and the value headline. `DETAILS_MIN_ROW` is
-  therefore a checked consequence rather than a term in the arithmetic, and
-  `layout.test.ts` asserts both halves, so a fraction changed in App.svelte and not
-  mirrored in layout.ts fails a test instead of quietly stacking a useless row.
-- **The switching tiers switch rather than stack.** Where a tier switches at all
-  it is because there is no height to stack in, and two cramped panes are worse
-  than one with the window. A click on the graph moves the switcher to Selection,
+  **A row is also why a details *column* is preferable wherever one fits**, which
+  is the other half of why demoting the list was the right trade: the pane's content
+  runs past 1000px, so a full-height 320px column shows most of it and a 380px row
+  shows the first third. The graph keeps every pixel of height either way.
+- **A tier switches rather than stacks only when there is no height to stack in**,
+  and then two cramped panes are worse than one with the window. A click on the graph moves the switcher to Selection,
   because wherever the selection is switched that click's only visible effect is
   in a pane you would otherwise have to go and find — but only on a *change of
   point*, so zooming or toggling a switch leaves you where you are.
@@ -1486,10 +1542,11 @@ beside anything (`listIsSheet`):
 - **A slot asks whether it is visible, not whether it is the active pane.**
   `isPaneVisible` is `!switched || active`, which is what keeps one CSS rule for
   hiding the rest across arrangements that hide *different* slots for different
-  reasons: in `short` the series list is a column while the other two take turns,
-  and a plain `pane === active` test hides it. The list slot's `data-active` means
-  something else again where the list is a sheet — "the sheet is open" — and
-  resolving that in the shell is what lets one CSS rule cover both.
+  reasons. The list is never a switched pane, so a plain `pane === active` test
+  hides it whenever the switcher is on something else — and the shell would then
+  have no way to say "the sheet is open" through the same attribute, which is what
+  the list slot's `data-active` actually means below `wide`. Resolving both into one
+  attribute is what keeps one CSS rule for hiding.
 - **The tier is decided in JS and published as `data-layout`, not written as
   media queries.** Two things that are not CSS have to agree with it: which
   panes the Add-series panel covers, and therefore which are `inert` while it's
@@ -1509,8 +1566,10 @@ beside anything (`listIsSheet`):
 - **Each pane gets a slot `div` that is the grid item.** The panes are
   components with scoped styles, so the shell can't place them without reaching
   through `:global` for a class name three files away. The slot is also where
-  `inert` goes, which is what lets the list be live beside the panel in three
-  tiers and covered in the two where it is a sheet.
+  `inert` goes, which is what lets the list be live beside the panel in `wide`
+  and covered in the three tiers where it is a sheet — and, for the sheet itself,
+  what lets it take the panes behind it out of the tab order only in the two where
+  it covers them.
 
 The one-column tiers are also the ones that found two long-standing bugs in the picker,
 both of which bit at any window under ~1150px and are described in the next
@@ -1530,6 +1589,16 @@ when the panel closes, it shows the color the row's swatch just took,
 and its `×` is the removal control the user is going to use anyway. A
 tray inside the panel would have been a second place to manage series
 that exists only inside a dialog.
+
+**Docking only means something where the list is a column, which is now `wide`
+alone.** Below it the list is a sheet (previous section) and there is nothing to
+dock beside, so the panel takes the window — and what carries the feedback there is
+the panel's own rows, which mark what is already plotted and in which color
+(`plottedColors`). That was already the case at one column and is now the case at
+two; the live list beside the panel is the better answer where there is room for it,
+not the only one. The panel asks `listIsSheet`, published as `data-full`, rather
+than naming the tiers: whether it docks is the single question "is the list there",
+and naming tiers here would be one more copy of that list to keep in step.
 
 - **`--sidebar-width` lives in app.css**, because `main`'s grid and the
   panel's `inset` are in two scoped stylesheets with no other way to
@@ -1559,18 +1628,13 @@ that exists only inside a dialog.
 - **Left-aligned, still capped at 1400px.** On a display wide enough for
   the cap to bite, the leftover is graph — dimmed, but visible, and
   better company than empty backdrop.
-- **At one column there is no beside, so the panel takes the window** and
+- **Below `wide` there is no beside, so the panel takes the window** and
   the list's slot goes `inert` with the other two. This is the case the
   original version of this section ruled out — "no breakpoint that hands the
   sidebar back, inert-ness would then have to depend on the viewport, which
   CSS can't drive". The objection was right about CSS and wrong about the
   conclusion: the viewport *is* what decides, so the deciding moved to JS. See
   the previous section.
-
-  The overlay asks `listIsSheet`, published as `data-full`, rather than naming
-  the two tiers: whether the panel docks past the list or takes the window is
-  the single question "is the list there", and naming tiers here would be a
-  third copy of that list to keep in step.
 - The panel is ~280px narrower than it was. The table's `min-width: 64em`
   and its wrapper's `overflow: auto` were supposed to handle that — at a 1152px
   window the table fits exactly, and below that it should scroll horizontally
@@ -1729,13 +1793,23 @@ toggles](https://lea.verou.me/blog/2026/dark-mode-toggles/). The cost is that
 "am I following the OS?" is no longer visible; it's in the `title`, because it
 changes nothing about what the next click does.
 
-**It lives in the series pane's footer**, not in the graph header. The app has no
-toolbar of its own, and the graph header was the only always-on-screen chrome —
-but it is a row of *graph viewport* controls (range presets, replicate drawing,
-zoom), and a global appearance preference in that run reads as a fourth one. The
-header also wraps, so the toggle's position was a function of window width. The
-footer is unconditional for this reason: it renders with no series and therefore
-nothing to remove, so the toggle keeps one fixed corner at every width.
+**It lives in the shell's bottom bar**, not in the graph header and no longer in
+the series pane's footer.
+
+The graph header was the first candidate and is wrong: it is a row of *graph
+viewport* controls (range presets, replicate drawing, zoom), a global appearance
+preference in that run reads as a fourth one, and the header wraps — which would
+make the toggle's position a function of window width.
+
+So it went to the series list's footer, which was the only other always-on-screen
+chrome. **That stopped being true when the list stopped being a pane**: below `wide`
+the list is a sheet behind a button, so an app-level preference had become reachable
+only by opening a *data* control, and one tap deeper than it had ever been. The bar
+is the fix and it is also what the footer was standing in for — the app has chrome of
+its own now, in the bottom-left corner at every width, and the toggle is the one
+thing in it that is always there. In `wide` that is the same 45px in the same corner
+the footer used to occupy, so nothing moved on screen; what changed is which element
+owns the corner. See "The shell has four arrangements", the bar.
 
 `color-scheme` is set alongside the tokens rather than left as `light dark`,
 which is what gets form controls, scrollbars and default link colors to match.
@@ -1857,9 +1931,9 @@ square, and 16px on the fields that can be *typed into*. Components add to it on
 where they own a size it can't express, and they all use the same 32: the series
 list's icon buttons and drag handle 32 square, the theme toggle 72×32 (its width is
 the point of the control, so it is a fixed size rather than a floor), the filter
-box's chip removers 32, the series list's sheet close 32 square (the same shape and
-mark as the panel's, because it is the same control), and the panel's three other
-shapes below. **There is exactly one exception, and it is declared as one**: the
+box's chip removers 32, the series list header's two icon buttons 32 square — the
+sheet's close, which is the same shape and mark as the panel's because it is the same
+control, and `Remove all` — and the panel's three other shapes below. **There is exactly one exception, and it is declared as one**: the
 bottom bar's two controls — the pane switcher and the series sheet's handle — take
 44, being the app's primary navigation, driven by a thumb at the far end of its
 reach. Two numbers in the whole app.

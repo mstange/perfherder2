@@ -8,26 +8,41 @@
 // are apparatus, so the rule is the other way round — **the graph keeps a
 // usable size, and a side pane that no longer fits stops being a column.**
 //
-// Which gives five arrangements, and the thresholds are arithmetic rather than
+// **And the pane that stops being a column is the series list, at every width
+// below the one where all three fit.** It is the apparatus of the three: the
+// selection is read once per tap and the graph is read continuously, while the
+// list is opened once a session to add something or to check a color. So below
+// `THREE_COLUMN_MIN` it becomes a *sheet* behind a button in the bottom bar that
+// states its count — see `listIsSheet` — and the two panes that are about the
+// data keep their columns for as long as they fit.
+//
+// **That rule replaced two tiers with one, and both of them were paying for the
+// list's column in the wrong currency.** There used to be a `medium` that kept
+// `list │ graph` and moved the details pane into a *row* under the graph, and a
+// `short` below it for windows with no height to spare, where the details pane
+// went back to taking turns with the graph in a switcher. Two things were wrong
+// with that, and they are the same thing twice:
+//
+//   - The list's 280px of width was charged to the graph as 40% of its *height*,
+//     forever, and a column costs its width once. At a 900px window the row
+//     arrangement left the graph 620×432 and dropping the list leaves it 580×843
+//     — 34% more plot for 40px less width. The comparison goes the same way at
+//     every window in the band; there is no width where the row wins.
+//   - Worse, the boundary between them ran backwards. At 900×716 `short` gave the
+//     graph 620×655; four more pixels of window height tipped it into `medium`,
+//     which spent 40% of the height on the row and left 620×432. A window growing
+//     made the graph a third smaller.
+//
+// With nothing in a row above one column, the height axis stops mattering there
+// at all — which is also what makes the old `short` unnecessary rather than
+// merely improved. It existed because a *row* needs height the way a column needs
+// width; no rows, no tier. Height is now consulted at exactly one boundary, the
+// one where the columns have already run out.
+//
+// Which gives four arrangements, and the thresholds are arithmetic rather than
 // taste: a tier ends exactly where its columns or rows would push the graph
 // below `GRAPH_MIN_WIDTH` / `GRAPH_MIN_HEIGHT`. See docs/design.md, "The shell
-// has five arrangements".
-//
-// **The series list is the pane that stops being a pane.** On a phone all three
-// used to take turns in a switcher, which made "what is plotted" and "what did I
-// just tap" cost the same as each other — and they are not worth the same. The
-// selection is read once per tap and the list is opened once a session, so at the
-// widths where nothing fits beside anything the list becomes a *sheet* behind a
-// button that states its count, and the selection gets the bottom of the screen
-// under the graph. See `listIsSheet`.
-//
-// **Both axes are consulted, and the height one was missing for a while.** The
-// tier used to be a function of width alone, which is right for the columns and
-// wrong the moment a pane becomes a *row*: a landscape phone (844×390) is wide
-// enough for two columns, took the arrangement that stacks the details pane
-// under the graph, and left the detail plot 12px tall. `medium`'s bargain is
-// that the graph pays for the pane's width in height, and that assumes there is
-// height to pay with.
+// has four arrangements".
 
 /** Must match `--sidebar-width` in app.css. */
 export const SIDEBAR_WIDTH = 280;
@@ -71,30 +86,27 @@ export const GRAPH_MIN_HEIGHT_COMPACT = 325;
 
 // What the details pane needs before a *row* of it says anything: its own 40px
 // header, the 108px identity block naming the selected series, and the 46px
-// value headline. Measured off the live pane. Not a term in any threshold — the
-// row is a percentage, so it comes out at 286px at the tightest window that
-// stacks at all — but it is the reason that is comfortable rather than lucky,
-// and `layout.test.ts` checks it.
+// value headline. Measured off the live pane.
+//
+// **Only one arrangement puts it in a row now**, the one-column `narrow`, and
+// there this is a term in the threshold rather than a checked consequence — see
+// `NARROW_STACK_MIN_HEIGHT`. It used to be neither: `medium` stacked a row too and
+// sized it as a bare percentage, so 200 was something `layout.test.ts` confirmed
+// the arithmetic had happened to clear.
 export const DETAILS_MIN_ROW = 200;
 
-// The stacked row's own sizing, mirrored from `grid-template-rows` in
-// App.svelte's `main[data-layout='medium']`. Here because the threshold below is
-// computed from it, and a copy that drifts from the CSS is a threshold that
-// quietly stops meaning what it says. The one-column row is sized differently and
-// has its own pair below.
-export const DETAILS_ROW_FRACTION = 0.4;
-export const DETAILS_ROW_MAX = 320;
-
 /**
- * The bottom bar — the series button, the switcher, or both — mirrored from
- * `.bar` in App.svelte: 44px of touch target, 6px of padding either side, 1px of
- * border.
+ * The bottom bar — the series button, the switcher, or both — mirrored from `.bar`
+ * in App.svelte: 44px of touch target, 6px of padding either side, 1px of border.
+ *
+ * Every arrangement below `wide` has one, since every one of them keeps the series
+ * list behind its button. It is the price of the list's 280px column, and it is a
+ * good price in both axes: 57px of height back for 280px of width, once.
  *
  * **A term in the one-column threshold, and leaving it out put a 667px phone's
- * graph under its floor.** The row below is a percentage of the *grid*, and the
- * grid is the whole window: the bar's 57px come off the graph's share, not off
- * the details row's, so a threshold derived from the fraction alone is 57px
- * optimistic. `medium` has no equivalent term because it has no bar.
+ * graph under its floor.** The details row there is a percentage of the *grid*,
+ * and the grid is the whole window: the bar's 57px come off the graph's share, not
+ * off the row's, so a threshold derived from the fraction alone is 57px optimistic.
  */
 export const BOTTOM_BAR_HEIGHT = 57;
 
@@ -109,7 +121,7 @@ export const NARROW_GRAPH_RESERVE = GRAPH_MIN_HEIGHT_COMPACT + BOTTOM_BAR_HEIGHT
  * The one-column details row: `min(45%, 100% − NARROW_GRAPH_RESERVE)`, mirrored
  * from App.svelte.
  *
- * **A reserve rather than `medium`'s fixed 320px cap, and the difference is which
+ * **A reserve rather than a fixed cap, and the difference is which
  * end of the phone range it protects.** A cap protects the *graph* on a tall
  * window and does nothing for a short one, which is backwards here: what varies
  * across phones is not how much the pane could use — it could use all of it, the
@@ -206,74 +218,100 @@ export function foldPickerLoadRow(contentWidth: number, contentHeight: number): 
   return contentHeight - pickerChromeCost(contentWidth) < PICKER_LIST_MIN;
 }
 
-/** Below this the details pane cannot be a column. */
+/** Below this all three panes cannot be columns: the list is the one that goes. */
 export const THREE_COLUMN_MIN = SIDEBAR_WIDTH + GRAPH_MIN_WIDTH + DETAILS_WIDTH;
-/** Below this the series list cannot be a column either. */
-export const TWO_COLUMN_MIN = SIDEBAR_WIDTH + GRAPH_MIN_WIDTH;
 /**
- * Below this the details pane cannot be a *row*: the fraction it takes would
- * leave the graph under its height floor. A division rather than a sum because
- * the row is sized as a percentage of the window — at every height above this
- * the graph keeps `GRAPH_MIN_HEIGHT` by construction.
- */
-export const STACKED_MIN_HEIGHT = Math.ceil(GRAPH_MIN_HEIGHT / (1 - DETAILS_ROW_FRACTION));
-/**
- * The same question one column wide, and **a sum rather than a division**,
- * because the row's reserve has already guaranteed the graph its floor at every
- * height: what is left to ask is whether what remains is a pane worth stacking.
- * 325 + 57 + 200 = 582. So the graph's floor never decides this tier — it is
- * `DETAILS_MIN_ROW` that does, which is the opposite way round from `medium`,
- * where the row is a bare percentage and the floor is the whole question.
+ * Below this the *remaining two* cannot be columns either, and the arrangement
+ * drops to one.
  *
- * Below it there is no useful row to be had and the two panes go back to taking
- * turns: a window dragged small in both axes, and a phone with the keyboard up.
+ * **`GRAPH_MIN_WIDTH + DETAILS_WIDTH`, not `SIDEBAR_WIDTH + GRAPH_MIN_WIDTH`.** It
+ * used to be the latter, because the pane that kept its column beside the graph
+ * used to be the list; it is the details pane now, and the sum has to name the two
+ * panes actually in the row. 760 rather than 720, so a 730px window is one column
+ * where it used to be two — and better off for it, since the graph goes from
+ * 450×540 with a details row to 730×483 with one.
+ */
+export const TWO_COLUMN_MIN = GRAPH_MIN_WIDTH + DETAILS_WIDTH;
+/**
+ * Below this the details pane cannot be a *row* either, and the two panes go back
+ * to taking turns: a window dragged small in both axes, and a phone with the
+ * keyboard up.
+ *
+ * **A sum, and the only place height decides anything.** The row's reserve has
+ * already guaranteed the graph its floor at every height (see
+ * `NARROW_DETAILS_ROW_FRACTION`), so what is left to ask is whether what remains
+ * is a pane worth stacking: 325 + 57 + 200 = 582. `DETAILS_MIN_ROW` is therefore a
+ * term in the arithmetic rather than something a test confirms the arithmetic
+ * cleared.
+ *
+ * There was a second height threshold above this one, `STACKED_MIN_HEIGHT`, for
+ * the tier that stacked a row at *two* columns. Nothing is a row above one column
+ * any more, so it is gone along with the tier — see the note at the top of this
+ * file for why the arrangement it guarded was the wrong trade in the first place.
  */
 export const NARROW_STACK_MIN_HEIGHT = NARROW_GRAPH_RESERVE + DETAILS_MIN_ROW;
 
 /**
- * `wide` — three columns, the arrangement everything else is a retreat from.
- *   Nothing stacks, so it is the one tier height has no say in: a short window
- *   makes every column short and there is no rearrangement that would help.
- * `medium` — two columns; the details pane moves under the graph, which buys
- *   the graph the pane's full 320px of *width* and costs it height instead.
- *   The right trade for a time series, which is read across.
- * `short` — two columns, but the window has no height to give: the details pane
- *   stops being a row and joins the graph in the switcher. The series list is
- *   still a column, so only two panes are switched. This is a landscape phone,
- *   and a laptop window someone has dragged down to a strip.
- * `narrow` — one column: the graph over a details row, the same bargain `medium`
- *   strikes, and the series list demoted out of the layout altogether to a sheet
- *   behind a button that counts it. A phone in portrait. Nothing is switched
- *   here — the two panes worth seeing at once are both on screen.
+ * `wide` — three columns, the arrangement everything else is a retreat from, and
+ *   the only one where the series list is a pane. Nothing stacks, so height has no
+ *   say: a short window makes every column short and no rearrangement helps.
+ * `medium` — two columns, `graph │ selection`, with the list a 280px drawer behind
+ *   the bar's button. Height has no say here either, for the same reason — which
+ *   is the point of the arrangement. An iPad in landscape, a tiled half-screen
+ *   window, a landscape phone.
+ * `narrow` — one column: the graph over a details row, the list still behind the
+ *   button. A phone in portrait. Nothing is switched — the two panes worth seeing
+ *   at once are both on screen.
  * `narrow-short` — one column with no height to stack in, which is the one place
- *   left where the graph and the details pane take turns in a switcher. A
- *   browser window dragged small in both axes, and a phone with the keyboard up.
- *   The list is a sheet here too: a window this size has even less to spare for a
- *   pane that is read once a session.
+ *   left where the graph and the details pane take turns in a switcher. A browser
+ *   window dragged small in both axes, and a phone with the keyboard up.
+ *
+ * Read as a sequence of retreats: the list's column goes first, then the details
+ * pane's column becomes a row, then the row becomes a turn in a switcher. Each
+ * gives up the least it can.
  */
-export type LayoutMode = 'wide' | 'medium' | 'short' | 'narrow' | 'narrow-short';
+export type LayoutMode = 'wide' | 'medium' | 'narrow' | 'narrow-short';
 
 export function layoutFor(width: number, height: number): LayoutMode {
-  if (width < TWO_COLUMN_MIN) {
-    return height >= NARROW_STACK_MIN_HEIGHT ? 'narrow' : 'narrow-short';
-  }
   if (width >= THREE_COLUMN_MIN) return 'wide';
-  return height >= STACKED_MIN_HEIGHT ? 'medium' : 'short';
+  if (width >= TWO_COLUMN_MIN) return 'medium';
+  return height >= NARROW_STACK_MIN_HEIGHT ? 'narrow' : 'narrow-short';
 }
 
 /**
  * Is the series list a sheet behind a button here, rather than a pane of its own?
  *
- * The one-column tiers, and both of them: what makes the list the pane to demote
- * is not how much height there is but that there is no room for it *beside*
- * anything. See the note at the top of this file for why it is the list rather
- * than the details pane that goes.
+ * Everywhere but `wide`, which is to say: the moment all three panes stop fitting
+ * as columns, the list is the one that goes. See the note at the top of this file
+ * for why it is the list and not the details pane, and for what the arrangement
+ * this replaced was paying instead.
  *
  * Asked of the shell rather than folded into `switchedPanes` because a sheet is
- * not a turn in the switcher — it is a pane the button opens over the whole
- * window and a close button dismisses, and the switcher must not offer it.
+ * not a turn in the switcher — it is a pane the button reveals and a close button
+ * dismisses, and the switcher must not offer it.
  */
 export function listIsSheet(mode: LayoutMode): boolean {
+  return mode !== 'wide';
+}
+
+/**
+ * Does the sheet take the whole window, or open as a drawer over the left of it?
+ *
+ * **A drawer wherever a drawer leaves the graph its width, which is exactly the
+ * two-column tier**, and 280px of list beside 480px of graph at the tightest such
+ * window. Sizing it to the window everywhere was the first version and it is
+ * plainly wrong at 1039px: three cards and a header, stretched across a window
+ * wide enough for the arrangement it just replaced. The drawer is the same 280px
+ * column the list has in `wide`, in the same place, which is the other half of why
+ * it reads as the list coming back rather than as a new screen.
+ *
+ * At one column there is no "beside" left to preserve — 280px of drawer would
+ * leave a 110px sliver of graph on a phone — so there it takes the window. That
+ * also decides whether the panes behind it go `inert`: a drawer leaves them
+ * visible, so reaching them by Tab or by click is not reaching anything hidden,
+ * and the sheet is non-modal for the same reason the Add-series panel is.
+ */
+export function listSheetCoversWindow(mode: LayoutMode): boolean {
   return mode === 'narrow' || mode === 'narrow-short';
 }
 
@@ -303,13 +341,7 @@ export const PANE_LABELS: Record<Pane, string> = {
  * to.
  */
 export function switchedPanes(mode: LayoutMode): Pane[] {
-  switch (mode) {
-    case 'short':
-    case 'narrow-short':
-      return ['graph', 'selection'];
-    default:
-      return [];
-  }
+  return mode === 'narrow-short' ? ['graph', 'selection'] : [];
 }
 
 /**
@@ -317,9 +349,9 @@ export function switchedPanes(mode: LayoutMode): Pane[] {
  * of its own — and a switched one only when it is the active choice.
  *
  * Asking it this way rather than "which pane is showing" is what lets the shell
- * set one attribute per slot and keep one CSS rule for hiding the rest: in
- * `short` the series list is a column *and* two other panes are being switched,
- * and a single active-pane comparison gets that case wrong by hiding the list.
+ * set one attribute per slot and keep one CSS rule for hiding the rest — and the
+ * list slot answers a different question entirely (is its sheet open), which the
+ * shell resolves into the same attribute so that one rule still covers it.
  */
 export function isPaneVisible(pane: Pane, active: Pane, panes: Pane[]): boolean {
   return !panes.includes(pane) || pane === active;
@@ -329,7 +361,7 @@ export function isPaneVisible(pane: Pane, active: Pane, panes: Pane[]): boolean 
  * The pane to actually show, given the one the user last asked for.
  *
  * One thing can invalidate that choice: a pane that isn't switched in this
- * arrangement can't be the active one — resizing from `narrow-short` to `short`
+ * arrangement can't be the active one — resizing from `narrow-short` to `medium`
  * while on Selection would otherwise leave both switcher buttons unpressed and
  * the graph hidden. It falls back to the graph, which every arrangement that
  * switches anything offers.

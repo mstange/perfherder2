@@ -8,8 +8,8 @@
   import { flip } from 'svelte/animate';
   import type { AppState } from './appState.svelte';
   import { driftBadgeLabel, driftBadgeTitle } from './drift';
-  import ThemeToggle from '../shared/ThemeToggle.svelte';
   import CrossIcon from '../shared/CrossIcon.svelte';
+  import TrashIcon from '../shared/TrashIcon.svelte';
   import {
     autoScrollDelta,
     clampDy,
@@ -232,6 +232,39 @@
 <aside class="series-list">
   <header>
     <h2>Series</h2>
+    <!-- **In the header, and not in a footer, because of where the button that
+         opens this pane is.** As a sheet it is opened from the bottom bar's
+         handle, at the bottom-left of the window — which is exactly where a
+         footer's leading control sits, so a double-tap on the handle landed its
+         second tap on "Remove all" and threw away every plotted series. Undoable
+         via Back (`clearSeries` pushes), which does not make it acceptable.
+
+         Beside the heading rather than beside `Add series…`: it is the same
+         scope as the heading — this list, all of it — and putting a destructive
+         control next to the primary action, or next to the close that people tap
+         fast, just moves the mis-tap somewhere else.
+
+         An icon, because the text does not fit. The pane is 280px wide in both
+         the `wide` column and the drawer, and `SERIES` + `Remove all` +
+         `Add series…` + the close comes to ~299px of a 256px content box — it
+         would wrap the header to two rows, and the header sits outside the
+         scroller where that is list height gone for good. Distinct from the
+         card's `×` on purpose (see TrashIcon): one removes a series, this
+         removes all of them, and they are a few pixels apart.
+
+         Always rendered, disabled when there is nothing to remove, so the header
+         does not re-flow as the first series arrives — in `wide` the panel docks
+         *beside* this list, so that re-flow would happen in full view. -->
+    <button
+      type="button"
+      class="btn close remove-all"
+      disabled={app.series.length === 0}
+      title="Remove all series"
+      aria-label="Remove all series"
+      onclick={() => app.clearSeries()}
+    >
+      <TrashIcon size={14} />
+    </button>
     <!-- Dead while the panel is open — the panel *is* the thing this opens,
          and it's docked right beside this list rather than over it, so the
          button used to sit there offering hover feedback for a no-op.
@@ -459,20 +492,11 @@
     {/each}
   </div>
 
-  <!-- Always rendered, even with no series and so nothing to remove: it is the
-       theme control's home, and that has to be in the same place whatever the
-       app is showing. Keeping it mounted also stops the pane's bottom edge
-       from jumping when the last series goes away. -->
-  <footer>
-    {#if app.series.length > 0}
-      <button type="button" class="btn" onclick={() => app.clearSeries()}>Remove all</button>
-    {/if}
-    <!-- An appearance preference, not a series control — which is exactly why
-         it sits down here rather than in a data toolbar. The bottom corner is
-         where settings are looked for, it is on screen at every width, and
-         unlike the graph header (which wraps) its position doesn't move. -->
-    <ThemeToggle />
-  </footer>
+  <!-- No footer. It held two things and neither belonged to this pane: "Remove
+       all" is now in the header above (see there for why), and the theme toggle
+       has moved to the shell's bottom bar, which is app-level chrome in the same
+       screen corner at every width — where here it was reachable only by opening
+       the series sheet, which is a data control. See App.svelte, `.bar`. -->
 </aside>
 
 <style>
@@ -495,18 +519,25 @@
     border-bottom: 1px solid var(--border-default);
   }
   h2 {
-    /* `auto` on the right rather than relying on `space-between`, which would
-       centre the middle child once the sheet's close button makes three of
-       them: the heading goes left and the two controls travel together. */
-    margin: 0 auto 0 0;
+    margin: 0;
     font-size: 13px;
     text-transform: uppercase;
     letter-spacing: 0.04em;
     color: var(--fg-muted);
   }
-  /* Same shape, size and mark as the Add-series panel's close button, because it
-     is the same control: dismiss the thing that is covering the window. Chrome
-     comes from `.btn`; only the square is local. */
+  /* One square for both header icon buttons — the sheet's close and Remove all.
+     The close is the same shape, size and mark as the Add-series panel's, because
+     it is the same control: dismiss the thing covering the window. Chrome comes
+     from `.btn`; only the square is local. */
+  /* The gap that separates the two groups, and it belongs *after* Remove all
+     rather than after the heading: the heading and Remove all have the same scope
+     — this list, all of it — while `Add series…` and the sheet's close are the two
+     controls a hand reaches for quickly. Putting the auto margin on the heading
+     instead left the destructive button pressed up against the primary one, which
+     is the mis-tap this move was supposed to end. */
+  header .remove-all {
+    margin-right: auto;
+  }
   header .close {
     flex: none;
     display: grid;
@@ -735,20 +766,6 @@
   .actions .remove {
     grid-area: remove;
   }
-  footer {
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    gap: 8px;
-    padding: 8px 12px;
-    border-top: 1px solid var(--border-default);
-  }
-  /* Pins the theme toggle to the trailing edge, and leaves it there on its own
-     when there is no series to remove. `justify-content: space-between` would
-     slide it back to the leading edge in that case. */
-  footer .btn {
-    margin-right: auto;
-  }
   /* Chrome comes from `.btn` in app.css; only the square-icon size is local. */
   button.icon {
     display: grid;
@@ -781,9 +798,9 @@
       width: 32px;
       padding: 8px 0;
     }
-    /* app.css's floor gives this its height and nothing gives it its width, so
-       both axes here — and after the base rule, since a media query adds no
-       specificity. The same 32px square the panel's close button takes. */
+    /* app.css's floor gives these their height and nothing gives them their
+       width, so both axes here — and after the base rule, since a media query
+       adds no specificity. The same 32px square the panel's close button takes. */
     header .close {
       width: 32px;
       height: 32px;
@@ -795,7 +812,10 @@
   button.eye:hover:not(:disabled) {
     color: inherit;
   }
-  button.remove:hover:not(:disabled) {
+  /* Both removes wear the same warning on hover, the card's one and the header's
+     all. */
+  button.remove:hover:not(:disabled),
+  .remove-all:hover:not(:disabled) {
     background: var(--danger-subtle);
     border-color: var(--danger-fg);
     color: var(--danger-fg);
