@@ -443,10 +443,13 @@ button {
    are container-width queries about layout, which is a different question with a
    different answer.
 
-   Components add to this only where they own a size it can't express, and the
-   full register is: the bottom bar's pane switcher and series-sheet handle take 44
-   (the app's primary navigation,
-   driven by a thumb at the far end of its reach); the Add-series panel's four
+   Components add to this only where they own a size it can't express — **none of
+   them own a different number**, which is the state this block was written to
+   reach and only reached on the second attempt: the bottom bar's pane switcher and
+   series-sheet handle took the guideline's full 44 for a while, on the grounds that
+   they are the app's primary navigation, and it made the bar 57px tall and 12px of
+   every phone's graph and details row. They carry `.btn` and take the 32 like
+   everything else now. The full register is: the Add-series panel's four
    non-`.btn` shapes take the 32 by hand, as does its filter box's chip remover;
    the series list's icon buttons and drag handle take it in *both* axes, since a
    20×18 target is short in width rather than height; and the theme toggle takes

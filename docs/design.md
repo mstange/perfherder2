@@ -1338,9 +1338,9 @@ would push the graph below `GRAPH_MIN_WIDTH` / `GRAPH_MIN_HEIGHT`:
 | Window | Tier | Arrangement | Graph gets |
 | --- | --- | --- | --- |
 | w ≥ 1040 | `wide` | `list │ graph │ details` | w − 600 |
-| w 760–1039 | `medium` | `graph │ details`, list a **drawer** behind a bar button | w − 320, h − 57 |
-| w < 760, h ≥ 582 | `narrow` | graph over a details row, list behind the same button | w, h − 45% − 57 |
-| w < 760, h < 582 | `narrow-short` | graph and details taking turns, list behind the same button | w, h − 57 |
+| w 760–1039 | `medium` | `graph │ details`, list a **drawer** behind a bar button | w − 320, h − 45 |
+| w < 760, h ≥ 570 | `narrow` | graph over a details row, list behind the same button | w, h − 45% − 45 |
+| w < 760, h < 570 | `narrow-short` | graph and details taking turns, list behind the same button | w, h − 45 |
 
 Read down the table as a sequence of retreats, each giving up the least it can:
 **the list's column goes first, then the details pane's column becomes a row, then
@@ -1543,7 +1543,7 @@ appears and disappears, which is the behaviour this replaced.
   switcher side by side, which is why there is one bar element rather than two grid
   items; two items in one grid area stack on top of each other.
 - **The row's share is a reserve, not a cap.** `min(45%, 100% − 382px)`,
-  where 382 is the graph's collapsed-header floor plus the bar. A cap protects the
+  where 370 is the graph's collapsed-header floor plus the bar. A cap protects the
   graph on a *tall* window and does nothing on a short one, and here it is the short
   one that needs protecting: a 667px phone lands the graph exactly on its 325px floor
   and spends the remaining 285 on the pane, while a 932px one takes its 45% with room
@@ -1562,7 +1562,7 @@ appears and disappears, which is the behaviour this replaced.
   fine.
 - **`NARROW_STACK_MIN_HEIGHT` is a sum, not a division.** The reserve above has
   already guaranteed the graph its floor at every height, so the question left is
-  whether what remains is a pane worth stacking: 325 + 57 + 200 = 582.
+  whether what remains is a pane worth stacking: 325 + 45 + 200 = 570.
   `DETAILS_MIN_ROW` is therefore a term in the arithmetic. It used to be neither
   that nor anything else — the deleted `medium` sized its row as a bare percentage,
   so 200 was a number `layout.test.ts` confirmed the arithmetic had happened to
@@ -2010,10 +2010,17 @@ list's icon buttons and drag handle 32 square, the theme toggle 72×32 (its widt
 the point of the control, so it is a fixed size rather than a floor), the filter
 box's chip removers 32, the series list header's two icon buttons 32 square — the
 sheet's close, which is the same shape and mark as the panel's because it is the same
-control, and `Remove all` — and the panel's three other shapes below. **There is exactly one exception, and it is declared as one**: the
-bottom bar's two controls — the pane switcher and the series sheet's handle — take
-44, being the app's primary navigation, driven by a thumb at the far end of its
-reach. Two numbers in the whole app.
+control, and `Remove all` — and the panel's three other shapes below. **There are
+no exceptions left, and there was one.** The bottom bar's two controls — the pane
+switcher and the series sheet's handle — took the guideline's 44 for a while, on
+the grounds that they are the app's primary navigation and are driven by a thumb at
+the far end of its reach. Both of those are true; neither was worth the second
+number. They carry `.btn`, so 32 already reached them, and the 44 was making the
+bar 57px tall — 12px off the graph *and* the details row, on every phone, to make
+two comfortable targets 37% taller. It also cost more than its own height: the bar
+is a term in the one-column threshold (`BOTTOM_BAR_HEIGHT`), so those 12px were
+deciding, 12px earlier than they had to, that a phone could no longer keep the
+graph and the selection on screen together. One number in the whole app.
 
 **This app is not phone-first, and the floor should not pretend otherwise.** What
 a phone gets here is a list of performance data to read; the four px between 36

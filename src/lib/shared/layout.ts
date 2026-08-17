@@ -96,23 +96,41 @@ export const GRAPH_MIN_HEIGHT_COMPACT = 325;
 export const DETAILS_MIN_ROW = 200;
 
 /**
- * The bottom bar — the series button, the switcher, or both — mirrored from `.bar`
- * in App.svelte: 44px of touch target, 6px of padding either side, 1px of border.
+ * The bottom bar, mirrored from `.bar` in App.svelte: 32px of touch target, 6px of
+ * padding either side, 1px of border.
+ *
+ * **This is the bar in `narrow` and `medium`, where it holds no switcher**, and
+ * that is the only bar the arithmetic below needs. `narrow-short` measures 49
+ * rather than 45, because a `.btn-group` puts 2px of track around its segments and
+ * a coarse pointer floors those segments at the same 32 the handle takes — so the
+ * track is 36 where the lone handle is 32. It does not feed a threshold: the two
+ * terms below are both about whether a *details row* fits, and a details row only
+ * exists in `narrow`. In `narrow-short` the pane above the bar is `1fr` and simply
+ * takes what is left, so the extra 4px are spent, not mispredicted. (Verified with
+ * `tools/visual/bar-height.mjs`, which measures the live bar in all three tiers
+ * against this constant.)
+ *
+ * **It was 57 when the two controls in it took the touch guideline's 44px**, and
+ * they no longer do: they carry `.btn`, so app.css's 32px floor reaches them like
+ * everything else, and one floor is the whole point of that number. Those 12px are
+ * not only 12px of bar — the term below puts them straight into the one-column
+ * threshold, so the arrangement that keeps the details pane on screen beside the
+ * graph now survives 12px further down the phone range.
  *
  * Every arrangement below `wide` has one, since every one of them keeps the series
  * list behind its button. It is the price of the list's 280px column, and it is a
- * good price in both axes: 57px of height back for 280px of width, once.
+ * good price in both axes: 45px of height back for 280px of width, once.
  *
  * **A term in the one-column threshold, and leaving it out put a 667px phone's
  * graph under its floor.** The details row there is a percentage of the *grid*,
- * and the grid is the whole window: the bar's 57px come off the graph's share, not
- * off the row's, so a threshold derived from the fraction alone is 57px optimistic.
+ * and the grid is the whole window: the bar's 45px come off the graph's share, not
+ * off the row's, so a threshold derived from the fraction alone is 45px optimistic.
  */
-export const BOTTOM_BAR_HEIGHT = 57;
+export const BOTTOM_BAR_HEIGHT = 45;
 
 /**
  * What the one-column details row may not eat into: the graph's collapsed floor
- * plus the bar. Mirrored as the `382px` in `main[data-layout='narrow']`'s
+ * plus the bar. Mirrored as the `370px` in `main[data-layout='narrow']`'s
  * `grid-template-rows`.
  */
 export const NARROW_GRAPH_RESERVE = GRAPH_MIN_HEIGHT_COMPACT + BOTTOM_BAR_HEIGHT;
@@ -240,7 +258,7 @@ export const TWO_COLUMN_MIN = GRAPH_MIN_WIDTH + DETAILS_WIDTH;
  * **A sum, and the only place height decides anything.** The row's reserve has
  * already guaranteed the graph its floor at every height (see
  * `NARROW_DETAILS_ROW_FRACTION`), so what is left to ask is whether what remains
- * is a pane worth stacking: 325 + 57 + 200 = 582. `DETAILS_MIN_ROW` is therefore a
+ * is a pane worth stacking: 325 + 45 + 200 = 570. `DETAILS_MIN_ROW` is therefore a
  * term in the arithmetic rather than something a test confirms the arithmetic
  * cleared.
  *

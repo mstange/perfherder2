@@ -71,8 +71,9 @@
   /* A 54×24 switch is a fingertip miss, and the thumb slides by half the width,
      so both halves have to grow together — the fixed width is the point of the
      control (see above), so this is a second fixed size rather than a floor.
-     The height is app.css's 32 all the same: every touch size in the app is that
-     number or the switcher's 44, and a lone 36 here was one more to remember. */
+     The height is app.css's 32 all the same: that is the app's only touch size —
+     the bar beside this one used to hold a second, 44 — and a lone 36 here would
+     have been one more to remember. */
   @media (pointer: coarse) {
     .theme-toggle {
       width: 72px;

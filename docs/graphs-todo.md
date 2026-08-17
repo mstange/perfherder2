@@ -208,8 +208,10 @@ Living checklist. Update in the same commit as the work it describes.
 - A touch floor under every control a thumb drives — one `(pointer: coarse)`
   block in app.css plus the sizes components own, 16px form fields so iOS stops
   zooming on focus, safe-area insets, `overscroll-behavior: contain` on all three
-  scrollers, and the pane switcher moved to the bottom edge at one column with
-  44px targets. The copy that named a click or a key now names a tap where the
+  scrollers, and the pane switcher moved to the bottom edge at one column. One
+  number, 32: the bar's two controls took 44 for a while and gave it back, since
+  it cost 12px of every phone's graph and 12px of the one-column threshold with
+  it. The copy that named a click or a key now names a tap where the
   pointer is coarse (`isCoarsePointer`, + tests). Nineteen targets under 30px on a
   phone, and now one — a checkbox whose label is the real target. See design.md,
   "Touch: a floor under the controls a thumb drives"

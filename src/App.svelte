@@ -578,7 +578,7 @@
      a round trip on every point the reader looked at.
 
      The row takes 45% where there is 45% to spare and *everything above the
-     graph's floor* where there isn't — `100% - 382px`, being the graph's
+     graph's floor* where there isn't — `100% - 370px`, being the graph's
      collapsed-header minimum plus the bar. Not a fixed cap: a cap protects the
      graph on a tall window and does nothing on a short one, and it is the short one
      that needs protecting here. Both numbers are mirrored in layout.ts
@@ -587,7 +587,7 @@
      meaning what it says. */
   main[data-layout='narrow'] {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: minmax(0, 1fr) min(45%, calc(100% - 382px)) auto;
+    grid-template-rows: minmax(0, 1fr) min(45%, calc(100% - 370px)) auto;
     grid-template-areas:
       'graph'
       'details'
@@ -890,15 +890,17 @@
        next to each other. */
     box-shadow: 0 0 0 1.5px var(--bg-subtle);
   }
-  /* The full 44px on a coarse pointer, rather than app.css's 32px floor: these are
-     the app's primary navigation, and the controls most often driven by a thumb at
-     the far end of its reach. */
-  @media (pointer: coarse) {
-    .switcher .btn,
-    .list-handle {
-      min-height: 44px;
-    }
-  }
+  /* No touch rule here at all. The handle and the switcher took the guideline's
+     full 44px on a coarse pointer, on the grounds that they are the app's primary
+     navigation and are driven by a thumb at the far end of its reach — which is
+     true, and still not worth a second number. They carry `.btn`, so app.css's 32px
+     floor already reaches them, and 44 made this bar 57px tall against a phone's
+     screen: 12px off the graph and the details row on every phone, permanently, to
+     make two targets that were already comfortable 37% taller. It also cost more
+     than its own height, because the bar is a term in the one-column threshold — see
+     `BOTTOM_BAR_HEIGHT`. app.css's "Touch sizing" block is explicit that the value
+     of 32 is that it is *one* number, and that every rule it had to grow was grown
+     by an exception like this one. */
   /* Starts where the series list ends, so the list is neither dimmed nor
      covered. The panel is stretched to exactly the space between the
      backdrop's padding edges — never taller. Everything inside it (see the
