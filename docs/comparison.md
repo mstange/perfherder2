@@ -368,6 +368,40 @@ Layout, top to bottom, in one canvas:
   at the cost of a labelled empty box in every narrow-pool case. See design.md,
   "Layout stability", for the rule this bends.)
 
+## Which machine each side ran on
+
+Each side row in a pinned card names the worker its job ran on, under the
+revision or job that identifies it, as the same hover-previews-click-pins control
+the Run section has (graphs.md, "Machines" — the control itself is
+`MachineFocusButton.svelte`, shared between the two).
+
+**It is here because a comparison of two runs is also a comparison of two
+machines.** The pool is not homogeneous — that is the premise the machine focus
+exists on — so "the two runs were on different workers" qualifies the delta, the
+significance verdict and the profile diff below alike. The pane could already
+answer it for the *selected* side, one section down; the other end's machine was
+nowhere, which is the half that matters, since a machine is only interesting
+against another one.
+
+Three rules, each of which the card would otherwise get wrong:
+
+- **Not shown when the two sides are two replicates of one run.** One job means
+  one machine, printed twice and saying nothing; the Run section below names it
+  once. That is exactly the case `sideDetail === 'value'` identifies.
+- **When the two names are equal the card says "same machine".** They are long
+  and differ by a digit — `t-nuc12-005` against `t-nuc12-015` — so leaving the
+  reader to compare two strings character by character would make the reassuring
+  case the hardest one to read.
+- **Two unknown machines are not the same machine.** `machineName` is null for
+  exactly the runs whose job treeherder has expired, so `compare.ts::sameMachine`
+  requires a name on the base side before comparing. Without that, any comparison
+  older than the job retention window claims both ends ran on one worker on the
+  strength of knowing nothing about either.
+
+It costs nothing and arrives with the pin: the name comes down on the datum
+itself (graphs.md, "Machines"), unlike the job, the artifacts and the pushlog
+that the rest of the card waits on.
+
 ## Profile comparison
 
 A pinned comparison whose two runs both uploaded the same benchmark's profile
@@ -413,6 +447,12 @@ retriggers. So the honest link is between those two runs, and picking a differen
 pair is clicking a different dot rather than reaching into a second picker for a
 choice the graph already makes visible. Base is the earlier run, per `sideOrder`,
 because the view subtracts in that direction.
+
+**Two runs are also two machines**, and the profile diff folds that in whether or
+not the reader wants it to: a scheduling difference between two workers shows up
+as moved samples the same way a patch does. The side rows immediately above the
+link name both — see the previous section — so the question is answered where the
+link is rather than by opening two job pages.
 
 **Two fetches per side, and only when pinned.** The link needs each run's task
 id (from the job) and then its artifact list, which is two round trips the
@@ -555,7 +595,9 @@ Pure, and unit tested:
 - `distribution.ts` — one or two pools → curves, modes, jitter, and the chart's
   geometry. The jitter hash itself is `chart.ts::jitterAt`, since both charts
   scatter overlapping dots with it.
-- `compare.ts` — kinds, side ordering, pools, labels, outgoing links.
+- `compare.ts` — kinds, side ordering, pools, labels, outgoing links, and
+  `sameMachine`, which is the one place that knows an unknown machine is not a
+  shared one.
 - `pushlog.ts` — a fetched range → the commit list, its label and its caveat.
   The transport half is `fetchPushRange` in graphApi.ts.
 - `artifacts.ts::compactBenchmarkName` / `benchmarkComparison` — which artifact a
@@ -578,6 +620,9 @@ Not pure:
   lookups behind it.
 - `ComparisonSection.svelte` — the comparison card, in all three of its
   states (compared, marked-here, and the hint that says the gesture exists).
+- `MachineFocusButton.svelte` — a side row's machine name, which is also the
+  control that picks that machine out of the graph. Shared with the pane's Run
+  section; see graphs.md, "Machines".
 - `DetailsPane.svelte` — the numbers for the selected push, and everything
   else in the pane. (Not the push distribution; that moved into
   `ComparisonSection` — see "Both sides share one x domain" above.)

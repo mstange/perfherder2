@@ -4,6 +4,7 @@ import {
   classifyComparison,
   comparisonLinks,
   distinguishingLabels,
+  sameMachine,
   sideOrder,
   type CompareSide,
 } from './compare';
@@ -423,5 +424,38 @@ describe('comparisonLinks', () => {
     )!;
     expect(comparisonLinks(standalone, hg).perfCompareSubtests).toBeNull();
     expect(comparisonLinks(standalone, hg).perfCompare).not.toBeNull();
+  });
+});
+
+describe('sameMachine', () => {
+  // Two pushes one run each, so the only thing that varies is who ran them.
+  function ranOn(base: string | null, next: string | null) {
+    const first = push({
+      pushId: 11,
+      x: 20 * DAY,
+      rev: 'd'.repeat(40),
+      runs: [run({ datumId: 20, machineName: base, x: 0, values: [10, 11, 12] })],
+    });
+    const second = push({
+      pushId: 12,
+      x: 21 * DAY,
+      rev: 'e'.repeat(40),
+      runs: [run({ datumId: 21, machineName: next, x: 0, values: [10, 11, 12] })],
+    });
+    return buildComparison(side({ push: first }), side({ push: second }))!;
+  }
+
+  it('is true only when both ends name the one worker', () => {
+    expect(sameMachine(ranOn('t-linux-metal-1', 't-linux-metal-1'))).toBe(true);
+    expect(sameMachine(ranOn('t-linux-metal-1', 't-linux-metal-2'))).toBe(false);
+  });
+
+  it('does not read two expired jobs as one machine', () => {
+    // Null is "treeherder no longer knows", not a name two runs can share. The
+    // card would otherwise tell a reader of a six-month-old comparison that both
+    // ends ran on one worker, on the strength of knowing nothing about either.
+    expect(sameMachine(ranOn(null, null))).toBe(false);
+    expect(sameMachine(ranOn('t-linux-metal-1', null))).toBe(false);
+    expect(sameMachine(ranOn(null, 't-linux-metal-1'))).toBe(false);
   });
 });

@@ -125,6 +125,23 @@ export function hasDistribution(cmp: Comparison): boolean {
   return cmp.kind !== 'replicate';
 }
 
+// Whether both sides' jobs ran on the same worker.
+//
+// Worth saying out loud in the card because the CI pool is not homogeneous —
+// that is the whole premise of the machine focus (graphs.md, "Machines") — so
+// two runs on one machine and two runs on two are different amounts of evidence
+// for the same delta, and most visibly so for the profile comparison the card
+// links to.
+//
+// **Two unknown machines are not the same machine.** `machineName` is null for
+// exactly the runs whose job treeherder has expired, so a comparison far enough
+// back would otherwise claim both ends ran on one worker on the strength of
+// knowing nothing about either.
+export function sameMachine(cmp: Comparison): boolean {
+  const base = cmp.base.run.machineName;
+  return base !== null && base === cmp.next.run.machineName;
+}
+
 // ---------------------------------------------------------------------------
 // Classification and ordering
 // ---------------------------------------------------------------------------

@@ -45,6 +45,7 @@
   import {
     comparisonLinks,
     hasDistribution,
+    sameMachine,
     type Comparison,
     type ComparisonSide,
   } from './compare';
@@ -58,6 +59,7 @@
   } from './graphData';
   import { jobsUrl, revisionUrl, shortRevision } from '../shared/links';
   import CommitList from './CommitList.svelte';
+  import MachineFocusButton from './MachineFocusButton.svelte';
   import { pushlogCaveat, pushlogLabel } from './pushlog';
   import { SIGNIFICANCE_ALPHA } from '../shared/stats';
   import { isCoarsePointer, mediaMatcher } from '../shared/pointer';
@@ -186,6 +188,20 @@
   const sidesDifferBySeries = $derived(
     !!cmp && cmp.base.ref.signatureId !== cmp.next.ref.signatureId,
   );
+
+  // Which worker each side ran on. Not shown when the two sides are two
+  // replicates of one run — `sideDetail === 'value'` is exactly that case, one
+  // job and therefore one machine, already named in the Run section below.
+  //
+  // Otherwise it is shown whenever it is known, rather than only alongside the
+  // profile comparison link: the pool is not homogeneous, so "the two runs were
+  // on different workers" qualifies the delta, the significance and the profile
+  // diff alike. It costs nothing to say — `machineName` comes down with the
+  // datum, so it is here the moment the comparison is pinned, unlike the link
+  // below it. Null for a run whose job treeherder has expired, which is the same
+  // set the Run section drops the row for.
+  const showMachines = $derived(sideDetail !== 'value');
+  const machinesMatch = $derived(!!cmp && sameMachine(cmp));
   // Two counterparts of one test in different repositories have identical suite,
   // test and platform, so the series line has to name the repository or it prints
   // the same string twice and explains nothing.
@@ -439,6 +455,21 @@
                   : `signature ${row.side.ref.signatureId}`}
                 {#if row.side.meta?.platform}· {row.side.meta.platform}{/if}
                 {#if sidesDifferByRepo}· {row.side.ref.repository}{/if}
+              </div>
+            {/if}
+            <!-- The worker, and the same control it is in the Run section:
+                 pointing at it picks that machine's dots out of the graph.
+                 Reading it here is what tells a reader whether the profile
+                 comparison below is two runs of one worker or a diff with a
+                 machine change folded into it. The names are long and differ by
+                 a digit, so when they are equal the card says so rather than
+                 leaving two strings to be compared character by character. -->
+            {#if showMachines && row.side.run.machineName !== null}
+              <div class="side-detail side-machine muted">
+                <MachineFocusButton {app} machine={row.side.run.machineName} />
+                {#if machinesMatch && !row.isBase}
+                  <span>same machine</span>
+                {/if}
               </div>
             {/if}
           </div>
@@ -721,6 +752,12 @@
     gap: 6px;
     font-variant-numeric: tabular-nums;
     overflow-wrap: anywhere;
+  }
+  /* The machine name is mono 12px (MachineFocusButton) and the note beside it is
+     this list's 11px, so this one row aligns on the baseline rather than on the
+     box — otherwise the note rides above the name it qualifies. */
+  .side-machine {
+    align-items: baseline;
   }
   .cmp-links {
     display: flex;

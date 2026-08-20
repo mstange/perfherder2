@@ -33,6 +33,7 @@
   import CommitList from './CommitList.svelte';
   import { landingSeriesCount, landingWindowLabel } from './cluster';
   import { jobDuration, shortJobType } from './job';
+  import MachineFocusButton from './MachineFocusButton.svelte';
   import { commitsOfPush } from './pushlog';
 
   import { isCoarsePointer, mediaMatcher } from '../shared/pointer';
@@ -560,28 +561,12 @@
                pane already answers "what is this point?"; the machine is the one
                field whose answer is usually a question — *is it just this
                worker?* — and this is the shortest path from the one to the
-               other. Same hover-previews-click-pins pair as the machine panel in
-               the graph header, so learning it once is enough. -->
+               other. The control itself is MachineFocusButton.svelte, shared
+               with the comparison card's side rows. -->
           {#if sel.run.machineName !== null}
-            {@const machine = sel.run.machineName}
             <dt>Machine</dt>
             <dd>
-              <button
-                type="button"
-                class="machine-focus mono"
-                class:on={app.focusedMachine === machine}
-                aria-pressed={app.focusedMachine === machine}
-                title={app.focusedMachine === machine
-                  ? `Showing ${machine} at full strength. Click to show every machine again.`
-                  : `Point at this to pick ${machine}’s measurements out of the graph; click to keep them picked`}
-                onpointerenter={() => app.setHoveredMachine(machine)}
-                onpointerleave={() => app.setHoveredMachine(null)}
-                onfocus={() => app.setHoveredMachine(machine)}
-                onblur={() => app.setHoveredMachine(null)}
-                onclick={() => app.setMachineFocus(machine)}
-              >
-                {machine}
-              </button>
+              <MachineFocusButton {app} machine={sel.run.machineName} />
             </dd>
           {/if}
           {#if app.selectedJob}
@@ -877,55 +862,9 @@
   .push-mean {
     margin-top: 8px;
   }
-  /* The machine name, which is also the control that picks that machine out of
-     the graph. Quiet by default and for the same reason `.run-mean` above is: it
-     sits in a definition list of plain facts, and a bordered button in that
-     column would claim to be the important row. The border arrives on hover,
-     which is also the moment the preview arrives on the plot — one gesture, two
-     things lighting up.
-
-     **Nondescript at rest is the decision, not an oversight.** A resting mark
-     was tried — a small scatter with one dot picked out, drawn beside the name —
-     and taken out again: nothing here needs discovering on a schedule. A reader
-     who suspects a machine is behind what they are looking at will put the
-     pointer on the machine name, and that is when the feature should appear. A
-     permanent icon spends attention, in the pane's densest column, on a question
-     most readers of most points are not asking.
-
-     `.mono` beside it sets the family and size; this only adds the affordance.
-     Bespoke rather than `.btn` for the reason in design.md, "One button, defined
-     once": a `.btn` here would be a 26px control in a 18px row. */
-  .machine-focus {
-    font: inherit;
-    font-family: var(--font-mono);
-    font-size: 12px;
-    padding: 0 4px;
-    margin-left: -4px;
-    border: 1px solid transparent;
-    border-radius: 4px;
-    background: none;
-    color: inherit;
-    cursor: pointer;
-  }
-  .machine-focus:hover {
-    border-color: var(--border-default);
-    background: var(--bg-hover);
-  }
-  /* Pinned. The same accent fill the machine panel's pinned row wears, so the
-     two places that can set a focus agree about what "set" looks like. */
-  .machine-focus.on {
-    border-color: var(--accent-emphasis);
-    background: var(--accent-subtle);
-    color: var(--accent-on-subtle);
-  }
-  @media (pointer: coarse) {
-    /* Not a `.btn`, so it takes app.css's one floor by hand — and the negative
-       margin keeps the text on the same left edge as the rows above it while the
-       target grows. See design.md, "Touch". */
-    .machine-focus {
-      min-height: 32px;
-    }
-  }
+  /* The machine row's control, its quiet-until-hovered appearance and its
+     touch floor all live in MachineFocusButton.svelte, which the comparison
+     card renders too. */
   /* The disclosure idiom is `.fold` in detailsPane.css, shared with the
      comparison card's pushlog. Only the line height is local. */
   .run-fold > summary {

@@ -812,6 +812,11 @@ so that learning it once is enough:
   what they are looking at will put the pointer on the machine name, and a
   permanent icon spends attention, in the pane's densest column, on a question
   most readers of most points are not asking.
+- **The comparison card's side rows**, which name a machine per side and say so
+  when both ends ran on one. Same control, literally — `MachineFocusButton.svelte`
+  is shared with the row above — because a comparison of two runs is a comparison
+  of two machines, and the card links a profile diff that folds the difference in.
+  See comparison.md, "Which machine each side ran on".
 - **The chip in the plot's top-right corner**, which exists because the graph is
   not showing what it usually shows and the control that says so is a panel away
   in a header that collapses on a small pane. It is also the only thing that
@@ -1687,6 +1692,9 @@ Recovery is the explicit Retry button.
   the CLI ranks by. See "Machines" above.
 - [MachinePanel.svelte](../src/lib/graphs/MachinePanel.svelte) — the header
   button and the list it opens.
+  [MachineFocusButton.svelte](../src/lib/graphs/MachineFocusButton.svelte) — one
+  machine name as the control that focuses it, in the details pane's Run section
+  and in each side row of the comparison card.
 - [alertsApi.ts](../src/lib/graphs/alertsApi.ts) — `/performance/alertsummary/`, and
   the schemas for it. [alerts.ts](../src/lib/graphs/alerts.ts) — **pure**. Summaries →
   the marks the graph draws and the facts the pane prints. See "Alerts" above.
