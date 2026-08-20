@@ -53,6 +53,12 @@ contains, so one can be pasted out of a shared link. The framework is optional;
 see "Two-field references" below. `compare` takes a `@<revision|pushId|first|last>`
 suffix, and its second argument may be a bare selector meaning "the same series".
 
+A **search term** is the picker's: free text, `field:value`, or `-field:value`
+to exclude — one grammar across the box, the URL and the command line, parsed
+by the same `filter.ts::parseChip`. The exclusion needs no quoting here because
+only `--` tokens are flags to `parseArgv`, so `-application:firefox` arrives as
+a positional.
+
 ## Decisions worth knowing
 
 ### It is built from src/lib, and adds no analysis of its own
@@ -315,6 +321,13 @@ how many rows each covers. **The paragraph explaining that chips are exact is
 now printed only for a search that used one.** It used to be printed at every
 empty result, including the ones from free text, which sent a reader hunting for
 a wrong value when the word itself was wrong.
+
+**An exclusion gets no suggestions**, only its counts. `chipSuggestions` answers
+"which value did you mean", and the answer to a `-platform:andriod` that
+excluded nothing is that it excluded nothing — offering other platforms to
+exclude instead would be inventing an intent. The counts still locate it: for a
+negated chip, `alone` is the rows it *left*, so an exclusion that was the one
+thing emptying the list still shows up as the term with the large `without`.
 
 ### `search` flattens subtests instead of grouping them
 

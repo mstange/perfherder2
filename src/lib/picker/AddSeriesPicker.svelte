@@ -376,24 +376,42 @@ import { TIME_RANGES } from './pickerOptions';
      the same three on two lines. Everything that decides what a row *says* is in
      here once — a second copy is how the two would drift. -->
 
-<!-- Every badge is a filter toggle. Same visual as a plain tag, with a "+" cue on
-     hover and always when the chip is active. -->
+<!-- Every badge is a filter toggle, in either direction. Same visual as a plain
+     tag, with a "+" cue on hover and a state cue whenever a chip is on it: "×"
+     for the value the filter is narrowed *to*, "−" and a strikethrough for one
+     it excludes.
+
+     Plain click owns the include chip and alt-click owns the exclude chip, each
+     toggling only its own — which is what makes all six transitions between the
+     three states one click each. See "Every badge in the table is a filter
+     toggle" in docs/design.md. Alt is a mouse affordance, so it is not the only
+     way in: the pill in the filter box flips polarity on a plain click, and
+     `-field:value` can be typed. -->
 {#snippet badge(
   field: FilterField,
   value: string,
   cls: string,
   fromSubtest: boolean = false,
 )}
-  {@const active = picker.isChipActive(field, value)}
+  {@const polarity = picker.chipPolarity(field, value)}
+  {@const excluded = polarity === 'exclude'}
   <button
     type="button"
     class="badge {cls}"
-    class:badge-active={active}
-    title={active ? `Remove filter ${field}:${value}` : `Filter to only ${field}:${value}`}
-    onclick={() => picker.toggleFilterChip(field, value, { fromSubtest })}
+    class:badge-active={polarity === 'include'}
+    class:badge-excluded={excluded}
+    title={polarity === 'include'
+      ? `Filtered to ${field}:${value}. Click to clear, Alt-click to exclude instead`
+      : excluded
+        ? `Excluding ${field}:${value}. Alt-click to clear, click to filter to only it`
+        : `Filter to only ${field}:${value} — Alt-click to exclude it`}
+    onclick={(e) =>
+      picker.toggleFilterChip(field, value, { fromSubtest, negated: e.altKey })}
   >
-    <span>{value}</span>
-    <span class="badge-cue" aria-hidden="true">{active ? '×' : '+'}</span>
+    <span class="badge-value">{value}</span>
+    <span class="badge-cue" aria-hidden="true"
+      >{polarity === 'include' ? '×' : excluded ? '−' : '+'}</span
+    >
   </button>
 {/snippet}
 
@@ -484,9 +502,9 @@ import { TIME_RANGES } from './pickerOptions';
     <div class="header-text">
       <h2>Add series</h2>
       <p class="hint">
-        One combined list across selected repos. Filter by clicking any badge or
-        by typing free text / <code>field:value</code> tokens. Expand a row to
-        see its subtests.
+        One combined list across selected repos. Filter by clicking any badge —
+        Alt-click to exclude it instead — or by typing free text /
+        <code>field:value</code> tokens. Expand a row to see its subtests.
       </p>
     </div>
     {#if onclose}
@@ -1438,9 +1456,10 @@ import { TIME_RANGES } from './pickerOptions';
   /* The `+` cue reserves 10px in every badge so that hovering one can't resize
      it. There is no hover here — this layout exists for touch — so the reserve is
      10px per badge of a line that is already the tightest thing on the card, five
-     or six times over. An active chip still shows its `×`, and the badge growing
-     by 10px on that tap is a filter change, which redraws the list anyway. */
-  .card-row .badge:not(.badge-active) .badge-cue {
+     or six times over. A badge carrying a chip still shows its `×` or `−`, and
+     the badge growing by 10px on that tap is a filter change, which redraws the
+     list anyway. */
+  .card-row .badge:not(.badge-active):not(.badge-excluded) .badge-cue {
     display: none;
   }
   /* Trailing the badges, in the muted monospace the table's unit column uses. */
@@ -1820,7 +1839,8 @@ import { TIME_RANGES } from './pickerOptions';
     transition: opacity 0.1s ease;
   }
   .badge:hover .badge-cue,
-  .badge-active .badge-cue {
+  .badge-active .badge-cue,
+  .badge-excluded .badge-cue {
     opacity: 1;
   }
   .badge-active {
@@ -1830,6 +1850,24 @@ import { TIME_RANGES } from './pickerOptions';
     color: var(--accent-on-subtle);
   }
   .badge-active .badge-cue {
+    color: var(--danger-fg);
+  }
+  /* An excluded value. The outline says "a chip is on this" the way the active
+     one does, in the colour the app already uses for removal, and the
+     strikethrough says which direction — a badge that is *on* but has taken
+     its rows away is otherwise indistinguishable from one that brought them.
+     Deliberately no `background`/`color`: the per-field rules below come later
+     at equal specificity and would win them anyway (that is why `.badge-active`
+     reads as an outline too), and outline and text-decoration nothing else
+     here sets. */
+  .badge-excluded {
+    outline: 2px solid var(--danger-fg);
+    outline-offset: -2px;
+  }
+  .badge-excluded .badge-value {
+    text-decoration: line-through;
+  }
+  .badge-excluded .badge-cue {
     color: var(--danger-fg);
   }
   .badge-repo {

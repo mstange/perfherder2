@@ -121,6 +121,23 @@ describe('parseViewState', () => {
 
   it('dedupes identical chips', () => {
     expect(parseViewState('?pc=repo:try&pc=repo:try').picker.filter.chips).toHaveLength(1);
+    // …but the two polarities of one value are two chips, not a duplicate.
+    expect(
+      parseViewState('?pc=repo:try&pc=-repo:try').picker.filter.chips,
+    ).toHaveLength(2);
+  });
+
+  it('round-trips an exclusion chip', () => {
+    // The `-` has to survive both directions, and only the write side ever
+    // got this wrong: `pc=` was built by hand from the field and the value.
+    const chips = [
+      { field: 'application' as const, value: 'firefox', negated: true as const },
+    ];
+    const url = serializeViewState(
+      state({ pickerOpen: true, picker: { ...EMPTY_PICKER_VIEW, filter: { chips, text: '' } } }),
+    );
+    expect(url).toContain('pc=-application:firefox');
+    expect(parseViewState(`?${url}`).picker.filter.chips).toEqual(chips);
   });
 
   it('parses the picker repos, interval, subtest mode and sort', () => {

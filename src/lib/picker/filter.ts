@@ -7,9 +7,10 @@ import type { Series } from './series';
 // Structured filter model
 //
 // The user's filter is a mix of typed chips (exact per-field matches like
-// `repo:autoland`) and free-text tokens (substring matches against the row's
-// prebuilt searchText). Every chip must match and every free-text token must
-// appear in searchText — one flat AND, no per-field special case.
+// `repo:autoland`, or exclusions like `-application:firefox`) and free-text
+// tokens (substring matches against the row's prebuilt searchText). Every chip
+// must match and every free-text token must appear in searchText — one flat
+// AND, no per-field special case.
 
 export const FILTER_FIELDS = [
   'suite',
@@ -25,6 +26,12 @@ export type FilterField = (typeof FILTER_FIELDS)[number];
 export interface FilterChip {
   field: FilterField;
   value: string; // stored lowercase for case-insensitive equality
+  // An exclusion: the row matches when it does *not* have this value. Chips
+  // are canonical — `negated` is either `true` or absent, never `false`, so
+  // `{field, value}` is a perfectly good include chip and a deep-equality
+  // assertion over one doesn't have to know this field exists. Build chips
+  // with `makeChip` where the polarity is a variable.
+  negated?: true;
 }
 
 export interface Filter {
@@ -40,23 +47,44 @@ export function isFilterField(s: string): s is FilterField {
   return FIELD_SET.has(s);
 }
 
-// Serialize a chip for display / for typing back into the input.
-export function chipToString(chip: FilterChip): string {
-  return `${chip.field}:${chip.value}`;
+// The one place a chip is built from a polarity that isn't a literal. Keeps
+// `negated: false` out of the model — see the field's comment.
+export function makeChip(
+  field: FilterField,
+  value: string,
+  negated = false,
+): FilterChip {
+  const chip: FilterChip = { field, value: value.toLowerCase() };
+  if (negated) chip.negated = true;
+  return chip;
 }
 
-// Parse "field:value". Returns null if the field isn't one we know or the
-// value is empty. Values are lowercased; the field must already be lowercase
-// (typing "Repo:Autoland" is rejected — this keeps the parser simple and the
-// input predictable).
+// Serialize a chip for display / for typing back into the input. This is also
+// the URL's `pc=` spelling and the CLI's term spelling — one syntax everywhere,
+// so a chip pastes between the three.
+export function chipToString(chip: FilterChip): string {
+  return `${chip.negated ? '-' : ''}${chip.field}:${chip.value}`;
+}
+
+// Parse "field:value", or "-field:value" for an exclusion. Returns null if the
+// field isn't one we know or the value is empty. Values are lowercased; the
+// field must already be lowercase (typing "Repo:Autoland" is rejected — this
+// keeps the parser simple and the input predictable).
+//
+// The leading `-` is the GitHub/Gmail search convention, and it costs nothing
+// elsewhere: a term with no colon or an unknown field stays free text either
+// way, and the CLI's argv parser only treats `--` tokens as flags, so
+// `-application:firefox` reaches it as a positional.
 export function parseChip(text: string): FilterChip | null {
-  const idx = text.indexOf(':');
-  if (idx <= 0 || idx === text.length - 1) return null;
-  const field = text.slice(0, idx);
-  const value = text.slice(idx + 1).trim();
+  const negated = text.startsWith('-');
+  const body = negated ? text.slice(1) : text;
+  const idx = body.indexOf(':');
+  if (idx <= 0 || idx === body.length - 1) return null;
+  const field = body.slice(0, idx);
+  const value = body.slice(idx + 1).trim();
   if (!value) return null;
   if (!isFilterField(field)) return null;
-  return { field, value: value.toLowerCase() };
+  return makeChip(field, value, negated);
 }
 
 // Split the free-text half of the filter into lowercase substring tokens.
@@ -68,10 +96,17 @@ export function tokenizeFilter(text: string): string[] {
 }
 
 // Test whether a single chip matches a row. Comparison is exact and
-// case-insensitive because chip values are stored lowercase.
+// case-insensitive because chip values are stored lowercase. A negated chip
+// matches the rows its positive twin doesn't — including rows with no value
+// for the field at all, so `-test:foo` keeps the suite-level rows (whose
+// `test` is empty) rather than quietly dropping them.
 export function chipMatchesRow(row: Series, chip: FilterChip): boolean {
-  const v = chip.value;
-  switch (chip.field) {
+  const has = rowHasFieldValue(row, chip.field, chip.value);
+  return chip.negated ? !has : has;
+}
+
+function rowHasFieldValue(row: Series, field: FilterField, v: string): boolean {
+  switch (field) {
     case 'repo':
       return row.repository.toLowerCase() === v;
     case 'application':
@@ -141,9 +176,9 @@ export function matchParentWithChildren(
 }
 
 export function matchesRow(row: Series, filter: Filter): boolean {
-  // Every chip narrows, including two chips of the same field. See the
-  // "Filter model" section of docs/design.md for why that's AND and not the
-  // usual faceted-search OR.
+  // Every chip narrows, including two chips of the same field and including
+  // exclusions. See the "Filter model" section of docs/design.md for why
+  // that's AND and not the usual faceted-search OR.
   for (const c of filter.chips) {
     if (!chipMatchesRow(row, c)) return false;
   }
@@ -154,9 +189,23 @@ export function matchesRow(row: Series, filter: Filter): boolean {
   return true;
 }
 
-// Chip equality — used for de-dup on add and lookup on remove.
+// Chip equality — used for de-dup on add and lookup on remove. Polarity is
+// part of it: `application:firefox` and `-application:firefox` are two
+// different chips, and `sameTerm` below is the question that ignores it.
 export function sameChip(a: FilterChip, b: FilterChip): boolean {
+  return a.field === b.field && a.value === b.value && !!a.negated === !!b.negated;
+}
+
+// Same field and value, either polarity — the two chips that can't coexist.
+// A filter holding both matches nothing, and every path that adds a chip goes
+// through `addChip`, which replaces the twin rather than producing that.
+export function sameTerm(a: FilterChip, b: FilterChip): boolean {
   return a.field === b.field && a.value === b.value;
+}
+
+// The chip that says the opposite about the same field and value.
+export function flipChip(chip: FilterChip): FilterChip {
+  return makeChip(chip.field, chip.value, !chip.negated);
 }
 
 // Literal equality: same text, same chips in the same order. An identity
@@ -204,9 +253,33 @@ export function hasChip(filter: Filter, chip: FilterChip): boolean {
   return filter.chips.some((c) => sameChip(c, chip));
 }
 
+// Whether the filter includes, excludes, or says nothing about a field's value.
+// What a badge draws itself from, and what its click has to know.
+export type ChipPolarity = 'include' | 'exclude';
+
+export function chipPolarity(
+  filter: Filter,
+  field: FilterField,
+  value: string,
+): ChipPolarity | null {
+  const term = makeChip(field, value);
+  const found = filter.chips.find((c) => sameTerm(c, term));
+  if (!found) return null;
+  return found.negated ? 'exclude' : 'include';
+}
+
+// Add a chip, **replacing its opposite-polarity twin in place** if one is
+// there. Adding `-application:firefox` on top of `application:firefox` has to
+// mean "no, the other one" — keeping both would be a filter that matches
+// nothing, which is not a state any click should be able to produce. In place,
+// rather than appended, so flipping a chip doesn't shuffle the row of pills.
 export function addChip(filter: Filter, chip: FilterChip): Filter {
   if (hasChip(filter, chip)) return filter;
-  return { ...filter, chips: [...filter.chips, chip] };
+  const twin = filter.chips.findIndex((c) => sameTerm(c, chip));
+  if (twin === -1) return { ...filter, chips: [...filter.chips, chip] };
+  const chips = [...filter.chips];
+  chips[twin] = chip;
+  return { ...filter, chips };
 }
 
 export function removeChip(filter: Filter, chip: FilterChip): Filter {
@@ -216,9 +289,24 @@ export function removeChip(filter: Filter, chip: FilterChip): Filter {
   };
 }
 
-// Toggle a chip on/off. Convenience for badge clicks.
+// Toggle a chip on/off. Convenience for badge clicks, and the reason each
+// polarity toggles only *itself*: plain click owns `include` and alt-click
+// owns `exclude`, so of the six transitions between the three states, every
+// one is a single click. (Were this "toggle whichever chip is there", going
+// from included to excluded would take two.)
 export function toggleChip(filter: Filter, chip: FilterChip): Filter {
   return hasChip(filter, chip) ? removeChip(filter, chip) : addChip(filter, chip);
+}
+
+// Flip one chip's polarity where it sits. The filter box's pills call this;
+// it is the path that doesn't need a modifier key, so it's the one a touch or
+// keyboard user has.
+export function toggleChipNegation(filter: Filter, chip: FilterChip): Filter {
+  if (!hasChip(filter, chip)) return filter;
+  return {
+    ...filter,
+    chips: filter.chips.map((c) => (sameChip(c, chip) ? flipChip(c) : c)),
+  };
 }
 
 // ---------------------------------------------------------------------------

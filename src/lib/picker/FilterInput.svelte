@@ -1,8 +1,10 @@
 <script lang="ts">
   import { untrack } from 'svelte';
   import {
+    addChip,
     chipToString,
-    isFilterField,
+    parseChip,
+    toggleChipNegation,
     type Filter,
     type FilterChip,
   } from './filter';
@@ -117,11 +119,15 @@
   function reconcile(raw: string) {
     const chipsFromText: FilterChip[] = [];
     // Match `field:value` where the value ends at whitespace. Any run of
-    // whitespace between tokens is treated as the boundary.
+    // whitespace between tokens is treated as the boundary. `parseChip` decides
+    // what is a chip, rather than a second copy of the rules here — that is
+    // what makes a typed `-application:firefox` mean the same as one out of a
+    // URL or a CLI term.
     const pattern = /(\S+?):(\S+)(\s+)/g;
     let residue = raw.replace(pattern, (_full, f, v) => {
-      if (isFilterField(f) && v.length > 0) {
-        chipsFromText.push({ field: f, value: v.toLowerCase() });
+      const chip = parseChip(`${f}:${v}`);
+      if (chip) {
+        chipsFromText.push(chip);
         return ''; // consume the chip out of the text
       }
       // Not a known field — leave the token in-place so the user can keep
@@ -132,17 +138,13 @@
     // Collapse leftover whitespace so we don't accumulate double spaces.
     residue = residue.replace(/\s+/g, ' ').replace(/^ /, '');
 
+    // `addChip` rather than a de-dup set of our own: it also replaces a chip's
+    // opposite-polarity twin, so typing `-application:firefox` over an existing
+    // `application:firefox` reads as a correction instead of building the pair
+    // that matches nothing.
     let nextChips = filter.chips;
-    if (chipsFromText.length > 0) {
-      const seen = new Set(nextChips.map((c) => `${c.field}:${c.value}`));
-      nextChips = [...nextChips];
-      for (const c of chipsFromText) {
-        const key = `${c.field}:${c.value}`;
-        if (!seen.has(key)) {
-          nextChips.push(c);
-          seen.add(key);
-        }
-      }
+    for (const c of chipsFromText) {
+      nextChips = addChip({ chips: nextChips, text: '' }, c).chips;
     }
     textValue = residue;
     // The <input> is `value={textValue}`, so Svelte writes the DOM only when
@@ -189,11 +191,17 @@
   }
 
   function removeChip(chip: FilterChip) {
-    const next = filter.chips.filter(
-      (c) => !(c.field === chip.field && c.value === chip.value),
-    );
+    const next = filter.chips.filter((c) => c !== chip);
     commitNow({ ...filter, chips: next });
     inputEl?.focus();
+  }
+
+  // Include ⇄ exclude, in place. The badges in the list do this with alt-click,
+  // which a touch or keyboard user hasn't got; the pill is a plain button, so
+  // this is the path that is always there — and the one that makes the feature
+  // discoverable, since the pill says which way it is pointing.
+  function flipPolarity(chip: FilterChip) {
+    commitNow(toggleChipNegation(filter, chip));
   }
 
   const chipClass = (field: string) => `chip-field chip-field-${field}`;
@@ -214,13 +222,28 @@
 
 <div class="filter-input" role="search">
   {#each filter.chips as chip (chipToString(chip))}
-    <span class="chip-pill" title={`Remove ${chip.field} filter`}>
-      <span class={chipClass(chip.field)}>{chip.field}</span>
-      <span class="chip-value">{chip.value}</span>
+    <span class="chip-pill" class:chip-negated={chip.negated}>
+      <button
+        type="button"
+        class="chip-body"
+        title={chip.negated
+          ? `Excluding ${chip.field}:${chip.value} — click to filter to only it instead`
+          : `Filtered to ${chip.field}:${chip.value} — click to exclude it instead`}
+        aria-label={chip.negated
+          ? `Filter to only ${chip.field}:${chip.value} instead of excluding it`
+          : `Exclude ${chip.field}:${chip.value} instead of filtering to it`}
+        onclick={() => flipPolarity(chip)}
+      >
+        <span class={chipClass(chip.field)}
+          >{chip.negated ? `not ${chip.field}` : chip.field}</span
+        >
+        <span class="chip-value">{chip.value}</span>
+      </button>
       <button
         type="button"
         class="chip-remove"
-        aria-label={`Remove ${chip.field}:${chip.value}`}
+        title={`Remove ${chip.field} filter`}
+        aria-label={`Remove ${chipToString(chip)}`}
         onclick={() => removeChip(chip)}
       >
         <CrossIcon size={9} />
@@ -232,7 +255,7 @@
     class="filter-text"
     type="text"
     placeholder={filter.chips.length === 0
-      ? "Filter — free text, or field:value (e.g. repo:autoland, application:chrome)"
+      ? 'Filter — free text, or field:value (e.g. repo:autoland, -application:chrome)'
       : ''}
     value={textValue}
     oninput={onInput}
@@ -298,14 +321,39 @@
   .chip-pill {
     display: inline-flex;
     align-items: center;
-    gap: 4px;
-    padding: 2px 2px 2px 6px;
+    padding: 2px 2px 2px 0;
     background: var(--chip-pill-bg);
     border: 1px solid var(--chip-pill-border);
     border-radius: 999px;
     font-size: 12px;
     line-height: 1.2;
     color: var(--chip-pill-fg);
+  }
+  /* An exclusion, in the colour the app uses for taking things away. The pill
+     also says "not" in front of the field name, and that is the part doing the
+     work — the tint is for spotting it in a row of six. */
+  .chip-negated {
+    background: var(--danger-subtle);
+    border-color: var(--danger-border);
+  }
+  /* The field name and value are one button: click flips the chip between
+     include and exclude. Everything but the padding it took over from the pill
+     is undone `<button>` styling. */
+  .chip-body {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 0 4px 0 6px;
+    margin: 0;
+    border: 0;
+    background: transparent;
+    font: inherit;
+    color: inherit;
+    cursor: pointer;
+    border-radius: 999px 3px 3px 999px;
+  }
+  .chip-body:hover {
+    background: var(--bg-overlay-hover);
   }
   .chip-field {
     font-size: 10px;
@@ -356,11 +404,15 @@
     color: var(--fg-default);
   }
 
-  /* Touch sizing for the two controls in here, and both have to come *after* the
+  /* Touch sizing for the controls in here, and they have to come *after* the
      base rules: a media query adds no specificity, so an earlier block loses to a
      later declaration of the same property. (It did, and the taps stayed 18px.)
      - `.chip-remove` at 21×18, in a row of them, is a mis-tap that removes the
        wrong filter. The pill grows with it, which is a touch-only cost.
+     - `.chip-body` is the polarity flip, and the only one of the three ways to
+       negate a chip that a touch device has — alt-click needs a keyboard and
+       typing `-field:value` needs the reader to know the syntax. It gets the
+       same floor as the remover beside it.
      - `.filter-text` inherits the panel's 14px, and iOS zooms the page when a
        field under 16px takes focus — scaling the layout viewport up and pushing
        half the panel off screen. app.css's coarse rule can't reach this one:
@@ -370,6 +422,9 @@
     .chip-remove {
       padding: 0 10px;
       height: 32px;
+    }
+    .chip-body {
+      min-height: 32px;
     }
     .filter-text {
       font-size: 16px;

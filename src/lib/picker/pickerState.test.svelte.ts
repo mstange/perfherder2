@@ -194,6 +194,19 @@ describe('PickerState.seed', () => {
       (p) => expect(p.matchSubtests).toBe(false),
     ));
 
+  it('leaves subtest matching off for an *excluded* test', () =>
+    withPicker(
+      (p) => p.seed(filterView([{ field: 'test', value: 'fcp', negated: true }])),
+      // The nudge is for the chip that would otherwise match no parent at all.
+      // An exclusion is the opposite: a parent's empty `test` isn't the value
+      // being excluded, so every parent already passes, and switching subtest
+      // matching on would be a fetch and a reshaped list nobody asked for.
+      (p) => {
+        expect(p.matchSubtests).toBe(false);
+        expect(p.needSubtestsFetch).toBe(false);
+      },
+    ));
+
   it('lets an explicit subtest mode of off beat the test-chip nudge', () =>
     withPicker(
       (p) =>
@@ -405,6 +418,77 @@ describe('PickerState.clearFilter', () => {
         // It only changes what an *active* filter matches, so with the filter
         // gone it has nothing to do — and switching it off would silently
         // discard the fatter subtests=1 data the panel already holds.
+        expect(p.matchSubtests).toBe(true);
+      },
+    ));
+});
+
+// A badge click. Plain click carries `negated: false`, alt-click `true`, and
+// each polarity toggles only itself — see "Every badge in the table is a filter
+// toggle" in docs/design.md.
+describe('PickerState.toggleFilterChip', () => {
+  const included = { field: 'application' as const, value: 'firefox' };
+  const excluded = { ...included, negated: true as const };
+
+  it('adds and removes on plain clicks', () =>
+    withPicker(
+      () => {},
+      (p) => {
+        p.toggleFilterChip('application', 'Firefox');
+        expect(p.filter.chips).toEqual([included]);
+        expect(p.chipPolarity('application', 'firefox')).toBe('include');
+        p.toggleFilterChip('application', 'Firefox');
+        expect(p.filter.chips).toEqual([]);
+        expect(p.chipPolarity('application', 'firefox')).toBeNull();
+      },
+    ));
+
+  it('adds and removes an exclusion on alt-clicks', () =>
+    withPicker(
+      () => {},
+      (p) => {
+        p.toggleFilterChip('application', 'firefox', { negated: true });
+        expect(p.filter.chips).toEqual([excluded]);
+        expect(p.chipPolarity('application', 'firefox')).toBe('exclude');
+        p.toggleFilterChip('application', 'firefox', { negated: true });
+        expect(p.filter.chips).toEqual([]);
+      },
+    ));
+
+  it('crosses between the two in one click, either way', () =>
+    withPicker(
+      (p) => p.seed(filterView([included])),
+      (p) => {
+        p.toggleFilterChip('application', 'firefox', { negated: true });
+        expect(p.filter.chips).toEqual([excluded]);
+        p.toggleFilterChip('application', 'firefox');
+        expect(p.filter.chips).toEqual([included]);
+      },
+    ));
+
+  it('keeps a flipped chip in its place among the others', () =>
+    withPicker(
+      (p) => p.seed(filterView([{ field: 'suite', value: 'sp3' }, included, { field: 'repo', value: 'try' }])),
+      (p) => {
+        p.toggleFilterChip('application', 'firefox', { negated: true });
+        expect(p.filter.chips).toEqual([
+          { field: 'suite', value: 'sp3' },
+          excluded,
+          { field: 'repo', value: 'try' },
+        ]);
+      },
+    ));
+
+  it('does not switch subtest matching on for an exclusion from a subtest row', () =>
+    withPicker(
+      () => {},
+      (p) => {
+        p.toggleFilterChip('test', 'amazon', { fromSubtest: true, negated: true });
+        // The nudge is for a chip no parent could satisfy. An exclusion isn't
+        // one: parents carry no `test`, so they pass it already.
+        expect(p.matchSubtests).toBe(false);
+        // The include from the same row still trips it.
+        p.toggleFilterChip('test', 'amazon', { fromSubtest: true });
         expect(p.matchSubtests).toBe(true);
       },
     ));

@@ -28,6 +28,7 @@ change is wrong for a reason the code doesn't show:
 | --- | --- |
 | A URL parameter | three sections that have to agree: "Architecture" below (`urlState.ts` owns the whole schema), graphs.md "URL state", comparison.md "URL state" |
 | `FilterInput.svelte`, or anything holding filter state | "The one component that owns state" — this has bitten us twice |
+| The filter's grammar, or anything that builds or compares a chip | "Structured filter model: chips + free text", and its "A chip can be an exclusion" — `chipToString`/`parseChip` are the *one* spelling shared by the search box, the URL's `pc=` and a CLI term, and the URL's writer built it by hand once, so the first exclusions round-tripped back as includes. Polarity is part of `sameChip`; `addChip` replaces the opposite-polarity twin rather than letting a filter hold a pair that matches nothing; and `needsSubtestMatching` asks about *positive* `test:` chips only |
 | When the picker's filter gets written for the user | "Opening the picker prefills its filter" and "Deriving the filter, and clearing it" — deciding *when* to overwrite a filter by inspecting it has been wrong once already; the rule is now one `isFilterActive` check plus a button |
 | Adding a control above the picker's list, or to the graph header | "The control block is two groups: what loads, and what shows" (and "A panel with no room for the loading group folds it away" — which group a control joins decides whether it survives a small panel, and nothing in the middle column may carry a `min-width`) — which row it goes on follows from whether it fetches, and the last arrangement that was decided by eye put two controls in each other's group. Both blocks share `.control-*` in `src/app.css`; the header's own departures are in graphs.md, "The header is two groups" |
 | Markup with two adjacent badges | "Whitespace between adjacent badges (Svelte gotcha)" |
@@ -439,10 +440,11 @@ Users of this tool don't. The framework name is:
 ### Structured filter model: chips + free text
 
 `Filter = { chips: FilterChip[], text: string }`. Each chip is a strict
-`(field, value)` equality; each free-text token is a substring match against
-`row.searchText`. Rules:
+`(field, value)` equality, optionally *negated*; each free-text token is a
+substring match against `row.searchText`. Rules:
 
-- **Every chip ANDs**, including two chips of the same field.
+- **Every chip ANDs**, including two chips of the same field, and including
+  exclusions.
 - Free-text tokens are all ANDed on top.
 - Empty filter = wildcard.
 
@@ -464,6 +466,39 @@ as a whitelist — acceptable, because it isn't reachable by clicking: badges
 only exist on rows currently on screen, and a row that failed `repo:autoland`
 is not on screen to offer its `mozilla-central` badge. Multi-select over a
 single-valued field would need a real control, not two chips.
+
+#### A chip can be an exclusion, and it spells `-field:value`
+
+`FilterChip` carries an optional `negated`, and a negated chip matches the rows
+its positive twin doesn't. It reads and writes as a leading `-` everywhere a
+chip is a string — the search box, the URL's `pc=`, a CLI term — because those
+three are one syntax on purpose, and `chipToString`/`parseChip` are the only
+implementation of it. (The URL's *writer* wasn't, once: `serializeViewState`
+built `pc=` from the field and the value by hand, so the first exclusions
+round-tripped back as includes.)
+
+Three things follow from "an exclusion is a chip like any other":
+
+- **It ANDs, so it narrows**, which is the invariant the whole control rests
+  on. It also makes same-field chips useful in the one direction the positive
+  form can't be: `-application:firefox -application:chrome` is a filter you can
+  actually reach, where the positive pair is empty by construction.
+- **A row with no value for the field passes.** `-test:amazon` keeps the
+  suite-level rows, whose `test` is `''` — they were never the thing being
+  excluded. The same for a row with no `application`.
+- **It must not trip the `test:` subtest nudge.** `needsSubtestMatching` exists
+  because a *positive* `test:` chip matches no parent, so a filter carrying one
+  needs "Match inside subtests" or it shows nothing. An exclusion is the
+  opposite case — every parent passes it already — so the nudge checks
+  `!c.negated`, and switching subtest matching on for it would be a fetch and a
+  reshaped list nobody asked for.
+
+**The two polarities of one value can't coexist**, and `addChip` is where that
+is enforced: adding a chip *replaces* its opposite-polarity twin, in place, so
+flipping one doesn't shuffle the row of pills. Holding both would be a filter
+that matches nothing, and no click should be able to build that. `sameChip`
+counts polarity (they are two different chips) and `sameTerm` is the question
+that ignores it.
 
 Chip values are stored **lowercase** so equality is stable regardless of
 how a badge happened to be cased. Only known field names (`suite`, `test`,
@@ -516,13 +551,42 @@ It needed one config line: `resolve.conditions = ['browser']` under
 If you add state to a component, ask what happens on its *second* mount
 with a non-default prop.
 
-### Every badge in the table is a filter toggle
+### Every badge in the table is a filter toggle, in either direction
 
 A badge's click adds the corresponding chip; if the chip already exists,
-click removes it. Visual affordance: hover shows a `+` cue; active shows a
-`×` cue and a blue outline. Badge is a `<button>`, not a `<span>` — full
-keyboard support falls out of that. `title` attributes describe the action
-for screen readers and hover-hint.
+click removes it. **Alt-click does the same for the exclusion.** Visual
+affordance: hover shows a `+` cue; an included value shows a `×` cue and a blue
+outline; an excluded one shows a `−` cue, a red outline and a strikethrough
+through the value. Badge is a `<button>`, not a `<span>` — full keyboard
+support falls out of that. `title` attributes describe the action for screen
+readers and hover-hint, and they have to, because the modifier is otherwise
+invisible.
+
+**Each polarity toggles only itself, and that is what makes every transition
+one click.** Plain click owns the include chip, alt-click owns the exclude
+chip, and `addChip` replaces the twin — so of the six transitions between
+"nothing", "included" and "excluded", none costs a clear-then-set. The
+alternative rule ("toggle whichever chip is on this value") makes included →
+excluded take two clicks, which is the transition the feature is *for*.
+
+**Alt-click is a shortcut, not the mechanism**, because a modifier is a mouse
+affordance and this app runs on phones. Two other ways in, both of which
+work everywhere:
+
+- **The pill in the filter box flips on a plain click** — its field-and-value
+  half is a `<button>`, and it says `not application` when it is negated. This
+  is the touch and keyboard path, and it is where the feature is *discovered*:
+  the pill visibly points one way and can be pushed the other.
+- **`-field:value` typed into the box**, which is also what a link and a CLI
+  term carry.
+
+**An excluded badge is only ever on screen under an expanded parent**, which is
+worth knowing before wondering whether the style is dead. A row carrying a value
+the filter excludes is filtered out, so its own badge can't be visible — except
+that `childrenForParent` returns *all* children when "Match inside subtests" is
+off, so a subtest's `test` badge can be one the filter excludes. That is also
+the state alt-clicking a subtest badge produces, so the style is exactly as
+reachable as the gesture that creates it.
 
 ### Two endpoints describe a series, and the cheap one answers first
 

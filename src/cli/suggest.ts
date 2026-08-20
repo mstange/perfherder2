@@ -100,7 +100,15 @@ export function diagnoseNoMatch(
       field: chip.field,
       alone,
       without: countMatching(rows, others),
-      suggestions: alone === 0 ? chipSuggestions(rows, others, chip, limit) : [],
+      // No suggestions for an exclusion. `chipSuggestions` answers "which value
+      // did you mean", and the answer to a `-platform:andriod` that excluded
+      // nothing is that it excluded nothing — offering other platforms to
+      // exclude instead would be inventing an intent. `alone` still reports it:
+      // for a negated chip that count is the rows it *left*, so an exclusion
+      // that was the one thing emptying the list still shows up as the term
+      // whose `without` is large.
+      suggestions:
+        alone === 0 && !chip.negated ? chipSuggestions(rows, others, chip, limit) : [],
     });
   }
 

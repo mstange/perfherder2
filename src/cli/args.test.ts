@@ -222,6 +222,29 @@ describe('parseFilterTerms', () => {
     expect(parseFilterTerms(['repo:autoland', 'repo:autoland']).filter.chips).toHaveLength(1);
   });
 
+  it('turns a leading dash into an exclusion chip', () => {
+    // The same spelling as the search box and the URL's `pc=`. It survives the
+    // argv parser because only `--` tokens are flags there.
+    const { filter } = parseFilterTerms(['speedometer3', '-application:firefox']);
+    expect(filter.chips).toEqual([
+      { field: 'application', value: 'firefox', negated: true },
+    ]);
+    expect(filter.text).toBe('speedometer3');
+  });
+
+  it('keeps the two polarities of one value apart', () => {
+    expect(
+      parseFilterTerms(['repo:autoland', '-repo:autoland']).filter.chips,
+    ).toHaveLength(2);
+  });
+
+  it('reports a mistyped field in the exclusion form too', () => {
+    const { suspectFields } = parseFilterTerms(['-app:firefox']);
+    expect(suspectFields).toEqual([
+      { term: '-app:firefox', field: 'app', suggestion: 'application' },
+    ]);
+  });
+
   it('reports a term shaped like a chip whose field is unknown', () => {
     // The failure this exists for: `app:firefox` searched as literal text,
     // matched nothing, and the no-match hint then talked about wrong *values*.

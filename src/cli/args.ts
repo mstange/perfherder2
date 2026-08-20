@@ -11,6 +11,7 @@ import {
   FILTER_FIELDS,
   isFilterField,
   parseChip,
+  sameChip,
   SORT_COLUMNS,
   type Filter,
   type SortColumn,
@@ -353,16 +354,18 @@ export function parseFilterTerms(terms: readonly string[]): ParsedTerms {
   for (const term of terms) {
     const chip = parseChip(term);
     if (chip) {
-      if (!chips.some((c) => c.field === chip.field && c.value === chip.value)) chips.push(chip);
+      if (!chips.some((c) => sameChip(c, chip))) chips.push(chip);
       continue;
     }
     const trimmed = term.trim();
     if (!trimmed) continue;
-    // Only a bare word before the colon looks like an attempted chip. A test
-    // name carrying one (`foo/bar:baz`) fails on the slash in the field part,
+    // Only a bare word before the colon looks like an attempted chip, with an
+    // optional `-` in front of it for the exclusion form — a misspelled field
+    // is worth reporting whichever direction it was meant in. A test name
+    // carrying a colon (`foo/bar:baz`) fails on the slash in the field part,
     // and a URL is excluded by the `//` — "https" is otherwise a perfectly
     // good bare word and would be reported as a mistyped field.
-    const match = /^([a-z][a-z_-]*):(?!\/\/)(.+)$/i.exec(trimmed);
+    const match = /^-?([a-z][a-z_-]*):(?!\/\/)(.+)$/i.exec(trimmed);
     if (match && !isFilterField(match[1].toLowerCase())) {
       suspectFields.push({
         term: trimmed,

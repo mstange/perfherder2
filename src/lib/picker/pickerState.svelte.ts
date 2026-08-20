@@ -28,15 +28,18 @@ import { DEFAULT_REPOS, PINNED_REPOS } from './pickerOptions';
 import {
   EMPTY_FILTER,
   cacheKey,
+  chipPolarity,
   compareRows,
   cycleSort,
   groupChildrenByParent,
   hasChip,
   isFilterActive,
+  makeChip,
   matchParentWithChildren,
   matchesRow,
   pickCachedForRepo,
   toggleChip,
+  type ChipPolarity,
   type Filter,
   type FilterChip,
   type FilterField,
@@ -103,8 +106,13 @@ export function resetPickerCaches(): void {
 // unless the filter descends into subtests. Both places that install a filter
 // the *app* derived — `seed` on open and `applyGraphContext` on demand — check
 // this; a filter the user typed is left alone, since they can see the box.
+//
+// An *excluded* `test:` chip is the opposite case and must not trip this: a
+// parent's empty `test` isn't the excluded value, so `-test:foo` matches every
+// parent already, and turning subtest matching on would be a fetch and a
+// reshaped list nobody asked for.
 function needsSubtestMatching(filter: Filter): boolean {
-  return filter.chips.some((c) => c.field === 'test');
+  return filter.chips.some((c) => c.field === 'test' && !c.negated);
 }
 
 export class PickerState {
@@ -556,8 +564,10 @@ export class PickerState {
     return [...children].sort((a, b) => compareRows(a, b, this.sort));
   }
 
-  isChipActive(field: FilterField, value: string): boolean {
-    return hasChip(this.filter, { field, value: value.toLowerCase() });
+  // What the filter currently says about this field's value, for the badge
+  // that offers it: included, excluded, or nothing.
+  chipPolarity(field: FilterField, value: string): ChipPolarity | null {
+    return chipPolarity(this.filter, field, value);
   }
 
   // ---- Mutations --------------------------------------------------------
@@ -742,7 +752,8 @@ export class PickerState {
 
   // Toggle a chip for a badge click. Values are normalized to lowercase so
   // the same field:value pair dedupes correctly regardless of the badge's
-  // casing.
+  // casing. `negated` is the alt-click: it toggles the *exclusion* of this
+  // value, and `toggleChip` replaces the opposite chip if one is there.
   //
   // `fromSubtest` is set by the AddSeriesPicker template when the click
   // originated on a subtest row. In that case we auto-enable `matchSubtests`
@@ -755,13 +766,15 @@ export class PickerState {
   toggleFilterChip(
     field: FilterField,
     value: string,
-    opts?: { fromSubtest?: boolean },
+    opts?: { fromSubtest?: boolean; negated?: boolean },
   ): void {
-    const chip: FilterChip = { field, value: value.toLowerCase() };
+    const chip: FilterChip = makeChip(field, value, opts?.negated);
     const nextFilter = toggleChip(this.filter, chip);
     // Only nudge matchSubtests when we're ADDING a chip from a subtest —
     // not when we're removing one (which would be an odd time to opt in).
-    const added = nextFilter.chips.length > this.filter.chips.length;
+    // An exclusion never needs the nudge, for the reason in
+    // `needsSubtestMatching`: it matches the parent rows on its own.
+    const added = hasChip(nextFilter, chip) && !chip.negated;
     this.filter = nextFilter;
     if (added && opts?.fromSubtest && !this.matchSubtests) {
       this.matchSubtests = true;

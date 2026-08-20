@@ -4,6 +4,7 @@ import {
   addChip,
   cacheKey,
   chipMatchesRow,
+  chipPolarity,
   chipToString,
   compareRows,
   cycleSort,
@@ -13,14 +14,18 @@ import {
   hasChip,
   isFilterActive,
   loadSummary,
+  makeChip,
   matchesRow,
   matchParentWithChildren,
   parseChip,
   pickCachedForRepo,
   removeChip,
+  sameChip,
   sameFilter,
+  sameTerm,
   sortKey,
   toggleChip,
+  toggleChipNegation,
   tokenizeFilter,
   type Filter,
   type FilterChip,
@@ -88,12 +93,52 @@ describe('parseChip', () => {
     expect(parseChip(':autoland')).toBeNull();
     expect(parseChip('autoland')).toBeNull();
   });
+  it('parses a leading "-" as an exclusion', () => {
+    expect(parseChip('-application:firefox')).toEqual({
+      field: 'application',
+      value: 'firefox',
+      negated: true,
+    });
+  });
+  it('rejects a "-" in front of anything that was not a chip', () => {
+    // Free text is allowed to start with a dash; it must not become a chip.
+    expect(parseChip('-shippable')).toBeNull();
+    expect(parseChip('-framework:talos')).toBeNull();
+    expect(parseChip('-repo:')).toBeNull();
+    expect(parseChip('-:autoland')).toBeNull();
+  });
+  it('strips only one dash, so "--repo:x" is not a chip', () => {
+    // Matters for the CLI, where `--repo` is a flag: a term that looks like one
+    // must not quietly become a filter.
+    expect(parseChip('--repo:autoland')).toBeNull();
+  });
 });
 
 describe('chipToString', () => {
   it('round-trips through parseChip', () => {
     const c: FilterChip = { field: 'repo', value: 'autoland' };
     expect(parseChip(chipToString(c))).toEqual(c);
+  });
+  it('round-trips an exclusion', () => {
+    const c = makeChip('application', 'firefox', true);
+    expect(chipToString(c)).toBe('-application:firefox');
+    expect(parseChip(chipToString(c))).toEqual(c);
+  });
+});
+
+describe('makeChip', () => {
+  it('lowercases the value', () => {
+    expect(makeChip('application', 'Firefox')).toEqual({
+      field: 'application',
+      value: 'firefox',
+    });
+  });
+  it('leaves `negated` off an include chip rather than setting it false', () => {
+    // Canonical shape: `{field, value}` is a complete include chip, so deep
+    // equality against one doesn't have to know the polarity field exists.
+    expect(Object.hasOwn(makeChip('repo', 'try'), 'negated')).toBe(false);
+    expect(Object.hasOwn(makeChip('repo', 'try', false), 'negated')).toBe(false);
+    expect(makeChip('repo', 'try', true).negated).toBe(true);
   });
 });
 
@@ -120,6 +165,74 @@ describe('chipMatchesRow', () => {
       field: 'application',
       value: 'firefox',
     })).toBe(true);
+  });
+
+  it('inverts every field when negated', () => {
+    const row = s();
+    expect(chipMatchesRow(row, makeChip('application', 'firefox', true))).toBe(false);
+    expect(chipMatchesRow(row, makeChip('application', 'chrome', true))).toBe(true);
+    // Option is the multi-valued one: "excluded" means the list doesn't hold it.
+    expect(chipMatchesRow(row, makeChip('option', 'fission', true))).toBe(false);
+    expect(chipMatchesRow(row, makeChip('option', 'nova', true))).toBe(true);
+  });
+
+  it('keeps rows that have no value for the field at all', () => {
+    // A suite-level row's `test` is ''. Excluding a subtest name must not drop
+    // the parents — they were never the thing being excluded.
+    expect(chipMatchesRow(s({ test: '' }), makeChip('test', 'amazon', true))).toBe(
+      true,
+    );
+    expect(chipMatchesRow(s({ options: [] }), makeChip('option', 'opt', true))).toBe(
+      true,
+    );
+  });
+});
+
+describe('negation in a whole filter', () => {
+  const firefox = s({ id: 1, application: 'firefox' });
+  const chrome = s({ id: 2, application: 'chrome' });
+
+  it('narrows: an exclusion ANDs like every other chip', () => {
+    const f: Filter = { chips: [makeChip('application', 'firefox', true)], text: '' };
+    expect(matchesRow(firefox, f)).toBe(false);
+    expect(matchesRow(chrome, f)).toBe(true);
+  });
+
+  it('two exclusions of the same field both apply', () => {
+    // The one place same-field chips are *useful* twice over: "not firefox and
+    // not chrome" is a filter you can reach, where the positive pair is empty
+    // by construction.
+    const f: Filter = {
+      chips: [
+        makeChip('application', 'firefox', true),
+        makeChip('application', 'chrome', true),
+      ],
+      text: '',
+    };
+    expect(matchesRow(firefox, f)).toBe(false);
+    expect(matchesRow(chrome, f)).toBe(false);
+    expect(matchesRow(s({ id: 3, application: 'safari' }), f)).toBe(true);
+  });
+
+  it('combines with an include chip and free text', () => {
+    const f: Filter = {
+      chips: [
+        { field: 'suite', value: 'speedometer3' },
+        makeChip('application', 'firefox', true),
+      ],
+      text: 'linux',
+    };
+    expect(matchesRow(firefox, f)).toBe(false);
+    expect(matchesRow(chrome, f)).toBe(true);
+    expect(matchesRow(s({ id: 4, application: 'chrome', suite: 'jetstream' }), f)).toBe(
+      false,
+    );
+  });
+
+  it('is an active filter, so subtest-aware matching still engages', () => {
+    expect(
+      isFilterActive({ chips: [makeChip('application', 'firefox', true)], text: '' }),
+    ).toBe(true);
   });
 });
 
@@ -217,6 +330,57 @@ describe('chip mutations (add/remove/toggle/hasChip)', () => {
   it('hasChip', () => {
     expect(hasChip({ chips: [c1], text: '' }, c1)).toBe(true);
     expect(hasChip({ chips: [c1], text: '' }, c2)).toBe(false);
+  });
+  it('hasChip and sameChip tell the two polarities apart', () => {
+    const notC1 = makeChip(c1.field, c1.value, true);
+    expect(hasChip({ chips: [c1], text: '' }, notC1)).toBe(false);
+    expect(sameChip(c1, notC1)).toBe(false);
+    // …and `sameTerm` is the question that doesn't care, which is what the
+    // twin-replacement in `addChip` is built on.
+    expect(sameTerm(c1, notC1)).toBe(true);
+  });
+  it('chipPolarity reports what the filter says about a value', () => {
+    const f: Filter = { chips: [c1, makeChip('application', 'firefox', true)], text: '' };
+    expect(chipPolarity(f, 'repo', 'autoland')).toBe('include');
+    expect(chipPolarity(f, 'application', 'firefox')).toBe('exclude');
+    expect(chipPolarity(f, 'application', 'chrome')).toBeNull();
+    // The badge passes the row's raw casing; the lookup lowercases like the
+    // chips did.
+    expect(chipPolarity(f, 'repo', 'Autoland')).toBe('include');
+  });
+  it('addChip replaces the opposite-polarity twin in place', () => {
+    // Holding both would match nothing, and no click should be able to build
+    // that. In place, so flipping a chip doesn't reshuffle the row of pills.
+    const notC1 = makeChip(c1.field, c1.value, true);
+    const f: Filter = { chips: [c1, c2], text: '' };
+    expect(addChip(f, notC1).chips).toEqual([notC1, c2]);
+    expect(addChip({ chips: [notC1, c2], text: '' }, c1).chips).toEqual([c1, c2]);
+  });
+  it('toggleChip toggles only its own polarity, so every transition is one click', () => {
+    const notC1 = makeChip(c1.field, c1.value, true);
+    // none → include → none, on plain clicks.
+    expect(toggleChip(empty, c1).chips).toEqual([c1]);
+    expect(toggleChip({ chips: [c1], text: '' }, c1).chips).toEqual([]);
+    // none → exclude → none, on alt-clicks.
+    expect(toggleChip(empty, notC1).chips).toEqual([notC1]);
+    expect(toggleChip({ chips: [notC1], text: '' }, notC1).chips).toEqual([]);
+    // And across: one action each way, rather than a clear-then-set.
+    expect(toggleChip({ chips: [c1], text: '' }, notC1).chips).toEqual([notC1]);
+    expect(toggleChip({ chips: [notC1], text: '' }, c1).chips).toEqual([c1]);
+  });
+  it('toggleChipNegation flips a chip where it sits', () => {
+    const notC1 = makeChip(c1.field, c1.value, true);
+    expect(toggleChipNegation({ chips: [c1, c2], text: '' }, c1).chips).toEqual([
+      notC1,
+      c2,
+    ]);
+    expect(toggleChipNegation({ chips: [notC1, c2], text: '' }, notC1).chips).toEqual([
+      c1,
+      c2,
+    ]);
+    // A chip that isn't there is not a flip.
+    const f: Filter = { chips: [c2], text: '' };
+    expect(toggleChipNegation(f, c1)).toBe(f);
   });
   it('sameFilter compares text and chips literally', () => {
     expect(sameFilter({ chips: [c1, c2], text: 'x' }, { chips: [c1, c2], text: 'x' })).toBe(true);

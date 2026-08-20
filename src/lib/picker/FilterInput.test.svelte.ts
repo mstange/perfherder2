@@ -21,13 +21,29 @@ afterEach(() => {
   document.body.innerHTML = '';
 });
 
-function render(filter: Filter, textDebounceMs = 0) {
+// `echo` makes the harness behave the way the picker does — `picker.filter =
+// next` on every change, so the component sees its own commits come back and
+// re-renders from them. Off by default: most tests here assert on what the
+// component *reported*, and a static prop keeps them honest about the fact
+// that the chips are drawn from the prop rather than from local state. Tests
+// that assert on the re-render need it.
+function render(filter: Filter, textDebounceMs = 0, echo = false) {
   const target = document.createElement('div');
   document.body.appendChild(target);
   const changes: Filter[] = [];
+  let current = $state(filter);
   mounted = mount(FilterInput, {
     target,
-    props: { filter, onchange: (next: Filter) => changes.push(next), textDebounceMs },
+    props: {
+      get filter() {
+        return current;
+      },
+      onchange: (next: Filter) => {
+        changes.push(next);
+        if (echo) current = next;
+      },
+      textDebounceMs,
+    },
   });
   flushSync();
   return {
@@ -39,6 +55,9 @@ function render(filter: Filter, textDebounceMs = 0) {
       [...target.querySelectorAll('.chip-pill')].map((el) =>
         el.textContent!.replace(/\s+/g, ' ').trim(),
       ),
+    // The pill's field-and-value half: a button that flips the chip's polarity.
+    chipBodies: () =>
+      [...target.querySelectorAll('.chip-body')] as HTMLButtonElement[],
   };
 }
 
@@ -102,6 +121,52 @@ describe('FilterInput', () => {
     type(ui.input(), 'framework:talos ');
     expect(ui.changes.at(-1)).toEqual({ chips: [], text: 'framework:talos ' });
     expect(ui.input().value).toBe('framework:talos ');
+  });
+
+  it('turns a typed -field:value into an exclusion chip', () => {
+    const ui = render({ chips: [], text: '' });
+    type(ui.input(), '-application:firefox ');
+    expect(ui.changes.at(-1)).toEqual({
+      chips: [{ field: 'application', value: 'firefox', negated: true }],
+      text: '',
+    });
+    expect(ui.input().value).toBe('');
+  });
+
+  it('typing the exclusion of a chip already there replaces it', () => {
+    // Rather than leaving both, which is a filter that matches nothing.
+    const ui = render({ chips: [{ field: 'application', value: 'firefox' }], text: '' });
+    type(ui.input(), '-application:firefox ');
+    expect(ui.changes.at(-1)).toEqual({
+      chips: [{ field: 'application', value: 'firefox', negated: true }],
+      text: '',
+    });
+  });
+
+  it('leaves a dash on plain text alone', () => {
+    const ui = render({ chips: [], text: '' });
+    type(ui.input(), '-shippable ');
+    expect(ui.changes.at(-1)).toEqual({ chips: [], text: '-shippable ' });
+  });
+
+  it('spells an exclusion out in the pill, and flips it on a click', () => {
+    // The modifier-free path onto and off of the feature. Alt-click on a row
+    // badge is the mouse shortcut; this is what touch and the keyboard get.
+    const ui = render({ chips: [{ field: 'application', value: 'firefox' }], text: '' }, 0, true);
+    expect(ui.chips()).toEqual(['application firefox']);
+    ui.chipBodies()[0].click();
+    flushSync();
+    expect(ui.changes.at(-1)).toEqual({
+      chips: [{ field: 'application', value: 'firefox', negated: true }],
+      text: '',
+    });
+    expect(ui.chips()).toEqual(['not application firefox']);
+    ui.chipBodies()[0].click();
+    flushSync();
+    expect(ui.changes.at(-1)).toEqual({
+      chips: [{ field: 'application', value: 'firefox' }],
+      text: '',
+    });
   });
 
   it('adopts text the parent replaces from outside', () => {

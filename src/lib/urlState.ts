@@ -11,7 +11,9 @@
 
 import { TIME_RANGES } from './picker/pickerOptions';
 import {
+  chipToString,
   parseChip,
+  sameChip,
   SORT_COLUMNS,
   type Filter,
   type FilterChip,
@@ -193,7 +195,7 @@ function parseChips(values: string[]): FilterChip[] {
     const chip = parseChip(v);
     // Drop unparseable chips rather than failing the whole URL: a stale link
     // with a since-removed field should still show its graphs.
-    if (chip && !out.some((c) => c.field === chip.field && c.value === chip.value)) {
+    if (chip && !out.some((c) => sameChip(c, chip))) {
       out.push(chip);
     }
   }
@@ -335,7 +337,10 @@ export function serializeViewState(state: ViewState): string {
     const { filter, repos, intervalSeconds, matchSubtests, sort } = state.picker;
     if (filter.text) p.set('pf', filter.text);
     for (const chip of filter.chips) {
-      p.append('pc', `${chip.field}:${chip.value}`);
+      // `chipToString`, not a second spelling of it: the `-` an exclusion
+      // carries has to survive the round trip, and it did not when this line
+      // built the string itself.
+      p.append('pc', chipToString(chip));
     }
     // Written even when the list is empty, and `psub` written even when false:
     // for these three, omitting means "unspecified" rather than "off", so a
