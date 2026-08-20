@@ -120,6 +120,16 @@ export type ViewState = {
   // the two above, and **off** by default — the one drawing switch that is, for the
   // reasons recorded on `AppState.showTrend`.
   showTrend: boolean;
+  // The machine whose points are drawn at full strength, with every other
+  // machine's faded — see `AppState.focusedMachine`. Null when the graph is
+  // showing every machine equally, which is nearly always.
+  //
+  // In the URL because it is a reading of the graph worth sending to someone:
+  // "it's this worker, look" is the whole finding, and a link that arrived with
+  // the focus dropped would be a link to the noise it explains. The *hovered*
+  // machine deliberately isn't here, for the same reason `compared`'s hover twin
+  // isn't — it would rewrite the URL as the pointer crossed a list.
+  machine: string | null;
   pickerOpen: boolean;
   picker: PickerViewState;
 };
@@ -133,6 +143,7 @@ export const EMPTY_VIEW_STATE: ViewState = {
   points: 'replicates',
   changeDetection: true,
   showTrend: false,
+  machine: null,
   pickerOpen: false,
   picker: EMPTY_PICKER_VIEW,
 };
@@ -288,6 +299,10 @@ export function parseViewState(search: string): ViewState {
     // `=== '1'` rather than `!== '0'`, because this one's default is off: the
     // param's presence turns it on, the way `picker` below works.
     showTrend: p.get('trend') === '1',
+    // Trimmed, and an empty one is no focus at all — `mach=` in a hand-edited
+    // link means the same as leaving it out, rather than focusing a machine
+    // whose name is the empty string and dimming the whole graph.
+    machine: p.get('mach')?.trim() || null,
     pickerOpen: p.get('picker') === '1',
     picker: {
       filter: {
@@ -330,6 +345,7 @@ export function serializeViewState(state: ViewState): string {
   if (!state.changeDetection) p.set('cd', '0');
   // And this one only when on, its default being the other way round.
   if (state.showTrend) p.set('trend', '1');
+  if (state.machine) p.set('mach', state.machine);
   // The panel's state only means anything while it's open — carrying it in the
   // URL of a closed panel would be noise in every shared graph link.
   if (state.pickerOpen) {

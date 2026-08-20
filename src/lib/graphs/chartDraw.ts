@@ -60,6 +60,17 @@ export type DrawOptions = {
   alertSlots?: readonly AlertSlot[];
   changeSlots?: readonly ChangeSlot[];
   dotRadius: number;
+  // The machine whose dots keep their full weight while every other machine's
+  // fade into a wash behind them, or null when no machine is singled out. Chart-
+  // wide rather than per series, because a worker runs jobs for every signature
+  // that targets its platform and the whole question is what it did across them.
+  focusMachine: string | null;
+  // Whether the other machines' dots are drawn at all. False in `points: none`,
+  // where there is no wash for a focus to stand out against and the honest
+  // reading of "no points, except this machine's" is exactly that.
+  //
+  // Ignored when nothing is focused — `points` is already empty in that case.
+  showOtherMachines: boolean;
   // The detail graph joins the per-push means; the overview deliberately
   // doesn't (task requirement) — at overview density the lines are just noise.
   // It also goes off with the dots: the line is a reading of the same raw data
@@ -704,18 +715,9 @@ const DOT_PATHS = 8;
 // 25-replicate run draws as one vertical line, in which the only legible feature
 // is its extremes. See chart.ts, "Jitter".
 function drawDots(ctx: CanvasRenderingContext2D, o: DrawOptions, s: DrawSeries): void {
-  const points = s.points;
-  if (points.length === 0) return;
-  const { geom } = o;
+  if (s.points.length === 0) return;
   const r = o.dotRadius;
-  // The widest a symbol reaches from its centre, for the cull below.
-  const reach = r * DIAMOND_HALF_DIAGONAL + 1;
-  // Widened by the jitter's ceiling, so the dots the loop covers are the same
-  // ones the hit test considers. Both ends: a dot can be nudged either way.
-  const slack = pixelSpan(geom.xScale, o.jitter.maxPx);
-  const start = lowerBound(points, o.xDomain.min - slack);
-  ctx.globalAlpha = DOT_ALPHA;
-  // Set once for all the paths below; neither fill() nor stroke() disturbs it.
+  // Set once for every pass below; neither fill() nor stroke() disturbs it.
   if (s.symbol.filled) {
     ctx.fillStyle = s.color;
   } else {
@@ -724,12 +726,77 @@ function drawDots(ctx: CanvasRenderingContext2D, o: DrawOptions, s: DrawSeries):
     // size, where a 1.5px stroke would close a 1px-radius ring into a blob.
     ctx.lineWidth = Math.min(1.5, Math.max(0.75, r * 0.5));
   }
+
+  if (o.focusMachine === null) {
+    dotPass(ctx, o, s, DOT_ALPHA, null);
+    return;
+  }
+  // The wash first, and **it is every dot rather than every *other* dot.** The
+  // focused ones are painted again on top, at the same coordinates and the same
+  // size, so the pass below covers them exactly — which means the wash needs no
+  // per-dot test at all and the cost of a focus is one extra traversal rather
+  // than two filtered ones. The wash under a focused dot is invisible beneath an
+  // almost-opaque one, and would be on the right side of the effect anyway.
+  if (o.showOtherMachines) dotPass(ctx, o, s, DIM_MACHINE_ALPHA, null);
+  dotPass(ctx, o, s, FOCUS_MACHINE_ALPHA, o.focusMachine);
+}
+
+// The two ends of a focus, **both pushed well past where the ordinary dot alpha
+// sits and in opposite directions**, because the contrast has to survive the one
+// thing working against it: the focused machine is a handful of dots and the
+// wash is thousands of them, so what a modest difference loses to is the crowd's
+// *accumulation*. `DOT_PATHS` is there precisely to make overlapping dots add
+// up, and it does not stop doing that for the machines that were not picked. At
+// the first value tried — the ordinary alpha for the focus and a fifth of it for
+// the wash — eight overlapping washed dots reached 57% against a lone focused
+// dot's 50%, so the reading inverted exactly where the data is densest and the
+// question is hardest.
+//
+// So the wash is a *sixteenth* of a dot each. Eight of them still reach 39%, so
+// a cloud is still a cloud — which is the whole point of dimming rather than
+// hiding, since "these dots sit low" is a claim about the dots around them — but
+// a lone unfocused dot is now barely there. That is the trade, and it is the
+// right way round: the crowd is background, and being background is its job.
+//
+// The focused dots are nearly opaque, which gives up density *within* the focus.
+// That costs nothing real. A machine runs a few dozen of a series' thousands of
+// jobs, so its dots are sparse by construction, and where they are is the
+// question rather than how many are stacked on each other. It also keeps the
+// light end of the palette (orange, #FFB851) reading as a solid dot on the light
+// theme, which is where a fainter value gave out first.
+const DIM_MACHINE_ALPHA = 0.06;
+const FOCUS_MACHINE_ALPHA = 0.95;
+
+// One pass over a series' dots at one alpha, optionally only the dots from one
+// machine. Split out of `drawDots` because a machine focus needs two of them and
+// the split-across-paths trick below has to happen inside each.
+function dotPass(
+  ctx: CanvasRenderingContext2D,
+  o: DrawOptions,
+  s: DrawSeries,
+  alpha: number,
+  onlyMachine: string | null,
+): void {
+  const points = s.points;
+  const { geom } = o;
+  const r = o.dotRadius;
+  // The widest a symbol reaches from its centre, for the cull below.
+  const reach = r * DIAMOND_HALF_DIAGONAL + 1;
+  // Widened by the jitter's ceiling, so the dots the loop covers are the same
+  // ones the hit test considers. Both ends: a dot can be nudged either way.
+  const slack = pixelSpan(geom.xScale, o.jitter.maxPx);
+  const start = lowerBound(points, o.xDomain.min - slack);
+  ctx.globalAlpha = alpha;
   for (let path = 0; path < DOT_PATHS; path++) {
     ctx.beginPath();
     // Each path walks its own x-sorted subsequence, so the break is still sound.
     for (let i = start + path; i < points.length; i += DOT_PATHS) {
       const p = points[i];
       if (p.x > o.xDomain.max + slack) break;
+      // One string comparison per dot, which is why `buildSeriesData` shares one
+      // string per machine across the whole series rather than keeping the copy
+      // each response row arrived with.
+      if (onlyMachine !== null && p.machine !== onlyMachine) continue;
       const x = geom.xScale.toPixel(p.x) + jitterOffsetPx(p, o.jitter);
       const y = geom.yScale.toPixel(p.y);
       // Cheap vertical cull: points can sit outside a zoomed y domain.

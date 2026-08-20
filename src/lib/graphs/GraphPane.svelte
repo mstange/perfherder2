@@ -15,6 +15,8 @@
   import { CONTROL_BLOCK_NARROW, GRAPH_MIN_HEIGHT } from '../shared/layout';
   import { describeSpan, matchingPreset, RANGE_PRESETS } from '../shared/timeRange';
   import ChevronIcon from '../shared/ChevronIcon.svelte';
+  import CrossIcon from '../shared/CrossIcon.svelte';
+  import MachinePanel from './MachinePanel.svelte';
 
   type Props = { app: AppState };
   let { app }: Props = $props();
@@ -129,10 +131,16 @@
   // about extra marks, and their absence is visible in the graph itself. The
   // zoom is here because it is the one that makes the axis disagree with the
   // range beside it.
+  //
+  // A pinned machine joins them for the same reason the zoom does: it is a
+  // setting that changes what the dots *mean*, and the control that would
+  // otherwise say so is the one this line stands in for. (The chip over the plot
+  // says it too, but it is transient by design — this line survives a reload.)
   const headerSummary = $derived(
     [
       activePreset ? `last ${activePreset.label}` : describeSpan(app.range),
       POINT_CHOICES.find((c) => c.mode === app.pointMode)?.summary,
+      app.focusedMachine,
       app.zoom ? 'zoomed' : null,
     ]
       .filter(Boolean)
@@ -447,6 +455,11 @@
           />
           Trend band
         </label>
+        <!-- Which worker produced which dots. On this row because it is a
+             drawing choice like the rest of them — the machine comes down with
+             every datum, so picking one paints instantly and fetches nothing.
+             See MachinePanel.svelte and machines.ts. -->
+        <MachinePanel {app} />
         <!-- Both the label and the button stay put whether or not there's a zoom:
              swapping in a longer string used to push this whole group onto a second
              row, shoving the graphs down mid-interaction. -->
@@ -487,6 +500,7 @@
         pad={OVERVIEW_PAD}
         dotRadius={OVERVIEW_DOT}
         showPoints={app.drawPoints}
+        focusMachine={app.machineFocus}
         showLines={false}
         showAxes={true}
         interaction="brush"
@@ -503,6 +517,35 @@
       style="--plot-left: {DETAIL_PAD.left}px; --plot-right: {DETAIL_PAD.right}px; --plot-top: {DETAIL_PAD.top}px; --plot-bottom: {DETAIL_PAD.bottom}px"
     >
       {#if unitLabel}<span class="unit">{unitLabel}</span>{/if}
+      <!-- The graph is not showing what it usually shows, and the control that
+           says so is in a header that collapses on a small pane and is a panel
+           away in any case. So the plot says it itself, in the corner and in the
+           two words that matter: which machine, and how to stop.
+
+           It is also the only thing on screen naming a hover *preview*. A hover
+           over the machine list is read on the graph, not in the list — that is
+           the whole design — so the reader's eyes are here, and "which one is
+           this?" has to be answerable without looking back. Hence the same chip
+           in two voices rather than a second indicator for the hovered case.
+
+           The two voices are the styling and the absence of the clear button;
+           the word "preview" used to be here too and was doing nothing the
+           dashed, unsaturated, un-closeable pill wasn't already saying. -->
+      {#if app.machineFocus}
+        <div class="machine-chip" class:preview={app.machineFocusSource === 'hover'}>
+          <span class="mono">{app.machineFocus}</span>
+          {#if app.machineFocusSource !== 'hover'}
+            <button
+              type="button"
+              class="chip-clear"
+              title="Show every machine again"
+              onclick={() => app.setMachineFocus(null)}
+            >
+              <CrossIcon />
+            </button>
+          {/if}
+        </div>
+      {/if}
       <ScatterChart
         series={app.visibleSeries}
         xDomain={xDetail}
@@ -510,6 +553,7 @@
         pad={DETAIL_PAD}
         dotRadius={DETAIL_DOT}
         showPoints={app.drawPoints}
+        focusMachine={app.machineFocus}
         showLines={app.drawPoints}
         showAxes={true}
         showAlerts={true}
@@ -605,6 +649,12 @@
     padding: 8px 12px;
     border-bottom: 1px solid var(--border-default);
     font: 13px/1.4 system-ui, sans-serif;
+    /* The containing block for the machine panel, which drops from this bar's
+       bottom-right corner rather than from the button that opens it — see
+       MachinePanel.svelte's `.panel` for why anchoring it to the button breaks
+       as soon as the bar wraps. Nothing else in here is positioned, so this
+       costs the layout nothing. */
+    position: relative;
   }
   /* The collapsed header keeps the block in the DOM and hides it, so the toggle's
      `aria-controls` points at something that exists. An attribute selector
@@ -797,6 +847,74 @@
     font: 11px system-ui, sans-serif;
     color: var(--fg-muted);
     pointer-events: none;
+  }
+  /* Inside the plot rectangle and at its top right, which is the one corner of
+     this graph that is reliably empty: the y labels own the left gutter, the
+     alert triangles hang from the top *centre* of each column they mark, and the
+     change bars run along the floor. Offset by the plot padding for the same
+     reason `.overlay-note` is — over the full box it would sit on the axis. */
+  .machine-chip {
+    position: absolute;
+    z-index: 1;
+    top: calc(var(--plot-top) + 4px);
+    right: calc(var(--plot-right) + 6px);
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding: 2px 2px 2px 8px;
+    border: 1px solid var(--accent-emphasis);
+    border-radius: 999px;
+    background: var(--accent-subtle);
+    color: var(--accent-on-subtle);
+    font: 11px system-ui, sans-serif;
+  }
+  /* A preview is the pointer asking a question, so it is drawn as provisional —
+     dashed, and in the muted neutral rather than the accent. The same vocabulary
+     the comparison's hovered ring uses on the canvas a few pixels away, where
+     dashes mean "not committed to". It also has no way to dismiss it, which is
+     the other half of saying it is not a state you are in.
+
+     Its own padding-right, because the pinned chip's 2px is room for the clear
+     button this one does not have. */
+  .machine-chip.preview {
+    padding-right: 8px;
+    border-style: dashed;
+    border-color: var(--border-default);
+    background: var(--bg-subtle);
+    color: var(--fg-muted);
+  }
+  .machine-chip .mono {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  /* Bespoke rather than `.btn`: it is a 16px mark inside a pill, and the button
+     recipe would put a second border and fill inside the chip's own. See
+     design.md, "One button, defined once". */
+  .chip-clear {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    padding: 0;
+    border: 0;
+    border-radius: 999px;
+    background: none;
+    color: inherit;
+    cursor: pointer;
+  }
+  .chip-clear:hover {
+    background: var(--bg-overlay-hover);
+  }
+  .chip-clear:active:hover {
+    background: var(--bg-overlay-active);
+  }
+  @media (pointer: coarse) {
+    /* The one way out of a focus that is always on screen, so it takes the
+       floor by hand — it is not a `.btn`. See app.css, "Touch sizing". */
+    .chip-clear {
+      width: 32px;
+      height: 32px;
+    }
   }
   .overlay-note {
     /* Inset to the plot rectangle, not the pane: centred over the full box the

@@ -54,6 +54,15 @@
     // can be clicked but not seen is a selection out of nowhere, and a ring
     // appearing on empty space as the pointer crosses it is worse.
     showPoints: boolean;
+    // The machine to draw at full strength with the rest washed out, or null for
+    // the usual case where every machine is one of the crowd. See
+    // `AppState.machineFocus`; the cut itself is chartDraw's `drawDots`.
+    //
+    // It overrides `showPoints` for its own machine, which is the one crossing of
+    // the two settings and is deliberate: "no points except this worker's" is a
+    // view worth having, and it is how a focus stays legible with nine series'
+    // scatter turned off.
+    focusMachine: string | null;
     showLines: boolean;
     showAxes: boolean;
     // Alert markers, on the detail graph only: the overview is 84px tall and
@@ -131,6 +140,7 @@
     yDomain,
     dotRadius,
     showPoints,
+    focusMachine,
     showLines,
     showAxes,
     pad,
@@ -225,7 +235,26 @@
   // at all. One derived feeding both the drawing and the hit test, so the two
   // cannot disagree about which dots exist — the same choke-point discipline
   // `SeriesEntry.plot` applies one level up.
-  const drawnPoints = $derived(series.map((s) => (showPoints ? s.plot.points : NO_POINTS)));
+  //
+  // A machine focus keeps the arrays even with the dots off, because it draws its
+  // own machine's; `machineAccept` below is the second half of that, narrowing
+  // the hit test to the same subset. The arrays themselves are never filtered —
+  // `pointIndex` is an index into `SeriesEntry.plot.points` all the way up to
+  // GraphPane's `pointFor`, and a filtered copy would renumber every dot.
+  const drawnPoints = $derived(
+    series.map((s) => (showPoints || focusMachine !== null ? s.plot.points : NO_POINTS)),
+  );
+
+  // Which of those dots a click can land on. Everything drawn, which with a focus
+  // and the dots on means the washed-out ones too: they are faint, not gone, and
+  // a dot you can see and cannot click is the more surprising of the two
+  // failures. With the dots off, only the focused machine's are painted, so only
+  // those answer.
+  const machineAccept = $derived(
+    focusMachine !== null && !showPoints
+      ? (p: SeriesPoint) => p.machine === focusMachine
+      : undefined,
+  );
 
   // Turns each dot's stored room into a pixel offset. One object for the whole
   // chart, derived rather than recomputed per draw: the dots, the selection rings
@@ -280,6 +309,8 @@
       alertSlots,
       changeSlots,
       dotRadius,
+      focusMachine,
+      showOtherMachines: showPoints,
       showLines,
       showAxes,
       // Read inside the effect, so a theme change repaints the canvas — the
@@ -421,6 +452,7 @@
       py,
       HIT_RADIUS,
       jitter,
+      machineAccept,
     );
   }
 

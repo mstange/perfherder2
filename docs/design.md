@@ -48,6 +48,7 @@ change is wrong for a reason the code doesn't show:
 | How a row is identified | "Row identity: `Series.key`, composed at construction" |
 | A loading or empty state for subtests | "`has_subtests` is a claim, not a promise" — `has_subtests` does not mean a subtests=1 fetch will return any |
 | Canvas drawing | graphs.md "Rendering" and "Dots are translucent, and jittered sideways" |
+| Anything that draws, hides or counts a dot | graphs.md "Machines" — a machine focus is a *fourth* answer to "which dots exist", crossing `pointMode` rather than sitting beside it: with the dots off it draws its own machine's, so the hit test, the y extent and the "nothing is drawn" note all have to know. The three places that must agree are `ScatterChart`'s `drawnPoints`, its `machineAccept`, and `drawDots` |
 | The change detector's constants | graphs.md "Detected changes", and the reasoning and measurements recorded beside each constant in `changes.ts`. **Open the graph first**: graphs.md "The series behind the tuning" is a table of URLs, one per signature those constants were measured on, and every constant that has been wrong was wrong because it was reasoned about instead of loaded. `drift.ts` borrows the floor and `CHANGE_ALPHA` too, so a change moves the series-list drift badge as well as the bars |
 | A statistic | comparison.md "Statistics" and "Deviations from PerfCompare" |
 | A row in the picker's list, or the virtualizer's row height | "A panel a phone wide lists cards, not columns" — there are two row layouts over one flat list, three snippets are shared by both, and every row in the list has to be exactly `rowHeight` tall, notes included |
@@ -2074,7 +2075,10 @@ list's icon buttons and drag handle 32 square, the theme toggle 72×32 (its widt
 the point of the control, so it is a fixed size rather than a floor), the filter
 box's chip removers 32, the series list header's two icon buttons 32 square — the
 sheet's close, which is the same shape and mark as the panel's because it is the same
-control, and `Remove all` — and the panel's three other shapes below. **There are
+control, and `Remove all` — the machine panel's rows and the details pane's machine
+control 32 tall, being list rows and a word in a definition list rather than
+buttons, the graph's machine chip's clear 32 square, being a 16px cross in a pill,
+and the panel's three other shapes below. **There are
 no exceptions left, and there was one.** The bottom bar's two controls — the pane
 switcher and the series sheet's handle — took the guideline's 44 for a while, on
 the grounds that they are the app's primary navigation and are driven by a thumb at

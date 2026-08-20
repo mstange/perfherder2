@@ -76,13 +76,15 @@ function entry(
   };
 }
 
-// One datum with three replicates, plus a second push.
+// One datum with three replicates, plus a second push. The two runs are on
+// different machines, which is what the census and the focus have to tell apart;
+// every replicate of one datum shares its run's machine, as the API guarantees.
 const SAMPLE = summary(1, [
-  datum({ id: 10, value: 100, push_id: 1, push_timestamp: '2026-07-21T06:00:00' }),
-  datum({ id: 10, value: 110, push_id: 1, push_timestamp: '2026-07-21T06:00:00' }),
-  datum({ id: 10, value: 120, push_id: 1, push_timestamp: '2026-07-21T06:00:00' }),
-  datum({ id: 11, value: 200, push_id: 2, push_timestamp: '2026-07-22T06:00:00' }),
-  datum({ id: 11, value: 210, push_id: 2, push_timestamp: '2026-07-22T06:00:00' }),
+  datum({ id: 10, value: 100, push_id: 1, push_timestamp: '2026-07-21T06:00:00', machine_name: 'nuc-a' }),
+  datum({ id: 10, value: 110, push_id: 1, push_timestamp: '2026-07-21T06:00:00', machine_name: 'nuc-a' }),
+  datum({ id: 10, value: 120, push_id: 1, push_timestamp: '2026-07-21T06:00:00', machine_name: 'nuc-a' }),
+  datum({ id: 11, value: 200, push_id: 2, push_timestamp: '2026-07-22T06:00:00', machine_name: 'nuc-b' }),
+  datum({ id: 11, value: 210, push_id: 2, push_timestamp: '2026-07-22T06:00:00', machine_name: 'nuc-b' }),
 ]);
 
 // A series long enough for change detection to have anything to say: 30 pushes
@@ -1682,6 +1684,116 @@ describe('AppState trend band', () => {
       expect(app.series[0].trend.length).toBeGreaterThan(0);
       app.removeSeries(app.series[0].ref);
       expect(app.series).toEqual([]);
+    }));
+});
+
+// What the census counts is machines.test.ts's; this is the wiring — which
+// pushes go in, and the pin/preview pair the panel and the details pane drive.
+describe('AppState machine focus', () => {
+  it('counts the machines behind the dots on screen', () =>
+    withApp('?series=autoland,1,1', async (app) => {
+      await settle();
+      expect(app.machineCensus.machines).toEqual([
+        { name: 'nuc-a', runs: 1, points: 3 },
+        { name: 'nuc-b', runs: 1, points: 2 },
+      ]);
+      expect(app.machineCensus.unattributedRuns).toBe(0);
+    }));
+
+  it('counts a run whose job has expired without naming a machine for it', () => {
+    // STEP's datums carry no machine, the way anything past treeherder's job
+    // retention window arrives. Its pushes are in June, so the range has to
+    // reach back to them.
+    const search = `?series=autoland,2,1&range=${Date.UTC(2026, 5, 1)},${Date.UTC(2026, 6, 1)}`;
+    return withApp(search, async (app) => {
+      await settle();
+      expect(app.machineCensus.machines).toEqual([]);
+      expect(app.machineCensus.unattributedRuns).toBe(60);
+    });
+  });
+
+  it('narrows the census to the zoomed window', () =>
+    withApp('?series=autoland,1,1', async (app) => {
+      await settle();
+      const second = Date.UTC(2026, 6, 22, 6, 0, 0);
+      app.setZoom({ start: second - 3600_000, end: second + 3600_000 });
+      expect(app.machineCensus.machines.map((m) => m.name)).toEqual(['nuc-b']);
+    }));
+
+  it('leaves a hidden series out of it, since its dots are not drawn', () =>
+    withApp('?series=autoland,1,1', async (app) => {
+      await settle();
+      app.toggleSeriesVisibility(app.series[0].ref);
+      expect(app.machineCensus.machines).toEqual([]);
+    }));
+
+  it('pins a machine, and writes it to the URL', () =>
+    withApp('?series=autoland,1,1', async (app) => {
+      await settle();
+      app.setMachineFocus('nuc-a');
+      expect(app.focusedMachine).toBe('nuc-a');
+      expect(app.machineFocus).toBe('nuc-a');
+      expect(app.machineFocusSource).toBe('pinned');
+      expect(parseViewState(location.search).machine).toBe('nuc-a');
+    }));
+
+  it('treats a second click on the pinned machine as clearing it', () =>
+    withApp('?series=autoland,1,1&mach=nuc-a', async (app) => {
+      await settle();
+      expect(app.focusedMachine).toBe('nuc-a');
+      // The panel's rows and the details pane's chip both toggle rather than
+      // carrying a separate clear, so this is the way out of both.
+      app.setMachineFocus('nuc-a');
+      expect(app.focusedMachine).toBeNull();
+      expect(parseViewState(location.search).machine).toBeNull();
+    }));
+
+  it('previews a hovered machine over the pinned one, and keeps it out of the URL', () => {
+    const search = '?series=autoland,1,1&mach=nuc-a';
+    history.replaceState(null, '', `/${search}`);
+    return withApp(search, async (app) => {
+      await settle();
+      app.setHoveredMachine('nuc-b');
+      expect(app.machineFocus).toBe('nuc-b');
+      expect(app.machineFocusSource).toBe('hover');
+      // The pin is untouched underneath, and nothing was written.
+      expect(app.focusedMachine).toBe('nuc-a');
+      expect(parseViewState(location.search).machine).toBe('nuc-a');
+      app.setHoveredMachine(null);
+      expect(app.machineFocus).toBe('nuc-a');
+    });
+  });
+
+  it('previews "all machines" over a pin, which is what the panel’s first row is', () =>
+    withApp('?series=autoland,1,1&mach=nuc-a', async (app) => {
+      await settle();
+      // `setHoveredMachine(null)` cannot express it — null is "no preview" — so
+      // the row hands the pin back through the same call and the graph shows
+      // every machine only once it is clicked. Pinning null is the clear.
+      app.setMachineFocus(null);
+      expect(app.machineFocus).toBeNull();
+      expect(app.machineFocusSource).toBeNull();
+    }));
+
+  it('does not claim nothing is drawn when a focus is drawing its machine', () =>
+    withApp('?series=autoland,1,1&pts=none', async (app) => {
+      await settle();
+      // `points: none` with no band is normally the "nothing here" note. A focus
+      // draws its own machine's dots, so the note would sit over them.
+      expect(app.noValuesDrawn).toBe(true);
+      app.setMachineFocus('nuc-a');
+      expect(app.noValuesDrawn).toBe(false);
+    }));
+
+  it('reads a focus straight from the URL, and drops any stale preview on a pop', () =>
+    withApp('?series=autoland,1,1&mach=nuc-b', async (app) => {
+      await settle();
+      expect(app.focusedMachine).toBe('nuc-b');
+      app.setHoveredMachine('nuc-a');
+      app.onPopState('?series=autoland,1,1');
+      expect(app.focusedMachine).toBeNull();
+      expect(app.hoveredMachine).toBeNull();
+      expect(app.machineFocus).toBeNull();
     }));
 });
 

@@ -366,6 +366,14 @@ export type Hit = {
 // `jitter` must be the same scale the dots were drawn with, or the cursor and the
 // dots disagree about where the dots are. The scan window widens by its ceiling,
 // since a jittered dot can be that much further out than its push is.
+//
+// `accept` narrows the hit test to a subset of the array without narrowing the
+// array, which is what keeps `pointIndex` an index into the caller's own points
+// — a filtered copy would renumber them and every selection built from one would
+// name a different dot. It exists for the one case where some of a series' dots
+// are drawn and the rest are not: a machine focus in `points: none`. See
+// chartDraw's `drawDots`, which has to make the same cut, and ScatterChart's
+// `drawnPoints`/`hitAt`, which is where the two are kept in step.
 export function hitTestSeries(
   points: SeriesPoint[],
   xScale: Scale,
@@ -374,6 +382,7 @@ export function hitTestSeries(
   py: number,
   radius: number,
   jitter: JitterScale = NO_JITTER,
+  accept?: (p: SeriesPoint) => boolean,
 ): { pointIndex: number; distanceSq: number } | null {
   if (points.length === 0) return null;
   const reach = radius + jitter.maxPx;
@@ -386,6 +395,7 @@ export function hitTestSeries(
   let best = -1;
   let bestDist = Infinity;
   for (let i = lo; i <= hi && i < points.length; i++) {
+    if (accept && !accept(points[i])) continue;
     const dx = xScale.toPixel(points[i].x) + jitterOffsetPx(points[i], jitter) - px;
     const dy = yScale.toPixel(points[i].y) - py;
     const d = dx * dx + dy * dy;
@@ -407,10 +417,11 @@ export function hitTestAll(
   py: number,
   radius: number,
   jitter: JitterScale = NO_JITTER,
+  accept?: (p: SeriesPoint) => boolean,
 ): Hit | null {
   let best: Hit | null = null;
   for (let s = 0; s < list.length; s++) {
-    const hit = hitTestSeries(list[s].points, xScale, yScale, px, py, radius, jitter);
+    const hit = hitTestSeries(list[s].points, xScale, yScale, px, py, radius, jitter, accept);
     if (hit && (!best || hit.distanceSq < best.distanceSq)) {
       best = { seriesIndex: s, pointIndex: hit.pointIndex, distanceSq: hit.distanceSq };
     }

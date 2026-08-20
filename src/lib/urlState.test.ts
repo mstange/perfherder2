@@ -330,6 +330,17 @@ describe('serializeViewState', () => {
     expect(parseViewState('?trend=true').showTrend).toBe(false);
   });
 
+  it('round-trips a machine focus, and treats a blank one as none', () => {
+    expect(serializeViewState(state({ machine: null }))).toBe('');
+    expect(serializeViewState(state({ machine: 'nuc13-085' }))).toBe('mach=nuc13-085');
+    expect(parseViewState('').machine).toBe(null);
+    expect(parseViewState('?mach=nuc13-085').machine).toBe('nuc13-085');
+    // A hand-edited link with the value deleted means "no focus", not "focus the
+    // machine called nothing", which would dim every dot on the graph.
+    expect(parseViewState('?mach=').machine).toBe(null);
+    expect(parseViewState('?mach=%20%20').machine).toBe(null);
+  });
+
   it('round-trips free text containing spaces', () => {
     const s = open({ filter: { chips: [], text: 'a b  c' } });
     expect(parseViewState(`?${serializeViewState(s)}`).picker.filter.text).toBe('a b  c');

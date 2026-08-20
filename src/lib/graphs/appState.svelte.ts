@@ -31,6 +31,7 @@ import {
 import { detectChanges, type DetectedChange } from './changes';
 import { buildDrift, driftWorthReporting, type DriftSummary } from './drift';
 import { rollingTrend, trendExtent, type TrendPoint } from './trend';
+import { buildMachineCensus } from './machines';
 import {
   benchmarkComparison,
   profileLinks,
@@ -266,6 +267,23 @@ export class AppState {
   // and a line per series on a plot that already draws every replicate — nine of
   // those unasked-for would be a different graph, not a footnote on this one.
   showTrend = $state(false);
+  // The machine the graph is emphasising: its dots keep full strength and every
+  // other machine's fade to a background wash. **Not a filter** — the other dots
+  // are still there, still hit-testable, still counted by everything that counts
+  // points — because the question it answers is "is this one worker, or is it the
+  // test?", and an answer that removed the comparison would be unreadable.
+  //
+  // The one place it does hide rather than fade is `pointMode: none`: there is no
+  // wash to sit against, so a focus there draws its machine's dots and nothing
+  // else. That combination is a deliberate pair rather than a special case — it
+  // is the view that isolates one worker's trace out of nine series' scatter.
+  //
+  // A pin and a preview, exactly like the comparison's two ends and for the same
+  // reason: hovering a row in the machine panel is a question, clicking one is an
+  // answer, and only the answer belongs in a link. `machineFocus` is what
+  // everything downstream reads, so nothing has to know which of the two it got.
+  focusedMachine = $state<string | null>(null);
+  hoveredMachine = $state<string | null>(null);
   pickerOpen = $state(false);
   // The Add-series panel's own state. One object rather than five fields: it
   // arrives from the URL as a unit, the panel reports it back as a unit, and
@@ -480,13 +498,50 @@ export class AppState {
   // the graph would hand out selections for dots nobody can see.
   drawPoints = $derived(this.pointMode !== 'none');
 
+  // Which machine the graph is emphasising right now, hover beating pin — the
+  // same precedence `comparisonSource` gives a hovered dot over a pinned one, and
+  // for the same reason: the preview is what the pointer is asking about, and it
+  // has to be able to ask about a machine other than the one already pinned.
+  //
+  // **Everything downstream reads this and not the two fields behind it**, so the
+  // dots, the hit test, the overlay chip and the panel's own highlight can never
+  // disagree about which machine is in force.
+  machineFocus = $derived(this.hoveredMachine ?? this.focusedMachine);
+
+  // Where that focus came from, for the one reader that has to tell them apart:
+  // the chip over the graph, which says "previewing" for a hover and names a way
+  // out for a pin. Null when no machine is focused at all.
+  machineFocusSource = $derived.by((): 'pinned' | 'hover' | null => {
+    if (this.hoveredMachine) return 'hover';
+    return this.focusedMachine ? 'pinned' : null;
+  });
+
   // Nothing on the plot but the axes: the dots are off and so is the only other
   // thing that draws a series' *values*. The marks may still be there, which is
   // why this is a note explaining a setting and not an "empty" state.
-  noValuesDrawn = $derived(!this.drawPoints && !this.showTrend);
+  //
+  // A machine focus is the exception, and it has to be: in `none` mode a focus
+  // draws its own machine's dots (see `focusedMachine`), so the note telling the
+  // reader nothing is drawn would be sitting over the dots.
+  noValuesDrawn = $derived(!this.drawPoints && !this.showTrend && this.machineFocus === null);
 
   // The detail graph's x domain.
   detailSpan = $derived<Span>(this.zoom ?? this.range);
+
+  // Every machine behind the dots the detail graph is showing, with its share of
+  // them — what the machine panel lists.
+  //
+  // **Over the zoomed window, not the whole range**, because it is a census of
+  // what is on the plot: zooming into a week of a year narrows the list to the
+  // dozen workers that ran that week, which is the list worth reading. And over
+  // the *visible* series for the same reason — hiding a series takes its dots off
+  // the graph, so counting its machines would offer a focus that changes nothing.
+  machineCensus = $derived(
+    buildMachineCensus(
+      this.visibleSeries.map((s) => s.data.pushes),
+      this.detailSpan,
+    ),
+  );
 
   // Shared y domain across every visible series, over the whole range. The
   // overview graph uses this one.
@@ -1546,6 +1601,27 @@ export class AppState {
     this.syncUrl('push');
   }
 
+  // Pin a machine, or clear the pin by passing null or the machine already
+  // pinned — a second click on the row you focused is how you undo it, which is
+  // the same toggle the series list's visibility control uses.
+  //
+  // The hover preview is *not* cleared here. Clicking a row means the pointer is
+  // on it, so clearing would make the graph flash back to every machine under a
+  // pointer that hasn't moved; `setHoveredMachine(null)` on the way out is what
+  // ends the preview, and by then the pin is what `machineFocus` reads.
+  setMachineFocus(name: string | null): void {
+    const next = name === null || name === this.focusedMachine ? null : name;
+    if (this.focusedMachine === next) return;
+    this.focusedMachine = next;
+    this.syncUrl('push');
+  }
+
+  // Transient, so no history and no URL — see `hoveredMachine`, and
+  // `setHoveredPoint` for the same rule applied to a dot.
+  setHoveredMachine(name: string | null): void {
+    this.hoveredMachine = name;
+  }
+
   // A deliberate pick: a click on a dot, or on a value in the details pane.
   // The arrow keys go through `stepSelection` instead, and the difference
   // between the two is the swap below.
@@ -1906,6 +1982,9 @@ export class AppState {
     points: this.pointMode,
     changeDetection: this.changeDetection,
     showTrend: this.showTrend,
+    // The pin, never the preview: `machineFocus` is what the graph draws, and
+    // writing that would put a URL entry under every row the pointer crosses.
+    machine: this.focusedMachine,
     pickerOpen: this.pickerOpen,
     picker: this.pickerView,
   });
@@ -1936,6 +2015,11 @@ export class AppState {
       this.pointMode = state.points;
       this.changeDetection = state.changeDetection;
       this.showTrend = state.showTrend;
+      this.focusedMachine = state.machine;
+      // A back button that restored the pin but left a stale preview over it
+      // would show a machine no state names. The pointer is not on the panel
+      // after a navigation, so there is nothing to preview.
+      this.hoveredMachine = null;
       this.pickerOpen = state.pickerOpen;
       this.pickerView = state.picker;
     } finally {

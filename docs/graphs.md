@@ -673,9 +673,13 @@ ourselves** — so it's a rank, not an iteration number.
 
 That's forced, and it's forced by something with a bug number.
 
+A run also carries the **machine** its job ran on, straight off the datum — see
+"Machines" below, and note it is a property of the run rather than of the
+replicate: every replicate of a datum was measured on the one worker.
+
 **Trial ordering isn't implemented.** The replicates/trials table does now carry
-run numbers and machine identifiers, but nothing surfaces them through the
-summary endpoint —
+run numbers and per-*trial* machine identifiers, but nothing surfaces them
+through the summary endpoint —
 [bug 1981623](https://bugzilla.mozilla.org/show_bug.cgi?id=1981623) is the meta
 bug tracking putting them to use. The endpoint also has no `ORDER BY` over
 `performancedatumreplicate`, so it hands a datum's rows back in a different
@@ -731,6 +735,107 @@ Consequences, all in `Run.jobId: number | null`:
   so the selection effect can't reissue it and the pane can't hang.
 - The "Job" link degrades to the push's job list, with no `selectedJob`
   parameter.
+
+### Machines
+
+Every datum names the machine its job ran on (`RawDatum.machine_name`, deployed
+2026-08). That makes a question askable that used to need one job lookup per
+dot: **is this scatter the test, or is it one worker?** A CI pool is not
+uniform — a failing power supply, a thermal problem, a different silicon
+stepping — and until the dots are told apart, one bad worker and a genuinely
+noisy benchmark look identical.
+
+**The graph answers it by dimming, not by filtering.** Focus a machine and its
+dots stay while every other machine's fade to a wash. The rest of the series
+stays legible, which is the whole point: "these dots sit low" is a claim about
+the dots around them, and a view that removed the comparison could not support
+it. Nothing else changes — the dimmed dots are still hit-testable, the
+connecting line still passes through every machine's runs, and every count in
+the app still counts them.
+
+**Both ends are pushed well past the ordinary dot alpha, in opposite
+directions** — `FOCUS_MACHINE_ALPHA` 0.95 and `DIM_MACHINE_ALPHA` 0.06 against
+`DOT_ALPHA`'s 0.5 — and the reason is the same accumulation that makes
+translucent dots worth drawing at all. `DOT_PATHS` exists so overlapping dots add
+up (see "Dots are translucent, and jittered sideways"), and it does not stop
+doing that for the machines that were not picked. The first values tried were the
+ordinary alpha for the focus and a fifth of it for the wash: eight overlapping
+washed dots reached 57% against a lone focused dot's 50%, so the reading inverted
+exactly where the data is densest and the question is hardest. At a sixteenth,
+eight still reach 39% — a cloud is still a cloud — while a lone unfocused dot is
+barely there, which is the right way round, because the crowd is background and
+that is its job. Nearly-opaque focused dots give up density *within* the focus,
+which costs nothing: a machine runs a few dozen of a series' thousands of jobs,
+so its dots are sparse by construction.
+
+**One exception, and it is a deliberate pair rather than a special case:
+`points: none` plus a focus draws that machine's dots and nothing else.** There
+is no wash for a focus to stand out against when nothing is drawn, so the honest
+reading of "no points, except this worker's" is exactly that — and it is the view
+that pulls one machine's trace out of nine series' scatter. Two things follow it:
+the hit test narrows to the same subset (`hitTestSeries`'s `accept`, so a dot you
+cannot see is a dot you cannot click), and the "Data points are hidden" note is
+suppressed, since it would be sitting over dots.
+
+**A pin and a preview**, the same pair the comparison's two ends use.
+`AppState.hoveredMachine` wins over `AppState.focusedMachine` and everything
+downstream reads `machineFocus`, so the dots, the hit test, the chip and the
+panel cannot disagree. Only the pin is in the URL (`mach=`): hovering a row is a
+question, clicking one is an answer, and a preview in the URL would write a
+history entry per row the pointer crossed.
+
+Three places drive it, and all three use the same hover-previews-click-pins rule
+so that learning it once is enough:
+
+- **The Machines button in the graph header**, on the "Show" row because it is a
+  drawing choice — the machine comes down with the datum, so picking one paints
+  instantly and fetches nothing. It opens `MachinePanel.svelte`, an alphabetical
+  list of every machine behind the dots *in the zoomed window*, with each one's
+  run count. Numerically aware sorting, so nuc13-9 precedes nuc13-103.
+
+  **It costs the header 33px in one band of widths and nothing anywhere else.**
+  Measured by hiding the button on a live page at eight widths: at a 1320px pane
+  the Show row still fits on one line with it, and at 800px and below it had
+  already wrapped without it. Between about 900px and 1000px of pane — a
+  1500–1600px window with both side panes open — this button is what tips the
+  row, taking the header from 81px to 114. That is the `.trailing` rule working
+  as designed (the zoom aside is "a right rail while there is room for one and
+  the first thing to wrap when there isn't"), and it is the price of the control
+  being a word rather than an icon. The panel is the only place the pool is
+  discoverable, so a mark nobody recognises would be the worse trade.
+- **The Machine row in the details pane**, which is the shortest path from "what
+  is this point?" to the question that usually follows it. It is above the job
+  block because it comes down with the datum rather than from the job lookup, so
+  it is there the instant a dot is clicked. **It is deliberately nondescript
+  until hovered** — a resting mark was drawn for it and taken out again. Nothing
+  here needs discovering on a schedule: a reader who suspects a machine is behind
+  what they are looking at will put the pointer on the machine name, and a
+  permanent icon spends attention, in the pane's densest column, on a question
+  most readers of most points are not asking.
+- **The chip in the plot's top-right corner**, which exists because the graph is
+  not showing what it usually shows and the control that says so is a panel away
+  in a header that collapses on a small pane. It is also the only thing that
+  reports a *preview*: a hover over the list is read on the graph, so "which one
+  is this?" has to be answerable without looking back. It says so in two channels
+  and no words — dashed, unsaturated, and with no way to dismiss it, against the
+  pinned chip's accent fill and its cross. It carried the word "preview" for a
+  while and it was saying nothing the pill was not.
+
+**A run older than treeherder's job retention window has no machine at all**,
+because the name is joined off the job row and is null for exactly the rows
+`job_id` is null for. Today that means a machine focus reaches back about four
+months however long the range is. `machines.ts` counts those runs rather than
+dropping them, and the panel says so in a footer — counts that failed to add up
+to the graph would be worse than the gap.
+
+**Whether one of them reads differently is a separate, much heavier question,
+and it is the CLI's.** `perfherder-cli machines` ranks the pool by how far each
+worker sits from the level of the series *around its own runs* — the rolling
+median the trend band draws, so a machine that was merely in rotation during a
+regression is not blamed for it. See machines.ts's `relativeLevel` for why a
+within-push comparison is not available (machines do not run concurrently) and
+why the figure understates for a small pool. The panel deliberately does not
+show it: it is a statistic that needs a paragraph, and a 32px row is not one.
 
 ### Alerts
 
@@ -1576,6 +1681,12 @@ Recovery is the explicit Retry button.
   use (see "Dots are translucent, and jittered sideways" below).
 - [chartDraw.ts](../src/lib/graphs/chartDraw.ts) — canvas painting. Imperative, but
   takes all its coordinates from a `PlotGeometry`.
+- [machines.ts](../src/lib/graphs/machines.ts) — **pure**. Pushes → who ran
+  them. Two answers of very different weight: `buildMachineCensus`, the list the
+  panel shows, and `buildMachineLevels`, which adds the per-machine deviation
+  the CLI ranks by. See "Machines" above.
+- [MachinePanel.svelte](../src/lib/graphs/MachinePanel.svelte) — the header
+  button and the list it opens.
 - [alertsApi.ts](../src/lib/graphs/alertsApi.ts) — `/performance/alertsummary/`, and
   the schemas for it. [alerts.ts](../src/lib/graphs/alerts.ts) — **pure**. Summaries →
   the marks the graph draws and the facts the pane prints. See "Alerts" above.
@@ -1898,6 +2009,7 @@ The whole view is in the query string:
 | `pts` | Which dots are drawn: `runs` (one per run at its mean) or `none` (no dots and no connecting line). Omitted for `replicates`, the default. **`reps=0` is still read** as `runs` — it is what links written before the third mode say — but never written, so such a link normalizes on the next interaction |
 | `cd` | `0` to stop drawing the steps this app detects for itself. Omitted when on, which is the default — see "Detected changes" |
 | `trend` | `1` to draw the rolling quartile band. **The one drawing switch written when *on*** rather than off, its default being the other way round — see "The trend band" |
+| `mach` | The machine drawn at full strength while the others are washed out, e.g. `mach=nuc13-085`. The *pinned* one only — a hover preview would rewrite the URL for every row the pointer crossed. An empty `mach=` means no focus rather than a machine called nothing. See "Machines" |
 | `picker` | `1` when the Add-series panel is open |
 | `pf` | Picker filter free text |
 | `pc` | Picker filter chips, `field:value` repeated |

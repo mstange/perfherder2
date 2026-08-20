@@ -253,6 +253,32 @@ describe('hitTestSeries', () => {
       expect(hitTestSeries(far, xScale, yScale, 58, 50, 3, scale)?.pointIndex).toBe(0);
     });
   });
+
+  // `accept` is how a machine focus in `points: none` keeps the hit test to the
+  // dots that are actually painted. See its comment for why the array is not
+  // filtered instead.
+  describe('with an accept predicate', () => {
+    const mixed: SeriesPoint[] = [
+      point({ x: 10, y: 10, machine: 'a' }),
+      point({ x: 50, y: 50, machine: 'b' }),
+    ];
+
+    it('skips the points it rejects', () => {
+      const only = (p: SeriesPoint) => p.machine === 'b';
+      expect(hitTestSeries(mixed, xScale, yScale, 10, 10, 5, undefined, only)).toBeNull();
+      expect(hitTestSeries(mixed, xScale, yScale, 50, 50, 5, undefined, only)?.pointIndex).toBe(1);
+    });
+
+    it('keeps the index an index into the caller’s array', () => {
+      // The reason for a predicate rather than a filtered copy: everything
+      // upstream turns this number back into a point via the *unfiltered*
+      // array, so a renumbered index would select a different dot.
+      const only = (p: SeriesPoint) => p.machine === 'b';
+      const hit = hitTestAll([{ points: mixed }], xScale, yScale, 50, 50, 5, undefined, only);
+      expect(hit?.pointIndex).toBe(1);
+      expect(mixed[hit!.pointIndex].machine).toBe('b');
+    });
+  });
 });
 
 describe('hitTestAll', () => {

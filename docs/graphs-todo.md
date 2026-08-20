@@ -272,6 +272,15 @@ Living checklist. Update in the same commit as the work it describes.
   a control belongs on: what loads against what shows. Free at wide widths, ~30px
   taller between 1280 and 980, and it no longer overflows its own pane at the
   narrow end — measured table in graphs.md, "The header is two groups".
+- **Machine focus**, off the `machine_name` treeherder started emitting per datum
+  in 2026-08. A machine is a property of the run, so it rides on every dot; one
+  focus across the whole graph washes every other worker's dots out at 0.2 alpha,
+  and in `points: none` draws that worker's and nothing else. A pin (`mach=`) and a
+  hover preview, driven from three places that all use the same rule: the header's
+  Machines panel, the details pane's Machine row, and the chip in the plot's
+  corner. `perfherder-cli machines` adds the ranking the panel does not show. See
+  graphs.md, "Machines", and cli.md, "`machines` ranks the pool against its own
+  neighbourhood"
 
 ## Next
 
@@ -437,9 +446,16 @@ Living checklist. Update in the same commit as the work it describes.
   (see graphs.md, "The three-level hierarchy"). Indexing by trial number would
   be stable *and* meaningful, and would let the pane list a run's values in
   measurement order — the interesting order, since the first trial of a
-  browsertime run is routinely the slow one. The machine identifiers would also
-  make "is this retrigger on a different machine" answerable, which is currently
-  a guess from the job's `machine_name` alone.
+  browsertime run is routinely the slow one.
+
+  **The per-*run* half of this is now answered and the per-trial half is not.**
+  The summary endpoint's datums carry `machine_name` as of 2026-08, which is what
+  the graph's machine focus and `perfherder-cli machines` are built on (graphs.md,
+  "Machines") — so "is this retrigger on a different machine" no longer needs a job
+  lookup. What bug 1981623 would still add is the *trial's* machine, which is a
+  different claim: it would say whether the twenty-five replicates of one job were
+  really one machine's, and it would give the trial order this entry is mostly
+  about.
 - **One `fill()` per dot instead of the eight interleaved paths.** The dots are
   split across `DOT_PATHS` paths so overlapping ones accumulate their alpha (see
   graphs.md, "Dots are translucent, and jittered sideways"); a fill per dot would
