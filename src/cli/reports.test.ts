@@ -18,6 +18,7 @@ import {
   buildCompareReport,
   buildLevelComparison,
   buildLocateReport,
+  buildMachinesReport,
   buildSearchReport,
   buildStepReport,
   commitMatches,
@@ -1095,5 +1096,79 @@ describe('buildStepReport', () => {
     expect(entry.test).toBeNull();
     expect(entry.meanDelta).toBeNull();
     expect(entry.wouldDetect).toBe(false);
+  });
+});
+
+describe('buildMachinesReport', () => {
+  // 60 pushes an hour apart, one run each, rotating over four workers — the
+  // shape a real pool has, where nothing runs concurrently.
+  const POOL = ['nuc-1', 'nuc-2', 'nuc-3', 'nuc-4'];
+  const SPAN60 = { start: BASE_TIME, end: BASE_TIME + 60 * 3_600_000 };
+
+  function pool(values: readonly number[], machines = POOL) {
+    return loadedOf(summaryOf(values.map((v) => [v, v]), {}, machines));
+  }
+
+  it('pools the runs of every ref, since a worker runs them all', () => {
+    const flat = noisy(100, 60, 1);
+    const report = buildMachinesReport(
+      [pool(flat), pool(flat)],
+      SPAN60,
+      'https://example/',
+    );
+    expect(report.machines.map((m) => m.name)).toEqual(POOL);
+    // Two series of 60 pushes over four machines: 30 runs each, two values a run.
+    expect(report.machines.map((m) => m.runs)).toEqual([30, 30, 30, 30]);
+    expect(report.machines.map((m) => m.points)).toEqual([60, 60, 60, 60]);
+    expect(report.attributedRuns).toBe(120);
+    expect(report.series).toHaveLength(2);
+  });
+
+  it('shares out the runs against an even split', () => {
+    // nuc-1 takes three quarters of a 60-push series, nuc-2 the rest.
+    const machines = ['nuc-1', 'nuc-1', 'nuc-1', 'nuc-2'];
+    const report = buildMachinesReport([pool(noisy(100, 60, 1), machines)], SPAN60, 'x');
+    const [one, two] = report.machines;
+    expect(one.runs).toBe(45);
+    expect(two.runs).toBe(15);
+    // Even would be 30 each.
+    expect(one.shareOfRuns).toBeCloseTo(1.5, 5);
+    expect(two.shareOfRuns).toBeCloseTo(0.5, 5);
+  });
+
+  it('finds the one machine that reads high', () => {
+    const values = noisy(100, 60, 0.5).map((v, i) => (i % 4 === 2 ? v * 1.08 : v));
+    const report = buildMachinesReport([pool(values)], SPAN60, 'x');
+    const byName = new Map(report.machines.map((m) => [m.name, m.relativeLevel ?? 0]));
+    expect(byName.get('nuc-3')).toBeGreaterThan(0.03);
+    for (const name of ['nuc-1', 'nuc-2', 'nuc-4']) {
+      expect(Math.abs(byName.get(name)!)).toBeLessThan(0.015);
+    }
+  });
+
+  it('counts the expired runs and says where attribution starts', () => {
+    // The first half has no machine, which is what a range reaching past
+    // treeherder's job retention window looks like — and the date matters more
+    // than the count, since it is what tells the reader to ask for less range.
+    const summary = summaryOf(noisy(100, 40, 1).map((v) => [v]));
+    for (const datum of summary.data) {
+      const index = datum.push_id - 1000;
+      if (index >= 20) datum.machine_name = index % 2 === 0 ? 'nuc-1' : 'nuc-2';
+    }
+    const report = buildMachinesReport(
+      [loadedOf(summary)],
+      { start: BASE_TIME, end: BASE_TIME + 40 * 3_600_000 },
+      'x',
+    );
+    expect(report.unattributedRuns).toBe(20);
+    expect(report.attributedRuns).toBe(20);
+    expect(report.attributionStartsMs).toBe(BASE_TIME + 20 * 3_600_000);
+  });
+
+  it('reports nothing but the count when every job has expired', () => {
+    const report = buildMachinesReport([pool(noisy(100, 40, 1), [])], SPAN60, 'x');
+    expect(report.machines).toEqual([]);
+    expect(report.unattributedRuns).toBe(40);
+    expect(report.attributionStartsMs).toBeNull();
   });
 });

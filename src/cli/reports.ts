@@ -28,6 +28,7 @@ import {
 } from '../lib/graphs/compare';
 import { buildDistribution, type DistributionPlot } from '../lib/graphs/distribution';
 import { buildDrift, type DriftSummary } from '../lib/graphs/drift';
+import { buildMachineLevels, type MachineLevel } from '../lib/graphs/machines';
 import {
   DEFAULT_ALERT_THRESHOLD,
   MEAN_REPLICATE,
@@ -541,6 +542,76 @@ export function distinguishingLabels(loaded: readonly LoadedSeries[]): string[] 
 function levelLabel(loaded: LoadedSeries): string {
   const { meta, ref } = loaded;
   return meta.application || meta.platform || seriesLabel(meta) || `signature ${ref.signatureId}`;
+}
+
+// ---------------------------------------------------------------------------
+// machines
+// ---------------------------------------------------------------------------
+
+export type MachineRow = MachineLevel & {
+  // How the machine's share of the runs compares with an even split — 2.4 means
+  // it did 2.4 times the work an average member of this pool did. Not a
+  // finding on its own; it is what stops `relativeLevel` from being read off a
+  // machine that contributed one job.
+  shareOfRuns: number;
+};
+
+export type MachinesReport = {
+  span: Span;
+  url: string;
+  // One header per ref, so a multi-series run says what it pooled.
+  series: SeriesHeader[];
+  machines: MachineRow[];
+  attributedRuns: number;
+  unattributedRuns: number;
+  unattributedPoints: number;
+  // The oldest push in the window that still has a machine on it, which is
+  // where treeherder's job retention runs out. Null when every run has one, and
+  // when none does. The single most useful thing to print about the gap: it
+  // turns "3,900 runs have no machine" into a date the reader can act on.
+  attributionStartsMs: number | null;
+};
+
+// Who ran the jobs behind these series, and whether any of them reads
+// differently from the rest.
+//
+// **Pooled across the refs**, not reported per series, because that is the
+// question: one worker runs every signature that targets its platform, and a
+// machine that reads 6% slow reads 6% slow on all of them. Splitting the table
+// per series would put the same machine in four tables with a quarter of the
+// evidence in each. What the header lists is what went into the pool.
+export function buildMachinesReport(
+  loaded: readonly LoadedSeries[],
+  span: Span,
+  base: string,
+): MachinesReport {
+  const breakdown = buildMachineLevels(
+    loaded.map((one) => one.data.pushes),
+    span,
+  );
+  const attributedRuns = breakdown.machines.reduce((sum, m) => sum + m.runs, 0);
+  const even = breakdown.machines.length > 0 ? attributedRuns / breakdown.machines.length : 0;
+
+  let attributionStartsMs: number | null = null;
+  for (const one of loaded) {
+    for (const push of one.data.pushes) {
+      if (push.x < span.start || push.x > span.end) continue;
+      if (!push.runs.some((run) => run.machineName !== null)) continue;
+      if (attributionStartsMs === null || push.x < attributionStartsMs) attributionStartsMs = push.x;
+      break;
+    }
+  }
+
+  return {
+    span,
+    url: graphUrl(base, loaded.map((l) => l.ref), span),
+    series: loaded.map(seriesHeader),
+    machines: breakdown.machines.map((m) => ({ ...m, shareOfRuns: even > 0 ? m.runs / even : 0 })),
+    attributedRuns,
+    unattributedRuns: breakdown.unattributedRuns,
+    unattributedPoints: breakdown.unattributedPoints,
+    attributionStartsMs,
+  };
 }
 
 // ---------------------------------------------------------------------------

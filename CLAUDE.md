@@ -54,6 +54,9 @@ Typical shape of an investigation:
 # 5. Which subtests drove a suite-level move, and did other platforms see it?
 ./bin/perfherder-cli search --parent autoland,5352597 --limit 100
 ./bin/perfherder-cli step <subtest refs...> --at <rev> --range 60d
+
+# 6. Is that scatter the test, or is it one worker in the pool?
+./bin/perfherder-cli machines mozilla-central,5276630 --range 90d
 ```
 
 **`step` is the one to reach for when `changes` says nothing on a platform you
@@ -68,6 +71,10 @@ Notes that save a round trip:
   parameter in the app's URL contains, so refs paste both ways.
 - Responses are cached on disk, so iterating a search is cheap. `--no-cache`
   when you need it fresh.
+- **`machines` only sees about four months back**, however long the range is:
+  the machine name is joined off the job row and treeherder expires those. The
+  report says where attribution starts, so read that line before concluding a
+  pool is small.
 - `--json` gives the same object the text was rendered from, for piping.
 - Every command prints a link into the app. Include it when reporting a
   finding — it is how the human checks you.

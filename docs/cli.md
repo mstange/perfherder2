@@ -38,6 +38,7 @@ installing one binary of the same name — see "The published package" below.
 | --- | --- |
 | `search <term...>` | the Add-series picker |
 | `series <ref...>` | the series list's summary, plus a level comparison |
+| `machines <ref...>` | the graph header's Machines panel — plus a ranking the panel deliberately does not show, see "`machines` ranks the pool against its own neighbourhood" |
 | `series <ref...> --drift` | the drift badge on a series-list card, from the same module — and the unfiltered form of it, see "`series --drift` answers the question the detector cannot" |
 | `changes <ref...>` | the alert triangles and the detected-change bars |
 | `changes <ref...> --cluster` | the details pane's Landing block, which groups the same way from the same module — see "`--cluster` makes the row a landing instead of a series" |
@@ -406,6 +407,44 @@ the ends are at different levels, which is not the same claim as a step having
 happened between them. Below twelve pushes there is no figure at all rather than
 a ratio of three against three; six a side is the detector's own minimum.
 
+### `machines` ranks the pool against its own neighbourhood
+
+Every datum now names the machine its job ran on (api-assumptions.md,
+"`machine_name` is non-null exactly when `job_id` is"), which makes "is that
+scatter the test, or is it one worker?" a question the same response can answer.
+The app answers the *identification* half — hover a machine in the header panel
+and its dots pick out of the plot — and this command answers the ranking half,
+which the panel deliberately leaves alone: a pool is routinely 78 workers, and
+hovering 78 rows to find the one that reads 6% slow is not a search.
+
+**The hard part is the baseline, and the obvious one is wrong.** A machine's runs
+against the series average would convict any machine that happened to be in
+rotation during a regression, and there is no within-push comparison to fall back
+on: workers do not run concurrently, so a push is measured by one of them and its
+own value *is* the push's level. So each run is compared with the rolling median
+of the `WINDOW_PUSHES` pushes centred on it — `rollingTrend`, the curve the app's
+trend band draws — which moves with every step and drift in the series and leaves
+only what is peculiar to the worker. Then the median of those ratios per machine,
+so one bad job does not convict an ordinary machine.
+
+Two honesty notes are printed with the table rather than buried here. **It
+understates for a small pool**, because a machine is part of the window it is
+measured against: with two machines alternating, each pulls the baseline halfway
+towards itself and the gap reads about half its true size — read the ordering,
+not the numbers. And **SHARE** is each machine's runs against an even split, which
+is what stops a −11% row from being read as a finding when it is one job.
+
+Refs are **pooled**, not tabulated one series each: a worker runs every signature
+that targets its platform, and splitting the table would put the same machine in
+four of them with a quarter of the evidence in each. The header lists what went
+into the pool.
+
+The four-month job retention window bounds all of it. Runs older than that have
+no machine at all, and rather than dropping them the report counts them and names
+the date attribution actually starts — which turns "666 runs have no machine"
+into "this table is really about 2026-04-22 onwards", the form a reader can act
+on.
+
 ### `--cluster` makes the row a landing instead of a series
 
 `changes` answers about one series, and the question that prompted this tool's
@@ -740,6 +779,10 @@ is testable without a network.
   row, the ruler, word wrap.
 - [modes.ts](../src/cli/modes.ts) — **pure**. The mode comparison and its
   sentence. See above.
+- [machines.ts](../src/lib/graphs/machines.ts) — **pure**, and **under
+  `src/lib`** for the same reason cluster.ts is: the app's machine panel reads
+  `buildMachineCensus` from it, and only `machines` needs the ranking
+  `buildMachineLevels` adds. See above, and graphs.md, "Machines".
 - [cluster.ts](../src/lib/graphs/cluster.ts) — **pure**, and **under `src/lib`**,
   though it was written for `--cluster`: the app now groups the bars of its
   plotted series with it too (graphs.md, "One landing, not nine bars"), and

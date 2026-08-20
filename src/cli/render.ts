@@ -60,6 +60,7 @@ import type {
   CompareReport,
   CompareSideReport,
   LocateReport,
+  MachinesReport,
   PushRow,
   SearchReport,
   SeriesHeader,
@@ -709,6 +710,89 @@ function renderPushTable(pushes: readonly PushRow[]): string[] {
     ]),
     ['left', 'left', 'right', 'right', 'right', 'right'],
   );
+}
+
+// ---------------------------------------------------------------------------
+// machines
+// ---------------------------------------------------------------------------
+
+// Ordered by REL LEVEL, worst first, which is the whole reason to print the
+// column: the alphabetical order the app's panel uses is for finding a machine
+// you can already name, and this table is for the case where you cannot.
+// Machines with no level fall to the bottom rather than sorting as zero.
+export function renderMachines(report: MachinesReport): string[] {
+  const out: string[] = [];
+  out.push(`range: ${formatSpan(report.span.start, report.span.end)}  (UTC)`);
+  out.push('');
+  for (const series of report.series) {
+    out.push(describeSeries(series));
+    out.push(`  ${series.ref} · ${measurementLine(series)}`);
+    if (series.error) out.push(...indent(fetchFailureLines(series)));
+  }
+  out.push('');
+
+  if (report.machines.length === 0) {
+    out.push(
+      report.unattributedRuns > 0
+        ? `No machine is recorded for any of the ${report.unattributedRuns.toLocaleString('en-US')} ` +
+            'runs in this range — treeherder had already expired their jobs. Ask for a more ' +
+            'recent range; the join reaches back about four months.'
+        : 'No runs in this range.',
+    );
+    out.push('');
+    out.push(report.url);
+    return out;
+  }
+
+  const ranked = [...report.machines].sort((a, b) => {
+    if (a.relativeLevel === null) return b.relativeLevel === null ? 0 : 1;
+    if (b.relativeLevel === null) return -1;
+    return Math.abs(b.relativeLevel) - Math.abs(a.relativeLevel);
+  });
+
+  out.push(
+    ...table(
+      ['MACHINE', 'RUNS', 'POINTS', 'SHARE', 'REL LEVEL'],
+      ranked.map((m) => [
+        m.name,
+        String(m.runs),
+        m.points.toLocaleString('en-US'),
+        `${m.shareOfRuns.toFixed(1)}×`,
+        m.relativeLevel === null ? NONE : formatSignedPercent(m.relativeLevel),
+      ]),
+      ['left', 'right', 'right', 'right', 'right'],
+    ),
+  );
+  out.push('');
+  out.push(
+    `${report.machines.length} machines · ${report.attributedRuns.toLocaleString('en-US')} runs`,
+  );
+  if (report.unattributedRuns > 0) {
+    out.push(
+      `${report.unattributedRuns.toLocaleString('en-US')} more runs have no machine — ` +
+        'treeherder expires a job row after about four months and the name is joined off it' +
+        (report.attributionStartsMs
+          ? `, so this table is really about ${formatUtcDate(report.attributionStartsMs)} onwards`
+          : '') +
+        '.',
+    );
+  }
+  out.push('');
+  out.push(
+    '  REL LEVEL is the median of each run against the local level of the series it ran in —',
+    `  the median of the ${WINDOW_PUSHES} pushes centred on it, the same curve the app's trend band draws.`,
+    '  Local, so a machine that was in rotation during a regression is not blamed for it; a',
+    '  step in the series moves the baseline with it and leaves only what is peculiar to the',
+    '  worker. It understates when the pool is small, because a machine is part of the window',
+    '  it is compared against: with two machines alternating, read the ordering and not the',
+    '  numbers.',
+    '',
+    '  SHARE is runs against an even split of the pool, so 0.2× is a machine that barely ran',
+    '  and whose level is one or two jobs talking.',
+  );
+  out.push('');
+  out.push(report.url);
+  return out;
 }
 
 // ---------------------------------------------------------------------------

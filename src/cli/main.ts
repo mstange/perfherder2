@@ -71,6 +71,7 @@ import {
   buildCompareReport,
   buildLocateReport,
   buildSearchReport,
+  buildMachinesReport,
   buildSeriesReport,
   buildStepReport,
   graphUrl,
@@ -85,6 +86,7 @@ import {
   renderCommits,
   renderCompare,
   renderLocate,
+  renderMachines,
   renderSearch,
   renderSeries,
   renderStep,
@@ -323,6 +325,48 @@ const series: Command = {
   },
 };
 
+
+// ---------------------------------------------------------------------------
+// machines
+// ---------------------------------------------------------------------------
+
+const machines: Command = {
+  summary: 'which machines ran the jobs, and whether one of them reads differently',
+  usage: ['perfherder-cli machines <ref...> [--range <dur>] [--from <date>] [--to <date>]'],
+  booleans: [],
+  valued: [...RANGE_VALUED],
+  details: [
+    'Every performance datum names the machine its job ran on, so a pool can be read off the',
+    'same response the graph is drawn from. This is the command for "is that scatter the test,',
+    'or is it one worker" — a bad power supply, a thermal problem, a different silicon',
+    'stepping all look like noise until the dots are told apart.',
+    '',
+    'REL LEVEL is how far a machine sits from the level of the series *around its own runs*,',
+    'not from the series average. Machines do not run concurrently, so there is no',
+    'within-push comparison to make, and a machine that was in rotation during a regression',
+    'would otherwise read as the cause of it. The baseline is the rolling median the app\'s',
+    'trend band draws, which moves with every step and drift and leaves what is peculiar to',
+    'the worker.',
+    '',
+    'Refs are pooled rather than reported one table each: a worker runs every signature that',
+    'targets its platform, and a machine that reads 6% slow reads 6% slow on all of them.',
+    '',
+    'The machine is joined off the job row and treeherder expires those after about four',
+    'months, so the older end of a long range has no machine at all. Those runs are counted',
+    'in a line under the table rather than dropped.',
+    '',
+    'In the app, the same pool is the Machines button in the graph header: hover a row to',
+    'pick that machine out of the plot, click to keep it. Adding `&mach=<name>` to the link',
+    'this prints opens the graph with that machine already picked out.',
+  ],
+  async run(parsed, ctx) {
+    const refs = requireRefs(parsed.positionals, 'machines');
+    const span = resolveRange(rangeOptions(parsed), ctx.now);
+    const loaded = await Promise.all(refs.map((ref) => loadSeriesOrError(ref, span)));
+    const report = buildMachinesReport(loaded, span, ctx.appBase);
+    return { report, lines: renderMachines(report), exitCode: exitCodeFor(loaded) };
+  },
+};
 
 // ---------------------------------------------------------------------------
 // changes
@@ -897,6 +941,7 @@ const url: Command = {
 const COMMANDS: Record<string, Command> = {
   search,
   series,
+  machines,
   changes,
   step,
   locate,
@@ -1071,6 +1116,9 @@ function topLevelHelp(): string[] {
     '  perfherder-cli search --parent autoland,1234567 --limit 100',
     '  perfherder-cli step <subtest refs…> --at <revision> --range 60d',
     '  perfherder-cli step autoland,1234567 --across platform --at <revision> --range 60d',
+    '',
+    '  # Is that scatter the test, or is it one worker in the pool?',
+    '  perfherder-cli machines autoland,1234567 --range 90d',
     '',
     '  # The same row somewhere else: every platform, or Firefox against Chrome.',
     '  perfherder-cli search --like autoland,1234567 --across platform',
