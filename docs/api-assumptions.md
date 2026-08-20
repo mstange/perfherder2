@@ -274,6 +274,29 @@ Perf data outlives jobs by design (~4 months). 153,301 of 412,451 sampled rows
 over a year were null. A fixture written from the belief that it is a `number`
 is how this got missed once already.
 
+### `machine_name` is non-null exactly when `job_id` is
+
+The datum carries the machine its job ran on, which is what the graph's machine
+focus and `perfherder-cli machines` are built on. It is joined off the job row,
+so it expires with it: **the two fields are null together, always.**
+
+- **Verified 2026-08-20:** one signature over a year, 13,604 rows. All 6,825
+  rows with a job had a machine; all 6,779 without one had neither. Probing a
+  day at a time across the boundary put it between 2026-04-15 (neither) and
+  2026-04-25 (both) — about four months back, matching the job retention window.
+  `schema.test.ts` asserts the pairing row by row on the recorded fixture, not
+  merely that both values occur.
+- **Symptom if this stops holding:** a machine list that is missing workers, or
+  an unattributed count that doesn't add up to the graph. Neither throws, and
+  neither looks wrong on its own.
+- The same deploy started populating `submit_time`, which had been null in every
+  row previously sampled, from the same join.
+
+**A machine focus therefore reaches back about four months however long the
+range is.** That is not a bug to route around; `machines.ts` counts the
+unattributed runs and the panel and the CLI both say so, because a census that
+silently omitted them would read as complete.
+
 ### `tags` is a list on one endpoint and a space-separated string on the other
 
 Same database column, two serializers. This is the standing argument for one

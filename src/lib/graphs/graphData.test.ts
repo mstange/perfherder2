@@ -36,6 +36,7 @@ function datum(o: Partial<RawDatum> & { id: number; value: number }): RawDatum {
     push_timestamp: '2026-07-21T06:38:40',
     revision: 'a'.repeat(40),
     submit_time: null,
+    machine_name: null,
     ...o,
   };
 }
@@ -121,6 +122,24 @@ describe('buildSeriesData', () => {
     // Mean of the run means: (10 + 20) / 2. Pooling all five replicates would
     // give 12, letting the four-replicate job outvote the retrigger.
     expect(data.pushes[0].mean).toBe(15);
+  });
+
+  it('carries the run’s machine onto every dot it produced', () => {
+    const data = buildSeriesData(
+      summary([
+        datum({ id: 1, value: 10, push_id: 7, machine_name: 'nuc13-085' }),
+        datum({ id: 1, value: 12, push_id: 7, machine_name: 'nuc13-085' }),
+        datum({ id: 2, value: 20, push_id: 8, machine_name: null }),
+      ]),
+    );
+    expect(data.runs.map((r) => r.machineName)).toEqual(['nuc13-085', null]);
+    expect(data.replicates.points.map((p) => p.machine)).toEqual([
+      'nuc13-085',
+      'nuc13-085',
+      null,
+    ]);
+    // The mean point set too, or a focus would empty the graph in `runs` mode.
+    expect(data.means.points.map((p) => p.machine)).toEqual(['nuc13-085', null]);
   });
 
   it('sorts runs by push time even when the server order is scrambled', () => {

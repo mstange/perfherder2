@@ -45,8 +45,14 @@ type SummaryOptions = Partial<
   >
 >;
 
-// One entry per push, each holding that push's replicate values.
-function summaryOf(pushes: readonly (readonly number[])[], options: SummaryOptions = {}): RawSummary {
+// One entry per push, each holding that push's replicate values. `machines`
+// names the worker each push ran on, cycling if it is shorter than the push
+// list; without it every run is unattributed, the way an expired job arrives.
+function summaryOf(
+  pushes: readonly (readonly number[])[],
+  options: SummaryOptions = {},
+  machines: readonly string[] = [],
+): RawSummary {
   const data: RawDatum[] = [];
   pushes.forEach((values, i) => {
     const timestamp = new Date(BASE_TIME + i * 3_600_000).toISOString().slice(0, 19);
@@ -59,6 +65,7 @@ function summaryOf(pushes: readonly (readonly number[])[], options: SummaryOptio
         push_id: 1000 + i,
         revision: `rev${String(i).padStart(4, '0')}${'a'.repeat(34)}`,
         submit_time: null,
+        machine_name: machines.length > 0 ? machines[i % machines.length] : null,
       });
     }
   });

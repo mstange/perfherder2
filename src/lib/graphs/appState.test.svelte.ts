@@ -21,6 +21,7 @@ function datum(o: Partial<RawDatum> & { id: number; value: number }): RawDatum {
     push_timestamp: '2026-07-21T06:00:00',
     revision: 'a'.repeat(40),
     submit_time: null,
+    machine_name: null,
     ...o,
   };
 }

@@ -36,9 +36,26 @@ export const RawDatumSchema = v.object({
   push_timestamp: v.string(),
   push_id: v.number(),
   revision: v.string(),
-  // `allow_null=True, default=None` on the serializer, and null in every row
-  // we've observed.
+  // `allow_null=True, default=None` on the serializer. Null for the same rows
+  // `job_id` is null for, and a real "YYYY-MM-DDTHH:MM:SS" for the rest — it
+  // was null in *every* row until treeherder started joining the job in, which
+  // is the same change that brought `machine_name` below.
   submit_time: v.nullish(v.string()),
+  // Which machine ran the job, e.g. "nuc13-085" — the same string the job
+  // endpoint's `machine_name` carries, without the lookup.
+  //
+  // **Non-null exactly when `job_id` is**, because it is joined off the job row
+  // and treeherder nulls the FK when it expires one (see above). Verified
+  // 2026-08-20 over a year of one signature: 6,825 rows with a job all had a
+  // machine, 6,779 without one had neither. So a machine focus reaches back
+  // about four months however long the range is, and the older end of a long
+  // one is unattributed — `machines.ts` counts those rather than dropping them.
+  //
+  // `nullable`, not `nullish`: the key is emitted for every row, null included.
+  // The deploy that added it (2026-08, alongside the same join's `submit_time`)
+  // is permanent, so an absent key would be treeherder changing its mind and is
+  // worth failing the schema over rather than reading as "no machine".
+  machine_name: v.nullable(v.string()),
 });
 export type RawDatum = v.InferOutput<typeof RawDatumSchema>;
 

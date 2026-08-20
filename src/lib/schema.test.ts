@@ -89,6 +89,22 @@ describe('the fixtures still cover the variants that matter', () => {
     expect(data.some((d) => d.job_id !== null)).toBe(true);
   });
 
+  it('records a machine for the live datums and none for the expired ones', () => {
+    const data = (summary as { data: { job_id: number | null; machine_name: string | null }[] }[])[0]
+      .data;
+    // The pairing is the claim worth pinning, not just that both values occur:
+    // `machine_name` is joined off the job row, so an expired datum can no more
+    // have a machine than it can have a job id. A re-record that dropped either
+    // half would leave the machine focus looking like it works on data where it
+    // cannot.
+    for (const d of data) {
+      expect(d.machine_name === null).toBe(d.job_id === null);
+    }
+    // And more than one of them, or nothing would distinguish a focus from
+    // "every point on the graph".
+    expect(new Set(data.map((d) => d.machine_name)).size).toBeGreaterThan(2);
+  });
+
   it('has an hg and a git repository, which pick different link shapes', () => {
     const kinds = new Set((repositories as { dvcs_type: string }[]).map((r) => r.dvcs_type));
     expect(kinds).toContain('hg');

@@ -32,7 +32,7 @@ const DAY = 86400000;
 const HOUR = 3600000;
 
 function point(o: Partial<SeriesPoint> & { x: number; y: number }): SeriesPoint {
-  return { datumId: 1, replicateIndex: 0, jitter: 0, xRoom: Infinity, ...o };
+  return { datumId: 1, replicateIndex: 0, machine: null, jitter: 0, xRoom: Infinity, ...o };
 }
 
 function pts(xs: number[]): SeriesPoint[] {

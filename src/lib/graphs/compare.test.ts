@@ -28,11 +28,18 @@ function meta(): SeriesMeta {
   };
 }
 
-function run(o: { datumId: number; jobId?: number | null; x: number; values: number[] }): Run {
+function run(o: {
+  datumId: number;
+  jobId?: number | null;
+  machineName?: string | null;
+  x: number;
+  values: number[];
+}): Run {
   const mean = o.values.reduce((a, b) => a + b, 0) / o.values.length;
   return {
     datumId: o.datumId,
     jobId: o.jobId === undefined ? o.datumId + 1000 : o.jobId,
+    machineName: o.machineName ?? null,
     pushId: 0,
     x: o.x,
     revision: '',

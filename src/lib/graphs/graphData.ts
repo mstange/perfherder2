@@ -24,6 +24,12 @@ export type Run = {
   // Null when treeherder has already expired the job — see RawDatum.job_id.
   // Everything else about the point (value, push, revision) survives.
   jobId: number | null;
+  // Which machine ran this job, or null once its job row has expired — the two
+  // are null together, so this is unknown for anything older than treeherder's
+  // job retention window and known for everything newer. A property of the run
+  // and not of the replicate: every replicate of a datum was measured on the
+  // one machine, in the one job.
+  machineName: string | null;
   pushId: number;
   // Push timestamp in ms — the x coordinate shared by every replicate of this
   // run. We plot against push time, not job submit time, like treeherder.
@@ -85,6 +91,16 @@ export type SeriesPoint = {
   datumId: number;
   // Index into the run's `values`, or MEAN_REPLICATE for the run's mean.
   replicateIndex: number;
+  // Its run's `machineName`, copied for the same reason `xRoom` is: the draw
+  // loop and the hit test decide dot by dot whether a machine focus covers this
+  // one, and neither holds anything but the point (see chartDraw's `drawDots`).
+  //
+  // Every dot of one machine holds the *same* string, not a copy of it, because
+  // `buildSeriesData` puts the names through one map: a series is 20,000 dots
+  // and a pool is forty names, and the equality test here runs once per dot per
+  // repaint. Not observable from JS — string `===` is by value either way — so
+  // there is nothing to assert about it; it is a size and a speed.
+  machine: string | null;
   // Horizontal jitter, in [-1, 1] — a *unit* offset, scaled at draw time by the
   // room below and by the zoom (chart.ts::jitterOffsetPx).
   //
@@ -464,6 +480,11 @@ export function buildSeriesData(summary: RawSummary | null): SeriesData {
   // push_timestamp, push_id, job_id), but we group through a map anyway so a
   // change in server-side ordering can't silently split a run in two.
   const runByDatumId = new Map<number, Run>();
+  // One string object per distinct machine name, shared by every run and every
+  // point that names it — see `SeriesPoint.machine`. JSON.parse hands back a
+  // fresh string per row, so without this a series' 20,000 dots would hold
+  // 20,000 copies of forty names.
+  const machineNames = new Map<string, string>();
   for (const row of summary.data) {
     // `Number.isFinite` is the whole guard: the schema's `v.number()` already
     // rejects null and NaN, and Infinity is the one value that gets past it.
@@ -472,9 +493,16 @@ export function buildSeriesData(summary: RawSummary | null): SeriesData {
     if (!Number.isFinite(row.value)) continue;
     let run = runByDatumId.get(row.id);
     if (!run) {
+      const raw = row.machine_name;
+      let machineName = null;
+      if (raw !== null) {
+        machineName = machineNames.get(raw) ?? raw;
+        machineNames.set(raw, machineName);
+      }
       run = {
         datumId: row.id,
         jobId: row.job_id,
+        machineName,
         pushId: row.push_id,
         x: parseApiDate(row.push_timestamp),
         revision: row.revision,
@@ -557,6 +585,7 @@ export function buildSeriesData(summary: RawSummary | null): SeriesData {
           y,
           datumId: run.datumId,
           replicateIndex: i,
+          machine: run.machineName,
           jitter: pointJitter(replicateDots, run.datumId, i),
           xRoom: push.xRoom,
         });
@@ -569,6 +598,7 @@ export function buildSeriesData(summary: RawSummary | null): SeriesData {
         y: run.mean,
         datumId: run.datumId,
         replicateIndex: MEAN_REPLICATE,
+        machine: run.machineName,
         // One mean dot per run, so the count that matters here is the number of
         // retriggers — an un-retriggered push gets no jitter in this point set
         // even when its replicates are spread out in the other one.
