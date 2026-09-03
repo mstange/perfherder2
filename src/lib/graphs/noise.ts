@@ -117,8 +117,10 @@ export type NoiseBudget = {
   attributedRuns: number;
 };
 
-// Two-sided z at α = 0.05, times √2 for a difference of two independent means.
-const RESOLUTION_Z = 1.959964 * Math.SQRT2;
+// Two-sided z at α = 0.05. `RESOLUTION_Z` folds in the √2 for the common case of
+// two equally-sized pools; `resolvableDifference` needs the bare one.
+const Z_95 = 1.959964;
+const RESOLUTION_Z = Z_95 * Math.SQRT2;
 
 function term(sd: number, level: number): NoiseTerm {
   return { sd, cv: level !== 0 ? sd / Math.abs(level) : 0 };
@@ -324,4 +326,31 @@ export function noiseHeadline(budget: NoiseBudget): string {
     parts.push(`push means ±${formatPercent(budget.push.cv)}`);
   }
   return parts.join(' · ');
+}
+
+// The smallest difference two particular pools of jobs could show as
+// significant, as a fraction of the level.
+//
+// `NoiseBudget.pushPairResolution` is this for the typical pair — two pushes of
+// the median size — and this is it for a pair in front of the reader, whose
+// sides may be one job and four. Same arithmetic either way: the job-level sd
+// over each side's job count, added in quadrature, at z for 95%.
+//
+// **It is a floor on what the measurement can see, not a test.** A delta inside
+// it is not evidence of no change; it is a comparison that could not have shown
+// one. That is the sentence worth putting in front of someone about to read a
+// try push, and it is the reason the figure is quoted rather than folded into a
+// verdict.
+//
+// Null when the series has no job-to-job figure — no push in the window ran more
+// than once — since there is then nothing to scale by.
+export function resolvableDifference(
+  budget: NoiseBudget,
+  baseJobs: number,
+  nextJobs: number,
+): number | null {
+  if (!budget.job || baseJobs < 1 || nextJobs < 1) return null;
+  const variance = budget.job.sd * budget.job.sd;
+  const se = Math.sqrt(variance / baseJobs + variance / nextJobs);
+  return (Z_95 * se) / Math.abs(budget.level);
 }

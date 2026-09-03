@@ -40,7 +40,7 @@
   // rearrange the pane; hovering may not.
 
   import type { AppState } from './appState.svelte';
-  import { formatPValue, formatTimestamp, formatValue } from '../shared/chart';
+  import { formatPercent, formatPValue, formatTimestamp, formatValue } from '../shared/chart';
   import ChangeHeadline from './ChangeHeadline.svelte';
   import {
     comparisonLinks,
@@ -62,6 +62,7 @@
   import CommitList from './CommitList.svelte';
   import MachineFocusButton from './MachineFocusButton.svelte';
   import { pushlogCaveat, pushlogLabel } from './pushlog';
+  import { resolvableDifference } from './noise';
   import { SIGNIFICANCE_ALPHA } from '../shared/stats';
   import { isCoarsePointer, mediaMatcher } from '../shared/pointer';
 
@@ -216,6 +217,32 @@
   // keeps the names in its `title` — a count is the part a reader acts on, and
   // "9 machines" is the honest summary of a list nobody was going to read.
   const MAX_NAMED_MACHINES = 4;
+
+  // The smallest difference this particular pair of pools could have shown, from
+  // the series' own job-to-job scatter (noise.ts) and the jobs each side has.
+  //
+  // **A floor on what the comparison can see, not a second opinion on the
+  // test.** The two answer different questions and can disagree in both
+  // directions: a delta inside the floor is a pair that could not have shown a
+  // change, whatever p says about the replicate clouds. Shown only when the delta
+  // *is* inside it, since the reader who is looking at a difference the pair can
+  // resolve does not need to be told the pair can resolve it.
+  const resolution = $derived.by((): number | null => {
+    const budget = app.selectedNoise;
+    if (!cmp || !budget) return null;
+    // One series only: the budget is the selected series', and on a cross-series
+    // comparison it describes one of the two sides.
+    if (cmp.base.ref.signatureId !== cmp.next.ref.signatureId) return null;
+    if (cmp.base.ref.repository !== cmp.next.ref.repository) return null;
+    return resolvableDifference(budget, cmp.testJobs.base, cmp.testJobs.next);
+  });
+
+  const belowResolution = $derived(
+    !!cmp &&
+      resolution !== null &&
+      cmp.medianDeltaFraction !== null &&
+      Math.abs(cmp.medianDeltaFraction) < resolution,
+  );
 
   // Two counterparts of one test in different repositories have identical suite,
   // test and platform, so the series line has to name the repository or it prints
@@ -374,6 +401,18 @@
       <p class="warn">{cmp.warning}</p>
     {/if}
 
+    <!-- The floor this pair is up against, when the delta is under it. Not a
+         warning box: nothing here is wrong, the comparison simply cannot see a
+         difference this size, and the reader's next move is more retriggers or a
+         wider window rather than a correction. See `resolution` above and
+         noise.ts. -->
+    {#if belowResolution && resolution !== null}
+      <p class="floor muted">
+        This pair can resolve about {formatPercent(resolution)} — the difference above is
+        inside that. The Noise section below is where the figure comes from.
+      </p>
+    {/if}
+
     {#if cmp.test}
       {@const t = cmp.test}
       <dl>
@@ -388,6 +427,19 @@
                  qualifies, rather than on a row of its own: the pool sizes it
                  was attached to are in the chart's legend, `n=` per side. -->
             {' '}<span class="muted">— too few for a confident verdict</span>
+          {/if}
+          <!-- What the p-value is actually over. The pools are replicates, and
+               replicates of one run are repeated measurements of one number
+               rather than independent samples of the thing being compared — so
+               a rank test over 40 against 30 is reading four jobs against three
+               and counting seventy. Said rather than corrected: a rank test over
+               four job means cannot return anything under 0.029 however far
+               apart they are, so there is no n here to switch to. See
+               compare.ts, `testJobs`. -->
+          {#if cmp.testJobs.base > 1 || cmp.testJobs.next > 1}
+            <div class="test-basis muted">
+              over the replicate pools, from {cmp.testJobs.base} and {cmp.testJobs.next} jobs
+            </div>
           {/if}
         </dd>
         <!-- Cliff's delta and CLES, on one row, because they are the same
@@ -806,6 +858,18 @@
   .times {
     font-size: 10px;
     vertical-align: 1px;
+  }
+  /* Not a `.warn` box: nothing here is wrong. The comparison simply cannot see a
+     difference this size, and the next move is more retriggers or a wider
+     window, not a correction — so it reads as a note under the headline rather
+     than as an alarm beside it. */
+  .floor {
+    margin: 0 0 8px;
+    font-size: 11px;
+  }
+  /* What the p-value is over, directly under it and quieter than it. */
+  .test-basis {
+    font-size: 10px;
   }
   .cmp-links {
     display: flex;

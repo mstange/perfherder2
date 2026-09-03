@@ -29,7 +29,7 @@ import {
 import { buildDistribution, type DistributionPlot } from '../lib/graphs/distribution';
 import { buildDrift, type DriftSummary } from '../lib/graphs/drift';
 import { buildMachineLevels, type MachineLevel } from '../lib/graphs/machines';
-import { buildNoiseBudget, type NoiseBudget } from '../lib/graphs/noise';
+import { buildNoiseBudget, resolvableDifference, type NoiseBudget } from '../lib/graphs/noise';
 import {
   DEFAULT_ALERT_THRESHOLD,
   MEAN_REPLICATE,
@@ -1522,6 +1522,13 @@ export type CompareSideReport = {
   pushCount: number;
   firstPushMs: number;
   lastPushMs: number;
+  // Which workers ran the jobs behind this side's values, and how many runs each
+  // contributed. **A comparison of two pushes is a comparison of two machine
+  // mixes**, and the profiler comparison this report links is a diff of two
+  // particular jobs — see comparison.md, "Which machines each side ran on", and
+  // cli-todo.md for the pool that is 4.3% wide.
+  machines: { name: string; runs: number }[];
+  unattributedRuns: number;
 };
 
 export type CompareReport = {
@@ -1542,6 +1549,17 @@ export type CompareReport = {
   // is over *push means*, not over the pooled replicates — see
   // `buildCompareReport`.
   testBasis: 'replicates' | 'push means';
+  // How many jobs each side's *replicate* pool came from, when that is what was
+  // tested. A rank test over 40 against 30 replicates is reading four jobs
+  // against three, and the report says so rather than leaving the p-value to
+  // carry an n it has not earned. Null when the test was over push means, which
+  // has no such gap between what was counted and what is independent.
+  testJobs: { base: number; next: number } | null;
+  // The smallest difference this pair of pools could have shown as significant,
+  // as a fraction, from the series' own job-to-job scatter (`noise.ts`). Null
+  // across two series, and for a series whose window has no retriggered push to
+  // measure that scatter from.
+  resolution: number | null;
   // Set when `--pool` was used, naming what was pooled — and carrying the
   // push-weighted level of each side, which is the figure `step` and `changes`
   // print. The medians elsewhere in the report are over the pooled replicates
@@ -1589,6 +1607,24 @@ export type CompareReport = {
     curves: { label: string; density: number[] }[];
   } | null;
 };
+
+// What the pair could have resolved, from the series' own job-to-job scatter
+// over the whole loaded window.
+//
+// **One series only.** The budget belongs to a measurement, so on a comparison
+// of two different signatures it would describe one of the two sides and be
+// quoted about both. And `null` rather than a guess where the window holds no
+// retriggered push: there is then no job-to-job figure to scale by.
+function pairResolution(comparison: Comparison, input: CompareInput): number | null {
+  const base = comparison.base.ref;
+  const next = comparison.next.ref;
+  if (base.repository !== next.repository || base.signatureId !== next.signatureId) return null;
+  const budget = buildNoiseBudget(input.base.loaded.data.pushes);
+  if (!budget) return null;
+  const baseJobs = comparison.base.push.runs.length;
+  const nextJobs = comparison.next.push.runs.length;
+  return resolvableDifference(budget, baseJobs, nextJobs);
+}
 
 // One side of a comparison: the push the caller named, and — when `--pool`
 // widened it — the window of pushes standing behind it. `push` is then the
@@ -1768,6 +1804,8 @@ export function buildCompareReport(input: CompareInput): CompareReport | null {
     warning: comparison.warning,
     test,
     testBasis: pooling ? 'push means' : 'replicates',
+    testJobs: pooling ? null : comparison.testJobs,
+    resolution: pairResolution(comparison, input),
     pool: pooling
       ? {
           basePushes: baseGot,
@@ -1858,6 +1896,30 @@ function sideReport(
     pushCount: window.length,
     firstPushMs: window[0].x,
     lastPushMs: window[window.length - 1].x,
+    ...machineMix(window),
+  };
+}
+
+// The workers behind a side, sorted by name. Over the pooled window, not the one
+// push: it is the runs the numbers came from, the same rule the app's card
+// follows (`sideMachines`).
+function machineMix(window: readonly PushGroup[]): {
+  machines: { name: string; runs: number }[];
+  unattributedRuns: number;
+} {
+  const tally = new Map<string, number>();
+  let unattributedRuns = 0;
+  for (const push of window) {
+    for (const run of push.runs) {
+      if (run.machineName === null) unattributedRuns += 1;
+      else tally.set(run.machineName, (tally.get(run.machineName) ?? 0) + 1);
+    }
+  }
+  return {
+    machines: [...tally.entries()]
+      .map(([name, runs]) => ({ name, runs }))
+      .sort((a, b) => a.name.localeCompare(b.name)),
+    unattributedRuns,
   };
 }
 

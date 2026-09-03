@@ -1281,3 +1281,69 @@ describe('buildNoiseReport', () => {
     expect(report.entries[0].series.error).toBe('HTTP 502');
   });
 });
+
+
+describe('buildCompareReport, machine mix and resolution', () => {
+  // 20 pushes of four jobs each on four workers, two of which read high. Enough
+  // pushes for the range to have a job-to-job figure, and enough jobs a push for
+  // the mix to be worth printing.
+  function pool(): RawSummary {
+    const base = summaryOf([[100]]);
+    const workers: [string, number][] = [
+      ['w-1', 98],
+      ['w-2', 99],
+      ['w-3', 103],
+      ['w-4', 104],
+    ];
+    const data: RawDatum[] = [];
+    for (let i = 0; i < 20; i++) {
+      workers.forEach(([machine, level], k) => {
+        for (const v of [level - 1, level + 1]) {
+          data.push({
+            job_id: 900 + i * 10 + k,
+            id: i * 10 + k,
+            value: v + (i % 3),
+            push_timestamp: new Date(BASE_TIME + i * 3_600_000).toISOString().slice(0, 19),
+            push_id: 3000 + i,
+            revision: `rev${String(i).padStart(4, '0')}${'c'.repeat(34)}`,
+            submit_time: null,
+            machine_name: machine,
+          });
+        }
+      });
+    }
+    return { ...base, data };
+  }
+
+  const loaded = loadedOf(pool());
+  const report = buildCompareReport({
+    base: { loaded, push: loaded.data.pushes[2], pooled: null },
+    next: { loaded, push: loaded.data.pushes[9], pooled: null },
+    span: { start: BASE_TIME, end: BASE_TIME + 30 * 3_600_000 },
+    appBase: 'http://x/',
+    repoLink: null,
+  })!;
+
+  it('names the workers behind each side', () => {
+    expect(report.base.machines).toEqual([
+      { name: 'w-1', runs: 1 },
+      { name: 'w-2', runs: 1 },
+      { name: 'w-3', runs: 1 },
+      { name: 'w-4', runs: 1 },
+    ]);
+    expect(report.base.unattributedRuns).toBe(0);
+  });
+
+  it('says how many jobs the replicate test really rests on', () => {
+    // Eight values a side from four jobs: the n beside the p-value is the first
+    // number and the evidence is the second.
+    expect(report.testBasis).toBe('replicates');
+    expect(report.testJobs).toEqual({ base: 4, next: 4 });
+    expect(report.base.valueCount).toBe(8);
+  });
+
+  it('carries what the pair could have resolved', () => {
+    expect(report.resolution).not.toBeNull();
+    expect(report.resolution!).toBeGreaterThan(0);
+  });
+});

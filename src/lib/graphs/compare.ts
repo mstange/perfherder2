@@ -96,6 +96,19 @@ export type Comparison = {
   // Null for a `replicate` comparison — one value against one value is not a
   // test, see below — and when a side has no values at all.
   test: MannWhitneyResult | null;
+  // How many jobs each side's values came from.
+  //
+  // **Printed beside the test, because it is what the p-value has actually
+  // earned.** The pools are replicates, and replicates of one run are repeated
+  // measurements of one number rather than independent samples of the thing
+  // being compared — so a rank test over 40 against 30 is reading four jobs
+  // against three and calling it seventy. The CLI's `--pool` documentation
+  // states the objection and switches to push means, which it can afford at 24
+  // pushes a side; here there is no such n to switch to (a rank test over 4
+  // against 4 job means cannot return anything below 0.029 however far apart
+  // they are), so the honest move is to say what was counted. See
+  // cli-todo.md, "The p-value a single-push comparison can earn".
+  testJobs: { base: number; next: number };
   // next − base, on the medians. Median rather than mean because a multi-modal
   // cloud's mean sits between its modes, where no measurement is.
   medianDelta: number;
@@ -367,6 +380,12 @@ export function buildComparison(
   // rather than information. The two numbers and their difference are the whole
   // answer there.
   const test = kind === 'replicate' ? null : mannWhitneyU(base.values, next.values);
+  // The runs each side's pool came from — the same split `poolFor` makes, so
+  // this cannot drift from what was tested.
+  const testJobs = {
+    base: poolsWholePush(kind) ? base.push.runs.length : 1,
+    next: poolsWholePush(kind) ? next.push.runs.length : 1,
+  };
 
   // "Improvement" and "regression" describe one thing measured twice, which only
   // the `push` kind is. Windows being slower than macOS on one build is not a
@@ -392,6 +411,7 @@ export function buildComparison(
     next,
     swapped,
     test,
+    testJobs,
     medianDelta: nextMedian - baseMedian,
     medianDeltaFraction: relativeChange(baseMedian, nextMedian),
     meanDelta: (next.summary?.mean ?? NaN) - (base.summary?.mean ?? NaN),

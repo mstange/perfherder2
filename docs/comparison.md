@@ -368,6 +368,44 @@ Layout, top to bottom, in one canvas:
   at the cost of a labelled empty box in every narrow-pool case. See design.md,
   "Layout stability", for the rule this bends.)
 
+## What the pair could have resolved, and what the p-value is over
+
+Two lines, both about the same thing: a comparison of two builds is limited by
+how far two jobs of *one* build sit apart, and neither the delta nor the p-value
+says so on its own.
+
+**Under the headline, when the delta is inside the floor:** "This pair can resolve
+about 4.4% — the difference above is inside that." The floor is
+`noise.ts::resolvableDifference` — the series' own job-to-job sd over the jobs
+each side actually has, at z for 95% — and it is a property of the measurement
+rather than a second opinion on the test. A delta inside it is not evidence of no
+change; it is a pair that could not have shown one, and the reader's next move is
+more retriggers or a wider window rather than a different reading of the same
+numbers. Shown only when the delta is inside it: telling someone who is looking
+at a resolvable difference that it is resolvable is noise.
+
+Only for two points of one series. The budget belongs to a measurement, so on a
+cross-series comparison it would describe one of the two sides and be quoted
+about both.
+
+**Under the p-value, always:** "over the replicate pools, from 4 and 4 jobs." The
+pools are replicates, and replicates of one run are repeated measurements of one
+number rather than independent samples of the build — so a rank test over 40
+against 30 is reading four jobs against three and counting seventy. The CLI's
+`--pool` documentation states this objection and answers it by switching to push
+means, which it can afford at 24 pushes a side.
+
+**Here it is disclosed rather than corrected, and the reason is arithmetic.** A
+two-sided Mann-Whitney over four job means against four cannot return anything
+below 0.029 however far apart they are; over three against three it cannot go
+below 0.1, and over two against two, below 0.33. Switching the unit would
+therefore turn "significant" into "impossible" on every platform that retriggers
+fewer than four times, which is most of them — a test that can never fire is
+worse than one that fires optimistically and says so. What the reader gets
+instead is the count that carries the evidence, the floor above, and the machine
+mix below. See cli-todo.md, "The p-value a single-push comparison can earn", for
+the version of this that would need a different test rather than a different n.
+
 ## Which machines each side ran on
 
 Each side row in a pinned card names the workers behind that side's *values*, as

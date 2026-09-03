@@ -56,6 +56,17 @@ single source of noise on this test.
 
 ## Done
 
+- **`compare` names each side's machines, prints what the pair can resolve, and
+  says what its n is worth.** Asked for the window's two extreme pushes it used
+  to answer "-6.4%, p <0.001, Cliff's δ 0.795 (large), improvement" and stop.
+  Now: the two machine mixes (the slow device family against the fast one, 43%
+  of that delta by the pool's own offsets), the pair's resolution from
+  `noise.ts::resolvableDifference`, and "those n are replicates, from 4 and 3
+  jobs". The app's card carries the same three, and the floor line appears only
+  when the delta is inside it. See [cli.md](cli.md), "`compare` says whose
+  machines, and what the n is worth", and comparison.md, "What the pair could
+  have resolved, and what the p-value is over".
+
 - **`machines` measures against the push where it can, and reports spread and
   uncertainty.** Three of the trial's items, and they were one change. The
   baseline is now the mean of a run's *own push* wherever the push ran more than
@@ -144,29 +155,8 @@ single source of noise on this test.
 
 ## Next
 
-The two items below are what is left of the noise trial's list. The first is
-`compare` being asked a question it holds the data for; the second is the reason
-all of it had to be done by hand.
-
-- [ ] **`compare` should name the machines behind each side, and test over jobs
-      rather than replicates.** Both halves showed up on one pair. Asked to
-      compare the two extreme pushes of this window (chosen *as* the extremes, so
-      the pair proves nothing on its own — the failure mode is what is being
-      shown), `compare` reported −6.4%, "p <0.001", "Cliff's δ 0.795 (large)",
-      "CLES 90%", verdict "improvement", and the mode analysis called it "the
-      level shifting". It never mentioned that the slow side ran on four devices
-      averaging +24 ms and the fast side on three averaging −33 ms: 43% of the
-      delta it called a large improvement is the machine draw, and the machine
-      names were on the datums it had already fetched. And the p-value is over 40
-      vs 30 *replicates* from 4 and 3 jobs — the `--pool` documentation states
-      the objection precisely ("replicates of a run are repeated measurements of
-      one number and a rank test over 700 of them reports a p-value it has not
-      earned") and then the single-push default does it anyway. Over job means
-      the same pair is t = 3.75 on 4 vs 3, p ≈ 0.013, and machine-corrected it is
-      75 ms rather than 133. Minimum change: a MACHINES line per side. Right
-      change: test over job means whenever both sides have three or more runs,
-      keep the replicate pools for the distributions and the modes where they
-      belong, and print the resolution floor beside the verdict.
+One item left of the noise trial's list, and it is the reason all of it had to
+be done by hand.
 
 - [ ] **Job-level data has no exit from the tool.** `series --pushes` aggregates
       to the push (`runCount`, `valueCount`, mean, median); `compare --json`
@@ -215,6 +205,26 @@ all of it had to be done by hand.
   means the rolling-level baseline (which carries the whole push, time included)
   and a note that any drift in the series masquerades as a day-of-week effect. A
   `noise` command should decline the question rather than print that table.
+
+- **The p-value a single-push comparison can earn.** `compare` now *discloses*
+  that its rank test is over replicates from four and three jobs; the honest fix
+  would be to test the jobs. It is not a one-line change of unit, because a
+  two-sided Mann-Whitney over 4 job means against 4 cannot return anything below
+  0.029 however far apart they are — over 3 against 3 the floor is 0.1, and over
+  2 against 2 it is 0.33. Switching the unit would turn "significant" into
+  "impossible" on every platform that retriggers fewer than four times, which is
+  most of them.
+
+  So it needs a different *test*, not a different n: a Welch t on the job means
+  (parametric, but it reaches p < 0.05 at 4 against 4) or a variance-components
+  model that uses the replicates to estimate the job noise and the jobs to
+  estimate the difference. Both are a real statistical decision for a codebase
+  that has been deliberately non-parametric throughout (`stats.ts`, and
+  perf.compare's own `test_version=mann-whitney-u`), and both change a verdict
+  the app prints on its headline card. Left for someone to decide rather than
+  decided in passing. The three things now printed around the p-value — the job
+  counts, the resolution floor, the machine mixes — are what a reader needs in
+  the meantime.
 
 ## Not doing
 

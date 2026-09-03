@@ -662,6 +662,35 @@ range.
 `step` had this right all along — "up to 24 pushes a side" in its header, and the
 counts it really got on each row — which is where the wording came from.
 
+### `compare` says whose machines, and what the n is worth
+
+Two additions that come out of the noise trial, both about the same gap: the
+command reported a delta, a p-value and a verdict for two pushes and said nothing
+about the twenty-odd facts behind them that decide whether any of it is the code.
+
+**Each side names its workers.** The machine names are on the datums the command
+already fetched, and on the A55 startup pool the device families differ by 4.3%
+against a series whose whole push-to-push scatter is 1.5% — so which handsets a
+side drew is not a footnote. Asked to compare that window's two extreme pushes,
+`compare` used to answer "-6.4%, p <0.001, Cliff's δ 0.795 (large), improvement";
+it now shows the same numbers over `machines R5CXC1AMNFY, R5CXC1ARM0A,
+R5CXC1PW94F, RZCXC19G2SH` against `machines R5CX23RTM4X, RZCXC187YCR,
+RZCY10Y4TBY` — the slow family against the fast one — which is 43% of the delta
+by the pool's own offsets.
+
+**The pair's resolution, printed either way.** "This pair can resolve about 4.8% —
+4 and 3 jobs against this series' own job-to-job scatter." Under the floor it is
+the answer; over it, it is the scale to read the delta against. From
+`noise.ts::resolvableDifference`, and only for two points of one series.
+
+**And what the n is worth.** "Those n are replicates, from 4 and 3 jobs." The
+objection is the one `--pool` already states — replicates of a run are repeated
+measurements of one number — and it applies just as much to the single-push
+default, which had gone on doing it anyway. It is disclosed rather than corrected
+because there is no n to switch to: a rank test over four job means against four
+cannot return anything below 0.029, and over two against two, below 0.33. See
+cli-todo.md, "The p-value a single-push comparison can earn".
+
 ### The mode analysis
 
 [modes.ts](../src/cli/modes.ts) is the one place the CLI computes something the

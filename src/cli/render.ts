@@ -1459,6 +1459,24 @@ export function renderCompare(report: CompareReport): string[] {
   );
   out.push('');
 
+  // What this pair could have shown at all, before any test is run. Printed
+  // whichever way the comparison came out: under the floor it is the answer, and
+  // over it, it is the scale the delta should be read against.
+  if (report.resolution !== null) {
+    const inside =
+      report.medianDeltaFraction !== null &&
+      Math.abs(report.medianDeltaFraction) < report.resolution;
+    out.push(
+      ...wrap(
+        `This pair can resolve about ${formatPercent(report.resolution)} — ` +
+          `${report.base.runCount} and ${report.next.runCount} jobs against this series' own ` +
+          `job-to-job scatter (see \`noise\`)${inside ? ', and the difference above is inside that' : ''}.`,
+        88,
+      ),
+    );
+    out.push('');
+  }
+
   if (report.test) {
     const t = report.test;
     out.push(
@@ -1479,6 +1497,23 @@ export function renderCompare(report: CompareReport): string[] {
       `  δ < 0 means "${report.next.label}" tends to be higher; CLES is the share of pairs ` +
         `where "${report.next.label}" comes in below "${report.base.label}".`,
     );
+    // What the n above is really worth. Replicates of one run are repeated
+    // measurements of one number, so a rank test over 40 against 30 is reading
+    // four jobs against three — the same objection `--pool` answers by switching
+    // to push means, which a single-push pair has no n to do.
+    if (report.testJobs && (report.testJobs.base > 1 || report.testJobs.next > 1)) {
+      out.push(
+        ...indent(
+          wrap(
+            `Those n are replicates, from ${report.testJobs.base} and ${report.testJobs.next} jobs. ` +
+              'Replicates of one run are repeated measurements of one number rather than ' +
+              'independent samples of the build, so the p-value is optimistic by however much ' +
+              'the jobs of a push differ from each other — which `noise` measures.',
+            76,
+          ),
+        ),
+      );
+    }
     if (report.pool) {
       // Reconciling two figures for one event, rather than leaving the reader
       // to notice they differ: this is the number `step` and `changes` print for
@@ -1601,8 +1636,25 @@ function renderCompareSide(
         `range ${formatValue(s.min)}–${formatValue(s.max)}`,
     );
   }
+  // Which workers this side's numbers came from. A comparison of two pushes is
+  // a comparison of two machine mixes, and on a pool whose families differ by
+  // more than the delta usually does, that is half of reading it. Named up to
+  // MAX_NAMED_MACHINES and counted past it, the same rule the app's card uses.
+  if (side.machines.length > 0 || side.unattributedRuns > 0) {
+    const named =
+      side.machines.length <= MAX_NAMED_MACHINES
+        ? side.machines.map((m) => (m.runs > 1 ? `${m.name} ×${m.runs}` : m.name)).join(', ')
+        : `${side.machines.length} machines`;
+    const unknown =
+      side.unattributedRuns > 0 ? ` · ${side.unattributedRuns} with no machine` : '';
+    out.push(...indent(wrap(`machines ${named}${unknown}`, 86)));
+  }
   return out;
 }
+
+// Past this the names stop being a list and become a paragraph: a desktop push
+// pooled over 24 of them is hundreds of runs over most of the pool.
+const MAX_NAMED_MACHINES = 6;
 
 // One row per side over a shared axis and a shared density scale, so the two
 // rows can be read against each other — which is the only reason to draw them.

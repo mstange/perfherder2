@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildNoiseBudget, noiseHeadline } from './noise';
+import { buildNoiseBudget, noiseHeadline, resolvableDifference } from './noise';
 import type { PushGroup, Run } from './graphData';
 
 const DAY = 86400000;
@@ -209,5 +209,37 @@ describe('noiseHeadline', () => {
     // left is a replicate sd of 2·√2 and six push means one apart, on a level of
     // 104.5.
     expect(noiseHeadline(b)).toBe('replicates ±2.7% · push means ±1.8%');
+  });
+});
+
+describe('resolvableDifference', () => {
+  const budget = buildNoiseBudget(twoMachinePool(10))!;
+
+  it('scales with the jobs each side actually has', () => {
+    // job sd 28.28 on a level of 1000. Four a side: se = 28.28·√(1/4+1/4) = 20.
+    expect(resolvableDifference(budget, 4, 4)! * budget.level).toBeCloseTo(1.959964 * 20, 4);
+    // One a side is twice the se and twice the floor.
+    expect(resolvableDifference(budget, 1, 1)!).toBeCloseTo(
+      2 * resolvableDifference(budget, 4, 4)!,
+      9,
+    );
+    // Lopsided pairs are dominated by the thin side.
+    expect(resolvableDifference(budget, 1, 40)!).toBeGreaterThan(
+      resolvableDifference(budget, 4, 4)!,
+    );
+  });
+
+  it('agrees with the budget headline for the typical pair', () => {
+    expect(resolvableDifference(budget, budget.runsPerPush, budget.runsPerPush)).toBeCloseTo(
+      budget.pushPairResolution!,
+      12,
+    );
+  });
+
+  it('has nothing to say without a job-to-job figure', () => {
+    const single = buildNoiseBudget(
+      Array.from({ length: 6 }, (_, i) => push(i + 1, [run(i, 'a', [100 + i, 104 + i])])),
+    )!;
+    expect(resolvableDifference(single, 1, 1)).toBeNull();
   });
 });
