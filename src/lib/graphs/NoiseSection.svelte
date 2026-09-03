@@ -94,7 +94,21 @@
           </p>
         {/if}
 
-        {#if budget.pushPairResolution !== null && budget.windowResolution !== null}
+        <!-- The one thing this section cannot answer for a series that never
+           retriggers, and where the answer is. `machines` compares a worker with
+           the level around its own runs, which needs no second run of a push —
+           so a series with no job figure at all can still have its scatter
+           explained by the pool, and on the geckoview startup signature that is
+           exactly what happened. -->
+      {#if !budget.job && budget.attributedRuns > 0}
+        <p class="note">
+          No push here ran more than once, so nothing above can be attributed. The
+          Machines panel in the graph header still can: it compares each worker with the
+          level around its own runs.
+        </p>
+      {/if}
+
+      {#if budget.pushPairResolution !== null && budget.windowResolution !== null}
           <p class="note">
             Two single pushes resolve {formatPercent(budget.pushPairResolution)};
             {WINDOW_PUSHES} pushes a side resolve {formatPercent(budget.windowResolution)}.

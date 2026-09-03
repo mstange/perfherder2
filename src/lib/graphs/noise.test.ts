@@ -178,6 +178,36 @@ describe('buildNoiseBudget', () => {
     expect(b.push).not.toBeNull();
   });
 
+  it('counts a named machine even where no push was retriggered', () => {
+    // The bug this replaced: attribution was counted over retriggered pushes
+    // only, so a series that never retriggers reported nought attributed runs
+    // and the report blamed treeherder's job retention for it — on a series
+    // whose every run names a worker. `machines` and `series --runs` both
+    // listed them at the same time, which is how it was caught.
+    const pushes = Array.from({ length: 6 }, (_, i) =>
+      push(i + 1, [run(i, `w-${i % 2}`, [100 + i, 104 + i])]),
+    );
+    const b = buildNoiseBudget(pushes)!;
+    expect(b.retriggeredPushes).toBe(0);
+    expect(b.job).toBeNull();
+    expect(b.runs).toBe(6);
+    expect(b.attributedRuns).toBe(6);
+  });
+
+  it('counts the attributed runs of a mixed range, retriggered or not', () => {
+    const pushes = [
+      ...Array.from({ length: 4 }, (_, i) => push(i + 1, [run(i, 'w-1', [100, 104])])),
+      ...Array.from({ length: 4 }, (_, i) =>
+        push(i + 10, [run(i * 10, 'w-1', [100, 104]), run(i * 10 + 1, null, [100, 104])]),
+      ),
+    ];
+    const b = buildNoiseBudget(pushes)!;
+    expect(b.runs).toBe(12);
+    // Eight named, four of them in single-run pushes; the four expired ones are
+    // the only thing the retention sentence is about.
+    expect(b.attributedRuns).toBe(8);
+  });
+
   it('leaves the runs whose job expired out of the device estimate', () => {
     const pushes = Array.from({ length: 6 }, (_, i) =>
       push(i + 1, [

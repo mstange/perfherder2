@@ -944,7 +944,12 @@ function renderNoiseEntry(entry: NoiseEntry): string[] {
         wrap(
           'No push in this range ran more than once, so there is no job-to-job figure and ' +
             'nothing to say about what it is made of: with one run a push, a push mean *is* ' +
-            'its run. The push rows above are the only level this series has.',
+            'its run. The push rows above are the only level this series has.' +
+            (budget.attributedRuns > 0
+              ? ' The runs do name their machines, though, so `machines` can still say whether ' +
+                'the pool is behind that scatter — it compares each worker with the level around ' +
+                'its own runs, which needs no retrigger.'
+              : ''),
           76,
         ),
       ),

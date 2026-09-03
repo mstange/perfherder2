@@ -111,9 +111,13 @@ export type NoiseBudget = {
   // detector and `step` measure over.
   windowResolution: number | null;
 
-  // How many runs carry a machine name at all. The device term is estimated from
-  // these; treeherder expires job rows after about four months and the name
-  // comes off the job, so a long range has an older half with no attribution.
+  // How many of `runs` carry a machine name at all.
+  //
+  // **Not "how many the device term rests on"** — that is every attributed run
+  // in a push that ran more than once, and where the two differ it is `job`
+  // being null that says so. Treeherder expires job rows after about four months
+  // and the name comes off the job, so a long range has an older half with no
+  // attribution; that is what this counts and the only thing it counts.
   attributedRuns: number;
 };
 
@@ -147,23 +151,19 @@ function sampleVariance(values: readonly number[]): number | null {
 // subtraction away.
 function leaveOneOutOffsets(pushes: readonly PushGroup[]): {
   offsetFor: (machine: string, residual: number) => number;
-  attributedRuns: number;
 } {
   const sum = new Map<string, number>();
   const count = new Map<string, number>();
-  let attributedRuns = 0;
   for (const push of pushes) {
     if (push.runs.length < 2) continue;
     const pushMean = mean(push.runs.map((r) => r.mean));
     for (const run of push.runs) {
       if (run.machineName === null) continue;
-      attributedRuns += 1;
       sum.set(run.machineName, (sum.get(run.machineName) ?? 0) + (run.mean - pushMean));
       count.set(run.machineName, (count.get(run.machineName) ?? 0) + 1);
     }
   }
   return {
-    attributedRuns,
     // A machine seen once has no out-of-sample offset — its only evidence is the
     // run being corrected — so it corrects by nothing rather than by itself.
     offsetFor: (machine, residual) => {
@@ -181,9 +181,8 @@ function jobVariances(pushes: readonly PushGroup[]): {
   raw: number | null;
   calibrated: number | null;
   retriggeredPushes: number;
-  attributedRuns: number;
 } {
-  const { offsetFor, attributedRuns } = leaveOneOutOffsets(pushes);
+  const { offsetFor } = leaveOneOutOffsets(pushes);
   let rawSq = 0;
   let calSq = 0;
   let df = 0;
@@ -204,7 +203,6 @@ function jobVariances(pushes: readonly PushGroup[]): {
     raw: df > 0 ? rawSq / df : null,
     calibrated: df > 0 ? calSq / df : null,
     retriggeredPushes,
-    attributedRuns,
   };
 }
 
@@ -225,12 +223,15 @@ export function buildNoiseBudget(pushes: readonly PushGroup[]): NoiseBudget | nu
   const replicateVar = replicateVars.length > 0 ? mean(replicateVars) : null;
   const replicatesPerRun = median(runs.map((r) => r.values.length));
 
-  const {
-    raw: jobVar,
-    calibrated: calibratedVar,
-    retriggeredPushes,
-    attributedRuns,
-  } = jobVariances(pushes);
+  const { raw: jobVar, calibrated: calibratedVar, retriggeredPushes } = jobVariances(pushes);
+  // Every run that names a machine, whether or not it sits in a push that could
+  // contribute to the device estimate. **These are two different facts and this
+  // used to conflate them**: counted over retriggered pushes only, a series that
+  // never retriggers reported nought attributed runs and the report explained it
+  // with treeherder's job retention — which was flatly wrong, and wrong in the
+  // one direction that sends a reader looking at the wrong thing. Whether the
+  // device *can* be estimated is `job`, right above.
+  const attributedRuns = runs.filter((run) => run.machineName !== null).length;
   const runsPerPush = median(
     pushes.filter((p) => p.runs.length > 1).map((p) => p.runs.length),
   );
