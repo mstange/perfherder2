@@ -26,6 +26,9 @@ picture is one nobody should act on.
 | `search <term...>` | which signature do I mean? |
 | `series <ref...>` | what level is it at, and how do two of them compare? |
 | `series <ref...> --drift` | it never stepped — how far has it slid since February? |
+| `series <ref...> --runs` | one row per job: which worker ran it, and how it read |
+| `machines <ref...>` | is that scatter the test, or is it one worker in the pool? |
+| `noise <ref...>` | what is the scatter *made of*, and what can this series resolve? |
 | `changes <ref...>` | where did it move, and what landed there? |
 | `changes <ref...> --cluster` | which *landings* moved these twenty series, not which series moved? |
 | `step <ref...> --at` | how big is the move *here*, on each of these series? |
@@ -57,6 +60,11 @@ perfherder-cli compare autoland,5350953@<beforeRev> <afterRev> --pool 24
 # 5. Did the other platforms see it, even where no bar was drawn?
 perfherder-cli step autoland,5350953 --across platform --at <rev> --range 60d
 
+# 6. Before trusting any of it: can this series resolve a change that size,
+#    and is the scatter the test or the pool?
+perfherder-cli noise autoland,5350953 --range 30d
+perfherder-cli machines autoland,5350953 --range 90d --sort name
+
 # …and over a whole suite at once: which landings moved it, six months back?
 perfherder-cli changes <refs...> --range 6mo --cluster --brief
 ```
@@ -84,6 +92,24 @@ And two because a point estimate is not an interval, and a series is not a cause
   it was placed on. Nine events across three platforms become one row — and the
   intersection of their brackets is often narrower than any single series carries,
   sometimes a single push.
+
+## Before you trust a comparison
+
+`noise` splits a series' scatter into the three levels it has — a replicate
+inside its run, a run inside its push, a push mean inside the series — because
+the third is the one everything else reports and the second is the one that
+matters. A series can print `cv 1.5%` and be made of jobs that scatter by 3.2%,
+which is not a smaller version of the same finding: the test is noisy and the
+retriggers are hiding it. It ends on what a comparison of two single pushes could
+resolve at all, which is the number to know before pushing to try rather than
+after squinting at two dots.
+
+Where that scatter turns out to be the *pool* rather than the test, `machines`
+names the workers behind it: each one's level against the closest thing to a
+simultaneous measurement, its standard error, and how much its own runs scatter.
+`--sort name` is worth reaching for — a pool's device families are contiguous
+under name order and scattered under every other, which is how a 53-machine
+Android pool turned out to be two batches 4.3% apart.
 
 ## Notes that save a round trip
 
