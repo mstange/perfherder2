@@ -427,6 +427,18 @@ trend band draws — which moves with every step and drift in the series and lea
 only what is peculiar to the worker. Then the median of those ratios per machine,
 so one bad job does not convict an ordinary machine.
 
+**The premise about pushes is narrower than it reads, and the noise trial found
+the exception.** "Workers do not run concurrently" is true of a worker; it is not
+true that a push is measured by one of them. On the A55 startup signatures 186 of
+187 pushes have two or more runs and 164 have every run on a different handset,
+and `linux2404-64-shippable` speedometer3 runs twelve jobs a push from a
+hundred-machine pool. Where that holds, a run against its own push's mean is an
+exactly contemporaneous contrast — same build, same hour — which no step or
+rotation can confound, and whose shrinkage is a known factor rather than a
+caveat. The rolling baseline is still the right fallback for the single-run
+pushes, and it is what ships today; see cli-todo.md, "`machines` should use the
+within-push contrast where it exists".
+
 Two honesty notes are printed with the table rather than buried here. **It
 understates for a small pool**, because a machine is part of the window it is
 measured against: with two machines alternating, each pulls the baseline halfway
