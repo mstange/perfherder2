@@ -34,8 +34,8 @@
   import { landingSeriesCount, landingWindowLabel } from './cluster';
   import { jobDuration, shortJobType } from './job';
   import MachineFocusButton from './MachineFocusButton.svelte';
+  import NoiseSection from './NoiseSection.svelte';
   import { commitsOfPush } from './pushlog';
-
   import { isCoarsePointer, mediaMatcher } from '../shared/pointer';
 
   type Props = { app: AppState };
@@ -529,6 +529,18 @@
             {/if}
           {/if}
         </section>
+      {/if}
+
+      <!-- How much of all that is the measurement. A series-level fact, and the
+           generalisation of the section above it: "3% off the previous push" is
+           read against this build's own replicates, and *that* is read against
+           how far two jobs of one build normally sit apart. Closed, with the two
+           numbers that matter on the summary line. See NoiseSection.svelte. -->
+      {#if app.selectedNoise}
+        <NoiseSection
+          budget={app.selectedNoise}
+          unit={sel.entry.meta?.measurementUnit ?? ''}
+        />
       {/if}
 
       <section>

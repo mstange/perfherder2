@@ -803,8 +803,18 @@ export function renderMachines(report: MachinesReport): string[] {
 // noise
 // ---------------------------------------------------------------------------
 
-function noiseRow(label: string, t: NoiseTerm | null, unit: string, jobSd: number | null): string[] {
-  if (!t) return [label, NONE, NONE, NONE];
+// One row, or nothing at all: a level a series cannot measure is dropped rather
+// than printed as a line of em dashes. An awsy signature records one value per
+// run and never retriggers, so five of the seven rows would be blank — and a
+// table that is mostly blank reads as a broken command rather than as a series
+// with one level in it. What is missing is said in a sentence instead.
+function noiseRow(
+  label: string,
+  t: NoiseTerm | null,
+  unit: string,
+  jobSd: number | null,
+): string[] | null {
+  if (!t) return null;
   return [
     label,
     `${formatValue(t.sd)}${unit ? ` ${unit}` : ''}`,
@@ -833,9 +843,12 @@ function renderNoiseEntry(entry: NoiseEntry): string[] {
     `  ${entry.pushCount.toLocaleString('en-US')} pushes · ${entry.runCount.toLocaleString('en-US')} runs · ` +
       `${entry.replicateCount.toLocaleString('en-US')} values · level ${formatValue(budget.level)}${unit ? ` ${unit}` : ''}`,
   );
+  const replicatesPer = `${budget.replicatesPerRun} ${budget.replicatesPerRun === 1 ? 'replicate' : 'replicates'} a run`;
   out.push(
-    `  ${budget.retriggeredPushes.toLocaleString('en-US')} pushes ran more than once, ` +
-      `${budget.runsPerPush} runs a push · ${budget.replicatesPerRun} replicates a run`,
+    budget.retriggeredPushes > 0
+      ? `  ${budget.retriggeredPushes.toLocaleString('en-US')} pushes ran more than once, ` +
+          `${budget.runsPerPush} runs a push · ${replicatesPer}`
+      : `  no push ran more than once · ${replicatesPer}`,
   );
   out.push('');
 
@@ -848,13 +861,32 @@ function renderNoiseEntry(entry: NoiseEntry): string[] {
     noiseRow('  unexplained', budget.unexplained, unit, jobSd),
     noiseRow('one push mean', budget.push, unit, null),
     noiseRow('  vs its neighbours', budget.local, unit, null),
-  ];
+  ].filter((r): r is string[] => r !== null);
+  if (rows.length === 0) {
+    out.push('  Too few pushes in this range to measure any level of it.');
+    out.push('');
+    out.push(`  ${entry.url}`);
+    return out;
+  }
   out.push(
     ...indent(
       table(['LEVEL', 'SD', 'CV', 'OF A JOB'], rows, ['left', 'right', 'right', 'right']),
     ),
   );
   out.push('');
+  if (!budget.job) {
+    out.push(
+      ...indent(
+        wrap(
+          'No push in this range ran more than once, so there is no job-to-job figure and ' +
+            'nothing to say about what it is made of: with one run a push, a push mean *is* ' +
+            'its run. The push rows above are the only level this series has.',
+          76,
+        ),
+      ),
+    );
+    out.push('');
+  }
 
   // The finding that changes what a reader should do, so it gets a sentence
   // rather than a row: either the line between push means carries something, or
@@ -910,7 +942,19 @@ function renderNoiseEntry(entry: NoiseEntry): string[] {
     out.push('');
   }
 
-  if (budget.attributedRuns < budget.runs) {
+  if (budget.attributedRuns === 0) {
+    out.push(
+      ...indent(
+        wrap(
+          'No run in this range carries a machine name, so nothing here is attributed to the ' +
+            'device — treeherder expires a job row after about four months and the name is ' +
+            'joined off it.',
+          76,
+        ),
+      ),
+    );
+    out.push('');
+  } else if (budget.attributedRuns < budget.runs) {
     out.push(
       ...indent(
         wrap(

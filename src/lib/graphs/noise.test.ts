@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildNoiseBudget } from './noise';
+import { buildNoiseBudget, noiseHeadline } from './noise';
 import type { PushGroup, Run } from './graphData';
 
 const DAY = 86400000;
@@ -190,5 +190,24 @@ describe('buildNoiseBudget', () => {
     expect(b.job!.sd).toBeGreaterThan(0);
     // Nothing to calibrate with, so none of it is attributed to the device.
     expect(b.device!.sd).toBe(0);
+  });
+});
+
+describe('noiseHeadline', () => {
+  it('leads with the job figure and what a push pair can resolve', () => {
+    const b = buildNoiseBudget(twoMachinePool(10))!;
+    // job sd 28.28 on a level of 1000, and 1.96·√2·20 = 55.4 for a pair.
+    expect(noiseHeadline(b)).toBe('jobs ±2.8% · a push pair resolves 5.5%');
+  });
+
+  it('falls back to what a series without retriggers can say', () => {
+    const pushes = Array.from({ length: 6 }, (_, i) =>
+      push(i + 1, [run(i, 'a', [100 + i, 104 + i])]),
+    );
+    const b = buildNoiseBudget(pushes)!;
+    // No job figure and no resolution: one run a push measures neither. What is
+    // left is a replicate sd of 2·√2 and six push means one apart, on a level of
+    // 104.5.
+    expect(noiseHeadline(b)).toBe('replicates ±2.7% · push means ±1.8%');
   });
 });

@@ -142,6 +142,16 @@ export function formatSignedPercent(fraction: number): string {
   return `${fraction < 0 ? '-' : '+'}${pct.toFixed(digits)}%`;
 }
 
+// The same rule without a sign, for a percentage that is a *magnitude* rather
+// than a change: a spread, a share, a resolution floor. Signing those would
+// claim a direction they do not have.
+export function formatPercent(fraction: number): string {
+  if (!Number.isFinite(fraction)) return 'N/A';
+  const pct = Math.abs(fraction) * 100;
+  const digits = pct < 1 ? 2 : pct < 10 ? 1 : 0;
+  return `${pct.toFixed(digits)}%`;
+}
+
 // p-values span orders of magnitude, and past three decimals the exact figure
 // stops carrying information anyone acts on.
 export function formatPValue(p: number): string {

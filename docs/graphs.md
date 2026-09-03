@@ -372,13 +372,35 @@ which would put the twenty-commit pushlog above the value you asked about.
    the run as a whole. It stays in the head rather than joining the chip row,
    quieter than a chip until hovered or selected, because a mean in a row of
    measured values is a different kind of number wearing the same clothes.
-5. **Run** — the job: type, machine, start, duration, task. `result` comes
+5. **Noise** — what this series' scatter is made of, over the loaded range: a
+   replicate around its run, a run around its push, a push mean around the
+   series, and the job level split into device / replicate-mean / unexplained.
+   **Closed, with the answer in its summary** — "jobs ±3.2% · a push pair
+   resolves 4.4%" — because those two numbers are the ones that change what a
+   reader does and the table behind them is for the reader who wants to know
+   why.
+
+   Here because it is the generalisation of the section above it: "3% off the
+   previous push" is read against this build's own replicates, and *that* is
+   read against how far two jobs of one build normally sit apart. It is the least
+   dot-specific block in the pane other than Build, which is why it is a fold
+   rather than a table — and why it sits below the value it qualifies rather than
+   above it.
+
+   Nothing here is fetched: every level comes out of the response the dots were
+   drawn from, so the fold is complete on the first paint and changes only when
+   the plotted range does. The maths and every rule in it are
+   [noise.ts](../src/lib/graphs/noise.ts), shared with `perfherder-cli noise`;
+   see cli.md, "`noise` decomposes the scatter instead of quoting one number".
+   A series that measures none of the levels — one value a run, no retriggers,
+   one push — gets no section at all rather than a fold of em dashes.
+6. **Run** — the job: type, machine, start, duration, task. `result` comes
    **last**; it reads "success" for all but a handful of points, since a job that
    failed outright recorded no performance data to click on. It's kept rather
    than dropped only because the `bad` styling makes the rare exception jump out.
 
    **Profiles** sits between the task and the result — see below.
-6. **Build** — push time, revision, author, and this push's commit list. Last
+7. **Build** — push time, revision, author, and this push's commit list. Last
    because it's the longest section by far and the least specific to the dot:
    two dots on the same push have identical builds.
 
@@ -1691,6 +1713,11 @@ Recovery is the explicit Retry button.
   them. Two answers of very different weight: `buildMachineCensus`, the list the
   panel shows, and `buildMachineLevels`, which adds the per-machine deviation
   the CLI ranks by. See "Machines" above.
+- [noise.ts](../src/lib/graphs/noise.ts) — **pure**. A series' scatter split by
+  level, the out-of-sample device share of the job level, and what a push pair
+  and a 24-push window can resolve. Read by the pane's Noise fold
+  ([NoiseSection.svelte](../src/lib/graphs/NoiseSection.svelte)) and by
+  `perfherder-cli noise`.
 - [MachinePanel.svelte](../src/lib/graphs/MachinePanel.svelte) — the header
   button and the list it opens.
   [MachineFocusButton.svelte](../src/lib/graphs/MachineFocusButton.svelte) — one

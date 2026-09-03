@@ -32,6 +32,7 @@ import { detectChanges, type DetectedChange } from './changes';
 import { buildDrift, driftWorthReporting, type DriftSummary } from './drift';
 import { rollingTrend, trendExtent, type TrendPoint } from './trend';
 import { buildMachineCensus } from './machines';
+import { buildNoiseBudget, type NoiseBudget } from './noise';
 import {
   benchmarkComparison,
   profileLinks,
@@ -685,6 +686,21 @@ export class AppState {
       }
     }
     return { scales: stableScales(pool), reserveBand };
+  });
+
+  // What the selected series' scatter is made of, over the loaded range.
+  //
+  // **A property of the series and the window, not of the dot** — so it is
+  // derived from the selection's *entry* and changes only when the plotted data
+  // does, not as the pointer moves. That is what makes it cheap enough to sit in
+  // a pane that is rewritten on every click: one walk over the runs plus a
+  // rolling median, and no fetch at all, since every level it reports is already
+  // in the response the dots were drawn from.
+  //
+  // Null with no selection, and for a series whose data has not landed.
+  selectedNoise = $derived.by((): NoiseBudget | null => {
+    const sel = this.selection;
+    return sel ? buildNoiseBudget(sel.entry.data.pushes) : null;
   });
 
   // Push / job details for the selection, once fetched.

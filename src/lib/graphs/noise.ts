@@ -35,6 +35,7 @@
 // is removed along with the push, and a table of hourly means computed this way
 // would be a row of zeroes wearing a conclusion.
 
+import { formatPercent } from '../shared/chart';
 import { mean, median, summarize } from '../shared/stats';
 import { WINDOW_PUSHES } from './changes';
 import type { PushGroup } from './graphData';
@@ -297,4 +298,30 @@ export function buildNoiseBudget(pushes: readonly PushGroup[]): NoiseBudget | nu
     windowResolution,
     attributedRuns,
   };
+}
+
+// The one line a collapsed fold shows, and the shortest true summary of the
+// table under it.
+//
+// **The job figure, then what a push pair can resolve.** Those are the two
+// numbers that change what a reader does: the first says how noisy the test is
+// with the code held still, the second says whether the comparison they are
+// about to make can see what they are looking for. The push-mean cv — the number
+// every other surface has always shown — is deliberately not the headline,
+// because on a retriggered platform it is the first figure divided by the
+// retriggers and it reads as "quiet" for a test that is not.
+//
+// Falls back through what is measurable: a series with no retriggered push has
+// no job figure and no resolution, and one with no replicates has neither of
+// those nor a replicate figure.
+export function noiseHeadline(budget: NoiseBudget): string {
+  const parts: string[] = [];
+  if (budget.job) parts.push(`jobs ±${formatPercent(budget.job.cv)}`);
+  else if (budget.replicate) parts.push(`replicates ±${formatPercent(budget.replicate.cv)}`);
+  if (budget.pushPairResolution !== null) {
+    parts.push(`a push pair resolves ${formatPercent(budget.pushPairResolution)}`);
+  } else if (budget.push) {
+    parts.push(`push means ±${formatPercent(budget.push.cv)}`);
+  }
+  return parts.join(' · ');
 }
