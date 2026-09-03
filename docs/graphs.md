@@ -812,11 +812,12 @@ so that learning it once is enough:
   what they are looking at will put the pointer on the machine name, and a
   permanent icon spends attention, in the pane's densest column, on a question
   most readers of most points are not asking.
-- **The comparison card's side rows**, which name a machine per side and say so
-  when both ends ran on one. Same control, literally — `MachineFocusButton.svelte`
-  is shared with the row above — because a comparison of two runs is a comparison
-  of two machines, and the card links a profile diff that folds the difference in.
-  See comparison.md, "Which machine each side ran on".
+- **The comparison card's side rows**, which name the workers behind each side's
+  values — the whole push's, where that is what the side pools — and say so when
+  both mixes are identical. Same control, literally: `MachineFocusButton.svelte`
+  is shared with the row above. A comparison of two pushes is a comparison of two
+  machine mixes, and the card links a profile diff that folds the difference in.
+  See comparison.md, "Which machines each side ran on".
 - **The chip in the plot's top-right corner**, which exists because the graph is
   not showing what it usually shows and the control that says so is a panel away
   in a header that collapses on a small pane. It is also the only thing that

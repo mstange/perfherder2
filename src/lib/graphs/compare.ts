@@ -125,21 +125,64 @@ export function hasDistribution(cmp: Comparison): boolean {
   return cmp.kind !== 'replicate';
 }
 
-// Whether both sides' jobs ran on the same worker.
+// Which machines a side's *values* came from.
 //
-// Worth saying out loud in the card because the CI pool is not homogeneous —
-// that is the whole premise of the machine focus (graphs.md, "Machines") — so
-// two runs on one machine and two runs on two are different amounts of evidence
-// for the same delta, and most visibly so for the profile comparison the card
-// links to.
+// Not "the machine of the dot that was clicked", which is what this used to be
+// and is wrong for every pooled side: a cross-push comparison hands each side
+// its whole push (see `poolFor`), so on a platform that runs four jobs a push —
+// or twelve, on desktop — one machine name under a heading whose numbers come
+// from four jobs is a claim about the dot masquerading as a claim about the
+// comparison. It read "same machine" for two pushes that shared one worker out
+// of seven.
 //
-// **Two unknown machines are not the same machine.** `machineName` is null for
-// exactly the runs whose job treeherder has expired, so a comparison far enough
-// back would otherwise claim both ends ran on one worker on the strength of
-// knowing nothing about either.
-export function sameMachine(cmp: Comparison): boolean {
-  const base = cmp.base.run.machineName;
-  return base !== null && base === cmp.next.run.machineName;
+// Worth saying at all because the CI pool is not homogeneous: on the A55
+// startup pool the device families differ by 4.3% against a series whose whole
+// push-to-push scatter is 1.5% (cli-todo.md, the noise trial), so which
+// handsets each side drew is part of reading the delta — and most of all for
+// the profile comparison the card links, which diffs two particular jobs.
+export type SideMachines = {
+  // How many runs contributed values to this side.
+  runs: number;
+  // Known machines, sorted by name, with how many of this side's runs each ran.
+  machines: { name: string; runs: number }[];
+  // Runs whose job treeherder has expired, so their machine is unknowable.
+  unknownRuns: number;
+};
+
+export function sideMachines(kind: ComparisonKind, side: CompareSide): SideMachines {
+  const runs = poolsWholePush(kind) ? side.push.runs : [side.run];
+  const tally = new Map<string, number>();
+  let unknownRuns = 0;
+  for (const run of runs) {
+    if (run.machineName === null) unknownRuns += 1;
+    else tally.set(run.machineName, (tally.get(run.machineName) ?? 0) + 1);
+  }
+  return {
+    runs: runs.length,
+    machines: [...tally.entries()]
+      .map(([name, n]) => ({ name, runs: n }))
+      .sort((a, b) => a.name.localeCompare(b.name)),
+    unknownRuns,
+  };
+}
+
+// Whether the two sides drew the same machines, the same number of times each.
+//
+// Multiset equality, not overlap: two pushes that share three workers out of
+// four have three quarters of a machine mix in common and a quarter that
+// differs, which is not a thing worth a note. For two single runs it reduces to
+// "the same worker ran both", which is what it is mostly used for.
+//
+// **Unknown machines are never equal.** `machineName` is null for exactly the
+// runs whose job has expired, so a comparison far enough back would otherwise
+// claim both ends ran on one worker on the strength of knowing nothing about
+// either.
+export function sameMachines(cmp: Comparison): boolean {
+  const a = sideMachines(cmp.kind, cmp.base);
+  const b = sideMachines(cmp.kind, cmp.next);
+  if (a.unknownRuns > 0 || b.unknownRuns > 0) return false;
+  if (a.machines.length === 0 || a.machines.length !== b.machines.length) return false;
+  return a.machines.every((m, i) => m.name === b.machines[i].name && m.runs === b.machines[i].runs);
 }
 
 // ---------------------------------------------------------------------------
@@ -188,6 +231,14 @@ export function sideOrder(a: CompareSide, b: CompareSide): number {
 // ---------------------------------------------------------------------------
 // Pools and labels
 // ---------------------------------------------------------------------------
+
+// Whether a side's values are its whole push or the one run that was clicked.
+// Named once because two things read it — the pool below and `sideMachines`
+// above — and a machine list that disagreed with the numbers under it would be
+// worse than no machine list.
+function poolsWholePush(kind: ComparisonKind): boolean {
+  return kind !== 'replicate' && kind !== 'run';
+}
 
 function poolFor(kind: ComparisonKind, side: CompareSide): {
   values: number[];

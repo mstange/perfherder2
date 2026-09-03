@@ -4,7 +4,8 @@ import {
   classifyComparison,
   comparisonLinks,
   distinguishingLabels,
-  sameMachine,
+  sameMachines,
+  sideMachines,
   sideOrder,
   type CompareSide,
 } from './compare';
@@ -427,35 +428,115 @@ describe('comparisonLinks', () => {
   });
 });
 
-describe('sameMachine', () => {
-  // Two pushes one run each, so the only thing that varies is who ran them.
-  function ranOn(base: string | null, next: string | null) {
-    const first = push({
-      pushId: 11,
-      x: 20 * DAY,
-      rev: 'd'.repeat(40),
-      runs: [run({ datumId: 20, machineName: base, x: 0, values: [10, 11, 12] })],
+describe('sideMachines', () => {
+  // Two pushes of four runs each, on four machines each — the shape of an
+  // android hardware push, and the shape that made the old one-name row wrong.
+  const early = push({
+    pushId: 11,
+    x: 20 * DAY,
+    rev: 'd'.repeat(40),
+    runs: [
+      run({ datumId: 20, machineName: 'a-1', x: 0, values: [10, 11] }),
+      run({ datumId: 21, machineName: 'a-2', x: 0, values: [10, 11] }),
+      run({ datumId: 22, machineName: 'a-2', x: 0, values: [10, 11] }),
+      run({ datumId: 23, machineName: 'shared', x: 0, values: [10, 11] }),
+    ],
+  });
+  const late = push({
+    pushId: 12,
+    x: 21 * DAY,
+    rev: 'e'.repeat(40),
+    runs: [
+      run({ datumId: 30, machineName: 'b-1', x: 0, values: [10, 11] }),
+      run({ datumId: 31, machineName: 'shared', x: 0, values: [10, 11] }),
+    ],
+  });
+
+  it('names every machine behind a pooled side, not the clicked run', () => {
+    // The clicked runs are both on `shared`, and that used to be the whole row —
+    // "same machine" under a heading whose numbers come from six jobs.
+    const cmp = buildComparison(
+      side({ push: early, runIndex: 3 }),
+      side({ push: late, runIndex: 1 }),
+    )!;
+    expect(cmp.kind).toBe('push');
+    const base = sideMachines(cmp.kind, cmp.base);
+    expect(base.runs).toBe(4);
+    expect(base.machines).toEqual([
+      { name: 'a-1', runs: 1 },
+      { name: 'a-2', runs: 2 },
+      { name: 'shared', runs: 1 },
+    ]);
+    expect(sideMachines(cmp.kind, cmp.next).machines).toEqual([
+      { name: 'b-1', runs: 1 },
+      { name: 'shared', runs: 1 },
+    ]);
+    expect(sameMachines(cmp)).toBe(false);
+  });
+
+  it('is the one clicked run when that is what the side pools', () => {
+    // Two runs of one push: each side is its own job (see `poolFor`), so the
+    // machine list has to narrow with it.
+    const cmp = buildComparison(
+      side({ push: early, runIndex: 0 }),
+      side({ push: early, runIndex: 1 }),
+    )!;
+    expect(cmp.kind).toBe('run');
+    expect(sideMachines(cmp.kind, cmp.base).machines).toEqual([{ name: 'a-1', runs: 1 }]);
+    expect(sideMachines(cmp.kind, cmp.next).machines).toEqual([{ name: 'a-2', runs: 1 }]);
+  });
+
+  it('counts the runs whose job has expired rather than dropping them', () => {
+    const expired = push({
+      pushId: 13,
+      x: 22 * DAY,
+      rev: 'f'.repeat(40),
+      runs: [
+        run({ datumId: 40, jobId: null, machineName: null, x: 0, values: [10, 11] }),
+        run({ datumId: 41, machineName: 'a-1', x: 0, values: [10, 11] }),
+      ],
     });
-    const second = push({
-      pushId: 12,
-      x: 21 * DAY,
-      rev: 'e'.repeat(40),
-      runs: [run({ datumId: 21, machineName: next, x: 0, values: [10, 11, 12] })],
-    });
-    return buildComparison(side({ push: first }), side({ push: second }))!;
+    const m = sideMachines('push', side({ push: expired }));
+    expect(m.runs).toBe(2);
+    expect(m.machines).toEqual([{ name: 'a-1', runs: 1 }]);
+    expect(m.unknownRuns).toBe(1);
+  });
+});
+
+describe('sameMachines', () => {
+  function ranOn(base: (string | null)[], next: (string | null)[]) {
+    const mk = (id: number, x: number, rev: string, names: (string | null)[]) =>
+      push({
+        pushId: id,
+        x,
+        rev,
+        runs: names.map((machineName, i) =>
+          run({ datumId: id * 100 + i, machineName, x: 0, values: [10, 11, 12] }),
+        ),
+      });
+    return buildComparison(
+      side({ push: mk(21, 20 * DAY, 'd'.repeat(40), base) }),
+      side({ push: mk(22, 21 * DAY, 'e'.repeat(40), next) }),
+    )!;
   }
 
-  it('is true only when both ends name the one worker', () => {
-    expect(sameMachine(ranOn('t-linux-metal-1', 't-linux-metal-1'))).toBe(true);
-    expect(sameMachine(ranOn('t-linux-metal-1', 't-linux-metal-2'))).toBe(false);
+  it('is true only when both mixes are the same machines the same number of times', () => {
+    expect(sameMachines(ranOn(['m-1'], ['m-1']))).toBe(true);
+    expect(sameMachines(ranOn(['m-1', 'm-2'], ['m-1', 'm-2']))).toBe(true);
+    expect(sameMachines(ranOn(['m-1', 'm-2'], ['m-2', 'm-1']))).toBe(true);
+    expect(sameMachines(ranOn(['m-1'], ['m-2']))).toBe(false);
+    // Three quarters of a mix in common is not a note worth printing.
+    expect(sameMachines(ranOn(['m-1', 'm-2', 'm-3'], ['m-1', 'm-2', 'm-4']))).toBe(false);
+    // Same set, different weights: the mixes are not interchangeable.
+    expect(sameMachines(ranOn(['m-1', 'm-1', 'm-2'], ['m-1', 'm-2', 'm-2']))).toBe(false);
   });
 
   it('does not read two expired jobs as one machine', () => {
     // Null is "treeherder no longer knows", not a name two runs can share. The
     // card would otherwise tell a reader of a six-month-old comparison that both
     // ends ran on one worker, on the strength of knowing nothing about either.
-    expect(sameMachine(ranOn(null, null))).toBe(false);
-    expect(sameMachine(ranOn('t-linux-metal-1', null))).toBe(false);
-    expect(sameMachine(ranOn(null, 't-linux-metal-1'))).toBe(false);
+    expect(sameMachines(ranOn([null], [null]))).toBe(false);
+    expect(sameMachines(ranOn(['m-1'], [null]))).toBe(false);
+    expect(sameMachines(ranOn(['m-1', null], ['m-1', null]))).toBe(false);
   });
 });

@@ -368,38 +368,53 @@ Layout, top to bottom, in one canvas:
   at the cost of a labelled empty box in every narrow-pool case. See design.md,
   "Layout stability", for the rule this bends.)
 
-## Which machine each side ran on
+## Which machines each side ran on
 
-Each side row in a pinned card names the worker its job ran on, under the
-revision or job that identifies it, as the same hover-previews-click-pins control
-the Run section has (graphs.md, "Machines" — the control itself is
-`MachineFocusButton.svelte`, shared between the two).
+Each side row in a pinned card names the workers behind that side's *values*, as
+the same hover-previews-click-pins control the Run section has (graphs.md,
+"Machines" — the control itself is `MachineFocusButton.svelte`, shared between
+the two).
 
-**It is here because a comparison of two runs is also a comparison of two
-machines.** The pool is not homogeneous — that is the premise the machine focus
-exists on — so "the two runs were on different workers" qualifies the delta, the
-significance verdict and the profile diff below alike. The pane could already
-answer it for the *selected* side, one section down; the other end's machine was
-nowhere, which is the half that matters, since a machine is only interesting
-against another one.
+**It is here because a comparison of two pushes is also a comparison of two
+machine mixes.** The pool is not homogeneous — that is the premise the machine
+focus exists on, and the noise trial in cli-todo.md measured it: on the A55
+startup pool the device families differ by 4.3% against a series whose whole
+push-to-push scatter is 1.5%, and at least 67% of the job-to-job variance is
+predictable from the device alone. So "the two sides drew different workers"
+qualifies the delta, the significance verdict and the profile diff below it
+alike. The pane could already answer it for the *selected* run, one section
+down; the other end was nowhere, which is the half that matters, since a machine
+is only interesting against another one.
 
-Three rules, each of which the card would otherwise get wrong:
+**The machines are the pool's, not the clicked dot's, and that distinction is the
+whole of `sideMachines`.** A cross-push comparison hands each side its entire
+push (`poolFor`), which on an android hardware platform is four jobs and on
+desktop twelve. The first version of this row printed `side.run.machineName` —
+one name, under a heading whose numbers came from four jobs — and it read "same
+machine" for two pushes that shared one worker out of seven. `poolsWholePush` is
+now the single place that decides which runs a side is, and both the values and
+the machine list read it, so a machine list that disagreed with the numbers above
+it is not expressible.
 
-- **Not shown when the two sides are two replicates of one run.** One job means
-  one machine, printed twice and saying nothing; the Run section below names it
-  once. That is exactly the case `sideDetail === 'value'` identifies.
-- **When the two names are equal the card says "same machine".** They are long
-  and differ by a digit — `t-nuc12-005` against `t-nuc12-015` — so leaving the
-  reader to compare two strings character by character would make the reassuring
-  case the hardest one to read.
+Four rules, each of which the card would otherwise get wrong:
+
+- **Nothing when the two sides are two replicates of one run.** One job means one
+  machine, printed twice and saying nothing; the Run section below names it once.
+- **Past four machines the row counts instead of naming.** "12 jobs on 9
+  machines", with the names in the `title`. Twelve names is four wrapped lines of
+  monospace in a 320px pane, twice, and a count is the part a reader acts on.
+- **"same machine" needs the same mix, the same number of times each.**
+  `sameMachines` is multiset equality, not overlap: two pushes sharing three
+  workers out of four have a quarter of a mix that differs, which is not worth a
+  note, and the same set with different weights is not the same evidence. For two
+  single runs it reduces to "one worker ran both", which is what it mostly says.
 - **Two unknown machines are not the same machine.** `machineName` is null for
-  exactly the runs whose job treeherder has expired, so `compare.ts::sameMachine`
-  requires a name on the base side before comparing. Without that, any comparison
-  older than the job retention window claims both ends ran on one worker on the
-  strength of knowing nothing about either.
+  exactly the runs whose job treeherder has expired, and those are counted in the
+  row ("1 unknown") rather than dropped — the alternative is a mix that silently
+  fails to add up to the `n` beside it.
 
-It costs nothing and arrives with the pin: the name comes down on the datum
-itself (graphs.md, "Machines"), unlike the job, the artifacts and the pushlog
+It costs nothing and arrives with the pin: the names come down on the datums
+themselves (graphs.md, "Machines"), unlike the job, the artifacts and the pushlog
 that the rest of the card waits on.
 
 ## Profile comparison
@@ -451,8 +466,11 @@ because the view subtracts in that direction.
 **Two runs are also two machines**, and the profile diff folds that in whether or
 not the reader wants it to: a scheduling difference between two workers shows up
 as moved samples the same way a patch does. The side rows immediately above the
-link name both — see the previous section — so the question is answered where the
-link is rather than by opening two job pages.
+link name the mix behind each side — see the previous section — so the question is
+answered where the link is rather than by opening two job pages. Note that the
+link is about two *jobs* while a pooled side is four: the profile comparison is
+between the two runs that were clicked, and the machine row above it describes
+everything the statistics used.
 
 **Two fetches per side, and only when pinned.** The link needs each run's task
 id (from the job) and then its artifact list, which is two round trips the
@@ -596,8 +614,8 @@ Pure, and unit tested:
   geometry. The jitter hash itself is `chart.ts::jitterAt`, since both charts
   scatter overlapping dots with it.
 - `compare.ts` — kinds, side ordering, pools, labels, outgoing links, and
-  `sameMachine`, which is the one place that knows an unknown machine is not a
-  shared one.
+  `sideMachines` / `sameMachines`: which workers a side's values came from, and
+  the one place that knows an unknown machine is not a shared one.
 - `pushlog.ts` — a fetched range → the commit list, its label and its caveat.
   The transport half is `fetchPushRange` in graphApi.ts.
 - `artifacts.ts::compactBenchmarkName` / `benchmarkComparison` — which artifact a
@@ -620,9 +638,9 @@ Not pure:
   lookups behind it.
 - `ComparisonSection.svelte` — the comparison card, in all three of its
   states (compared, marked-here, and the hint that says the gesture exists).
-- `MachineFocusButton.svelte` — a side row's machine name, which is also the
-  control that picks that machine out of the graph. Shared with the pane's Run
-  section; see graphs.md, "Machines".
+- `MachineFocusButton.svelte` — one machine name, which is also the control that
+  picks that machine out of the graph. Shared with the pane's Run section; see
+  graphs.md, "Machines".
 - `DetailsPane.svelte` — the numbers for the selected push, and everything
   else in the pane. (Not the push distribution; that moved into
   `ComparisonSection` — see "Both sides share one x domain" above.)

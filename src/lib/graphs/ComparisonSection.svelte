@@ -45,7 +45,8 @@
   import {
     comparisonLinks,
     hasDistribution,
-    sameMachine,
+    sameMachines,
+    sideMachines,
     type Comparison,
     type ComparisonSide,
   } from './compare';
@@ -189,26 +190,39 @@
     !!cmp && cmp.base.ref.signatureId !== cmp.next.ref.signatureId,
   );
 
-  // Which worker each side ran on. Not shown when the two sides are two
-  // replicates of one run — `sideDetail === 'value'` is exactly that case, one
-  // job and therefore one machine, already named in the Run section below.
+  // Which workers each side's *values* came from — the runs behind the pool the
+  // statistics above were computed on, not the dot that was clicked. See
+  // compare.ts, `sideMachines`, for why that distinction is the whole point of
+  // this row.
   //
-  // Otherwise it is shown whenever it is known, rather than only alongside the
-  // profile comparison link: the pool is not homogeneous, so "the two runs were
-  // on different workers" qualifies the delta, the significance and the profile
-  // diff alike. It costs nothing to say — `machineName` comes down with the
-  // datum, so it is here the moment the comparison is pinned, unlike the link
-  // below it. Null for a run whose job treeherder has expired, which is the same
-  // set the Run section drops the row for.
-  const showMachines = $derived(sideDetail !== 'value');
-  const machinesMatch = $derived(!!cmp && sameMachine(cmp));
+  // Shown whenever it is known rather than only alongside the profile
+  // comparison link: the pool is not homogeneous, so which handsets a side drew
+  // qualifies the delta, the significance and the profile diff alike. It costs
+  // nothing to say — `machineName` comes down with the datum, so it is here the
+  // moment the comparison is pinned, unlike the link below it.
+  //
+  // Not for a `replicate` comparison, which is two values from one job: one
+  // machine, printed twice, and already named in the Run section below.
+  const machineRows = $derived.by(() =>
+    cmp && cmp.kind !== 'replicate'
+      ? { base: sideMachines(cmp.kind, cmp.base), next: sideMachines(cmp.kind, cmp.next) }
+      : null,
+  );
+  const machinesMatch = $derived(!!cmp && sameMachines(cmp));
+
+  // Above this many, the names stop being a list and become a paragraph: a
+  // desktop push is twelve jobs, which is four wrapped lines of monospace in a
+  // 320px pane, twice. Past it the row says how many workers there were and
+  // keeps the names in its `title` — a count is the part a reader acts on, and
+  // "9 machines" is the honest summary of a list nobody was going to read.
+  const MAX_NAMED_MACHINES = 4;
+
   // Two counterparts of one test in different repositories have identical suite,
   // test and platform, so the series line has to name the repository or it prints
   // the same string twice and explains nothing.
   const sidesDifferByRepo = $derived(
     !!cmp && cmp.base.ref.repository !== cmp.next.ref.repository,
   );
-
   const sideRows = $derived.by((): { side: ComparisonSide; role: string; isBase: boolean }[] =>
     cmp
       ? [
@@ -400,6 +414,7 @@
 
     <ul class="sides">
       {#each sideRows as row (row.side.label)}
+        {@const machines = machineRows ? (row.isBase ? machineRows.base : machineRows.next) : null}
         <li>
           <!-- The chart's own key: a solid rule for the emphatic side, a
                dashed one for the baseline. The two sides can share a color
@@ -457,18 +472,37 @@
                 {#if sidesDifferByRepo}· {row.side.ref.repository}{/if}
               </div>
             {/if}
-            <!-- The worker, and the same control it is in the Run section:
-                 pointing at it picks that machine's dots out of the graph.
-                 Reading it here is what tells a reader whether the profile
-                 comparison below is two runs of one worker or a diff with a
-                 machine change folded into it. The names are long and differ by
-                 a digit, so when they are equal the card says so rather than
-                 leaving two strings to be compared character by character. -->
-            {#if showMachines && row.side.run.machineName !== null}
+            <!-- The workers behind this side's numbers, each the same control it
+                 is in the Run section: pointing at one picks that machine's dots
+                 out of the graph. Reading them here is what tells a reader
+                 whether the profile comparison below is two runs of one worker
+                 or a diff with a machine change folded into it. The names are
+                 long and differ by a digit, so when the two mixes are identical
+                 the card says so rather than leaving two lists to be compared
+                 character by character. -->
+            {#if machines && (machines.machines.length > 0 || machines.unknownRuns > 0)}
               <div class="side-detail side-machine muted">
-                <MachineFocusButton {app} machine={row.side.run.machineName} />
+                {#if machines.machines.length <= MAX_NAMED_MACHINES}
+                  {#each machines.machines as m (m.name)}
+                    <span class="machine-item">
+                      <MachineFocusButton {app} machine={m.name} />{#if m.runs > 1}<span
+                          class="times">×{m.runs}</span
+                        >{/if}
+                    </span>
+                  {/each}
+                {:else}
+                  <span title={machines.machines.map((m) => m.name).join(', ')}>
+                    {machines.runs} jobs on {machines.machines.length} machines
+                  </span>
+                {/if}
+                {#if machines.unknownRuns > 0}
+                  <span
+                    title="Treeherder expires job rows, and the machine name comes off the job"
+                    >{machines.unknownRuns} unknown</span
+                  >
+                {/if}
                 {#if machinesMatch && !row.isBase}
-                  <span>same machine</span>
+                  <span>{machines.machines.length > 1 ? 'same machines' : 'same machine'}</span>
                 {/if}
               </div>
             {/if}
@@ -753,11 +787,25 @@
     font-variant-numeric: tabular-nums;
     overflow-wrap: anywhere;
   }
-  /* The machine name is mono 12px (MachineFocusButton) and the note beside it is
-     this list's 11px, so this one row aligns on the baseline rather than on the
-     box — otherwise the note rides above the name it qualifies. */
+  /* The machine names are mono 12px (MachineFocusButton) and the notes beside
+     them are this list's 11px, so this one row aligns on the baseline rather
+     than on the box — otherwise a note rides above the name it qualifies. */
   .side-machine {
     align-items: baseline;
+    /* A list of four names wraps, and the row gap it inherits from
+       `.side-detail` put 6px between the two halves of one list — enough to read
+       as two facts rather than one wrapped one. The names' own padding carries
+       the separation horizontally. */
+    row-gap: 0;
+  }
+  /* A name and its `×2` are one item, so the flex row wraps between machines
+     rather than between a machine and its own run count. */
+  .machine-item {
+    white-space: nowrap;
+  }
+  .times {
+    font-size: 10px;
+    vertical-align: 1px;
   }
   .cmp-links {
     display: flex;
