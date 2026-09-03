@@ -1693,11 +1693,20 @@ describe('AppState machine focus', () => {
   it('counts the machines behind the dots on screen', () =>
     withApp('?series=autoland,1,1', async (app) => {
       await settle();
-      expect(app.machineCensus.machines).toEqual([
+      // The census now carries each machine's level too (machines.ts), which
+      // two pushes are far too few to establish — the point here is the tally.
+      expect(
+        app.machineCensus.machines.map((m) => ({
+          name: m.name,
+          runs: m.runs,
+          points: m.points,
+        })),
+      ).toEqual([
         { name: 'nuc-a', runs: 1, points: 3 },
         { name: 'nuc-b', runs: 1, points: 2 },
       ]);
       expect(app.machineCensus.unattributedRuns).toBe(0);
+      expect(app.machineLevels.get('nuc-a')?.runs).toBe(1);
     }));
 
   it('counts a run whose job has expired without naming a machine for it', () => {

@@ -811,8 +811,9 @@ so that learning it once is enough:
 
 - **The Machines button in the graph header**, on the "Show" row because it is a
   drawing choice — the machine comes down with the datum, so picking one paints
-  instantly and fetches nothing. It opens `MachinePanel.svelte`, an alphabetical
-  list of every machine behind the dots *in the zoomed window*, with each one's
+  instantly and fetches nothing. It opens `MachinePanel.svelte`, a list of every
+  machine behind the dots *in the zoomed window* — alphabetical by default, by
+  level on request — with each one's level, its ± in the row's title, and its
   run count. Numerically aware sorting, so nuc13-9 precedes nuc13-103.
 
   **It costs the header 33px in one band of widths and nothing anywhere else.**
@@ -828,8 +829,13 @@ so that learning it once is enough:
 - **The Machine row in the details pane**, which is the shortest path from "what
   is this point?" to the question that usually follows it. It is above the job
   block because it comes down with the datum rather than from the job lookup, so
-  it is there the instant a dot is clicked. **It is deliberately nondescript
-  until hovered** — a resting mark was drawn for it and taken out again. Nothing
+  it is there the instant a dot is clicked. **It also says how this worker reads**
+  — "reads +2.5% here" — which is the answer to the question the name raises, and
+  the only figure in the pane that is about the pool rather than about the point.
+  Suppressed below half a percent, the scale the change detector's own floor
+  works at: a worker indistinguishable from its neighbours is the normal case, and
+  printing ±0.1% on every click would train the eye to skip the line on the day it
+  says +6%. The control itself is **deliberately nondescript until hovered** — a resting mark was drawn for it and taken out again. Nothing
   here needs discovering on a schedule: a reader who suspects a machine is behind
   what they are looking at will put the pointer on the machine name, and a
   permanent icon spends attention, in the pane's densest column, on a question
@@ -856,14 +862,29 @@ months however long the range is. `machines.ts` counts those runs rather than
 dropping them, and the panel says so in a footer — counts that failed to add up
 to the graph would be worse than the gap.
 
-**Whether one of them reads differently is a separate, much heavier question,
-and it is the CLI's.** `perfherder-cli machines` ranks the pool by how far each
-worker sits from the level of the series *around its own runs* — the rolling
-median the trend band draws, so a machine that was merely in rotation during a
-regression is not blamed for it. See machines.ts's `relativeLevel` for why a
-within-push comparison is not available (machines do not run concurrently) and
-why the figure understates for a small pool. The panel deliberately does not
-show it: it is a statistic that needs a paragraph, and a 32px row is not one.
+**Whether one of them reads differently is a column now, and it used not to
+be.** `relativeLevel` is how far a worker sits from the closest thing to a
+simultaneous measurement — the mean of its own push's other runs where the push
+ran more than once, and the rolling median the trend band draws where it did not
+(machines.ts). The panel prints it beside each name, with `levelError` in the
+row's title, and offers the list in two orders.
+
+Both halves of the old rule against showing it have gone. The cost argument went
+when the baseline stopped needing a rolling window for most runs. The doubt —
+that a level nobody can check is a number paraded as a finding — the noise trial
+answered by measuring the levels against each other: a machine's offset
+correlates 0.95–0.97 across three independent startup metrics and 0.91 between
+the first and second half of a month, so it is a property of the worker rather
+than of how many jobs it happened to run.
+
+What settled it is that the finding the whole investigation turned on was
+*invisible here*: 53 alphabetical rows of names and run counts, hiding two device
+families 4.3% apart. With the column, name order shows them as contiguous blocks
+of minus signs and plus signs, which is why the order is a choice and why name is
+still the default — **name and level answer different questions**. Name finds a
+machine you can already name and makes families visible; level finds the one you
+cannot name. `perfherder-cli machines` remains the deeper form of the same table:
+`SPREAD`, `--group`, and a paragraph explaining each column.
 
 ### Alerts
 

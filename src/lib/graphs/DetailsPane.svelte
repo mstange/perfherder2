@@ -14,6 +14,7 @@
   } from './alerts';
   import type { AppState, Selection } from './appState.svelte';
   import {
+    formatPercent,
     formatPValue,
     formatSignedPercent,
     formatTimestamp,
@@ -90,6 +91,13 @@
   // replicate chips rather than by run count, so three unfolded is still not
   // short; the run count is what a reader can see coming.
   const MANY_RUNS = 3;
+
+  // Below this a machine is not worth remarking on. Half a percent is where the
+  // change detector's own floor sits for a 2% signature (changes.ts), so it is
+  // the scale at which this app already treats a difference as a difference —
+  // and on a pool whose spread is a couple of percent it keeps the line for the
+  // dozen workers that are actually apart from the rest.
+  const MACHINE_LEVEL_FLOOR = 0.005;
 </script>
 
 <!-- Every run of the push, not just the selected one: the pane used to list the
@@ -576,9 +584,34 @@
                other. The control itself is MachineFocusButton.svelte, shared
                with the comparison card's side rows. -->
           {#if sel.run.machineName !== null}
+            {@const level = app.machineLevels.get(sel.run.machineName)}
             <dt>Machine</dt>
             <dd>
               <MachineFocusButton {app} machine={sel.run.machineName} />
+              <!-- How this worker reads against the rest of the pool where it
+                   ran. **The line that answers the question the machine name
+                   raises**: a reader who suspects the device is behind a high
+                   dot had, until now, to open the panel, or the CLI, or nothing.
+                   It is the pane's only figure that is about the pool rather
+                   than about this point, which is why it is a parenthetical on
+                   the name rather than a row of its own.
+
+                   Suppressed below a threshold rather than printed at ±0.1%: a
+                   worker indistinguishable from its neighbours is the normal
+                   case and saying so on every click would train the eye to skip
+                   the line on the day it says +6%. The ± is in the title, with
+                   the run count that earns it. -->
+              {#if level?.relativeLevel != null && Math.abs(level.relativeLevel) >= MACHINE_LEVEL_FLOOR}
+                <span
+                  class="machine-level"
+                  title="Across the {level.runs.toLocaleString()} run{level.runs === 1
+                    ? ''
+                    : 's'} this machine contributed to the graph{level.levelError === null
+                    ? ''
+                    : `, ± ${formatPercent(level.levelError)}`}. See the Machines panel in the graph header."
+                  >reads {formatSignedPercent(level.relativeLevel)} here</span
+                >
+              {/if}
             </dd>
           {/if}
           {#if app.selectedJob}
@@ -877,6 +910,15 @@
   /* The machine row's control, its quiet-until-hovered appearance and its
      touch floor all live in MachineFocusButton.svelte, which the comparison
      card renders too. */
+  /* The level beside it: a parenthetical on the name, so it must not compete
+     with the name or with the rows below. Smaller and muted; the numbers behind
+     it are in the Machines panel. */
+  .machine-level {
+    margin-left: 4px;
+    font-size: 11px;
+    color: var(--fg-muted);
+    white-space: nowrap;
+  }
   /* The disclosure idiom is `.fold` in detailsPane.css, shared with the
      comparison card's pushlog. Only the line height is local. */
   .run-fold > summary {

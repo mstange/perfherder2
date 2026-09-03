@@ -31,7 +31,7 @@ import {
 import { detectChanges, type DetectedChange } from './changes';
 import { buildDrift, driftWorthReporting, type DriftSummary } from './drift';
 import { rollingTrend, trendExtent, type TrendPoint } from './trend';
-import { buildMachineCensus } from './machines';
+import { buildMachineLevels, type MachineLevel } from './machines';
 import { buildNoiseBudget, type NoiseBudget } from './noise';
 import {
   benchmarkComparison,
@@ -537,11 +537,32 @@ export class AppState {
   // dozen workers that ran that week, which is the list worth reading. And over
   // the *visible* series for the same reason — hiding a series takes its dots off
   // the graph, so counting its machines would offer a focus that changes nothing.
+  // **With each machine's level, which the panel used to leave to the CLI.** The
+  // reason it did was cost — the level needed a rolling quartile over every push
+  // of every series — and most of that reason is gone: where a push ran more than
+  // once the baseline is that push's own mean, which is one pass (machines.ts).
+  // The rest is a rolling median over a few hundred pushes, which is cheaper than
+  // the KDE the pane already runs on every hover.
+  //
+  // The other reason was that a level nobody can check is a number paraded as a
+  // finding. That one the noise trial answered: a machine's offset correlates
+  // 0.95–0.97 across three independent startup metrics and 0.91 between halves of
+  // a month, so it is a stable property of the worker rather than an artefact of
+  // how many jobs it happened to run. `levelError` is printed beside it anyway,
+  // since the reader still has to be able to tell a −4% row from a machine that
+  // has run nine times.
   machineCensus = $derived(
-    buildMachineCensus(
+    buildMachineLevels(
       this.visibleSeries.map((s) => s.data.pushes),
       this.detailSpan,
     ),
+  );
+
+  // One machine's row out of that census, for the pane's Machine line. A map
+  // rather than a find, because the pane asks about one name and the panel is
+  // routinely 78 rows long.
+  machineLevels = $derived(
+    new Map<string, MachineLevel>(this.machineCensus.machines.map((m) => [m.name, m])),
   );
 
   // Shared y domain across every visible series, over the whole range. The

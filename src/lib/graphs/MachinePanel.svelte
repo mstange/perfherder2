@@ -13,12 +13,25 @@
   // gesture — and on a touch screen, where there is no hover at all, the click
   // alone still does the whole job.
   //
-  // The panel is deliberately just names and counts. Ranking the pool by how far
-  // each machine reads from the rest is a real question and a much heavier one
-  // (see machines.ts, `relativeLevel`); it is `perfherder-cli machines`, where a
-  // statistic can be explained in a paragraph rather than in a 32px row.
+  // **The panel used to be just names and counts**, on the grounds that ranking
+  // the pool was heavier than a 32px row could carry and belonged in
+  // `perfherder-cli machines`, where a statistic gets a paragraph. Both halves of
+  // that have changed. The cost went away when the level started measuring
+  // against a run's own push where it can (machines.ts) — one pass, no window —
+  // and the doubt went away when the noise trial measured the levels as stable:
+  // 0.95–0.97 correlation across three independent metrics, 0.91 between halves
+  // of a month. Meanwhile the finding that prompted all of this was invisible
+  // here: 53 alphabetical rows of names and counts, hiding two device families
+  // 4.3% apart.
+  //
+  // So the level is a column, with the same ± the CLI prints, and the order is a
+  // choice — **name and level answer different questions**. Name is for finding a
+  // machine you can already name, and it is what makes families contiguous;
+  // level is for the case where you cannot name it.
 
   import type { AppState } from './appState.svelte';
+  import { formatPercent, formatSignedPercent } from '../shared/chart';
+  import type { MachineLevel } from './machines';
   import ChevronIcon from '../shared/ChevronIcon.svelte';
 
   type Props = { app: AppState };
@@ -30,6 +43,36 @@
   let root = $state<HTMLElement | null>(null);
 
   const census = $derived(app.machineCensus);
+
+  // Transient like `open`: which way a list is sorted is a way of reading it,
+  // not a thing a shared link should reproduce.
+  let sort = $state<'name' | 'level'>('name');
+
+  // Machines with no level fall to the bottom rather than sorting as zero, which
+  // would file a machine we know nothing about among the ones we do.
+  const rows = $derived.by(() => {
+    if (sort === 'name') return census.machines;
+    return [...census.machines].sort((a, b) => {
+      if (a.relativeLevel === null) return b.relativeLevel === null ? 0 : 1;
+      if (b.relativeLevel === null) return -1;
+      return Math.abs(b.relativeLevel) - Math.abs(a.relativeLevel);
+    });
+  });
+
+  // What a row's level means, spelled out once. The ± is the part that stops a
+  // nine-run machine from reading like a finding.
+  function levelTitle(m: MachineLevel): string {
+    const level = m.relativeLevel === null ? null : formatSignedPercent(m.relativeLevel);
+    if (level === null) {
+      return `${m.points.toLocaleString()} points from this machine. Too few pushes in view to say how it reads.`;
+    }
+    const error = m.levelError === null ? '' : ` ± ${formatPercent(m.levelError)}`;
+    const spread = m.relativeSpread === null ? '' : `, its own runs scattering ${formatPercent(m.relativeSpread)}`;
+    return (
+      `${m.points.toLocaleString()} points from this machine, reading ${level}${error} ` +
+      `against the rest of the pool where it ran${spread}.`
+    );
+  }
   // A pinned machine that has no dots in the window — zoomed away, or a series
   // hidden since the link was made. It still has to be listed, or the only way
   // out of a focus that appears to do nothing would be the URL.
@@ -110,6 +153,21 @@
           {census.machines.length.toLocaleString()}
           machine{census.machines.length === 1 ? '' : 's'} ran the jobs in view.
           <span class="hint">Hover to pick one out; click to keep it.</span>
+          <!-- Two orders because they answer different questions, and the one
+               that is *not* the default is the one that found the pool's
+               families: see the note at the top of this file. -->
+          <span class="sort">
+            sort
+            {#each ['name', 'level'] as const as option (option)}
+              <button
+                type="button"
+                class="sort-option"
+                class:on={sort === option}
+                aria-pressed={sort === option}
+                onclick={() => (sort = option)}>{option}</button
+              >
+            {/each}
+          </span>
         {/if}
       </p>
       <ul>
@@ -141,16 +199,14 @@
             </button>
           </li>
         {/if}
-        {#each census.machines as machine (machine.name)}
+        {#each rows as machine (machine.name)}
           <li>
             <button
               type="button"
               class="row"
               class:on={app.focusedMachine === machine.name}
               aria-pressed={app.focusedMachine === machine.name}
-              title="{machine.points.toLocaleString()} point{machine.points === 1
-                ? ''
-                : 's'} from this machine"
+              title={levelTitle(machine)}
               onpointerenter={() => app.setHoveredMachine(machine.name)}
               onpointerleave={() => app.setHoveredMachine(null)}
               onfocus={() => app.setHoveredMachine(machine.name)}
@@ -158,6 +214,12 @@
               onclick={() => toggle(machine.name)}
             >
               <span class="name mono">{machine.name}</span>
+              <!-- Quiet, and to the right of the name where the eye can run down
+                   it. No bar: at this width a bar is four pixels of resolution
+                   for a figure whose whole interest is the second digit. -->
+              <span class="level" class:none={machine.relativeLevel === null}>
+                {machine.relativeLevel === null ? '—' : formatSignedPercent(machine.relativeLevel)}
+              </span>
               <span class="count">{machine.runs.toLocaleString()}</span>
             </button>
           </li>
@@ -251,11 +313,15 @@
      with a border and a fill of its own. See design.md, "One button, defined
      once" — a row that wears a button's chrome forty times over reads as a
      toolbar. */
+  /* A grid rather than a flex row, so the two number columns line up down the
+     list — the level column is only readable as a column. Each cell is placed
+     explicitly, since the rows that have no level ("All machines", a pinned
+     machine that is out of view) would otherwise pull their count leftwards. */
   .row {
-    display: flex;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
     align-items: center;
-    justify-content: space-between;
-    gap: 12px;
+    gap: 10px;
     width: 100%;
     padding: 4px 6px;
     border: 0;
@@ -277,6 +343,9 @@
     background: var(--accent-subtle);
     color: var(--accent-on-subtle);
   }
+  .row.on .count {
+    color: inherit;
+  }
   .row.on:hover {
     background: var(--accent-tint-hover);
   }
@@ -294,14 +363,64 @@
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
     font-size: 12px;
   }
+  /* How far this machine reads from the rest of the pool where it ran. Quiet:
+     it is context for the name, and the row is a control for picking dots out of
+     the graph before it is a statistic. */
+  .level {
+    grid-column: 2;
+    justify-self: end;
+    min-width: 3.4em;
+    text-align: right;
+    color: var(--fg-muted);
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+  }
+  .level.none {
+    font-variant-numeric: normal;
+  }
+  .row.on .level {
+    color: inherit;
+  }
   .count {
-    flex: none;
+    grid-column: 3;
+    justify-self: end;
+    min-width: 1.6em;
+    text-align: right;
     color: var(--fg-muted);
     font-size: 12px;
     font-variant-numeric: tabular-nums;
   }
   .count.none {
     font-variant-numeric: normal;
+  }
+  /* Two words and a label, not a `.btn` pair: this sits inside a sentence in the
+     panel's head line, and a bordered control there would outweigh the list it
+     orders. Same reasoning as the machine name's own button; see design.md,
+     "One button, defined once". */
+  .sort {
+    color: var(--fg-muted);
+  }
+  .sort-option {
+    font: inherit;
+    padding: 0 3px;
+    border: 0;
+    border-radius: 3px;
+    background: none;
+    color: var(--accent-fg);
+    cursor: pointer;
+  }
+  .sort-option:hover {
+    background: var(--bg-hover);
+  }
+  .sort-option.on {
+    color: inherit;
+    font-weight: 600;
+    background: var(--accent-subtle);
+  }
+  @media (pointer: coarse) {
+    .sort-option {
+      min-height: 32px;
+    }
   }
   /* The list is driven as much by a thumb as by a pointer, and a 24px row is not
      a target. The floor is app.css's one number; see design.md, "Touch". */
