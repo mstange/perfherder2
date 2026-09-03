@@ -25,7 +25,7 @@
 
 import type { PushGroup } from './graphData';
 import { rollingTrend } from './trend';
-import { median } from '../shared/stats';
+import { mean, median } from '../shared/stats';
 import type { Span } from '../shared/timeRange';
 
 // One machine's share of the graph.
@@ -109,61 +109,117 @@ export function buildMachineCensus(
 export type MachineLevel = MachineTally & {
   // How far this machine's runs sit from the level around them, as a fraction:
   // 0.064 is "this machine reads 6.4% higher than the graph does where it ran".
-  // Null when the series it ran in were too short to establish a local level.
+  // Null when nothing could be compared.
   //
-  // **Each run is compared with its own neighbourhood, not with the series
-  // average**, and that is the whole difficulty of the statistic. Machines do not
-  // run concurrently: a given push is measured by one worker, so there is no
-  // within-push comparison to make, and a machine that happens to have been in
-  // rotation during a regression would read as the cause of it. So the baseline
-  // is `rollingTrend`'s median — the middle of the 24 pushes centred on this one,
-  // the same curve the trend band draws — which moves with every step and drift
-  // in the series and leaves only what is peculiar to the worker.
+  // **Each run is compared with the closest thing to a simultaneous
+  // measurement**, and there are two of those, in this order:
+  //
+  //   within-push  the mean of the other runs of its own push. Exactly
+  //                contemporaneous — same build, same hour, everything but the
+  //                worker — so no step, drift or rotation can confound it. This
+  //                is available far more often than the first version of this
+  //                module assumed: android hardware pools run four jobs a push
+  //                and desktop twelve, and 186 of 187 pushes on the A55 startup
+  //                series have two or more (cli-todo.md, the noise trial).
+  //   local        the rolling median of the `WINDOW_PUSHES` pushes centred on
+  //                it — the curve the app's trend band draws — for the runs
+  //                whose push ran once. Moves with every step and drift in the
+  //                series and leaves what is peculiar to the worker.
+  //
+  // The within-push deviation is **corrected for self-inclusion**: a run is one
+  // of the n it is being compared against, so its observed deviation is
+  // (1 − 1/n) of the truth and is divided back up. That is a known factor rather
+  // than the caveat it is for the local baseline, where the machine is one of a
+  // pool's worth of runs in the window.
   //
   // Then the median of those ratios, per machine, because one bad job should not
   // convict a machine that is otherwise ordinary.
-  //
-  // **It understates when the pool is small.** A machine's own runs are part of
-  // the window it is compared against, so with two machines alternating, each one
-  // pulls the baseline halfway towards itself and the gap between them reads as
-  // about half its true size. With a pool of the usual dozens the contamination
-  // is a fortieth and not worth correcting for; below about five machines, read
-  // the ordering and not the numbers.
   relativeLevel: number | null;
+  // Which of the two baselines the level came from. `mixed` means both, which
+  // happens to a machine that ran in retriggered and single-run pushes alike.
+  baseline: 'within-push' | 'local' | 'mixed' | null;
+  // How much this machine's own runs scatter around that baseline, as a
+  // fraction. **The erratic-worker signal, which a level cannot show**: a device
+  // that throttles thermally has an ordinary average and wild jobs, and it sits
+  // mid-table by level. Sample sd of the same ratios the level is the median of
+  // — not a robust spread, deliberately, since a machine with one wild job is
+  // exactly what this column is for. Null below two runs.
+  relativeSpread: number | null;
+  // The standard error of `relativeLevel`, as a fraction — what says whether a
+  // −4% row is a finding or a machine that has run nine times. The asymptotic se
+  // of a *median* (√(π/2) ≈ 1.2533 times the mean's), because that is what the
+  // level is. Null below two runs.
+  levelError: number | null;
 };
 
 export type MachineBreakdown = Omit<MachineCensus, 'machines'> & { machines: MachineLevel[] };
 
-// The census, plus `relativeLevel` for each machine.
+// The census, plus `relativeLevel`, its spread and its error for each machine.
 //
-// Separate from `buildMachineCensus` rather than an option on it because the cost is
-// not comparable: this runs a rolling quartile over every push of every series,
-// which is why the app caches the band it shares (`AppState.trendCache`) instead
-// of deriving it. Nothing in the UI calls this; `perfherder-cli machines` does.
+// Separate from `buildMachineCensus` rather than an option on it because the
+// cost is not comparable: where a push ran once this needs a rolling quartile
+// over every push of every series, which is why the app caches the band it
+// shares (`AppState.trendCache`) instead of deriving it. On a pool that
+// retriggers, most of the work is the within-push contrast instead, which is one
+// pass and no window at all.
 export function buildMachineLevels(
   pushesBySeries: readonly (readonly PushGroup[])[],
   span: Span | null = null,
 ): MachineBreakdown {
   const census = buildMachineCensus(pushesBySeries, span);
-  // Ratios of run mean to local level, gathered per machine across every series.
+  // Ratios of run mean to the closest thing to a simultaneous measurement,
+  // gathered per machine across every series, with which baseline each came
+  // from. See `MachineLevel.relativeLevel`.
   const ratios = new Map<string, number[]>();
+  const sources = new Map<string, Set<'within-push' | 'local'>>();
+
+  const record = (
+    machine: string,
+    ratio: number,
+    source: 'within-push' | 'local',
+  ): void => {
+    const list = ratios.get(machine);
+    if (list) list.push(ratio);
+    else ratios.set(machine, [ratio]);
+    const seen = sources.get(machine);
+    if (seen) seen.add(source);
+    else sources.set(machine, new Set([source]));
+  };
 
   for (const pushes of pushesBySeries) {
     const window = pushes.filter((p) => inSpan(p, span));
+    // Only needed for the single-run pushes, but it is one pass over the window
+    // and asking for it lazily per push would mean deciding twice.
+    //
     // Index-aligned with `window` by construction — one vertex per push — and
     // empty for a series with too few pushes to have a band at all.
     const trend = rollingTrend(window);
-    if (trend.length !== window.length) continue;
+    const haveTrend = trend.length === window.length;
+
     for (let i = 0; i < window.length; i++) {
+      const push = window[i];
+      const attributed = push.runs.filter((run) => run.machineName !== null);
+      if (attributed.length === 0) continue;
+
+      if (push.runs.length > 1) {
+        // The contemporaneous contrast. Every run of the push is in the mean,
+        // including this one, which is what the (1 − 1/n) correction undoes.
+        const n = push.runs.length;
+        const pushMean = mean(push.runs.map((run) => run.mean));
+        // A zero or negative level makes a ratio meaningless rather than large.
+        if (!(pushMean > 0)) continue;
+        for (const run of attributed) {
+          const deviation = (run.mean - pushMean) / pushMean;
+          record(run.machineName as string, 1 + (deviation * n) / (n - 1), 'within-push');
+        }
+        continue;
+      }
+
+      if (!haveTrend) continue;
       const level = trend[i].median;
-      // A zero or negative local level makes the ratio meaningless rather than
-      // large. Rare, but "count of something" metrics do sit at zero for months.
       if (!(level > 0)) continue;
-      for (const run of window[i].runs) {
-        if (run.machineName === null) continue;
-        const list = ratios.get(run.machineName);
-        if (list) list.push(run.mean / level);
-        else ratios.set(run.machineName, [run.mean / level]);
+      for (const run of attributed) {
+        record(run.machineName as string, run.mean / level, 'local');
       }
     }
   }
@@ -172,10 +228,26 @@ export function buildMachineLevels(
     ...census,
     machines: census.machines.map((tally) => {
       const list = ratios.get(tally.name);
+      if (!list || list.length === 0) {
+        return { ...tally, relativeLevel: null, baseline: null, relativeSpread: null, levelError: null };
+      }
+      const seen = sources.get(tally.name) as Set<'within-push' | 'local'>;
+      const spread = list.length > 1 ? sampleSd(list) : null;
       return {
         ...tally,
-        relativeLevel: list && list.length > 0 ? median(list) - 1 : null,
+        relativeLevel: median(list) - 1,
+        baseline: seen.size > 1 ? 'mixed' : ([...seen][0] as 'within-push' | 'local'),
+        relativeSpread: spread,
+        // √(π/2), the asymptotic se of a median against a mean's.
+        levelError: spread === null ? null : (1.2533 * spread) / Math.sqrt(list.length),
       };
     }),
   };
+}
+
+function sampleSd(values: readonly number[]): number {
+  const m = mean(values);
+  let sq = 0;
+  for (const v of values) sq += (v - m) * (v - m);
+  return Math.sqrt(sq / (values.length - 1));
 }

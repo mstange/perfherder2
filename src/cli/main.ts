@@ -73,6 +73,7 @@ import {
   buildSearchReport,
   buildMachinesReport,
   buildNoiseReport,
+  type MachineSort,
   buildSeriesReport,
   buildStepReport,
   graphUrl,
@@ -332,23 +333,40 @@ const series: Command = {
 // machines
 // ---------------------------------------------------------------------------
 
+const MACHINE_SORTS: MachineSort[] = ['level', 'name', 'runs', 'spread'];
+
 const machines: Command = {
   summary: 'which machines ran the jobs, and whether one of them reads differently',
-  usage: ['perfherder-cli machines <ref...> [--range <dur>] [--from <date>] [--to <date>]'],
+  usage: [
+    'perfherder-cli machines <ref...> [--range <dur>] [--from <date>] [--to <date>]',
+    '                             [--sort level|name|runs|spread] [--group <n>]',
+  ],
   booleans: [],
-  valued: [...RANGE_VALUED],
+  valued: [...RANGE_VALUED, 'sort', 'group'],
   details: [
     'Every performance datum names the machine its job ran on, so a pool can be read off the',
     'same response the graph is drawn from. This is the command for "is that scatter the test,',
     'or is it one worker" — a bad power supply, a thermal problem, a different silicon',
     'stepping all look like noise until the dots are told apart.',
     '',
-    'REL LEVEL is how far a machine sits from the level of the series *around its own runs*,',
-    'not from the series average. Machines do not run concurrently, so there is no',
-    'within-push comparison to make, and a machine that was in rotation during a regression',
-    'would otherwise read as the cause of it. The baseline is the rolling median the app\'s',
-    'trend band draws, which moves with every step and drift and leaves what is peculiar to',
-    'the worker.',
+    'REL LEVEL is each run against the closest thing to a simultaneous measurement, then the',
+    'median of those per machine. Where a push ran more than once — four jobs a push on an',
+    'android pool, twelve on desktop — that is the mean of its own runs: same build, same',
+    'hour, so no step, drift or rotation can confound it, and the machine\'s own share of that',
+    'mean is divided back out. Where a push ran once it is the rolling median of the 24 pushes',
+    'centred on it, the curve the app\'s trend band draws.',
+    '',
+    '± is the standard error of that median. A row whose level is inside its own ± is a',
+    'machine that has not run often enough to say anything about. SPREAD is how much the',
+    'machine\'s own runs scatter around the same baseline, which is the erratic-worker signal a',
+    'level cannot show: a thermally throttling device has an ordinary average and wild jobs,',
+    'and it sits mid-table by level.',
+    '',
+    '--sort name is worth reaching for on a large pool. The default ranks by level, which is',
+    'right when one worker is wrong; name order puts a pool\'s *families* in contiguous blocks,',
+    'which is how the A55 pool\'s two device batches were found. --group <n> does the same',
+    'thing arithmetically, by name prefix — an offer, not an interpretation: a shared prefix is',
+    'evidence of a common batch and could as easily be a rack.',
     '',
     'Refs are pooled rather than reported one table each: a worker runs every signature that',
     'targets its platform, and a machine that reads 6% slow reads 6% slow on all of them.',
@@ -364,8 +382,19 @@ const machines: Command = {
   async run(parsed, ctx) {
     const refs = requireRefs(parsed.positionals, 'machines');
     const span = resolveRange(rangeOptions(parsed), ctx.now);
+    const sort = flagString(parsed.flags, 'sort') ?? 'level';
+    if (!MACHINE_SORTS.includes(sort as MachineSort)) {
+      throw new UsageError(`--sort must be one of ${MACHINE_SORTS.join(', ')}, got "${sort}"`);
+    }
+    const groupBy = parsed.flags.has('group') ? flagNumber(parsed.flags, 'group', 7) : null;
+    if (groupBy !== null && (!Number.isInteger(groupBy) || groupBy < 1)) {
+      throw new UsageError('--group needs a whole number of characters, e.g. --group 7');
+    }
     const loaded = await Promise.all(refs.map((ref) => loadSeriesOrError(ref, span)));
-    const report = buildMachinesReport(loaded, span, ctx.appBase);
+    const report = buildMachinesReport(loaded, span, ctx.appBase, {
+      sort: sort as MachineSort,
+      groupBy,
+    });
     return { report, lines: renderMachines(report), exitCode: exitCodeFor(loaded) };
   },
 };

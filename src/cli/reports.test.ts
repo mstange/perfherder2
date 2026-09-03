@@ -1112,11 +1112,11 @@ describe('buildMachinesReport', () => {
 
   it('pools the runs of every ref, since a worker runs them all', () => {
     const flat = noisy(100, 60, 1);
-    const report = buildMachinesReport(
-      [pool(flat), pool(flat)],
-      SPAN60,
-      'https://example/',
-    );
+    // Name order, because this is about what got pooled rather than about the
+    // ranking — the report sorts by level unless told otherwise.
+    const report = buildMachinesReport([pool(flat), pool(flat)], SPAN60, 'https://example/', {
+      sort: 'name',
+    });
     expect(report.machines.map((m) => m.name)).toEqual(POOL);
     // Two series of 60 pushes over four machines: 30 runs each, two values a run.
     expect(report.machines.map((m) => m.runs)).toEqual([30, 30, 30, 30]);
@@ -1128,7 +1128,9 @@ describe('buildMachinesReport', () => {
   it('shares out the runs against an even split', () => {
     // nuc-1 takes three quarters of a 60-push series, nuc-2 the rest.
     const machines = ['nuc-1', 'nuc-1', 'nuc-1', 'nuc-2'];
-    const report = buildMachinesReport([pool(noisy(100, 60, 1), machines)], SPAN60, 'x');
+    const report = buildMachinesReport([pool(noisy(100, 60, 1), machines)], SPAN60, 'x', {
+      sort: 'name',
+    });
     const [one, two] = report.machines;
     expect(one.runs).toBe(45);
     expect(two.runs).toBe(15);
@@ -1145,6 +1147,34 @@ describe('buildMachinesReport', () => {
     for (const name of ['nuc-1', 'nuc-2', 'nuc-4']) {
       expect(Math.abs(byName.get(name)!)).toBeLessThan(0.015);
     }
+  });
+
+
+  it('orders the table by what was asked for, in the report and not the renderer', () => {
+    // `--json` has to carry the same order the text shows, or a script and a
+    // reader disagree about which machine is worst.
+    const values = noisy(100, 60, 0.5).map((v, i) => (i % 4 === 2 ? v * 1.08 : v));
+    const byLevel = buildMachinesReport([pool(values)], SPAN60, 'x');
+    expect(byLevel.sort).toBe('level');
+    expect(byLevel.machines[0].name).toBe('nuc-3');
+    const byName = buildMachinesReport([pool(values)], SPAN60, 'x', { sort: 'name' });
+    expect(byName.machines.map((m) => m.name)).toEqual(POOL);
+    const byRuns = buildMachinesReport([pool(values, ['nuc-1', 'nuc-1', 'nuc-1', 'nuc-2'])], SPAN60, 'x', {
+      sort: 'runs',
+    });
+    expect(byRuns.machines.map((m) => m.name)).toEqual(['nuc-1', 'nuc-2']);
+  });
+
+  it('blocks the pool by name prefix when asked, and not otherwise', () => {
+    const machines = ['aa-1', 'aa-2', 'bb-1', 'bb-2'];
+    const plain = buildMachinesReport([pool(noisy(100, 60, 1), machines)], SPAN60, 'x');
+    expect(plain.groups).toBeNull();
+    const grouped = buildMachinesReport([pool(noisy(100, 60, 1), machines)], SPAN60, 'x', {
+      groupBy: 2,
+    });
+    expect(grouped.groups!.map((g) => g.prefix).sort()).toEqual(['aa', 'bb']);
+    expect(grouped.groups!.every((g) => g.machines.length === 2)).toBe(true);
+    expect(grouped.groups!.every((g) => g.runs === 30)).toBe(true);
   });
 
   it('counts the expired runs and says where attribution starts', () => {

@@ -56,6 +56,24 @@ single source of noise on this test.
 
 ## Done
 
+- **`machines` measures against the push where it can, and reports spread and
+  uncertainty.** Three of the trial's items, and they were one change. The
+  baseline is now the mean of a run's *own push* wherever the push ran more than
+  once — exactly contemporaneous, unconfoundable by a step or by rotation, and
+  available on 186 of 187 A55 pushes and 149 of 166 linux2404 ones, against a
+  design note that had said there was no within-push comparison to make. The
+  deviation is corrected for self-inclusion ((1 − 1/n), a third again on a
+  four-job push), and the rolling median stays as the fallback for single-run
+  pushes. Two new columns: `±`, the standard error of the median, which is what
+  `SHARE` was a proxy for; and `SPREAD`, the erratic-worker signal that a level
+  cannot show — the A55's two most erratic devices scatter twice as much as the
+  quietest and sit mid-table by level. Then `--sort name|level|runs|spread` and
+  `--group <n>`, because the pool's families are contiguous under name order and
+  scattered under every other, which is how the two device batches were found in
+  the first place. The sort moved into the report, so `--json` carries the order
+  the text shows. See [cli.md](cli.md), "`machines` ranks the pool against the
+  closest thing to a simultaneous measurement".
+
 - **A `noise` command, and `noise.ts` under it.** The trial's central gap:
   every spread figure the tool printed was the push mean's, which on a
   four-retrigger platform is the job noise already divided by two, so a series
@@ -126,54 +144,9 @@ single source of noise on this test.
 
 ## Next
 
-The five items below are what the noise trial asked for, in the order it needed
-them. The first four are `machines` and `compare` being asked a question they
-hold the data for; the last is the reason all of it had to be done by hand.
-
-- [ ] **`machines` should use the within-push contrast where it exists.**
-      cli.md, "`machines` ranks the pool against its own neighbourhood", rests on
-      "there is no within-push comparison to fall back on: workers do not run
-      concurrently, so a push is measured by one of them and its own value *is*
-      the push's level". That is not how these pools run. On this signature 186
-      of 187 pushes have two or more runs and 164 have every run on a *different*
-      machine; `linux2404-64-shippable` speedometer3 runs **12** jobs a push from
-      a 100-machine pool, 149 of 166 pushes with two or more. Where a push has
-      several machines, comparing a run with its own push's mean is exactly
-      contemporaneous — same build, same hour, same everything but the handset —
-      so it cannot be confounded by a step, by drift, or by which weeks a machine
-      was in rotation, and the shrinkage is a known factor (a machine carries
-      1/n of the mean it is measured against, so the observed offset is
-      (1 − 1/n) of the true one, correctable rather than a caveat). It is also
-      what makes the variance decomposition above fall out for free. Keep the
-      rolling-median baseline as the fallback for the single-run pushes, and say
-      per row which baseline was used.
-
-- [ ] **`machines` should report spread, not only level.** The command's own help
-      offers it for "a bad power supply, a thermal problem, a different silicon
-      stepping" — but only the first and third of those move a *level*. A
-      thermally throttling device is erratic at an ordinary average, and the
-      table cannot show it: measured here, per-machine residual sd runs 20 → 52
-      ms and per-machine median replicate sd runs 44 → 97 ms, neither of them
-      related to the level column, and the two most erratic devices sit at +11
-      and +14 ms of level — mid-table, unfindable. Two more columns (SPREAD, and
-      the machine's own median replicate sd) turn the command into the one it
-      says it is.
-
-- [ ] **REL LEVEL needs an uncertainty, and the pool needs an ordering other
-      than level.** A 9-run machine and a 21-run machine print the same kind of
-      number and `SHARE` is a proxy for the difference; an explicit ± (the sd of
-      the machine's residuals over √n) is the thing being proxied, and it is the
-      difference between "this worker is 4% slow" and "this worker has run nine
-      times". Then: 53 rows sorted by |level| actively hid this trial's main
-      finding. Sorting the same table by *name* put the two device families in
-      contiguous blocks and the split was visible immediately — 11 fast
-      `R5CX23R*` against 17 mostly-slow `R5CXC1A*`, 4.3% apart with t = 19.7. So
-      `--sort name|level|runs|spread`, and worth considering a
-      `--group <prefix-length>` that aggregates the rows and prints per-group
-      medians with counts. **The grouping is the offer; the interpretation is
-      not.** A shared serial prefix is evidence of a common batch, not proof of
-      one, and the tool should show contiguous families and let the reader decide
-      whether that is a hardware revision, a rack, or a coincidence.
+The two items below are what is left of the noise trial's list. The first is
+`compare` being asked a question it holds the data for; the second is the reason
+all of it had to be done by hand.
 
 - [ ] **`compare` should name the machines behind each side, and test over jobs
       rather than replicates.** Both halves showed up on one pair. Asked to

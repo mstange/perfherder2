@@ -557,9 +557,25 @@ export type MachineRow = MachineLevel & {
   shareOfRuns: number;
 };
 
+// How the table is ordered, and whether it is grouped.
+export type MachineSort = 'level' | 'name' | 'runs' | 'spread';
+
+// One block of machines whose names share a prefix, when `--group` asked for it.
+export type MachineGroup = {
+  prefix: string;
+  machines: MachineRow[];
+  runs: number;
+  // Median of the members' levels, which is the group's claim. Null when none of
+  // them has one.
+  medianLevel: number | null;
+};
+
 export type MachinesReport = {
   span: Span;
   url: string;
+  sort: MachineSort;
+  // Null unless `--group <n>` was passed.
+  groups: MachineGroup[] | null;
   // One header per ref, so a multi-series run says what it pooled.
   series: SeriesHeader[];
   machines: MachineRow[];
@@ -585,6 +601,7 @@ export function buildMachinesReport(
   loaded: readonly LoadedSeries[],
   span: Span,
   base: string,
+  options: { sort?: MachineSort; groupBy?: number | null } = {},
 ): MachinesReport {
   const breakdown = buildMachineLevels(
     loaded.map((one) => one.data.pushes),
@@ -603,16 +620,93 @@ export function buildMachinesReport(
     }
   }
 
+  const machines = breakdown.machines.map((m) => ({
+    ...m,
+    shareOfRuns: even > 0 ? m.runs / even : 0,
+  }));
+  const sort = options.sort ?? 'level';
+
   return {
     span,
     url: graphUrl(base, loaded.map((l) => l.ref), span),
+    sort,
+    groups: options.groupBy ? groupByPrefix(machines, options.groupBy) : null,
     series: loaded.map(seriesHeader),
-    machines: breakdown.machines.map((m) => ({ ...m, shareOfRuns: even > 0 ? m.runs / even : 0 })),
+    machines: sortMachines(machines, sort),
     attributedRuns,
     unattributedRuns: breakdown.unattributedRuns,
     unattributedPoints: breakdown.unattributedPoints,
     attributionStartsMs,
   };
+}
+
+// Machines with nothing to sort by fall to the bottom of every ordering rather
+// than sorting as zero, which would put a machine we know nothing about in the
+// middle of the ones we do.
+function byNullableDescending(a: number | null, b: number | null): number {
+  if (a === null) return b === null ? 0 : 1;
+  if (b === null) return -1;
+  return b - a;
+}
+
+export function sortMachines(machines: readonly MachineRow[], sort: MachineSort): MachineRow[] {
+  const rows = [...machines];
+  switch (sort) {
+    case 'name':
+      // The census is already name-ordered, numerically aware (`byName`), and
+      // that ordering is what makes a pool's *families* visible: the A55 pool's
+      // two device batches are contiguous blocks under it and scattered under
+      // every other sort.
+      return rows;
+    case 'runs':
+      return rows.sort((a, b) => b.runs - a.runs || a.name.localeCompare(b.name));
+    case 'spread':
+      return rows.sort((a, b) => byNullableDescending(a.relativeSpread, b.relativeSpread));
+    case 'level':
+    default:
+      // Worst first, by magnitude: the column exists for the case where the
+      // reader cannot name the machine they are looking for.
+      return rows.sort((a, b) =>
+        byNullableDescending(
+          a.relativeLevel === null ? null : Math.abs(a.relativeLevel),
+          b.relativeLevel === null ? null : Math.abs(b.relativeLevel),
+        ),
+      );
+  }
+}
+
+// Machines whose names share their first `length` characters, as blocks.
+//
+// **The grouping is the offer; the interpretation is not.** A shared serial
+// prefix is evidence of a common batch — the A55 pool's `R5CX23R*` devices all
+// read fast and its `R5CXC1A*` devices all read slow — but it is evidence, not
+// proof, and it could as easily be a rack or a coincidence. So this prints
+// contiguous families with their counts and lets the reader decide what they
+// are, rather than naming them anything.
+export function groupByPrefix(
+  machines: readonly MachineRow[],
+  length: number,
+): MachineGroup[] {
+  const groups = new Map<string, MachineRow[]>();
+  for (const m of machines) {
+    const prefix = m.name.slice(0, Math.max(1, length));
+    const list = groups.get(prefix);
+    if (list) list.push(m);
+    else groups.set(prefix, [m]);
+  }
+  return [...groups.entries()]
+    .map(([prefix, members]) => {
+      const levels = members
+        .map((m) => m.relativeLevel)
+        .filter((l): l is number => l !== null);
+      return {
+        prefix,
+        machines: members,
+        runs: members.reduce((sum, m) => sum + m.runs, 0),
+        medianLevel: levels.length > 0 ? median(levels) : null,
+      };
+    })
+    .sort((a, b) => byNullableDescending(b.medianLevel, a.medianLevel));
 }
 
 // ---------------------------------------------------------------------------

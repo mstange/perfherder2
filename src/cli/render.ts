@@ -14,6 +14,7 @@
 //     data in the range versus one that doesn't exist.
 
 import {
+  formatPercent,
   formatPValue,
   formatSignedPercent,
   formatSignedValue,
@@ -720,10 +721,12 @@ function renderPushTable(pushes: readonly PushRow[]): string[] {
 // machines
 // ---------------------------------------------------------------------------
 
-// Ordered by REL LEVEL, worst first, which is the whole reason to print the
-// column: the alphabetical order the app's panel uses is for finding a machine
-// you can already name, and this table is for the case where you cannot.
-// Machines with no level fall to the bottom rather than sorting as zero.
+// Ordered by REL LEVEL, worst first by default, which is the whole reason to
+// print the column: the alphabetical order the app's panel uses is for finding a
+// machine you can already name, and this table is for the case where you cannot.
+// `--sort name` puts it back, and that is not a nicety — a pool's *families* are
+// contiguous under it and scattered under every other ordering, which is how the
+// A55 pool's two device batches were found (cli-todo.md, the noise trial).
 export function renderMachines(report: MachinesReport): string[] {
   const out: string[] = [];
   out.push(`range: ${formatSpan(report.span.start, report.span.end)}  (UTC)`);
@@ -748,28 +751,50 @@ export function renderMachines(report: MachinesReport): string[] {
     return out;
   }
 
-  const ranked = [...report.machines].sort((a, b) => {
-    if (a.relativeLevel === null) return b.relativeLevel === null ? 0 : 1;
-    if (b.relativeLevel === null) return -1;
-    return Math.abs(b.relativeLevel) - Math.abs(a.relativeLevel);
-  });
+  if (report.groups) {
+    out.push(
+      ...table(
+        ['PREFIX', 'MACHINES', 'RUNS', 'MEDIAN LEVEL'],
+        report.groups.map((g) => [
+          g.prefix,
+          String(g.machines.length),
+          g.runs.toLocaleString('en-US'),
+          g.medianLevel === null ? NONE : formatSignedPercent(g.medianLevel),
+        ]),
+        ['left', 'right', 'right', 'right'],
+      ),
+    );
+    out.push('');
+    out.push(
+      ...wrap(
+        `${report.groups.length} prefixes over ${report.machines.length} machines. A shared ` +
+          'prefix is evidence of a common batch, not proof of one — it could as easily be a ' +
+          'rack, or a coincidence. What is worth reading is whether the families separate at all.',
+        88,
+      ),
+    );
+    out.push('');
+  }
 
   out.push(
     ...table(
-      ['MACHINE', 'RUNS', 'POINTS', 'SHARE', 'REL LEVEL'],
-      ranked.map((m) => [
+      ['MACHINE', 'RUNS', 'POINTS', 'SHARE', 'REL LEVEL', '±', 'SPREAD'],
+      report.machines.map((m) => [
         m.name,
         String(m.runs),
         m.points.toLocaleString('en-US'),
         `${m.shareOfRuns.toFixed(1)}×`,
         m.relativeLevel === null ? NONE : formatSignedPercent(m.relativeLevel),
+        m.levelError === null ? NONE : formatPercent(m.levelError),
+        m.relativeSpread === null ? NONE : formatPercent(m.relativeSpread),
       ]),
-      ['left', 'right', 'right', 'right', 'right'],
+      ['left', 'right', 'right', 'right', 'right', 'right', 'right'],
     ),
   );
   out.push('');
   out.push(
-    `${report.machines.length} machines · ${report.attributedRuns.toLocaleString('en-US')} runs`,
+    `${report.machines.length} machines · ${report.attributedRuns.toLocaleString('en-US')} runs` +
+      ` · sorted by ${report.sort}`,
   );
   if (report.unattributedRuns > 0) {
     out.push(
@@ -783,16 +808,21 @@ export function renderMachines(report: MachinesReport): string[] {
   }
   out.push('');
   out.push(
-    '  REL LEVEL is the median of each run against the local level of the series it ran in —',
-    `  the median of the ${WINDOW_PUSHES} pushes centred on it, the same curve the app's trend band draws.`,
-    '  Local, so a machine that was in rotation during a regression is not blamed for it; a',
-    '  step in the series moves the baseline with it and leaves only what is peculiar to the',
-    '  worker. It understates when the pool is small, because a machine is part of the window',
-    '  it is compared against: with two machines alternating, read the ordering and not the',
-    '  numbers.',
+    '  REL LEVEL is each run against the closest thing to a simultaneous measurement, then the',
+    '  median of those per machine. Where a push ran more than once that is the mean of its own',
+    "  runs — same build, same hour, so no step or rotation can confound it, and the machine's",
+    '  share of that mean is divided back out. Where a push ran once it is the median of the',
+    `  ${WINDOW_PUSHES} pushes centred on it, the curve the app's trend band draws, which moves with every`,
+    '  step and drift and leaves what is peculiar to the worker.',
     '',
-    '  SHARE is runs against an even split of the pool, so 0.2× is a machine that barely ran',
-    '  and whose level is one or two jobs talking.',
+    '  ± is the standard error of that median, so a row whose level is inside its own ± is a',
+    "  machine that has not run often enough to say anything. SPREAD is how much the machine's",
+    '  own runs scatter around the same baseline: a thermally throttling device has an ordinary',
+    '  level and a large spread, and the level column alone cannot find it.',
+    '',
+    '  SHARE is runs against an even split of the pool, so 0.2× is a machine that barely ran.',
+    '',
+    '  --sort name|level|runs|spread, and --group <n> blocks the pool by name prefix.',
   );
   out.push('');
   out.push(report.url);

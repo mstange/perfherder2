@@ -152,7 +152,134 @@ describe('buildMachineLevels', () => {
     // Below the band's floor there is nothing to compare a run against, and a
     // made-up baseline would be worse than an empty column.
     const levels = buildMachineLevels([pushesOf([[{ machine: 'nuc13-1', values: [1] }]])]);
-    expect(levels.machines).toEqual([{ name: 'nuc13-1', runs: 1, points: 1, relativeLevel: null }]);
+    expect(levels.machines).toEqual([
+      {
+        name: 'nuc13-1',
+        runs: 1,
+        points: 1,
+        relativeLevel: null,
+        baseline: null,
+        relativeSpread: null,
+        levelError: null,
+      },
+    ]);
+  });
+
+
+  it('measures a retriggered push against itself, and undoes the self-inclusion', () => {
+    // Four jobs a push — the android hardware shape — with one worker 10% high
+    // and the rest at 100. Against the push mean the suspect's raw deviation is
+    // only (1 − 1/4) of the truth, so without the correction this reads +7.3%
+    // for a machine that is +10%.
+    const pushes = pushesOf(
+      Array.from({ length: 20 }, (_, i) => [
+        { machine: 'hot-1', values: [110, 110] },
+        { machine: `cool-${i % 3}`, values: [100, 100] },
+        { machine: `cool-${(i + 1) % 3}`, values: [100, 100] },
+        { machine: `cool-${(i + 2) % 3}`, values: [100, 100] },
+      ]),
+    );
+    const levels = buildMachineLevels([pushes]);
+    const hot = levels.machines.find((m) => m.name === 'hot-1')!;
+    expect(hot.baseline).toBe('within-push');
+    // (h − c) / pushMean = 10 / 102.5. The correction removes the leading
+    // self-inclusion term; what is left is that the baseline is the push mean
+    // rather than the other machines' own level, which is second order and not
+    // worth a second correction.
+    expect(hot.relativeLevel).toBeCloseTo(10 / 102.5, 4);
+    // The others are pulled down by the one high job in every push they share,
+    // by a quarter of its excess, and that is a true statement about the
+    // contrast rather than an artefact: they *are* below their pushes' means.
+    for (const m of levels.machines) {
+      if (m.name === 'hot-1') continue;
+      expect(m.relativeLevel!).toBeLessThan(0);
+      expect(m.relativeLevel!).toBeGreaterThan(-0.05);
+    }
+  });
+
+  it('prefers the contemporaneous contrast even where a local level exists', () => {
+    // 60 retriggered pushes with a step in the middle and a machine that only
+    // ran after it. The within-push contrast cannot see the step at all, so this
+    // needs no rolling window to get right.
+    const pushes = pushesOf(
+      Array.from({ length: 60 }, (_, i) =>
+        i < 30
+          ? [
+              { machine: `before-${i % 3}`, values: [100, 100] },
+              { machine: `before-${(i + 1) % 3}`, values: [100, 100] },
+            ]
+          : [
+              { machine: 'after-only', values: [200, 200] },
+              { machine: `before-${i % 3}`, values: [200, 200] },
+            ],
+      ),
+    );
+    const after = buildMachineLevels([pushes]).machines.find((m) => m.name === 'after-only')!;
+    expect(after.baseline).toBe('within-push');
+    expect(after.relativeLevel).toBeCloseTo(0, 6);
+  });
+
+  it('says which baseline it used, including both', () => {
+    const mixed = pushesOf(
+      Array.from({ length: 30 }, (_, i) =>
+        i % 2 === 0
+          ? [{ machine: 'solo', values: [100, 100] }]
+          : [
+              { machine: 'solo', values: [100, 100] },
+              { machine: 'pair', values: [100, 100] },
+            ],
+      ),
+    );
+    const levels = buildMachineLevels([mixed]);
+    expect(levels.machines.find((m) => m.name === 'solo')?.baseline).toBe('mixed');
+    expect(levels.machines.find((m) => m.name === 'pair')?.baseline).toBe('within-push');
+  });
+
+  it('separates an erratic machine from a biased one', () => {
+    // Two suspects: one always 8% high, one that averages right and swings ±20%.
+    // Their levels are close and nothing but the spread tells them apart.
+    //
+    // They run in *different* pushes on purpose. Sharing one would couple them:
+    // the within-push contrast is against a mean the other suspect is part of,
+    // so the erratic machine's swing would show up in the biased machine's
+    // spread — which is true of the contrast and not a fact about the worker.
+    const pushes = pushesOf(
+      Array.from({ length: 24 }, (_, i) =>
+        i % 2 === 0
+          ? [
+              { machine: 'biased', values: [108, 108] },
+              { machine: `steady-${i % 3}`, values: [100, 100] },
+              { machine: `steady-${(i + 1) % 3}`, values: [100, 100] },
+            ]
+          : [
+              { machine: 'erratic', values: [i % 4 === 1 ? 80 : 120, i % 4 === 1 ? 80 : 120] },
+              { machine: `steady-${i % 3}`, values: [100, 100] },
+              { machine: `steady-${(i + 1) % 3}`, values: [100, 100] },
+            ],
+      ),
+    );
+    const levels = buildMachineLevels([pushes]);
+    const biased = levels.machines.find((m) => m.name === 'biased')!;
+    const erratic = levels.machines.find((m) => m.name === 'erratic')!;
+    expect(biased.relativeSpread!).toBeLessThan(0.02);
+    expect(erratic.relativeSpread!).toBeGreaterThan(0.2);
+    // And the error follows the spread, so the erratic machine's level comes
+    // with a warning the biased one's does not.
+    expect(erratic.levelError!).toBeGreaterThan(biased.levelError! * 5);
+  });
+
+  it('has no spread or error for a machine that ran once', () => {
+    const pushes = pushesOf(
+      Array.from({ length: 20 }, (_, i) => [
+        { machine: i === 0 ? 'once' : `regular-${i % 3}`, values: [100, 100] },
+        { machine: `regular-${(i + 1) % 3}`, values: [100, 100] },
+      ]),
+    );
+    const once = buildMachineLevels([pushes]).machines.find((m) => m.name === 'once')!;
+    expect(once.runs).toBe(1);
+    expect(once.relativeLevel).not.toBeNull();
+    expect(once.relativeSpread).toBeNull();
+    expect(once.levelError).toBeNull();
   });
 
   it('carries the census through unchanged', () => {

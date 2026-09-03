@@ -38,7 +38,7 @@ installing one binary of the same name — see "The published package" below.
 | --- | --- |
 | `search <term...>` | the Add-series picker |
 | `series <ref...>` | the series list's summary, plus a level comparison |
-| `machines <ref...>` | the graph header's Machines panel — plus a ranking the panel deliberately does not show, see "`machines` ranks the pool against its own neighbourhood" |
+| `machines <ref...>` | the graph header's Machines panel — plus a ranking the panel deliberately does not show, see "`machines` ranks the pool against the closest thing to a simultaneous measurement" |
 | `noise <ref...>` | no UI equivalent yet — see "`noise` decomposes the scatter instead of quoting one number" |
 | `series <ref...> --drift` | the drift badge on a series-list card, from the same module — and the unfiltered form of it, see "`series --drift` answers the question the detector cannot" |
 | `changes <ref...>` | the alert triangles and the detected-change bars |
@@ -408,9 +408,9 @@ the ends are at different levels, which is not the same claim as a step having
 happened between them. Below twelve pushes there is no figure at all rather than
 a ratio of three against three; six a side is the detector's own minimum.
 
-### `machines` ranks the pool against its own neighbourhood
+### `machines` ranks the pool against the closest thing to a simultaneous measurement
 
-Every datum now names the machine its job ran on (api-assumptions.md,
+Every datum names the machine its job ran on (api-assumptions.md,
 "`machine_name` is non-null exactly when `job_id` is"), which makes "is that
 scatter the test, or is it one worker?" a question the same response can answer.
 The app answers the *identification* half — hover a machine in the header panel
@@ -420,37 +420,61 @@ hovering 78 rows to find the one that reads 6% slow is not a search.
 
 **The hard part is the baseline, and the obvious one is wrong.** A machine's runs
 against the series average would convict any machine that happened to be in
-rotation during a regression, and there is no within-push comparison to fall back
-on: workers do not run concurrently, so a push is measured by one of them and its
-own value *is* the push's level. So each run is compared with the rolling median
-of the `WINDOW_PUSHES` pushes centred on it — `rollingTrend`, the curve the app's
-trend band draws — which moves with every step and drift in the series and leaves
-only what is peculiar to the worker. Then the median of those ratios per machine,
-so one bad job does not convict an ordinary machine.
+rotation during a regression. So each run is compared with the nearest thing to a
+measurement taken at the same moment, and there are two of those:
 
-**The premise about pushes is narrower than it reads, and the noise trial found
-the exception.** "Workers do not run concurrently" is true of a worker; it is not
-true that a push is measured by one of them. On the A55 startup signatures 186 of
-187 pushes have two or more runs and 164 have every run on a different handset,
-and `linux2404-64-shippable` speedometer3 runs twelve jobs a push from a
-hundred-machine pool. Where that holds, a run against its own push's mean is an
-exactly contemporaneous contrast — same build, same hour — which no step or
-rotation can confound, and whose shrinkage is a known factor rather than a
-caveat. The rolling baseline is still the right fallback for the single-run
-pushes, and it is what ships today; see cli-todo.md, "`machines` should use the
-within-push contrast where it exists".
+- **The other runs of its own push**, where the push ran more than once. Exactly
+  contemporaneous — same build, same hour, everything held still but the worker —
+  so no step, drift or rotation can reach it. **This is available far more often
+  than this command first assumed.** The original design note here said there was
+  no within-push comparison to make because "a push is measured by one of them";
+  the noise trial measured it and that is not how these pools run. 186 of 187
+  pushes on the A55 startup series have two or more runs and 164 have every run
+  on a different handset; `linux2404-64-shippable` speedometer3 runs *twelve*
+  jobs a push from a hundred-machine pool.
+- **The rolling median of the `WINDOW_PUSHES` pushes centred on it** — the curve
+  the app's trend band draws — for the runs whose push ran once. It moves with
+  every step and drift in the series and leaves what is peculiar to the worker.
 
-Two honesty notes are printed with the table rather than buried here. **It
-understates for a small pool**, because a machine is part of the window it is
-measured against: with two machines alternating, each pulls the baseline halfway
-towards itself and the gap reads about half its true size — read the ordering,
-not the numbers. And **SHARE** is each machine's runs against an even split, which
-is what stops a −11% row from being read as a finding when it is one job.
+Then the median of those ratios per machine, so one bad job does not convict an
+ordinary machine. `BASELINE` is not a column, but a machine that used both is
+reported as `mixed` in `--json`.
+
+**The within-push deviation is corrected for self-inclusion.** A run is one of
+the n it is being compared against, so what is observed is (1 − 1/n) of the truth
+and is divided back up. On a four-job push that is a third again, and it is the
+difference between the A55 pool's families reading 4.3% apart and 5.5% apart.
+Where the local baseline is used the same contamination exists and is one part in
+`WINDOW_PUSHES`, which is small enough to leave alone; the table's own note says
+so, and says to read the ordering rather than the numbers on a small pool.
+
+**Two columns that a level cannot replace.** `±` is the standard error of the
+median, so a row whose level is inside its own `±` is a machine that has not run
+often enough to say anything about — the thing `SHARE` was previously a proxy
+for. And `SPREAD` is how far the machine's own runs scatter around the same
+baseline, which is the *erratic*-worker signal: this command's own help offers it
+for "a bad power supply, a thermal problem", and only two of those three move a
+level. On the A55 pool the two most erratic devices scatter twice as much as the
+quietest and sit mid-table by level, where nothing would have found them.
+
+**`--sort name` is not a nicety.** The default ranks by level, which is right
+when one worker is wrong. But a pool has *families*, and they are contiguous
+under name order and scattered under every other: sorting the A55's 53 rows by
+name is what turned "a spread of individually under-powered estimates" into "all
+11 `R5CX23R*` read fast, 15 of 17 `R5CXC1A*` read slow, 4.3% apart with t = 19.7".
+`--group <n>` does the same arithmetically, blocking the table by name prefix
+with each block's median.
+
+**The grouping is the offer; the interpretation is not.** A shared serial prefix
+is evidence of a common hardware batch and could as easily be a rack or a
+coincidence, so the table prints contiguous families and their medians and names
+them nothing.
 
 Refs are **pooled**, not tabulated one series each: a worker runs every signature
 that targets its platform, and splitting the table would put the same machine in
 four of them with a quarter of the evidence in each. The header lists what went
-into the pool.
+into the pool. (`noise` is the opposite — one entry per ref — for the symmetric
+reason.)
 
 The four-month job retention window bounds all of it. Runs older than that have
 no machine at all, and rather than dropping them the report counts them and names
