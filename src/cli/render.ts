@@ -24,6 +24,7 @@ import { bugUrl, shortRevision } from '../lib/shared/links';
 // prints them at the reader, and a printed α that has drifted from the one the
 // gate uses is a worse error than a wrong number in a comment.
 import { CHANGE_ALPHA, MIN_WINDOW_PUSHES, WINDOW_PUSHES } from '../lib/graphs/changes';
+import { SIGNIFICANCE_ALPHA } from '../lib/shared/stats';
 import {
   axisLines,
   columnFor,
@@ -49,6 +50,7 @@ import {
   type Landing,
 } from '../lib/graphs/cluster';
 import type { DriftSummary } from '../lib/graphs/drift';
+import type { NoiseTerm } from '../lib/graphs/noise';
 import { commitsHeading } from './reports';
 import type {
   AcrossDescriptor,
@@ -61,6 +63,8 @@ import type {
   CompareSideReport,
   LocateReport,
   MachinesReport,
+  NoiseEntry,
+  NoiseReport,
   PushRow,
   SearchReport,
   SeriesHeader,
@@ -789,6 +793,172 @@ export function renderMachines(report: MachinesReport): string[] {
     '',
     '  SHARE is runs against an even split of the pool, so 0.2× is a machine that barely ran',
     '  and whose level is one or two jobs talking.',
+  );
+  out.push('');
+  out.push(report.url);
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+// noise
+// ---------------------------------------------------------------------------
+
+function noiseRow(label: string, t: NoiseTerm | null, unit: string, jobSd: number | null): string[] {
+  if (!t) return [label, NONE, NONE, NONE];
+  return [
+    label,
+    `${formatValue(t.sd)}${unit ? ` ${unit}` : ''}`,
+    `${(t.cv * 100).toFixed(2)}%`,
+    // Share of the *job* level's variance, which is the only place the three
+    // parts add up to something. Blank elsewhere rather than 100% of itself.
+    jobSd !== null && jobSd > 0 ? `${Math.round((100 * t.sd * t.sd) / (jobSd * jobSd))}%` : NONE,
+  ];
+}
+
+function renderNoiseEntry(entry: NoiseEntry): string[] {
+  const out: string[] = [];
+  const { series, budget } = entry;
+  out.push(describeSeries(series));
+  out.push(`  ${series.ref} · ${measurementLine(series)}`);
+  if (series.error) {
+    out.push(...indent(fetchFailureLines(series)));
+    return out;
+  }
+  if (!budget) {
+    out.push('  No data in this range.');
+    return out;
+  }
+  const unit = series.unit;
+  out.push(
+    `  ${entry.pushCount.toLocaleString('en-US')} pushes · ${entry.runCount.toLocaleString('en-US')} runs · ` +
+      `${entry.replicateCount.toLocaleString('en-US')} values · level ${formatValue(budget.level)}${unit ? ` ${unit}` : ''}`,
+  );
+  out.push(
+    `  ${budget.retriggeredPushes.toLocaleString('en-US')} pushes ran more than once, ` +
+      `${budget.runsPerPush} runs a push · ${budget.replicatesPerRun} replicates a run`,
+  );
+  out.push('');
+
+  const jobSd = budget.job?.sd ?? null;
+  const rows = [
+    noiseRow('one replicate', budget.replicate, unit, null),
+    noiseRow('one job', budget.job, unit, jobSd),
+    noiseRow('  device', budget.device, unit, jobSd),
+    noiseRow('  replicate mean', budget.replicateShare, unit, jobSd),
+    noiseRow('  unexplained', budget.unexplained, unit, jobSd),
+    noiseRow('one push mean', budget.push, unit, null),
+    noiseRow('  vs its neighbours', budget.local, unit, null),
+  ];
+  out.push(
+    ...indent(
+      table(['LEVEL', 'SD', 'CV', 'OF A JOB'], rows, ['left', 'right', 'right', 'right']),
+    ),
+  );
+  out.push('');
+
+  // The finding that changes what a reader should do, so it gets a sentence
+  // rather than a row: either the line between push means carries something, or
+  // every wiggle in it is the job lottery and only a window means anything.
+  if (budget.job && budget.local) {
+    const perPush = budget.job.sd / Math.sqrt(budget.runsPerPush);
+    if (budget.build) {
+      out.push(
+        ...indent(
+          wrap(
+            `Build-to-build scatter of ${formatValue(budget.build.sd)}${unit ? ` ${unit}` : ''} ` +
+              `(${(budget.build.cv * 100).toFixed(2)}%) is left once job noise over ` +
+              `${budget.runsPerPush} runs (${formatValue(perPush)}) is accounted for — a push ` +
+              'mean differs from its neighbours by more than the jobs behind it explain.',
+            76,
+          ),
+        ),
+      );
+    } else {
+      out.push(
+        ...indent(
+          wrap(
+            'No build-to-build scatter is detectable: a push mean sits no further from its ' +
+              `neighbours than job noise over ${budget.runsPerPush} runs accounts for ` +
+              `(${formatValue(perPush)}${unit ? ` ${unit}` : ''} against the ` +
+              `${formatValue(budget.local.sd)} observed). Read the trend band and the detected ` +
+              'steps; an individual push mean is a draw, not a measurement of its build.',
+            76,
+          ),
+        ),
+      );
+    }
+    out.push('');
+  }
+
+  if (budget.pushPairResolution !== null && budget.windowResolution !== null) {
+    out.push(
+      ...indent([
+        `Two single pushes resolve ${(budget.pushPairResolution * 100).toFixed(2)}% ` +
+          `at α = ${SIGNIFICANCE_ALPHA}; ${WINDOW_PUSHES} pushes a side resolve ` +
+          `${(budget.windowResolution * 100).toFixed(2)}%.`,
+      ]),
+    );
+    if (entry.ownThreshold) {
+      out.push(
+        ...indent([
+          entry.ownThreshold.kind === 'percentage'
+            ? `This signature alerts at ${entry.ownThreshold.value}%.`
+            : `This signature alerts at ${formatValue(entry.ownThreshold.value)}${unit ? ` ${unit}` : ''}.`,
+        ]),
+      );
+    }
+    out.push('');
+  }
+
+  if (budget.attributedRuns < budget.runs) {
+    out.push(
+      ...indent(
+        wrap(
+          `${(budget.runs - budget.attributedRuns).toLocaleString('en-US')} of ` +
+            `${budget.runs.toLocaleString('en-US')} runs ` +
+            `${budget.runs - budget.attributedRuns === 1 ? 'carries' : 'carry'} no machine name, ` +
+            'so the device row is estimated from the rest — treeherder expires a job row after ' +
+            'about four months and the name is joined off it.',
+          76,
+        ),
+      ),
+    );
+    out.push('');
+  }
+
+  out.push(`  ${entry.url}`);
+  return out;
+}
+
+export function renderNoise(report: NoiseReport): string[] {
+  const out: string[] = [];
+  out.push(`range: ${formatSpan(report.span.start, report.span.end)}  (UTC)`);
+  out.push('');
+  for (const entry of report.entries) {
+    out.push(...renderNoiseEntry(entry));
+    out.push('');
+  }
+  out.push(
+    ...[
+      '  A measurement has three levels and they are different sizes: a replicate around its',
+      '  own run, a run around its own push, a push mean around the series. The middle one is',
+      "  the honest \"how noisy is this test\" figure — the third is that noise divided by the",
+      '  retriggers, which is why a heavily retriggered platform can look quiet and compare',
+      '  badly anyway.',
+      '',
+      '  DEVICE is measured out of sample: each run is corrected by its machine\'s offset',
+      '  computed from every *other* push, so it is the variance a calibration would actually',
+      '  remove. It is a floor — a run is compared with a push mean it is one part of, which',
+      '  shrinks every offset. `machines` names the workers behind it.',
+      '',
+      '  ONE PUSH MEAN is around the series level, which is what `series` prints and includes',
+      '  every real step and drift in the window. VS ITS NEIGHBOURS is around the middle of the',
+      '  24 pushes centred on each — trend and steps removed — and it is the one the',
+      '  build-to-build reading above is computed from.',
+      '',
+      '  Time of day is not here on purpose: every run of a push is submitted within minutes',
+      '  of the others, so anything shared by a push is removed along with the push.',
+    ],
   );
   out.push('');
   out.push(report.url);

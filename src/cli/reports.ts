@@ -29,6 +29,7 @@ import {
 import { buildDistribution, type DistributionPlot } from '../lib/graphs/distribution';
 import { buildDrift, type DriftSummary } from '../lib/graphs/drift';
 import { buildMachineLevels, type MachineLevel } from '../lib/graphs/machines';
+import { buildNoiseBudget, type NoiseBudget } from '../lib/graphs/noise';
 import {
   DEFAULT_ALERT_THRESHOLD,
   MEAN_REPLICATE,
@@ -611,6 +612,62 @@ export function buildMachinesReport(
     unattributedRuns: breakdown.unattributedRuns,
     unattributedPoints: breakdown.unattributedPoints,
     attributionStartsMs,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// noise
+// ---------------------------------------------------------------------------
+
+export type NoiseEntry = {
+  series: SeriesHeader;
+  url: string;
+  pushCount: number;
+  runCount: number;
+  replicateCount: number;
+  // Null for a series with no runs in the range — including one whose fetch
+  // failed, which `series.error` is what tells apart.
+  budget: NoiseBudget | null;
+  // The signature's *own* declared threshold, when it has one. Deliberately not
+  // resolved through the parent the way `changes` does: that costs a second
+  // fetch per ref, and here the threshold is a scale to read the resolution
+  // figures against rather than a gate anything is being held to. Null means
+  // "this signature declares none", not "there is none".
+  ownThreshold: AlertThreshold | null;
+};
+
+export type NoiseReport = {
+  span: Span;
+  url: string;
+  entries: NoiseEntry[];
+};
+
+// What each series' scatter is made of.
+//
+// **One entry per ref, not pooled.** The opposite of `machines`, and for the
+// symmetric reason: a machine's bias is a property of the worker and reads the
+// same on every signature it runs, while noise is a property of the measurement.
+// Pooling two series' variances would produce a number describing neither.
+export function buildNoiseReport(
+  loaded: readonly LoadedSeries[],
+  span: Span,
+  base: string,
+): NoiseReport {
+  return {
+    span,
+    url: graphUrl(base, loaded.map((l) => l.ref), span),
+    entries: loaded.map((one) => ({
+      series: seriesHeader(one),
+      url: graphUrl(base, [one.ref], span),
+      pushCount: one.data.pushes.length,
+      runCount: one.data.pushes.reduce((sum, p) => sum + p.runs.length, 0),
+      replicateCount: one.data.pushes.reduce(
+        (sum, p) => sum + p.runs.reduce((n, r) => n + r.values.length, 0),
+        0,
+      ),
+      budget: buildNoiseBudget(one.data.pushes),
+      ownThreshold: one.meta.alertThreshold,
+    })),
   };
 }
 

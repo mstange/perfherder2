@@ -72,6 +72,7 @@ import {
   buildLocateReport,
   buildSearchReport,
   buildMachinesReport,
+  buildNoiseReport,
   buildSeriesReport,
   buildStepReport,
   graphUrl,
@@ -87,6 +88,7 @@ import {
   renderCompare,
   renderLocate,
   renderMachines,
+  renderNoise,
   renderSearch,
   renderSeries,
   renderStep,
@@ -365,6 +367,51 @@ const machines: Command = {
     const loaded = await Promise.all(refs.map((ref) => loadSeriesOrError(ref, span)));
     const report = buildMachinesReport(loaded, span, ctx.appBase);
     return { report, lines: renderMachines(report), exitCode: exitCodeFor(loaded) };
+  },
+};
+
+// ---------------------------------------------------------------------------
+// noise
+// ---------------------------------------------------------------------------
+
+const noise: Command = {
+  summary: 'what a series\' scatter is made of, and what it can resolve',
+  usage: ['perfherder-cli noise <ref...> [--range <dur>] [--from <date>] [--to <date>]'],
+  booleans: [],
+  valued: [...RANGE_VALUED],
+  details: [
+    'A measurement has three levels — a replicate inside its run, a run inside its push, a',
+    'push mean inside the series — and they are different sizes. Every other command here',
+    'reports the third: `series` prints the sd and cv of the push means, and on a platform',
+    'that retriggers four times that is the job noise already divided by two. So a series can',
+    'print "cv 1.5%" and be made of jobs that scatter by 3.2%, which is the number that',
+    'decides whether a comparison of two pushes can answer anything.',
+    '',
+    'The middle row is the one to read: a run against its own push mean, pooled over every',
+    'push that ran more than once. Same build, same hour, everything but the job — so it is',
+    'the test\'s own noise with the code held still.',
+    '',
+    'It is split three ways. DEVICE is out-of-sample: each run is corrected by its machine\'s',
+    'offset computed from every *other* push, so the figure is the variance a calibration',
+    'would really remove rather than one a fit can absorb. On the A55 startup pool that is',
+    'two thirds of it. REPLICATE MEAN is the sampling error a run mean inherits from its own',
+    'replicates, and UNEXPLAINED is what neither accounts for.',
+    '',
+    'Then two resolution figures, which are the point of the whole table: the smallest',
+    'difference two single pushes could show as significant, and the same over the 24-push',
+    'window the change detector measures. The first is what a try push is up against.',
+    '',
+    'One entry per ref rather than a pool — the opposite of `machines`, because a worker\'s',
+    'bias reads the same on every signature it runs while noise belongs to the measurement.',
+    '',
+    'Use `machines` next when the device row is large: it names the workers behind it.',
+  ],
+  async run(parsed, ctx) {
+    const refs = requireRefs(parsed.positionals, 'noise');
+    const span = resolveRange(rangeOptions(parsed), ctx.now);
+    const loaded = await Promise.all(refs.map((ref) => loadSeriesOrError(ref, span)));
+    const report = buildNoiseReport(loaded, span, ctx.appBase);
+    return { report, lines: renderNoise(report), exitCode: exitCodeFor(loaded) };
   },
 };
 
@@ -942,6 +989,7 @@ const COMMANDS: Record<string, Command> = {
   search,
   series,
   machines,
+  noise,
   changes,
   step,
   locate,
@@ -1119,6 +1167,9 @@ function topLevelHelp(): string[] {
     '',
     '  # Is that scatter the test, or is it one worker in the pool?',
     '  perfherder-cli machines autoland,1234567 --range 90d',
+    '',
+    '  # Can a comparison of two pushes even see the change I am looking for?',
+    '  perfherder-cli noise autoland,1234567 --range 30d',
     '',
     '  # The same row somewhere else: every platform, or Firefox against Chrome.',
     '  perfherder-cli search --like autoland,1234567 --across platform',

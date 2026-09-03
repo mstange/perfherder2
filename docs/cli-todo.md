@@ -56,6 +56,22 @@ single source of noise on this test.
 
 ## Done
 
+- **A `noise` command, and `noise.ts` under it.** The trial's central gap:
+  every spread figure the tool printed was the push mean's, which on a
+  four-retrigger platform is the job noise already divided by two, so a series
+  could print "cv 1.5%" and be made of jobs scattering by 3.24%. The command
+  prints all three levels, splits the job level into device / replicate-mean /
+  unexplained with the device share measured **out of sample**, and ends on the
+  two figures it exists for: what two single pushes can resolve (4.49% on the
+  A55 series) and what the detector's 24-push window can (0.92%). Its own
+  first correction came from running it on a second series: measured against
+  the *series* level, "build-to-build scatter" on linux2404 speedometer3 read
+  1.77% and was mostly the series moving during the window, so the build term
+  is computed against the rolling local level instead and both push rows are
+  printed. `noise.ts` (+ tests) is under `src/lib` because the app's details
+  pane will read it too. See [cli.md](cli.md), "`noise` decomposes the scatter
+  instead of quoting one number".
+
 - **A landing is the unit of the answer.** `changes --cluster` groups the events
   of every ref in the run by the push interval each brackets, so one change seen
   by nine signatures on three platforms is one row saying so. The window printed
@@ -110,30 +126,9 @@ single source of noise on this test.
 
 ## Next
 
-The six items below are what the noise trial asked for, in the order it needed
-them. The first is a command that does not exist; the next four are `machines`
-and `compare` being asked a question they hold the data for; the last is the
-reason all of it had to be done by hand.
-
-- [ ] **A `noise` command: what is the scatter made of.** Every figure the tool
-      prints about spread is the *push mean's* — `series` reports `sd`/`cv` over
-      push means, `compare` reports each pool's `cv`. On this series that number
-      is 1.50%, and it is the least informative of the three: one job carries
-      3.24%, one replicate 5.19%, and the push mean's own scatter is what is left
-      after four runs average out — no build-to-build term survives being solved
-      for. A reader told "cv 1.5%" concludes the test is quiet; the truth is that
-      it is noisy and the averaging is doing the work, which is a different
-      finding with different remedies. The decomposition needs nothing new from
-      the network: `buildSeriesData` already has push → run → replicate, so the
-      three levels are a walk over what `series` has in hand. What to print, on
-      the evidence of what got quoted here: the sd of a replicate, of a run mean,
-      and of a push mean, each in the unit and as a percentage; the between-run
-      pooled sd *within* a push, which is the honest job-to-job figure; the
-      device share of it (below); and the two resolution figures — 4.5% for two
-      single pushes on this series, 0.93% for the detector's 24-push window
-      against a 2% alerting threshold. The last pair is the sentence a developer
-      actually wants: *a single try push cannot see anything smaller than 4.5%
-      here*.
+The five items below are what the noise trial asked for, in the order it needed
+them. The first four are `machines` and `compare` being asked a question they
+hold the data for; the last is the reason all of it had to be done by hand.
 
 - [ ] **`machines` should use the within-push contrast where it exists.**
       cli.md, "`machines` ranks the pool against its own neighbourhood", rests on

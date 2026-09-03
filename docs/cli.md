@@ -39,6 +39,7 @@ installing one binary of the same name — see "The published package" below.
 | `search <term...>` | the Add-series picker |
 | `series <ref...>` | the series list's summary, plus a level comparison |
 | `machines <ref...>` | the graph header's Machines panel — plus a ranking the panel deliberately does not show, see "`machines` ranks the pool against its own neighbourhood" |
+| `noise <ref...>` | no UI equivalent yet — see "`noise` decomposes the scatter instead of quoting one number" |
 | `series <ref...> --drift` | the drift badge on a series-list card, from the same module — and the unfiltered form of it, see "`series --drift` answers the question the detector cannot" |
 | `changes <ref...>` | the alert triangles and the detected-change bars |
 | `changes <ref...> --cluster` | the details pane's Landing block, which groups the same way from the same module — see "`--cluster` makes the row a landing instead of a series" |
@@ -457,6 +458,78 @@ the date attribution actually starts — which turns "666 runs have no machine"
 into "this table is really about 2026-04-22 onwards", the form a reader can act
 on.
 
+### `noise` decomposes the scatter instead of quoting one number
+
+A measurement has three levels — a replicate inside its run, a run inside its
+push, a push mean inside the series — and **every spread figure this tool printed
+before this command was the third one**. `series` reports the sd and cv of the
+push means; the distribution legend reports a replicate cloud's cv. On a platform
+that retriggers four times a push, the third level is the second one already
+divided by two, so a series can print "cv 1.5%" and be made of jobs that scatter
+by 3.2%. That is not a smaller version of the same finding, it is a different
+one: the test is noisy and the retriggers are hiding it, and the remedy is more
+runs or a calibrated pool rather than a hunt for what changed.
+
+So `noise` prints all three, plus what the middle one is made of. The numbers on
+the A55 startup series that prompted it (cli-todo.md, the noise trial):
+
+```
+  LEVEL                      SD     CV  OF A JOB
+  one replicate        82.79 ms  5.19%         —
+  one job              51.65 ms  3.24%      100%
+    device             42.29 ms  2.65%       67%
+    replicate mean     26.18 ms  1.64%       26%
+    unexplained        13.93 ms  0.87%        7%
+  one push mean        24.37 ms  1.53%         —
+    vs its neighbours  24.31 ms  1.52%         —
+```
+
+**The job row is the honest "how noisy is this test" figure**, and it is a
+*within-push* contrast: each run against its own push's mean, pooled over every
+push that ran more than once. Same build, same hour, everything held still but
+the job. It needs no baseline model and no assumption about the series being
+flat, which is why it is the row the other two are read against.
+
+**The device row is measured out of sample.** Each run is corrected by its
+machine's mean offset computed from every *other* push (`leaveOneOutOffsets`), so
+the figure is the variance a calibration would actually remove rather than one a
+fit can absorb — 53 offsets fitted to 725 runs would flatter themselves
+in-sample. It is a floor for a second reason too: a run is compared with a push
+mean it is one of n parts of, which shrinks every offset by (1 − 1/n). When it is
+large, `machines` names the workers behind it.
+
+**Two push rows, because the difference between them is a trap.** "One push mean"
+is the scatter around the *series* level — what `series` prints, and it includes
+every real step and drift in the window. "Vs its neighbours" is the scatter around
+the middle of the 24 pushes centred on each, so a series that slides 8% over the
+range is not reported as every build differing from every other. The
+build-to-build reading is computed from the second: on the linux2404 speedometer3
+series the two rows are 1.77% and 0.79%, and the whole of that gap is the series
+moving during the window.
+
+A *sharp step* is the case the local row only partly absorbs, and correctly so:
+the rolling median follows the level on either side, but the two dozen pushes
+whose window straddles the step sit off their own baseline — which is what it
+means for two neighbouring builds to differ. A single step in an otherwise quiet
+series therefore shows up in the build term, and reads as what it is when the
+range is one `changes` has already named.
+
+**Then the two figures the command exists for.** The smallest difference two
+single pushes could show as significant (4.49% on the A55 series), and the same
+over the detector's 24-push window (0.92%). The first is what a try push is up
+against and it is the sentence a developer wants before pushing, not after
+squinting at two dots. The second explains why alerting on a 2% threshold works
+on a series where individual pushes cannot see 4%.
+
+**Not pooled across refs** — the opposite of `machines`, and the symmetric
+reason: a worker's bias reads the same on every signature it runs, while noise
+belongs to the measurement. Pooling two series' variances describes neither.
+
+**Time of day is deliberately absent.** Every run of a push is submitted within
+minutes of the others, so anything shared by a push is removed along with the
+push, and an hourly table computed this way is a row of zeroes wearing a
+conclusion. `noise.ts` says so at the top; cli-todo.md carries the measurement.
+
 ### `--cluster` makes the row a landing instead of a series
 
 `changes` answers about one series, and the question that prompted this tool's
@@ -791,6 +864,10 @@ is testable without a network.
   row, the ruler, word wrap.
 - [modes.ts](../src/cli/modes.ts) — **pure**. The mode comparison and its
   sentence. See above.
+- [noise.ts](../src/lib/graphs/noise.ts) — **pure**. The three levels of a
+  series' scatter, the out-of-sample device share of the middle one, and what a
+  push pair and a 24-push window can resolve. Shared with the app; see
+  "`noise` decomposes the scatter instead of quoting one number".
 - [machines.ts](../src/lib/graphs/machines.ts) — **pure**, and **under
   `src/lib`** for the same reason cluster.ts is: the app's machine panel reads
   `buildMachineCensus` from it, and only `machines` needs the ranking

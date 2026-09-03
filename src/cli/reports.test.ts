@@ -19,6 +19,7 @@ import {
   buildLevelComparison,
   buildLocateReport,
   buildMachinesReport,
+  buildNoiseReport,
   buildSearchReport,
   buildStepReport,
   commitMatches,
@@ -1170,5 +1171,83 @@ describe('buildMachinesReport', () => {
     expect(report.machines).toEqual([]);
     expect(report.unattributedRuns).toBe(40);
     expect(report.attributionStartsMs).toBeNull();
+  });
+});
+
+describe('buildNoiseReport', () => {
+  // `summaryOf` gives one run a push, which is the one shape a noise budget
+  // cannot say anything about, so this builds retriggers by hand: two jobs a
+  // push, on two workers that read 20 apart.
+  function retriggered(pushCount: number, signatureId = 900): RawSummary {
+    const base = summaryOf([[100]], { signature_id: signatureId });
+    const data: RawDatum[] = [];
+    for (let i = 0; i < pushCount; i++) {
+      const timestamp = new Date(BASE_TIME + i * 3_600_000).toISOString().slice(0, 19);
+      [
+        { machine: 'fast', datum: i * 10 + 1, value: 980 },
+        { machine: 'slow', datum: i * 10 + 2, value: 1020 },
+      ].forEach(({ machine, datum, value }) => {
+        for (const v of [value - 5, value, value + 5]) {
+          data.push({
+            job_id: datum + 5000,
+            id: datum,
+            value: v,
+            push_timestamp: timestamp,
+            push_id: 2000 + i,
+            revision: `rev${String(i).padStart(4, '0')}${'b'.repeat(34)}`,
+            submit_time: null,
+            machine_name: machine,
+          });
+        }
+      });
+    }
+    return { ...base, data };
+  }
+
+  const SPAN30 = { start: BASE_TIME, end: BASE_TIME + 30 * 3_600_000 };
+
+  it('reports one entry per ref rather than pooling them', () => {
+    // The opposite of `buildMachinesReport`, and the difference is the point:
+    // noise belongs to the measurement, a worker's bias to the worker.
+    const report = buildNoiseReport(
+      [loadedOf(retriggered(20, 900)), loadedOf(retriggered(20, 901))],
+      SPAN30,
+      'https://example/',
+    );
+    expect(report.entries).toHaveLength(2);
+    expect(report.entries.map((e) => e.series.signatureId)).toEqual([900, 901]);
+    // Each entry links its own series, not the pair.
+    expect(report.entries[0].url).toContain('series=autoland,900,13');
+    expect(report.entries[0].url).not.toContain('series=autoland,901,13');
+    expect(report.url).toContain('series=autoland,900,13');
+    expect(report.url).toContain('series=autoland,901,13');
+  });
+
+  it('carries the budget and the counts the reader checks it against', () => {
+    const report = buildNoiseReport([loadedOf(retriggered(20))], SPAN30, 'x');
+    const entry = report.entries[0];
+    expect(entry.pushCount).toBe(20);
+    expect(entry.runCount).toBe(40);
+    expect(entry.replicateCount).toBe(120);
+    const budget = entry.budget!;
+    expect(budget.runsPerPush).toBe(2);
+    expect(budget.replicatesPerRun).toBe(3);
+    // Two workers 40 apart, so 20 either side of every push mean.
+    expect(budget.job!.sd).toBeCloseTo(20 * Math.SQRT2, 6);
+    expect(budget.device!.sd / budget.job!.sd).toBeGreaterThan(0.9);
+  });
+
+  it('has no budget for a series with no data, and says which kind of nothing', () => {
+    const ref = { repository: 'autoland', signatureId: 999, frameworkId: 13 };
+    const empty: LoadedSeries = {
+      ref,
+      meta: placeholderMeta(ref),
+      data: EMPTY_SERIES_DATA,
+      found: false,
+      error: 'HTTP 502',
+    };
+    const report = buildNoiseReport([empty], SPAN30, 'x');
+    expect(report.entries[0].budget).toBeNull();
+    expect(report.entries[0].series.error).toBe('HTTP 502');
   });
 });
