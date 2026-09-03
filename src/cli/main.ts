@@ -289,9 +289,9 @@ const series: Command = {
   summary: 'summarize one or more series over a range, and compare their levels',
   usage: [
     'perfherder-cli series <ref...> [--range <dur>] [--from <date>] [--to <date>] [--pushes]',
-    '                           [--drift]',
+    '                           [--runs] [--limit <n>] [--drift]',
   ],
-  booleans: ['pushes', 'drift'],
+  booleans: ['pushes', 'drift', 'runs'],
   valued: [...RANGE_VALUED, 'limit'],
   details: [
     'A ref is <repo>,<signatureId>[,<frameworkId>] — the framework is optional, since the',
@@ -302,7 +302,12 @@ const series: Command = {
     'says which side is better over the window, and nothing about why, because nothing pairs a',
     'push on one side with a push on the other.',
     '',
-    '--pushes lists the most recent pushes per series (--limit, default 20).',
+    '--pushes lists the most recent pushes per series (--limit, default 20). --runs breaks',
+    'each of those into one row per job — the machine that ran it, its mean, and how far its',
+    'own replicates spread. That is the table nothing here used to emit: every other report',
+    'aggregates to the push or the pool, so "which job produced the high dot" or "is this',
+    'scatter the worker" had no answer short of reading the response cache. `--json` carries',
+    'it under every push row whenever the push list is built, with or without --runs.',
     '',
     '--drift compares the first pushes of the range with the last, which is the question the',
     'change detector cannot answer: segmentation looks for steps, and a series that slides 8% over',
@@ -314,9 +319,11 @@ const series: Command = {
     const refs = requireRefs(parsed.positionals, 'series');
     const span = resolveRange(rangeOptions(parsed), ctx.now);
     const loaded = await Promise.all(refs.map((ref) => loadSeriesOrError(ref, span)));
-    const pushLimit = flagBoolean(parsed.flags, 'pushes')
-      ? flagNumber(parsed.flags, 'limit', 20)
-      : null;
+    // `--runs` is the push list with a row per job, so it implies `--pushes`
+    // rather than being a second way to ask for one.
+    const showRuns = flagBoolean(parsed.flags, 'runs');
+    const pushLimit =
+      flagBoolean(parsed.flags, 'pushes') || showRuns ? flagNumber(parsed.flags, 'limit', 20) : null;
     const report = buildSeriesReport(
       loaded,
       span,
@@ -324,7 +331,7 @@ const series: Command = {
       pushLimit,
       flagBoolean(parsed.flags, 'drift'),
     );
-    return { report, lines: renderSeries(report), exitCode: exitCodeFor(loaded) };
+    return { report, lines: renderSeries(report, showRuns), exitCode: exitCodeFor(loaded) };
   },
 };
 

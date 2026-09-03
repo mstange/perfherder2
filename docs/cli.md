@@ -355,6 +355,26 @@ Chrome push, so the output says which side is better over the window and never
 why. The `BETTER` column is blank unless the test is significant *and* both
 sides agree about which direction is better — never the sign of the delta alone.
 
+### `series --runs` is the only job-level table in the tool
+
+Every other report aggregates: `series` to the push, `machines` to the worker,
+`compare` and `step` to the pool. So a question about the *jobs* — which one
+produced the high dot, is this scatter the worker or the test, how far did this
+run's own replicates spread — had no answer here at all. The noise trial's whole
+decomposition was computed by reading `~/.cache/perfherder-cli/*.json` directly,
+which is a raw treeherder payload with none of the app's projections applied and
+exactly the path this tool exists to remove.
+
+`--runs` is the push list with a row per job: the machine that ran it, its mean,
+its replicate count and the sd of its own replicates. **Flat, with the push
+columns blanked on repeats rather than a header and an indent**, because the
+question that produced it was "one row per job so I can group them" and a shape
+that needs a parser is not that.
+
+`--json` carries the same rows under every push whenever the push list is built,
+with or without the flag. That is deliberate: the flag is about the text, and a
+caller that has asked for pushes has already paid for the data.
+
 ### `changes` merges two analyses into one timeline
 
 Perfherder's alerts and this app's detected changes are independent opinions

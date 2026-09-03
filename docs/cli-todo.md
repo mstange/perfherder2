@@ -56,6 +56,15 @@ single source of noise on this test.
 
 ## Done
 
+- **`series --runs`, the tool's only job-level table.** The reason the noise
+  trial had to be done by hand: every other report aggregates to the push or the
+  pool, so "which job produced the high dot" meant reading the CLI's own response
+  cache — a raw treeherder payload with none of the app's projections applied.
+  `--runs` prints one row per job with its machine, its mean and its own
+  replicate sd, flat so it can be piped, and `--json` carries the rows under
+  every push row whenever the push list is built. See [cli.md](cli.md),
+  "`series --runs` is the only job-level table in the tool".
+
 - **`compare` names each side's machines, prints what the pair can resolve, and
   says what its n is worth.** Asked for the window's two extreme pushes it used
   to answer "-6.4%, p <0.001, Cliff's δ 0.795 (large), improvement" and stop.
@@ -155,20 +164,8 @@ single source of noise on this test.
 
 ## Next
 
-One item left of the noise trial's list, and it is the reason all of it had to
-be done by hand.
-
-- [ ] **Job-level data has no exit from the tool.** `series --pushes` aggregates
-      to the push (`runCount`, `valueCount`, mean, median); `compare --json`
-      carries `runCount` but no runs; `machines --json` carries tallies and a
-      `relativeLevel`. So there is no way to get the one table every question in
-      this trial needed — one row per job, with its machine, its mean, its
-      replicate sd, its push. The investigation was done by reading
-      `~/.cache/perfherder-cli/*.json` directly, which is a raw treeherder
-      payload with none of the app's projections applied: exactly the "do not
-      hand-roll it" path the tool exists to prevent. `series --runs` in text and
-      a `runs[]` array under each push in `--json` is a small addition to a
-      report that already walks that structure.
+Nothing outstanding: the noise trial's six items are all in "Done" above. What
+it raised and did *not* answer is in the two sections below.
 
 ## Open questions / deferred
 

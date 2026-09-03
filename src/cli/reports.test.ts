@@ -21,6 +21,7 @@ import {
   buildMachinesReport,
   buildNoiseReport,
   buildSearchReport,
+  buildSeriesReport,
   buildStepReport,
   commitMatches,
   commitsHeading,
@@ -1345,5 +1346,68 @@ describe('buildCompareReport, machine mix and resolution', () => {
   it('carries what the pair could have resolved', () => {
     expect(report.resolution).not.toBeNull();
     expect(report.resolution!).toBeGreaterThan(0);
+  });
+});
+
+describe('buildSeriesReport run rows', () => {
+  it('carries one row per job under each push it lists', () => {
+    // The table nothing used to emit. `summaryOf` gives one run a push, so this
+    // builds two jobs on two workers to have something to tell apart.
+    const base = summaryOf([[100]]);
+    const data: RawDatum[] = [];
+    [
+      { id: 1, job: 11, machine: 'w-1', values: [98, 102] },
+      // The two fields expire together (api-assumptions.md), so an expired job
+      // arrives with both null.
+      { id: 2, job: null, machine: null, values: [110, 114] },
+    ].forEach(({ id, job, machine, values }: {
+      id: number;
+      job: number | null;
+      machine: string | null;
+      values: number[];
+    }) => {
+      for (const v of values) {
+        data.push({
+          job_id: job,
+          id,
+          value: v,
+          push_timestamp: new Date(BASE_TIME).toISOString().slice(0, 19),
+          push_id: 4000,
+          revision: `rev${'d'.repeat(37)}`,
+          submit_time: null,
+          machine_name: machine,
+        });
+      }
+    });
+    const loaded = loadedOf({ ...base, data });
+    const report = buildSeriesReport([loaded], SPAN, 'x', 5);
+    const push = report.entries[0].recentPushes![0];
+    expect(push.runCount).toBe(2);
+    // In the order `buildSeriesData` puts them in, which is by job id — and an
+    // expired job has none to sort by, so it leads. It keeps its row either way:
+    // dropping it would make the rows fail to add up to `runCount`.
+    expect(push.runs).toEqual([
+      {
+        datumId: 2,
+        jobId: null,
+        machine: null,
+        mean: 112,
+        valueCount: 2,
+        replicateSd: expect.closeTo(2.83, 2),
+      },
+      {
+        datumId: 1,
+        jobId: 11,
+        machine: 'w-1',
+        mean: 100,
+        valueCount: 2,
+        replicateSd: expect.closeTo(2.83, 2),
+      },
+    ]);
+  });
+
+  it('has no push rows at all without a limit, and so no run rows', () => {
+    const report = buildSeriesReport([loadedOf(summaryOf([[1, 2]]))], SPAN, 'x', null);
+    expect(report.entries[0].recentPushes).toBeNull();
   });
 });

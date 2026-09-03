@@ -588,7 +588,7 @@ export function renderLocate(report: LocateReport): string[] {
 // series
 // ---------------------------------------------------------------------------
 
-export function renderSeries(report: SeriesReport): string[] {
+export function renderSeries(report: SeriesReport, showRuns = false): string[] {
   const out: string[] = [];
   out.push(`range: ${formatSpan(report.span.start, report.span.end)}  (UTC)`);
   out.push('');
@@ -632,7 +632,11 @@ export function renderSeries(report: SeriesReport): string[] {
     if (entry.drift) out.push(...indent(driftLines(entry.drift, entry.series)));
     if (entry.recentPushes && entry.recentPushes.length > 0) {
       out.push('');
-      out.push(...indent(renderPushTable(entry.recentPushes)));
+      out.push(
+        ...indent(
+          showRuns ? renderRunTable(entry.recentPushes) : renderPushTable(entry.recentPushes),
+        ),
+      );
       out.push('');
     }
     out.push(`  ${entry.url}`);
@@ -714,6 +718,36 @@ function renderPushTable(pushes: readonly PushRow[]): string[] {
       formatValue(push.median),
     ]),
     ['left', 'left', 'right', 'right', 'right', 'right'],
+  );
+}
+
+// One row per *job* rather than per push: the machine that ran it, its mean, and
+// how far its own replicates spread.
+//
+// **A flat table, with the push repeated down the WHEN and REVISION columns**
+// rather than a push header and indented runs under it. It is meant to be piped
+// — the question that produced it was "give me one row per job so I can group
+// them" — and a shape that needs a parser is not that. The push columns are
+// blanked on repeats so the eye still reads the grouping.
+function renderRunTable(pushes: readonly PushRow[]): string[] {
+  const rows: string[][] = [];
+  for (const push of pushes) {
+    push.runs.forEach((run, i) => {
+      rows.push([
+        i === 0 ? formatUtc(push.atMs) : '',
+        i === 0 ? shortRevision(push.revision) : '',
+        run.jobId === null ? NONE : String(run.jobId),
+        run.machine ?? NONE,
+        formatValue(run.mean),
+        String(run.valueCount),
+        run.replicateSd === null ? NONE : formatValue(run.replicateSd),
+      ]);
+    });
+  }
+  return table(
+    ['WHEN', 'REVISION', 'JOB', 'MACHINE', 'MEAN', 'VALUES', 'REPLICATE SD'],
+    rows,
+    ['left', 'left', 'right', 'left', 'right', 'right', 'right'],
   );
 }
 

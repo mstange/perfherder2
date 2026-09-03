@@ -352,6 +352,29 @@ export type PushRow = {
   valueCount: number;
   mean: number;
   median: number;
+  // The jobs behind those aggregates: one row each, with the worker that ran it
+  // and how far its own replicates spread.
+  //
+  // **The one table nothing in this tool used to emit.** Every other report
+  // aggregates to the push or to the pool, and a question about the jobs — is
+  // this scatter the machine, does this run's replicate spread explain the
+  // outlier, which job produced the high dot — had no answer short of reading
+  // the CLI's own response cache, which is a raw treeherder payload with none of
+  // the app's projections applied. Carried whenever the push list is built, so
+  // `--json` has it without a second flag; the text prints it under `--runs`.
+  runs: RunRow[];
+};
+
+export type RunRow = {
+  datumId: number;
+  // Null once treeherder has expired the job, which is the same set
+  // `machine` is null for.
+  jobId: number | null;
+  machine: string | null;
+  mean: number;
+  valueCount: number;
+  // Sample sd of this run's own replicates, and null below two of them.
+  replicateSd: number | null;
 };
 
 export type SeriesLevel = {
@@ -435,6 +458,16 @@ export function buildSeriesReport(
                 valueCount: values.length,
                 mean: push.mean,
                 median: median(values),
+                runs: push.runs.map(
+                  (run): RunRow => ({
+                    datumId: run.datumId,
+                    jobId: run.jobId,
+                    machine: run.machineName,
+                    mean: run.mean,
+                    valueCount: run.values.length,
+                    replicateSd: summarize(run.values)?.stdDev ?? null,
+                  }),
+                ),
               };
             }),
       level: summarize(pushMeans),
