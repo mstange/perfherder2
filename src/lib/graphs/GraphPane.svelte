@@ -439,8 +439,9 @@
           />
           Detected changes
         </label>
-        <!-- The shape of a drift the series-list badge states as one number. Off by
-             default, unlike the switches around it — see AppState.showTrend. -->
+        <!-- The shape of a drift the series-list badge states as one number, and on
+             a noisy series the only mark that shows a level at all. On by default,
+             like the switches around it — see AppState.showTrend. -->
         <!-- Concrete about the window and the statistic, because the first question
              anyone asked about this feature was "what is that line?" — and the honest
              answer is short: a rolling median, not a fit and not a moving average. -->

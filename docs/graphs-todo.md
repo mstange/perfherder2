@@ -164,9 +164,17 @@ Living checklist. Update in the same commit as the work it describes.
   parked where it was.
 
 - The trend band: a rolling p25 / median / p75 over the drift figure's own window,
-  `trend.ts` (+ tests), `trend=1`, off by default. The badge says the ends of the
+  `trend.ts` (+ tests), `trend=0`, **on by default**. The badge says the ends of the
   range differ; this is the shape of the path between them, and its two end medians
   *are* the badge's two numbers by construction.
+
+  **It shipped off by default and has since been turned on.** The original argument
+  was that the badge already reports the drift and the band only adds its shape, so a
+  reader who wants the shape can reach for it and nine ribbons of unasked-for ink are
+  avoided. Using it is what changed the call: the raw plot of a noisy series shows no
+  level at all, and the band is the only mark that says where the middle of the
+  scatter is and how wide it is. `points: None` remains the lever when nine bands
+  crowd the plot, and `trend=0` turns the band off.
 
   **It is quartiles rather than a moving average because the data said so.** Mode
   analysis over three of the drifting idb-open signatures found that 5350975's +45%

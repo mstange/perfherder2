@@ -116,9 +116,9 @@ export type ViewState = {
   // Whether the graph draws the steps this app detects for itself. Two-valued,
   // and on by default for the reasons recorded on `AppState.changeDetection`.
   changeDetection: boolean;
-  // Whether the graph draws the rolling quartile band (trend.ts). Two-valued like
-  // the two above, and **off** by default — the one drawing switch that is, for the
-  // reasons recorded on `AppState.showTrend`.
+  // Whether the graph draws the rolling quartile band (trend.ts). Two-valued and
+  // on by default, like `changeDetection` above, for the reasons recorded on
+  // `AppState.showTrend`.
   showTrend: boolean;
   // The machine whose points are drawn at full strength, with every other
   // machine's faded — see `AppState.focusedMachine`. Null when the graph is
@@ -142,7 +142,7 @@ export const EMPTY_VIEW_STATE: ViewState = {
   compared: null,
   points: 'replicates',
   changeDetection: true,
-  showTrend: false,
+  showTrend: true,
   machine: null,
   pickerOpen: false,
   picker: EMPTY_PICKER_VIEW,
@@ -296,9 +296,12 @@ export function parseViewState(search: string): ViewState {
     compared: parseSelected(p.get('cmp')),
     points: parsePointMode(p),
     changeDetection: p.get('cd') !== '0',
-    // `=== '1'` rather than `!== '0'`, because this one's default is off: the
-    // param's presence turns it on, the way `picker` below works.
-    showTrend: p.get('trend') === '1',
+    // The same `!== '0'` rule as `cd` above, both because the default is on and
+    // because a hand-written link then can't turn a drawing switch off by
+    // accident. **`trend=1` is still read as on** — it is what every link
+    // written while the band was opt-in says — and it normalizes away on the
+    // next interaction, since serializing only writes the param when off.
+    showTrend: p.get('trend') !== '0',
     // Trimmed, and an empty one is no focus at all — `mach=` in a hand-edited
     // link means the same as leaving it out, rather than focusing a machine
     // whose name is the empty string and dimming the whole graph.
@@ -343,8 +346,7 @@ export function serializeViewState(state: ViewState): string {
   // Only written when it isn't the default, so the common case keeps links short.
   if (state.points !== 'replicates') p.set('pts', state.points);
   if (!state.changeDetection) p.set('cd', '0');
-  // And this one only when on, its default being the other way round.
-  if (state.showTrend) p.set('trend', '1');
+  if (!state.showTrend) p.set('trend', '0');
   if (state.machine) p.set('mach', state.machine);
   // The panel's state only means anything while it's open — carrying it in the
   // URL of a closed panel would be noise in every shared graph link.

@@ -258,16 +258,26 @@ export class AppState {
   changeDetection = $state(true);
   // Draw the rolling quartile band (trend.ts).
   //
-  // **Off by default**, which is the opposite call from `changeDetection` above
-  // and for a reason that does not contradict it. The bars are on because the gap
-  // they close — perfherder said nothing and something moved — is invisible until
-  // something draws it. That gap is now closed for drift too, by the figure on the
-  // series-list card, which needs no switch and no ink on the plot. What the band
-  // adds is the *shape* of a drift the reader has already been told about, and a
-  // reader who wants a shape can be asked to reach for it. It also costs a ribbon
-  // and a line per series on a plot that already draws every replicate — nine of
-  // those unasked-for would be a different graph, not a footnote on this one.
-  showTrend = $state(false);
+  // **On by default**, the same call as `changeDetection` above and now for much
+  // the same reason. It was off at first, on the argument that the drift badge
+  // already tells the reader *that* a series moved and the band only adds the
+  // shape, which a reader can be asked to reach for. What that argument missed is
+  // that the raw plot of a noisy series does not show a level at all: a wall of
+  // replicate scatter is the default view of most series here, and the band is the
+  // only mark on the plot that says where the middle of it is and how wide it is.
+  // That is not a footnote on the reading, it is the reading, and a switch nobody
+  // finds does not deliver it.
+  //
+  // The cost the old default was protecting against is real and has not gone away:
+  // a ribbon and a line per series, over a plot that already draws every
+  // replicate, is a lot of ink at nine series. Two things answer it. The ribbon is
+  // drawn under the dots at an alpha chosen to survive nine of itself, so it reads
+  // as background rather than as data, and only the three thin quartile curves sit
+  // over the points (see chartDraw.ts, `drawChart`). And `pointMode` is the lever
+  // for the crowded case — `none` leaves the bands alone on the plot, which is
+  // the only view that compares two series' shapes at all. Turning the band off
+  // stays one click, and the URL records it (`trend=0`).
+  showTrend = $state(true);
   // The machine the graph is emphasising: its dots keep full strength and every
   // other machine's fade to a background wash. **Not a filter** — the other dots
   // are still there, still hit-testable, still counted by everything that counts

@@ -1632,18 +1632,10 @@ describe('AppState detected changes', () => {
 // What the band *is* lives in trend.test.ts; this is the wiring, and the one
 // behaviour that only exists here — that it costs nothing while switched off.
 describe('AppState trend band', () => {
-  it('is off, and computes nothing, until it is asked for', () =>
+  it('runs over a loaded series without being asked', () =>
     withApp('?series=autoland,2,1', async (app) => {
       await settle();
-      expect(app.showTrend).toBe(false);
-      expect(app.series[0].trend).toEqual([]);
-    }));
-
-  it('runs over a loaded series when switched on', () =>
-    withApp('?series=autoland,2,1', async (app) => {
-      await settle();
-      app.setShowTrend(true);
-      await settle();
+      expect(app.showTrend).toBe(true);
       const trend = app.series[0].trend;
       // One point per push, and the three curves in order at each of them.
       expect(trend).toHaveLength(app.series[0].data.pushes.length);
@@ -1653,15 +1645,23 @@ describe('AppState trend band', () => {
       }
     }));
 
-  it('reads it straight from the URL', () =>
-    withApp('?series=autoland,2,1&trend=1', async (app) => {
+  it('is off, and computes nothing, when the URL turns it off', () =>
+    withApp('?series=autoland,2,1&trend=0', async (app) => {
       await settle();
-      expect(app.showTrend).toBe(true);
-      expect(app.series[0].trend.length).toBeGreaterThan(0);
+      expect(app.showTrend).toBe(false);
+      expect(app.series[0].trend).toEqual([]);
+    }));
+
+  it('runs over a loaded series when switched back on', () =>
+    withApp('?series=autoland,2,1&trend=0', async (app) => {
+      await settle();
+      app.setShowTrend(true);
+      await settle();
+      expect(app.series[0].trend).toHaveLength(app.series[0].data.pushes.length);
     }));
 
   it('hides it while the switch is off, and brings it back without recomputing', () =>
-    withApp('?series=autoland,2,1&trend=1', async (app) => {
+    withApp('?series=autoland,2,1', async (app) => {
       await settle();
       const first = app.series[0].trend;
       expect(first.length).toBeGreaterThan(0);
@@ -1673,13 +1673,13 @@ describe('AppState trend band', () => {
     }));
 
   it('says nothing about a series too short to have a band', () =>
-    withApp('?series=autoland,1,1&trend=1', async (app) => {
+    withApp('?series=autoland,1,1', async (app) => {
       await settle();
       expect(app.series[0].trend).toEqual([]);
     }));
 
   it('drops the cache with the series data it was computed from', () =>
-    withApp('?series=autoland,2,1&trend=1', async (app) => {
+    withApp('?series=autoland,2,1', async (app) => {
       await settle();
       expect(app.series[0].trend.length).toBeGreaterThan(0);
       app.removeSeries(app.series[0].ref);
@@ -1785,7 +1785,7 @@ describe('AppState machine focus', () => {
     }));
 
   it('does not claim nothing is drawn when a focus is drawing its machine', () =>
-    withApp('?series=autoland,1,1&pts=none', async (app) => {
+    withApp('?series=autoland,1,1&pts=none&trend=0', async (app) => {
       await settle();
       // `points: none` with no band is normally the "nothing here" note. A focus
       // draws its own machine's dots, so the note would sit over them.
@@ -2863,11 +2863,12 @@ describe('AppState point modes', () => {
     withApp('?series=autoland,1,1', async (app) => {
       await settle();
       expect(app.noValuesDrawn).toBe(false);
+      // The band draws by default, so it is something to look at and there is
+      // nothing to explain yet.
       app.setPointMode('none');
-      expect(app.noValuesDrawn).toBe(true);
-      // The band is something to look at, so there is nothing to explain.
-      app.setShowTrend(true);
       expect(app.noValuesDrawn).toBe(false);
+      app.setShowTrend(false);
+      expect(app.noValuesDrawn).toBe(true);
     }));
 });
 

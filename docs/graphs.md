@@ -1571,8 +1571,8 @@ never back.
 The drift badge says the ends of the range differ and deliberately says nothing
 about the path between them. The band is that path: **a p25–p75 ribbon with a
 median line through it**, over the same `WINDOW_PUSHES` window, one vertex per
-push. `trend=1`, or the "Trend band" checkbox.
-[trend.ts](../src/lib/graphs/trend.ts) computes it.
+push. **On by default**; the "Trend band" checkbox turns it off, and `trend=0`
+records that in the URL. [trend.ts](../src/lib/graphs/trend.ts) computes it.
 
 **Its first and last median are the drift badge's two numbers, by
 construction** — same window rule, so the badge is literally the endpoints of
@@ -1627,7 +1627,7 @@ level of anything.** The median answers "where does the middle-ranked push of th
 the window.
 
 AWSY's `Explicit Memory` on macOS (signature 5141330) is the case that shows it, and
-it is worth loading with `trend=1` before touching this code. Its raw plot is a wall
+it is worth loading before touching this code. Its raw plot is a wall
 of vertical zigzag and it collects 16 change bars over a year. Its push means over
 Aug–Nov 2025 fall in **at least four clusters — roughly 540, 558, 585 and 612 MB**,
 with sparse gaps between them (a 2 MB-binned histogram of 400 pushes has 0–2 pushes
@@ -1661,11 +1661,15 @@ curves collapse to a tight ribbon around a line that does mean what it looks lik
 - **Clamped at the ends, not shortened.** The first and last windows slide inward
   rather than shrinking, so no point is noisier than any other — and the end windows
   are then exactly the drift figure's two.
-- **Off by default**, which is the opposite call from the change bars and does not
-  contradict them. The bars are on because the gap they close is invisible until
-  something draws it; that gap is now closed for drift too, by the badge, which costs
-  no switch and no ink. The band adds the *shape* of something the reader has already
-  been told about, and nine ribbons unasked-for would be a different graph.
+- **On by default**, the same call as the change bars. It shipped off, on the
+  argument that the drift badge already tells the reader *that* a series moved and
+  the band only adds the shape, which costs nine ribbons of ink and can be reached
+  for. What that missed is that the raw plot of a noisy series does not show a level
+  at all, and the band is the only mark on the plot that says where the middle of the
+  scatter is and how wide it is — which is the reading, not a footnote on it, and a
+  switch nobody finds does not deliver it. The ink cost is unchanged and is what the
+  next two decisions are about; `points: None` is the lever for the crowded case, and
+  `trend=0` is one click away.
 - **Ribbon under the dots, the three curves over them.** The ribbon is a fill covering
   a quarter of the plot on a noisy series, and over the dots it would grey out the data
   it is summarising; the curves are what a reader follows, and under 20,000 translucent
@@ -2065,7 +2069,7 @@ The whole view is in the query string:
 | `cmp` | Pinned comparison point, same shape as `sel`; set by shift-clicking a dot. Only written alongside a `sel`, since a comparison needs two ends. See [comparison.md](comparison.md) |
 | `pts` | Which dots are drawn: `runs` (one per run at its mean) or `none` (no dots and no connecting line). Omitted for `replicates`, the default. **`reps=0` is still read** as `runs` — it is what links written before the third mode say — but never written, so such a link normalizes on the next interaction |
 | `cd` | `0` to stop drawing the steps this app detects for itself. Omitted when on, which is the default — see "Detected changes" |
-| `trend` | `1` to draw the rolling quartile band. **The one drawing switch written when *on*** rather than off, its default being the other way round — see "The trend band" |
+| `trend` | `0` to stop drawing the rolling quartile band. Omitted when on, which is the default — see "The trend band". **`trend=1` is still read** as on, which is what links written while the band was opt-in say, but never written, so such a link normalizes on the next interaction |
 | `mach` | The machine drawn at full strength while the others are washed out, e.g. `mach=nuc13-085`. The *pinned* one only — a hover preview would rewrite the URL for every row the pointer crossed. An empty `mach=` means no focus rather than a machine called nothing. See "Machines" |
 | `picker` | `1` when the Add-series panel is open |
 | `pf` | Picker filter free text |

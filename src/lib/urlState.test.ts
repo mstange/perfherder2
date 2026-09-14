@@ -318,16 +318,20 @@ describe('serializeViewState', () => {
     expect(parseViewState('?cd=false').changeDetection).toBe(true);
   });
 
-  // The one drawing switch whose default is off, so the param is written when it
-  // is *on* — see the comment on ViewState.showBand.
-  it('writes the trend flag only when the band is on', () => {
-    expect(serializeViewState(state({ showTrend: false }))).toBe('');
-    expect(serializeViewState(state({ showTrend: true }))).toBe('trend=1');
-    expect(parseViewState('').showTrend).toBe(false);
+  // On by default, so the param is written only when the band is off — the same
+  // rule as `cd` above. See the comment on ViewState.showTrend.
+  it('writes the trend flag only when the band is off', () => {
+    expect(serializeViewState(state({ showTrend: true }))).toBe('');
+    expect(serializeViewState(state({ showTrend: false }))).toBe('trend=0');
+    expect(parseViewState('').showTrend).toBe(true);
+    expect(parseViewState('?trend=0').showTrend).toBe(false);
+    // Anything that isn't an explicit "0" means on, so a hand-written link can't
+    // accidentally turn it off.
+    expect(parseViewState('?trend=false').showTrend).toBe(true);
+    // And `trend=1`, which is what links written while the band was opt-in say,
+    // still reads as on — it just stops being written.
     expect(parseViewState('?trend=1').showTrend).toBe(true);
-    // And only an explicit "1" turns it on, so a hand-written `trend=true` fails
-    // visibly rather than half-working.
-    expect(parseViewState('?trend=true').showTrend).toBe(false);
+    expect(serializeViewState(parseViewState('?trend=1'))).toBe('');
   });
 
   it('round-trips a machine focus, and treats a blank one as none', () => {
