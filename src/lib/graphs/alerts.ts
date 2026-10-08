@@ -3,12 +3,12 @@
 //
 // The shape of the problem: an alert summary is about a *push*, and carries one
 // alert per signature that changed on it. We plot one series, so for each
-// summary there is at most one alert we care about — and only if that push is
-// one we actually drew, which is how the range filter happens (see
-// `alertsForSeries`).
+// summary there is at most one alert we care about — and only if that push
+// falls within the pushes we actually drew, which is how the range filter
+// happens (see `alertsForSeries`).
 
 import type { Alert, AlertSummary } from './alertsApi';
-import type { SeriesData } from './graphData';
+import type { PushGroup, SeriesData } from './graphData';
 
 // The statuses arrive as bare numbers, so the words are ours to supply — and
 // they had better be perfherder's words, since anyone reading them here will
@@ -103,7 +103,13 @@ export type SeriesAlert = {
   // analysis computed over its own detection window.
   summaryId: number;
   alertId: number;
+  // The plotted push the marker sits on. The summary's own push, unless this
+  // series has no data there; see `onLaterPush`.
   pushId: number;
+  // True when the series has no data on the summary's push, and the marker sits
+  // on the next push it does have data for. `revision` and `prevRevision` are
+  // still the summary's, so they name the push perfherder blames, not `pushId`.
+  onLaterPush: boolean;
   // The push perfherder analysed *before* this one, which is not always the
   // previous push in this graph: a series with no data on an intervening push
   // isn't analysed there. Carried as an id rather than matched on
@@ -114,6 +120,7 @@ export type SeriesAlert = {
   // dots. Taken from the series data rather than from `push_timestamp`, which
   // is the same instant but arrives as seconds and would round differently.
   x: number;
+  // The summary's revisions, which are the plotted push's unless `onLaterPush`.
   revision: string;
   prevRevision: string;
   isRegression: boolean;
@@ -169,14 +176,39 @@ export function reassignmentTargetIds(
   return [...ids];
 }
 
-// Every alert about `signatureId` that landed on a push this series has data
-// for, in time order.
+// The plotted push a summary's marker goes on, or null if the summary's push
+// is outside the plotted pushes.
+//
+// Normally the summary's own push. When this series has no data there, the
+// next push it does have data for. That happens when a sheriff moves a summary
+// onto the push they blame, after finding it by retriggers or bisection rather
+// than from this series: alert 53176 was moved to autoland push 2047646, one of
+// 23 pushes this series skipped between two that it ran on. Treeherder's graph
+// drops such a summary (`createGraphData` matches `push_id` exactly), and so
+// did this function until then. The next plotted push is the first one whose
+// data includes the change, so it is the closest honest position.
+//
+// Located by timestamp, since `pushes` is sorted by x. A summary at or before
+// the first plotted push is outside the range and is dropped, and so is one
+// after the last plotted push: there is no data yet to show the change on.
+function plottedPushFor(summary: AlertSummary, data: SeriesData): PushGroup | null {
+  const exact = data.pushById.get(summary.push_id);
+  if (exact) return exact;
+  const pushes = data.pushes;
+  const t = summary.push_timestamp * 1000;
+  if (pushes.length === 0 || t <= pushes[0].x) return null;
+  return pushes.find((push) => push.x >= t) ?? null;
+}
+
+// Every alert about `signatureId` whose push falls within the pushes this
+// series has data for, in time order.
 //
 // The push lookup is the range filter: the endpoint answers with a superset
 // (everything since the start of the range, server-side and relative to now),
-// and a summary whose push isn't in `data` is one we can't place on the graph
-// anyway. It also drops alerts belonging to *another* signature that happened
-// to share a summary with ours.
+// and a summary outside the plotted pushes is one we can't place on the graph
+// anyway. See `plottedPushFor` for a summary inside the range on a push this
+// series has no data for. The filter also drops alerts belonging to *another*
+// signature that happened to share a summary with ours.
 //
 // **A reassigned alert is drawn on the push it was reassigned to.** The analysis
 // picks the push where the numbers moved; a sheriff who bisects it and finds the
@@ -191,7 +223,7 @@ export function reassignmentTargetIds(
 // `reassignmentTargets` is keyed by summary id, from `reassignmentTargetIds` —
 // pass it and the move happens; leave it out and every marker sits where the
 // analysis put it. A target that isn't in the map (the lookup failed) or whose
-// push this series has no data for falls back to the detected push, which is
+// push is outside the plotted pushes falls back to the detected push, which is
 // still a real alert about a real change and better shown there than not at all.
 export function alertsForSeries(
   summaries: readonly AlertSummary[],
@@ -211,14 +243,16 @@ export function alertsForSeries(
     // Everything about the *push* comes from whichever summary won, including
     // the triage state and the bug: once an alert is reassigned, the summary
     // being investigated is the target's, and the original carries no bug.
-    const home = target && data.pushById.has(target.push_id) ? target : summary;
-    const push = data.pushById.get(home.push_id);
+    const targetPush = target ? plottedPushFor(target, data) : null;
+    const home = target && targetPush ? target : summary;
+    const push = targetPush ?? plottedPushFor(summary, data);
     if (!push) continue;
 
     out.push({
       summaryId: home.id,
       alertId: alert.id,
-      pushId: home.push_id,
+      pushId: push.pushId,
+      onLaterPush: push.pushId !== home.push_id,
       prevPushId: home.prev_push_id,
       x: push.x,
       revision: home.revision,

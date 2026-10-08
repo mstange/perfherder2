@@ -236,8 +236,9 @@ latency is set by how many alerts a sheriff happened to reassign onto one push:
 ### `timerange` on the alerts endpoint counts back from *now*
 
 Our range is absolute and may end in the past, so the request asks for a
-superset and `alertsForSeries` drops summaries whose `push_id` isn't one we
-plotted. See graphs.md, "Alerts".
+superset and `alertsForSeries` drops summaries outside the plotted pushes,
+by `push_timestamp` when the series has no data on the summary's push. See
+graphs.md, "Alerts".
 
 ## Response shapes we inferred rather than read
 

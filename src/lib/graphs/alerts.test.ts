@@ -96,6 +96,7 @@ describe('alertsForSeries', () => {
     expect(placed.x).toBe(data.pushById.get(8)!.x);
     expect(placed.summaryId).toBe(900);
     expect(placed.isRegression).toBe(true);
+    expect(placed.onLaterPush).toBe(false);
   });
 
   it('carries the push perfherder measured against', () => {
@@ -123,10 +124,35 @@ describe('alertsForSeries', () => {
     expect(data.pushById.has(99)).toBe(false);
   });
 
-  it('drops a summary whose push this series has no data for', () => {
+  it('drops a summary from before the first plotted push', () => {
     // How the range filter happens: the endpoint answers relative to *now*, so
     // it sends summaries from before the window as well.
-    expect(alertsForSeries([summary({ id: 900, push_id: 99 })], SIGNATURE, data)).toEqual([]);
+    const before = summary({ id: 900, push_id: 99, push_timestamp: Date.UTC(2026, 6, 20) / 1000 });
+    expect(alertsForSeries([before], SIGNATURE, data)).toEqual([]);
+  });
+
+  it('drops a summary from after the last plotted push', () => {
+    // No data yet that shows the change.
+    const after = summary({ id: 900, push_id: 99, push_timestamp: Date.UTC(2026, 6, 23) / 1000 });
+    expect(alertsForSeries([after], SIGNATURE, data)).toEqual([]);
+  });
+
+  it('places a summary on an unplotted push on the next plotted push', () => {
+    // Shaped after alert 53176: a sheriff moved the summary onto a push between
+    // two that the series ran on. The revisions stay the summary's, so the
+    // pane can name the push perfherder blames.
+    const between = summary({
+      id: 900,
+      push_id: 50,
+      prev_push_id: 7,
+      push_timestamp: Date.UTC(2026, 6, 21, 18) / 1000,
+    });
+    const [placed] = alertsForSeries([between], SIGNATURE, data);
+    expect(placed.pushId).toBe(8);
+    expect(placed.x).toBe(data.pushById.get(8)!.x);
+    expect(placed.onLaterPush).toBe(true);
+    expect(placed.revision).toBe('b'.repeat(40));
+    expect(placed.prevPushId).toBe(7);
   });
 
   it('ignores the other signatures sharing a summary', () => {
@@ -264,6 +290,19 @@ describe('alertsForSeries with a reassignment', () => {
     const [placed] = alertsForSeries([detected], SIGNATURE, data, elsewhere);
     expect(placed.pushId).toBe(9);
     expect(placed.summaryId).toBe(900);
+  });
+
+  it('draws the alert after its target push when the series has no data there', () => {
+    const between = summary({
+      id: 901,
+      push_id: 50,
+      alerts: [],
+      push_timestamp: Date.UTC(2026, 6, 22) / 1000,
+    });
+    const [placed] = alertsForSeries([detected], SIGNATURE, data, new Map([[901, between]]));
+    expect(placed.pushId).toBe(8);
+    expect(placed.summaryId).toBe(901);
+    expect(placed.onLaterPush).toBe(true);
   });
 
   it('draws an alert whose detected push is outside the graph on its target', () => {

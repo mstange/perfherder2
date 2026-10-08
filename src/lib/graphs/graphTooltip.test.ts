@@ -10,6 +10,7 @@ function alert(over: Partial<SeriesAlert> = {}): SeriesAlert {
     summaryId: 51605,
     alertId: 900,
     pushId: 7,
+    onLaterPush: false,
     prevPushId: 6,
     x: 1_700_000_000_000,
     revision: 'abc123def456',
@@ -96,6 +97,13 @@ describe('alertTooltip', () => {
   it('leaves the bug out when there is none', () => {
     expect(alertTooltip(alert(), CTX).lines?.[2]).toBe(
       'Alert #51605 · untriaged · summary untriaged',
+    );
+  });
+
+  it('names the push perfherder blames when the marker is not on it', () => {
+    expect(alertTooltip(alert(), CTX).lines).toHaveLength(3);
+    expect(alertTooltip(alert({ onLaterPush: true }), CTX).lines?.[3]).toBe(
+      'Perfherder places it on abc123def456, which this series has no data for',
     );
   });
 

@@ -849,6 +849,9 @@ export type ChangeEntry = {
     bugNumber: number | null;
     reassignedFrom: number | null;
     reassignedTo: number | null;
+    // The summary's revision when this series has no data on it; null when the
+    // alert sits on its own push. See `alertsForSeries`.
+    unplottedRevision: string | null;
   } | null;
   // How many pushes apart the two analyses put the change, when both did. Zero
   // for an exact agreement.
@@ -1036,6 +1039,7 @@ function describeEntry(
           bugNumber: row.alert.bugNumber,
           reassignedFrom: row.alert.reassignment?.fromSummaryId ?? null,
           reassignedTo: row.alert.reassignment?.toSummaryId ?? null,
+          unplottedRevision: row.alert.onLaterPush ? row.alert.revision : null,
         }
       : null,
     pushOffset,

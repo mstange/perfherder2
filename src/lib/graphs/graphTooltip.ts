@@ -18,6 +18,7 @@
 //   it is or a reader takes two of them for a contradiction.
 
 import { formatPValue, formatSignedPercent, formatSignedValue, formatValue } from '../shared/chart';
+import { shortRevision } from '../shared/links';
 import type { TooltipContent } from '../shared/tooltip';
 import { alertDelta, alertStatusLabel, signedAmountFraction, summaryStatusLabel } from './alerts';
 import type { SeriesAlert } from './alerts';
@@ -87,6 +88,10 @@ export function alertTooltip(alert: SeriesAlert, ctx: MarkContext): TooltipConte
       // of pushes, not the two builds either side. See the Alert card.
       'Window averages: 12–24 pushes before against 12 after',
       status.join(' · '),
+      // Otherwise the marker reads as blaming the push it is drawn on.
+      ...(alert.onLaterPush
+        ? [`Perfherder places it on ${shortRevision(alert.revision)}, which this series has no data for`]
+        : []),
     ],
     source: source(ctx),
     hint: 'Click to compare this push with the one before it.',

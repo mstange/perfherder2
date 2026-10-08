@@ -900,9 +900,19 @@ included, since a reassigned alert is as much about the push as an original one.
 **The range filter is the push lookup, not a timestamp comparison.**
 `timerange` is server-side and counts back from *now*, while our range is
 absolute and may end in the past, so the request deliberately asks for a
-superset — everything since the start of the window — and a summary whose
-`push_id` isn't one of the pushes we plotted is dropped. That is a stricter test
-than comparing timestamps: it also drops a push the series has no data on.
+superset — everything since the start of the window — and a summary outside
+the pushes we plotted is dropped: at or before the first one, or after the last.
+
+**A summary on a push the series has no data for is drawn on the next push it
+does.** A sheriff who finds the culprit by retriggers or bisection moves the
+summary onto that push, and the series often never ran there: alert 53176 sits
+on one of 23 pushes that homeview-startup skipped. Treeherder's graph drops such
+a summary, because `createGraphData` attaches summaries to data points by exact
+`push_id`; this app did too until it lost that alert. The next plotted push is
+the first whose data includes the change. `SeriesAlert.onLaterPush` records the
+move, and the tooltip, the Alert card and `perfherder-cli changes` all name the
+summary's own revision, so the marker never reads as blaming the push it is
+drawn on.
 
 **A reassigned alert is drawn on the push it was reassigned to.** The analysis
 marks the push where the numbers moved; a sheriff who bisects it and finds the

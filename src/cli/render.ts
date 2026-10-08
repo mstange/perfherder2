@@ -1228,6 +1228,11 @@ function renderChangeDetail(entry: ChangeEntry): string[] {
         `${formatValue(a.prevValue)} → ${formatValue(a.newValue)} (${a.amountPct.toFixed(2)}%) · ` +
         `${a.status}/${a.summaryStatus}${a.bugNumber ? ` · ${bugUrl(a.bugNumber)}` : ''}${reassigned}`,
     );
+    if (a.unplottedRevision) {
+      out.push(
+        `  perfherder places it on ${shortRevision(a.unplottedRevision)}, which this series has no data for`,
+      );
+    }
   }
   if (entry.prevRevision) {
     out.push(`  between ${shortRevision(entry.prevRevision)} and ${shortRevision(entry.revision)}`);

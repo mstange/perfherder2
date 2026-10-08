@@ -330,6 +330,25 @@
               {/if}
               <span class="muted">· summary {summaryStatusLabel(alert.summaryStatus)}</span>
             </dd>
+            {#if alert.onLaterPush}
+              <!-- The marker is on the next push this series has data for, so
+                   the selected build is not the one perfherder blames. Named
+                   here, or the Build section below reads as the culprit. -->
+              <dt title="The push perfherder places this alert on">Push</dt>
+              <dd>
+                {#if repoLink}
+                  <a
+                    href={revisionUrl(repoLink, alert.revision)}
+                    target="_blank"
+                    rel="noopener"
+                    class="mono">{shortRevision(alert.revision)}</a
+                  >
+                {:else}
+                  <span class="mono">{shortRevision(alert.revision)}</span>
+                {/if}
+                <span class="muted">· no data in this series</span>
+              </dd>
+            {/if}
             {#if alert.tValue !== null}
               <!-- Perfherder's own t, not the Mann-Whitney U this pane computes
                    for a comparison. Named as theirs so the two aren't read as

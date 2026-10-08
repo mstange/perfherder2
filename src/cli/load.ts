@@ -160,7 +160,7 @@ const DAY_SECONDS = 86400;
 // Perfherder's own alerts on this series, placed on the pushes we loaded.
 //
 // The `timerange` filter is server-side and counts back from now, so this asks
-// for a superset and `alertsForSeries` drops what isn't on a plotted push —
+// for a superset and `alertsForSeries` drops what is outside the plotted pushes —
 // exactly what the app does, and for the same reason.
 export async function loadAlerts(loaded: LoadedSeries, span: Span): Promise<SeriesAlert[]> {
   if (!loaded.found) return [];
