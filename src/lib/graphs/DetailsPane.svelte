@@ -34,12 +34,10 @@
     taskUrl,
   } from '../shared/links';
   import ChangeHeadline from './ChangeHeadline.svelte';
-  import CommitList from './CommitList.svelte';
   import { landingSeriesCount, landingWindowLabel } from './cluster';
   import { jobDuration, shortJobType } from './job';
   import MachineFocusButton from './MachineFocusButton.svelte';
   import NoiseSection from './NoiseSection.svelte';
-  import { commitsOfPush } from './pushlog';
   import { sideTabLabel } from './compare';
   import { isCoarsePointer, mediaMatcher } from '../shared/pointer';
 
@@ -332,222 +330,6 @@
         </div>
       </section>
 
-      <!-- Perfherder's own verdict on this build, when it has one. Above the
-           single-point sections because it is a statement about two stretches
-           of the graph, and it is the loudest fact about the point — a sheriff
-           looking at this graph is usually here because of it. Read-only: creating and triaging alerts needs an authenticated
-           session, which this app deliberately doesn't have. -->
-      {#if alert}
-        <section class="alert-card card-box">
-          <div class="cmp-head">
-            <h3>Alert</h3>
-            <a href={alertSummaryUrl(alert.summaryId)} target="_blank" rel="noopener">
-              #{alert.summaryId} on perfherder
-            </a>
-          </div>
-          <!-- `amountPct` is a magnitude and `is_regression` carries the
-               direction, so this was the card printing an unsigned number
-               beside two signed ones. `alerts.ts` puts it in the same terms as
-               the others; the sign is the one the values below it show. -->
-          <ChangeHeadline
-            percent={signedAmountFraction(alert)}
-            delta={alertDelta(alert)}
-            unit={sel.entry.meta?.measurementUnit ?? ''}
-            verdict={alert.isRegression ? 'regression' : 'improvement'}
-          />
-          <p class="cmp-sub muted">
-            {formatValue(alert.prevValue)} → {formatValue(alert.newValue)}
-            {#if sel.entry.meta?.measurementUnit}{' '}{sel.entry.meta.measurementUnit}{/if}
-            <!-- Not "against the previous push", which this said until the
-                 numbers were checked against treeherder. `prev_value` and
-                 `new_value` are `historical_stats["avg"]` and
-                 `forward_stats["avg"]` (treeherder/perf/alerts.py) — means over
-                 a window of 12-24 data points back and 12 forward, not over one
-                 push each. On alert #51605 that is +121% where the two pushes
-                 alone moved +194%, so a reader who took this for a two-push
-                 figure would think the comparison panel contradicted it.
-                 It doesn't; they measure different things, and both say which. -->
-            perfherder's window averages, 12–24 pushes before against 12 after
-          </p>
-          <dl>
-            <!-- One row for the two triage states. They are different facts —
-                 this series' alert against the whole push's summary — so both
-                 are still here and the second is still named; what they are not
-                 is two findings, and two labelled rows in a card this size read
-                 as two. -->
-            <dt
-              title="Perfherder's status for this series' alert, then the triage state of the whole push's alert summary"
-              >Triage</dt
-            >
-            <!-- A reassigned alert is drawn on the push it was reassigned *to*,
-                 so the marker is deliberately not on the push perfherder's
-                 analysis flagged — which this has to name, or the card and the
-                 summary link above it quietly disagree with the alert view.
-                 "from" once the move happened, "to" when it couldn't (the target
-                 push isn't in this graph, or its lookup failed) and the marker is
-                 still on the detected push. Perfherder's alert table words the
-                 two cases the same way. `{' '}` per the whitespace gotcha in
-                 design.md: the space before a block is otherwise stripped. -->
-            <dd>
-              {alertStatusLabel(alert.alertStatus)}
-              {#if alert.reassignment}
-                {@const moved = alert.reassignment.toSummaryId === alert.summaryId}
-                {@const other = moved
-                  ? alert.reassignment.fromSummaryId
-                  : alert.reassignment.toSummaryId}
-                {' '}{moved ? 'from' : 'to'}{' '}<a
-                  href={alertSummaryUrl(other)}
-                  target="_blank"
-                  rel="noopener">#{other}</a
-                >
-              {/if}
-              <span class="muted">· summary {summaryStatusLabel(alert.summaryStatus)}</span>
-            </dd>
-            {#if alert.onLaterPush}
-              <!-- The marker is on the next push this series has data for, so
-                   the selected build is not the one perfherder blames. Named
-                   here, or the Build section below reads as the culprit. -->
-              <dt title="The push perfherder places this alert on">Push</dt>
-              <dd>
-                {#if repoLink}
-                  <a
-                    href={revisionUrl(repoLink, alert.revision)}
-                    target="_blank"
-                    rel="noopener"
-                    class="mono">{shortRevision(alert.revision)}</a
-                  >
-                {:else}
-                  <span class="mono">{shortRevision(alert.revision)}</span>
-                {/if}
-                <span class="muted">· no data in this series</span>
-              </dd>
-            {/if}
-            {#if alert.tValue !== null}
-              <!-- Perfherder's own t, not the Mann-Whitney U this pane computes
-                   for a comparison. Named as theirs so the two aren't read as
-                   one number that disagrees with itself. -->
-              <dt title="Perfherder's t-value for the change it detected">t-value</dt>
-              <dd>{alert.tValue.toFixed(2)}</dd>
-            {/if}
-            {#if alert.bugNumber !== null}
-              <dt>Bug</dt>
-              <dd>
-                <a href={bugUrl(alert.bugNumber)} target="_blank" rel="noopener">
-                  {alert.bugNumber}
-                </a>
-              </dd>
-            {/if}
-          </dl>
-        </section>
-      {/if}
-
-      <!-- This app's own reading of the same build, when it found a step there.
-           Below the Alert card because perfherder's verdict is the one a
-           sheriff came for and is the only one with a bug number attached, and
-           above the single-point sections for the reason the Alert card is:
-           it's a statement about two stretches of the graph rather than about
-           the dot. Most of the time only one of the two cards exists — that is
-           rather the point of having this one. -->
-      {#if change}
-        <section class="change-card card-box">
-          <div class="cmp-head"><h3>Detected change</h3></div>
-          <ChangeHeadline
-            percent={change.relativeChange}
-            delta={change.afterValue - change.beforeValue}
-            unit={sel.entry.meta?.measurementUnit ?? ''}
-            verdict={change.isRegression ? 'regression' : 'improvement'}
-          />
-          <p class="cmp-sub muted">
-            {formatValue(change.beforeValue)} → {formatValue(change.afterValue)}
-            {#if sel.entry.meta?.measurementUnit}{' '}{sel.entry.meta.measurementUnit}{/if}
-            <!-- Spelled out for the same reason the Alert card spells out its
-                 window: the comparison panel quotes these two builds and
-                 will print a different number, and a reader who took both for
-                 two-push figures would think one of them was wrong. -->
-            means over {change.beforeCount} pushes before against {change.afterCount} after
-          </p>
-          <dl>
-            <dt title="Two-sided Mann-Whitney U over the two windows of push means">
-              Mann-Whitney p
-            </dt>
-            <dd>{formatPValue(change.pValue)}</dd>
-            <dt title="Cliff's delta, interpreted with the Romano thresholds">Effect</dt>
-            <dd>{change.effectSize}</dd>
-          </dl>
-          <!-- The same step, as the other plotted series saw it. Twelve
-               signatures on one graph produce twelve sets of bars and no
-               statement that nine of them are one event; this is that
-               statement, and it is free — the changes are computed, the push
-               times are in memory, and the grouping is arithmetic (cluster.ts).
-
-               It sits inside the Detected-change card because it is a fact
-               about *this* bar rather than a section of its own, and below the
-               statistics because the reader wants to know what moved before
-               they want to know who else saw it. -->
-          {#if landing && landingSeriesCount(landing) > 1}
-            <h4>Same landing</h4>
-            <p class="cmp-sub muted">
-              <!-- Two claims, and the second is the one the grouping buys: each
-                   series brackets the step between the two pushes either side
-                   of its bar, and the intersection of those brackets is
-                   narrower than any one of them — often a single push. See
-                   cluster.ts. -->
-              Seen in {landingSeriesCount(landing)} of {app.visibleSeries.length} plotted
-              series · {landingWindowLabel(landing)}
-              {#if landing.regressions > 0 && landing.improvements > 0}
-                <!-- Both directions at one instant is a trade-off rather than a
-                     coincidence, which is why direction is not part of the
-                     grouping key. Only said when it happens. -->
-                · {landing.regressions} regressions, {landing.improvements} improvements
-              {/if}
-            </p>
-            <p class="cmp-sub muted window">
-              {formatTimestamp(landing.startMs)}
-              {#if landing.endMs !== landing.startMs}
-                {' → '}{formatTimestamp(landing.endMs)}
-              {/if}
-            </p>
-            <ul class="landing">
-              {#each landing.events as event (event.ref + event.atMs)}
-                {@const member = event.payload.series}
-                {@const current = event.payload.change === change}
-                <li>
-                  <!-- A click moves the selection to that series' bar, the same
-                       thing clicking the bar on the graph does. The current
-                       member is still a button: pressing it is a no-op, and
-                       disabling one row in a list of otherwise identical rows
-                       reads as "this one is broken" rather than "you are here",
-                       which is what `aria-current` and the mark are for. -->
-                  <button
-                    type="button"
-                    class="member"
-                    class:current
-                    aria-current={current ? 'true' : undefined}
-                    onclick={() => app.selectChange(member.ref, event.payload.change)}
-                  >
-                    <span
-                      class="swatch {member.symbol.shape}"
-                      style:background={member.color}
-                      aria-hidden="true"
-                    ></span>
-                    <span class="member-label">{event.label}</span>
-                    <span class="member-change {event.isRegression ? 'regression' : 'improvement'}">
-                      {event.relativeChange === null
-                        ? ''
-                        : formatSignedPercent(event.relativeChange)}
-                    </span>
-                  </button>
-                </li>
-              {/each}
-            </ul>
-          {/if}
-          <p class="cmp-sub muted">
-            Found in the data by this app, not by perfherder — there may be no
-            alert for it.
-          </p>
-        </section>
-      {/if}
-
       <section>
         <!-- "Replicate" and "Run mean" both promise a set this value came out of.
              With one measurement there is no such set — the common case for the
@@ -812,38 +594,230 @@
               <span class="mono">{shortRevision(sel.push.revision)}</span>
             {/if}
           </dd>
-          {#if app.selectedPush}
-            <dt>Author</dt>
-            <dd class="wrap">{app.selectedPush.author}</dd>
-          {/if}
+          <!-- Always a row, with a placeholder until the push lands, so the
+               cards below don't move when it does. -->
+          <dt>Author</dt>
+          <dd class="wrap" class:muted={!app.selectedPush}>
+            {app.selectedPush?.author ?? 'loading…'}
+          </dd>
         </dl>
-
-        <!-- No "since previous → pushlog" row here. It built exactly the range
-             `comparePrevious` pins, and pinning answers it in the comparison
-             panel with the commits listed, the delta, the distributions and the
-             same link. -->
-        {#if app.selectedPush}
-          {@const commits = commitsOfPush(app.selectedPush)}
-          <h4>
-            {app.selectedPush.revision_count} commit{app.selectedPush.revision_count === 1
-              ? ''
-              : 's'}
-          </h4>
-          <CommitList commits={commits.commits} {repoLink} />
-          <!-- Against `revision_count`, not against the length of the list:
-               `revisions` is capped at 20 by the serializer, so a check on the
-               rendered length can never fire and a 164-commit merge used to
-               show twenty of them under a heading saying 164, with nothing to
-               say the rest existed. -->
-          {#if commits.hiddenRevisions > 0}
-            <p class="muted">
-              …and {commits.hiddenRevisions} more; treeherder names at most 20 per push.
-            </p>
-          {/if}
-        {:else}
-          <p class="muted">Loading push details…</p>
-        {/if}
       </section>
+
+      <!-- Perfherder's own verdict on this build, when it has one. Below the
+           single-point sections rather than above them: it is a statement about
+           two stretches of the graph, not about the dot, and at the top it
+           pushed the value and the job down on exactly the points a sheriff
+           opens most. Read-only: creating and triaging alerts needs an authenticated
+           session, which this app deliberately doesn't have. -->
+      {#if alert}
+        <section class="alert-card card-box">
+          <div class="cmp-head">
+            <h3>Alert</h3>
+            <a href={alertSummaryUrl(alert.summaryId)} target="_blank" rel="noopener">
+              #{alert.summaryId} on perfherder
+            </a>
+          </div>
+          <!-- `amountPct` is a magnitude and `is_regression` carries the
+               direction, so this was the card printing an unsigned number
+               beside two signed ones. `alerts.ts` puts it in the same terms as
+               the others; the sign is the one the values below it show. -->
+          <ChangeHeadline
+            percent={signedAmountFraction(alert)}
+            delta={alertDelta(alert)}
+            unit={sel.entry.meta?.measurementUnit ?? ''}
+            verdict={alert.isRegression ? 'regression' : 'improvement'}
+          />
+          <p class="cmp-sub muted">
+            {formatValue(alert.prevValue)} → {formatValue(alert.newValue)}
+            {#if sel.entry.meta?.measurementUnit}{' '}{sel.entry.meta.measurementUnit}{/if}
+            <!-- Not "against the previous push", which this said until the
+                 numbers were checked against treeherder. `prev_value` and
+                 `new_value` are `historical_stats["avg"]` and
+                 `forward_stats["avg"]` (treeherder/perf/alerts.py) — means over
+                 a window of 12-24 data points back and 12 forward, not over one
+                 push each. On alert #51605 that is +121% where the two pushes
+                 alone moved +194%, so a reader who took this for a two-push
+                 figure would think the comparison panel contradicted it.
+                 It doesn't; they measure different things, and both say which. -->
+            perfherder's window averages, 12–24 pushes before against 12 after
+          </p>
+          <dl>
+            <!-- One row for the two triage states. They are different facts —
+                 this series' alert against the whole push's summary — so both
+                 are still here and the second is still named; what they are not
+                 is two findings, and two labelled rows in a card this size read
+                 as two. -->
+            <dt
+              title="Perfherder's status for this series' alert, then the triage state of the whole push's alert summary"
+              >Triage</dt
+            >
+            <!-- A reassigned alert is drawn on the push it was reassigned *to*,
+                 so the marker is deliberately not on the push perfherder's
+                 analysis flagged — which this has to name, or the card and the
+                 summary link above it quietly disagree with the alert view.
+                 "from" once the move happened, "to" when it couldn't (the target
+                 push isn't in this graph, or its lookup failed) and the marker is
+                 still on the detected push. Perfherder's alert table words the
+                 two cases the same way. `{' '}` per the whitespace gotcha in
+                 design.md: the space before a block is otherwise stripped. -->
+            <dd>
+              {alertStatusLabel(alert.alertStatus)}
+              {#if alert.reassignment}
+                {@const moved = alert.reassignment.toSummaryId === alert.summaryId}
+                {@const other = moved
+                  ? alert.reassignment.fromSummaryId
+                  : alert.reassignment.toSummaryId}
+                {' '}{moved ? 'from' : 'to'}{' '}<a
+                  href={alertSummaryUrl(other)}
+                  target="_blank"
+                  rel="noopener">#{other}</a
+                >
+              {/if}
+              <span class="muted">· summary {summaryStatusLabel(alert.summaryStatus)}</span>
+            </dd>
+            {#if alert.onLaterPush}
+              <!-- The marker is on the next push this series has data for, so
+                   the selected build is not the one perfherder blames. Named
+                   here, or the Build section above reads as the culprit. -->
+              <dt title="The push perfherder places this alert on">Push</dt>
+              <dd>
+                {#if repoLink}
+                  <a
+                    href={revisionUrl(repoLink, alert.revision)}
+                    target="_blank"
+                    rel="noopener"
+                    class="mono">{shortRevision(alert.revision)}</a
+                  >
+                {:else}
+                  <span class="mono">{shortRevision(alert.revision)}</span>
+                {/if}
+                <span class="muted">· no data in this series</span>
+              </dd>
+            {/if}
+            {#if alert.tValue !== null}
+              <!-- Perfherder's own t, not the Mann-Whitney U this pane computes
+                   for a comparison. Named as theirs so the two aren't read as
+                   one number that disagrees with itself. -->
+              <dt title="Perfherder's t-value for the change it detected">t-value</dt>
+              <dd>{alert.tValue.toFixed(2)}</dd>
+            {/if}
+            {#if alert.bugNumber !== null}
+              <dt>Bug</dt>
+              <dd>
+                <a href={bugUrl(alert.bugNumber)} target="_blank" rel="noopener">
+                  {alert.bugNumber}
+                </a>
+              </dd>
+            {/if}
+          </dl>
+        </section>
+      {/if}
+
+      <!-- This app's own reading of the same build, when it found a step there.
+           Below the Alert card because perfherder's verdict is the one a
+           sheriff came for and is the only one with a bug number attached, and
+           at the bottom for the reason the Alert card is: it's a statement
+           about two stretches of the graph rather than about the dot. Most of the time only one of the two cards exists — that is
+           rather the point of having this one. -->
+      {#if change}
+        <section class="change-card card-box">
+          <div class="cmp-head"><h3>Detected change</h3></div>
+          <ChangeHeadline
+            percent={change.relativeChange}
+            delta={change.afterValue - change.beforeValue}
+            unit={sel.entry.meta?.measurementUnit ?? ''}
+            verdict={change.isRegression ? 'regression' : 'improvement'}
+          />
+          <p class="cmp-sub muted">
+            {formatValue(change.beforeValue)} → {formatValue(change.afterValue)}
+            {#if sel.entry.meta?.measurementUnit}{' '}{sel.entry.meta.measurementUnit}{/if}
+            <!-- Spelled out for the same reason the Alert card spells out its
+                 window: the comparison panel quotes these two builds and
+                 will print a different number, and a reader who took both for
+                 two-push figures would think one of them was wrong. -->
+            means over {change.beforeCount} pushes before against {change.afterCount} after
+          </p>
+          <dl>
+            <dt title="Two-sided Mann-Whitney U over the two windows of push means">
+              Mann-Whitney p
+            </dt>
+            <dd>{formatPValue(change.pValue)}</dd>
+            <dt title="Cliff's delta, interpreted with the Romano thresholds">Effect</dt>
+            <dd>{change.effectSize}</dd>
+          </dl>
+          <!-- The same step, as the other plotted series saw it. Twelve
+               signatures on one graph produce twelve sets of bars and no
+               statement that nine of them are one event; this is that
+               statement, and it is free — the changes are computed, the push
+               times are in memory, and the grouping is arithmetic (cluster.ts).
+
+               It sits inside the Detected-change card because it is a fact
+               about *this* bar rather than a section of its own, and below the
+               statistics because the reader wants to know what moved before
+               they want to know who else saw it. -->
+          {#if landing && landingSeriesCount(landing) > 1}
+            <h4>Same landing</h4>
+            <p class="cmp-sub muted">
+              <!-- Two claims, and the second is the one the grouping buys: each
+                   series brackets the step between the two pushes either side
+                   of its bar, and the intersection of those brackets is
+                   narrower than any one of them — often a single push. See
+                   cluster.ts. -->
+              Seen in {landingSeriesCount(landing)} of {app.visibleSeries.length} plotted
+              series · {landingWindowLabel(landing)}
+              {#if landing.regressions > 0 && landing.improvements > 0}
+                <!-- Both directions at one instant is a trade-off rather than a
+                     coincidence, which is why direction is not part of the
+                     grouping key. Only said when it happens. -->
+                · {landing.regressions} regressions, {landing.improvements} improvements
+              {/if}
+            </p>
+            <p class="cmp-sub muted window">
+              {formatTimestamp(landing.startMs)}
+              {#if landing.endMs !== landing.startMs}
+                {' → '}{formatTimestamp(landing.endMs)}
+              {/if}
+            </p>
+            <ul class="landing">
+              {#each landing.events as event (event.ref + event.atMs)}
+                {@const member = event.payload.series}
+                {@const current = event.payload.change === change}
+                <li>
+                  <!-- A click moves the selection to that series' bar, the same
+                       thing clicking the bar on the graph does. The current
+                       member is still a button: pressing it is a no-op, and
+                       disabling one row in a list of otherwise identical rows
+                       reads as "this one is broken" rather than "you are here",
+                       which is what `aria-current` and the mark are for. -->
+                  <button
+                    type="button"
+                    class="member"
+                    class:current
+                    aria-current={current ? 'true' : undefined}
+                    onclick={() => app.selectChange(member.ref, event.payload.change)}
+                  >
+                    <span
+                      class="swatch {member.symbol.shape}"
+                      style:background={member.color}
+                      aria-hidden="true"
+                    ></span>
+                    <span class="member-label">{event.label}</span>
+                    <span class="member-change {event.isRegression ? 'regression' : 'improvement'}">
+                      {event.relativeChange === null
+                        ? ''
+                        : formatSignedPercent(event.relativeChange)}
+                    </span>
+                  </button>
+                </li>
+              {/each}
+            </ul>
+          {/if}
+          <p class="cmp-sub muted">
+            Found in the data by this app, not by perfherder — there may be no
+            alert for it.
+          </p>
+        </section>
+      {/if}
     </div>
   {/if}
 </aside>

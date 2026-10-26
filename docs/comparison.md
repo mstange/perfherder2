@@ -582,8 +582,9 @@ window is 24 pushes and "since previous" is one. It is there for a comparison
 pinned across months, and when it bites the caveat line says so and links out.
 
 The rows themselves are
-[CommitList.svelte](../src/lib/graphs/CommitList.svelte), shared with the Build
-section's list of the selected push's own commits. Those were two
+[CommitList.svelte](../src/lib/graphs/CommitList.svelte). The Build section
+used to list the selected push's own commits with it too (it no longer lists
+any; see graphs.md, "The details pane, top to bottom"). Before that they were two
 implementations of the same row — each with its own message splitting, bug
 links, revision markup and truncation rule — and only one of them had the
 truncation rule right: the Build section guarded on `revisions.length > 20`,

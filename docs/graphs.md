@@ -406,20 +406,22 @@ below describes the end whose tab is selected.
    than dropped only because the `bad` styling makes the rare exception jump out.
 
    **Profiles** sits between the task and the result — see below.
-7. **Build** — push time, revision, author, and this push's commit list. Last
-   because it's the longest section by far and the least specific to the dot:
-   two dots on the same push have identical builds.
+7. **Build** — push time, revision and author. Last of the sections about the
+   dot, because two dots on the same push have identical builds.
 
-   The commit list is [CommitList.svelte](../src/lib/graphs/CommitList.svelte),
-   the same component the comparison panel's commit list uses — they were two
-   implementations of one row, and only one of them counted a truncated merge
-   correctly. It is *this push's* commits; the range between two pushes is the
-   comparison panel's, see [comparison.md](comparison.md), "The inline pushlog".
-
-   There used to be a "Since previous → pushlog" link here too. It built exactly
-   the range `comparePrevious` pins, and pinning now answers that in the
-   comparison panel along with the delta and the statistics, so the link was a
-   trip out to hg for a subset of one keypress.
+   **It has no commit list.** It used to list this push's own commits, which
+   repeated what the comparison panel shows for "compare with the previous
+   push", one click away, and made Build the longest section in the panel.
+   Commits now appear in one place, the comparison panel (see
+   [comparison.md](comparison.md), "The inline pushlog"), and the revision link
+   here is the way to one push's changes on hg.
+8. **The Alert and Detected-change cards**, when the push has one. At the
+   bottom because they are statements about two stretches of the graph rather
+   than about the dot. At the top they pushed the value and the job down on
+   exactly the points a sheriff opens most, and the comparison panel beside
+   them is where a two-push reading now lives. The Author row above them is
+   always present, with a placeholder until the push lands, so they don't move
+   when it does.
 
 #### The three change cards say it the same way
 

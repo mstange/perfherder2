@@ -1,12 +1,10 @@
 <script lang="ts">
-  // One commit list, used in both places the selection shows commits: the range
-  // behind a pinned comparison (ComparisonPane) and the selected push's own
-  // (DetailsPane's Build section).
+  // The rows of the commit list behind a pinned comparison (ComparisonPane).
   //
-  // It exists because those were two implementations of the same rows — each
-  // with its own message splitting, its own bug links, its own revision markup
-  // and its own truncation rule, and only one of them had the truncation rule
-  // right. Two rows that answer the same question should not be able to drift.
+  // A component of its own because it used to be shared with a list of the
+  // selected push's commits in DetailsPane, and before that the two were
+  // separate implementations — each with its own message splitting, bug links,
+  // revision markup and truncation rule, only one of them right.
   //
   // Rows are two lines: the bug links and title, then the revision and author.
   // The title wraps rather than truncating — a commit summary cut off at the
