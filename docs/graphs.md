@@ -484,6 +484,10 @@ Four cuts, none of which removes a fact from the app:
   and the distribution above already draws the whole cloud with the clicked run
   haloed, which is the question a retriggered build raises. Three runs is still
   341px unfolded: the height is driven by replicate chips, not by run count.
+  So it also folds past sixty values, about what that three-run push holds:
+  autoland signature 5933488 records 200 replicates in a single run, which was
+  870px unfolded with the run-count rule alone. A one-run fold's summary says
+  "200 values · mean", since "1 run" and "push mean" would describe nothing.
 - **The job type drops the prefix the pane has already spelled out.**
   `test-windows11-64-24h2-shippable/opt-browsertime-…` is four wrapped
   monospace lines whose first two thirds are the platform and build config from

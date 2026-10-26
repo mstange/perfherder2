@@ -132,6 +132,13 @@
   // replicate chips rather than by run count, so three unfolded is still not
   // short; the run count is what a reader can see coming.
   const MANY_RUNS = 3;
+  // More values than this and it folds too, however few runs they came in.
+  // Run count alone missed the harness that records many replicates per job:
+  // autoland signature 5933488 has 200 in one run, which unfolded was 870px of
+  // chips. Sixty is about what the three-run push above holds, so it moves the
+  // line only for pushes taller than the one already judged acceptable.
+  const MANY_VALUES = 60;
+  const folded = $derived(runGroups.length > MANY_RUNS || pushPool.length > MANY_VALUES);
 
   // Below this a machine is not worth remarking on. Half a percent is where the
   // change detector's own floor sits for a 2% signature (changes.ts), so it is
@@ -385,16 +392,25 @@
                readable: seven runs is 386px, a fifth of the whole pane, for a
                spread the comparison panel's chart already draws with the clicked
                run haloed.
-               Past MANY_RUNS it folds, and the summary carries what the fold
-               hides — how many runs, and the push mean the connecting line
-               passes through. Nothing changes on the common one-run push, and
-               nothing here loads or moves on its own: the fold only ever opens
-               because someone opened it. -->
-          {#if runGroups.length > MANY_RUNS}
+               Past MANY_RUNS or MANY_VALUES it folds, and the summary carries
+               what the fold hides — how many runs and values, and the push mean
+               the connecting line passes through. Nothing changes on the common
+               short push, and nothing here loads or moves on its own: the fold
+               only ever opens because someone opened it. -->
+          {#if folded}
             <details class="run-fold fold">
               <summary>
-                {runGroups.length} runs
-                <span class="muted">· push mean {formatValue(sel.push.mean)}</span>
+                {#if runGroups.length > 1}
+                  {runGroups.length} runs
+                  <span class="muted"
+                    >· {pushPool.length} values · push mean {formatValue(
+                      sel.push.mean,
+                    )}</span
+                  >
+                {:else}
+                  {pushPool.length} values
+                  <span class="muted">· mean {formatValue(sel.push.mean)}</span>
+                {/if}
               </summary>
               {@render runList(sel)}
             </details>
