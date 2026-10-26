@@ -1030,9 +1030,9 @@ card.
 works when the graph draws one dot per push; ours draws every replicate, so the
 alerted point is a cloud and the halo would have to pick one arbitrary member of
 it. Instead the marker belongs to the pixel column: a triangle at the top of the
-plot — down for a regression, up for an improvement, filled red or green and
-outlined in the series color — over a faint full-height guide. Light enough that
-it doesn't need a toggle. Detail graph only: the overview is 84px tall and may
+plot — pointing the way the value moved, filled red for a regression or green
+for an improvement, and outlined in the series color — over a faint full-height
+guide. Light enough that it doesn't need a toggle. Detail graph only: the overview is 84px tall and may
 hold a year of pushes.
 
 **Markers that collide stack into rows** rather than overlapping, packed by

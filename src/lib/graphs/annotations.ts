@@ -105,9 +105,14 @@ export type AlertSlot = {
   x: number;
   row: number;
   isRegression: boolean;
+  // Whether the value went up. Not derivable from `isRegression`: a regression
+  // is a rise on a lower-is-better series and a drop on a higher-is-better one.
+  wentUp: boolean;
 };
 
-type AlertInput = { alerts?: readonly { x: number; isRegression: boolean }[] };
+type AlertInput = {
+  alerts?: readonly { x: number; isRegression: boolean; prevValue: number; newValue: number }[];
+};
 
 // Every visible alert marker, placed. Markers of *all* series are packed
 // together — two series alerting on nearby pushes overlap on screen exactly as
@@ -134,6 +139,7 @@ export function layoutAlertMarkers(
         x,
         row: 0,
         isRegression: alerts[a].isRegression,
+        wentUp: alerts[a].newValue > alerts[a].prevValue,
       });
     }
   }

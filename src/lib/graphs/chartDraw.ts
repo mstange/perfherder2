@@ -374,9 +374,10 @@ function drawTrendLines(ctx: CanvasRenderingContext2D, o: DrawOptions, s: DrawSe
 // marks you can read across. The guide is what ties it to a pixel column; a
 // triangle alone at the top of a 700px plot doesn't say which push it means.
 //
-// Pointing down for a regression and up for an improvement: not "the value went
-// up or down" (which lower-is-better makes ambiguous) but the same up-is-good
-// convention the verdict badges use.
+// Pointing the way the value moved, taken from the alert's own pair of values;
+// the fill color says whether that was a regression. Pointing by verdict
+// instead drew a rise on a lower-is-better series as a downward triangle, over
+// dots that visibly went up.
 //
 // The dimensions, and which row each marker is on, are annotations.ts's,
 // because the hit test needs the same numbers.
@@ -422,7 +423,7 @@ function alertTrianglePath(
   const half = ALERT_TRIANGLE_HALF * scale;
   const height = ALERT_TRIANGLE_HEIGHT * scale;
   ctx.beginPath();
-  if (slot.isRegression) {
+  if (!slot.wentUp) {
     ctx.moveTo(slot.x, top + height);
     ctx.lineTo(slot.x - half, top);
     ctx.lineTo(slot.x + half, top);

@@ -60,9 +60,18 @@ describe('packRows', () => {
   });
 });
 
+// An alert at `x`. By default its value rose for a regression and fell for an
+// improvement, as on a lower-is-better series.
+const alert = (x: number, isRegression: boolean, wentUp = isRegression) => ({
+  x,
+  isRegression,
+  prevValue: wentUp ? 1 : 2,
+  newValue: wentUp ? 2 : 1,
+});
+
 describe('layoutAlertMarkers', () => {
   // Rounded to pixel 40.5 and 90.5 by the same +0.5 the draw loop applies.
-  const one = [{ alerts: [{ x: 20, isRegression: true }, { x: 70, isRegression: false }] }];
+  const one = [{ alerts: [alert(20, true), alert(70, false)] }];
 
   it('projects and rounds the way the draw loop does', () => {
     const slots = layoutAlertMarkers(one, xScale, geom);
@@ -71,10 +80,22 @@ describe('layoutAlertMarkers', () => {
     expect(slots.map((s) => s.isRegression)).toEqual([true, false]);
   });
 
+  it('points the way the value moved, whatever the verdict', () => {
+    // A regression on a higher-is-better score is a drop, and its triangle
+    // must point down like the dots under it, not up like a regression on a
+    // lower-is-better time would.
+    const scores = [{ alerts: [alert(20, true, false), alert(70, false, true)] }];
+    const slots = layoutAlertMarkers(scores, xScale, geom);
+    expect(slots.map((s) => [s.isRegression, s.wentUp])).toEqual([
+      [true, false],
+      [false, true],
+    ]);
+  });
+
   it('drops markers outside the plot', () => {
     // Zoomed past them. Keeping them would pile a row of triangles against the
     // clip edge and imply alerts at the window's boundary.
-    const outside = [{ alerts: [{ x: -50, isRegression: true }, { x: 150, isRegression: true }] }];
+    const outside = [{ alerts: [alert(-50, true), alert(150, true)] }];
     expect(layoutAlertMarkers(outside, xScale, geom)).toEqual([]);
   });
 
@@ -82,7 +103,7 @@ describe('layoutAlertMarkers', () => {
     // The case graphs-todo.md nominated this for: speedometer3's 2026-06-02
     // regression and improvement are 14 hours apart, about 5px at a 90-day
     // range against an 8px triangle, so red and green landed on one blob.
-    const near = [{ alerts: [{ x: 50, isRegression: true }, { x: 53, isRegression: false }] }];
+    const near = [{ alerts: [alert(50, true), alert(53, false)] }];
     expect(layoutAlertMarkers(near, xScale, geom).map((s) => s.row)).toEqual([0, 1]);
   });
 
@@ -90,8 +111,8 @@ describe('layoutAlertMarkers', () => {
     // Two series alerting on nearby pushes overlap on screen exactly as two
     // alerts of one series would, so they have to be packed as one set.
     const two = [
-      { alerts: [{ x: 50, isRegression: true }] },
-      { alerts: [{ x: 52, isRegression: true }] },
+      { alerts: [alert(50, true)] },
+      { alerts: [alert(52, true)] },
     ];
     const slots = layoutAlertMarkers(two, xScale, geom);
     expect(slots.map((s) => [s.seriesIndex, s.row])).toEqual([
@@ -110,7 +131,7 @@ describe('layoutAlertMarkers', () => {
 
 describe('hitTestAlertSlots', () => {
   const one = layoutAlertMarkers(
-    [{ alerts: [{ x: 20, isRegression: true }, { x: 70, isRegression: false }] }],
+    [{ alerts: [alert(20, true), alert(70, false)] }],
     xScale,
     geom,
   );
@@ -140,7 +161,7 @@ describe('hitTestAlertSlots', () => {
     // by whichever column happened to be nearer, so one of them was effectively
     // unreachable. Now the answer follows where you point vertically.
     const near = layoutAlertMarkers(
-      [{ alerts: [{ x: 50, isRegression: true }, { x: 51, isRegression: false }] }],
+      [{ alerts: [alert(50, true), alert(51, false)] }],
       xScale,
       geom,
     );
@@ -152,14 +173,14 @@ describe('hitTestAlertSlots', () => {
 
   it('still picks the nearest column inside one row', () => {
     const near = layoutAlertMarkers(
-      [{ alerts: [{ x: 50, isRegression: true }, { x: 53, isRegression: false }] }],
+      [{ alerts: [alert(50, true), alert(53, false)] }],
       xScale,
       geom,
     );
     // Both land on row 0 only if they don't collide; these do, so aim at row 0
     // for the first and check the horizontal rule with two far-apart markers.
     const far = layoutAlertMarkers(
-      [{ alerts: [{ x: 50, isRegression: true }, { x: 60, isRegression: false }] }],
+      [{ alerts: [alert(50, true), alert(60, false)] }],
       xScale,
       geom,
     );
@@ -173,7 +194,7 @@ describe('hitTestAlertSlots', () => {
     // Otherwise the generous 16px band of a stacked marker reaches straight
     // through the row below it and the stacking buys nothing.
     const near = layoutAlertMarkers(
-      [{ alerts: [{ x: 50, isRegression: true }, { x: 51, isRegression: false }] }],
+      [{ alerts: [alert(50, true), alert(51, false)] }],
       xScale,
       geom,
     );
@@ -188,7 +209,7 @@ describe('hitTestAlertSlots', () => {
   it('never stacks past ALERT_MAX_ROWS', () => {
     const many = [
       {
-        alerts: Array.from({ length: 8 }, (_, i) => ({ x: 50 + i * 0.5, isRegression: true })),
+        alerts: Array.from({ length: 8 }, (_, i) => alert(50 + i * 0.5, true)),
       },
     ];
     const slots = layoutAlertMarkers(many, xScale, geom);
