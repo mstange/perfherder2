@@ -281,6 +281,18 @@ Layout, top to bottom, in one canvas:
 
 - **Both sides share one x domain and one KDE grid.** Two curves drawn on
   separate domains cannot be compared by eye, which is the entire point.
+- **Solid is the selected point's side; dashed and hollow is the other end.**
+  That is what solid and dashed mean everywhere a comparison is drawn: the
+  graph's rings, this chart and its legend, the card's side rows and the point
+  panel's tabs. The rows stay in time order, so switching tabs moves the dash
+  from one row to the other rather than reordering anything.
+
+  The chart used to dash the *earlier* side instead. That disagreed with the
+  graph, whose dashed ring is the pinned dot, whenever the selection was the
+  earlier end, and the tabs made it impossible to miss: selecting "Before" gave
+  a solid ring on the graph beside a dashed key on the tab. The two sides often
+  share a color (one series, two pushes), so the dash is what carries the
+  distinction, and it can only carry one meaning.
 - **That domain is anchored to the selection, not fitted to the pair on screen**
   (`distribution.ts::stableScales` → `AppState.selectionChart` →
   `buildDistribution`'s `axis` argument). The pane redraws on every hover, and

@@ -34,15 +34,16 @@ const DOT_PATHS = 8;
 // touching.
 const TICK_SPACING_PX = 64;
 
-// Which of the two visual vocabularies a side gets. With one side there is
-// nothing to distinguish, so it takes the emphatic one.
+// Which of the two visual vocabularies a side gets: the input's `secondary`,
+// which is the end of a comparison that isn't the selected point. A lone side is
+// never secondary.
 //
 // The pair is dashed-and-hollow versus solid-and-filled rather than two colors,
 // because the commonest comparison — one series across two pushes — has the
 // same color on both sides by construction. Colors still differ when the sides
 // are different series, which reinforces it rather than carrying it.
-function isBaseSide(plot: DistributionPlot, index: number): boolean {
-  return plot.series.length > 1 && index === 0;
+function isSecondarySide(plot: DistributionPlot, index: number): boolean {
+  return plot.series[index].secondary;
 }
 
 export function drawDistribution(
@@ -61,7 +62,7 @@ export function drawDistribution(
   drawAxis(ctx, layout, ticks, palette);
 
   plot.series.forEach((side, i) => {
-    if (side.density.length > 0) drawCurve(ctx, layout, plot, side, isBaseSide(plot, i));
+    if (side.density.length > 0) drawCurve(ctx, layout, plot, side, isSecondarySide(plot, i));
   });
   plot.series.forEach((side, i) => {
     if (side.density.length > 0) drawModes(ctx, layout, plot, side, i);
@@ -76,7 +77,7 @@ export function drawDistribution(
       ctx.fillStyle = palette.rowTint;
       ctx.fillRect(layout.x0, row.y0, layout.x1 - layout.x0, row.y1 - row.y0);
     }
-    drawStrip(ctx, layout, side, row, isBaseSide(plot, i), palette);
+    drawStrip(ctx, layout, side, row, isSecondarySide(plot, i), palette);
   });
 }
 
@@ -121,7 +122,7 @@ function drawCurve(
   layout: DistributionLayout,
   plot: DistributionPlot,
   side: DistributionSeries,
-  isBase: boolean,
+  secondary: boolean,
 ): void {
   const trace = () => {
     ctx.beginPath();
@@ -133,7 +134,7 @@ function drawCurve(
     }
   };
 
-  if (!isBase) {
+  if (!secondary) {
     trace();
     // Close along the floor so the area reads as mass rather than as a shape.
     ctx.lineTo(layout.xScale.toPixel(plot.grid[plot.grid.length - 1]), layout.bandY1);
@@ -148,7 +149,7 @@ function drawCurve(
   trace();
   ctx.strokeStyle = side.color;
   ctx.lineWidth = CURVE_WIDTH;
-  ctx.setLineDash(isBase ? [4, 3] : []);
+  ctx.setLineDash(secondary ? [4, 3] : []);
   ctx.stroke();
   ctx.setLineDash([]);
 }
@@ -231,7 +232,7 @@ function drawStrip(
   layout: DistributionLayout,
   side: DistributionSeries,
   row: StripRow,
-  isBase: boolean,
+  secondary: boolean,
   palette: ChartPalette,
 ): void {
   const amplitude = Math.max(1, (row.y1 - row.y0) / 2 - MARKED_RADIUS - 1);
@@ -268,7 +269,7 @@ function drawStrip(
   // dot, which for a pool of tens of values is obviously affordable; it stays
   // uniform with the graphs instead of deciding that on its own.)
   ctx.globalAlpha = DOT_ALPHA;
-  if (isBase) {
+  if (secondary) {
     ctx.strokeStyle = side.color;
     ctx.lineWidth = 1;
   } else {
@@ -290,7 +291,7 @@ function drawStrip(
       ctx.moveTo(x + DOT_RADIUS, y);
       ctx.arc(x, y, DOT_RADIUS, 0, Math.PI * 2);
     }
-    if (isBase) ctx.stroke();
+    if (secondary) ctx.stroke();
     else ctx.fill();
   }
   ctx.globalAlpha = 1;

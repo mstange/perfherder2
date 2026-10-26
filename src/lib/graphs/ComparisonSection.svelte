@@ -117,14 +117,19 @@
   // The two-row form. Both plots pass `app.selectionChart.scales`, so a value
   // sits at the same x whichever is showing and the second row appears without
   // sliding the first.
+  //
+  // Rows in time order, dashes by selection: the side that isn't the selected
+  // point is drawn dashed, as its dot's ring is on the graph. `swapped` means
+  // the base is the other end.
   const comparisonPlot = $derived(
     cmp && hasDistribution(cmp)
       ? buildDistribution(
-          [cmp.base, cmp.next].map((side) => ({
+          [cmp.base, cmp.next].map((side, i) => ({
             label: side.label,
             color: side.color,
             values: side.values,
             markedIndex: side.markedIndex,
+            secondary: (i === 0) === cmp.swapped,
           })),
           scales,
         )
@@ -461,13 +466,13 @@
       {#each sideRows as row (row.side.label)}
         {@const machines = machineRows ? (row.isBase ? machineRows.base : machineRows.next) : null}
         <li>
-          <!-- The chart's own key: a solid rule for the emphatic side, a
-               dashed one for the baseline. The two sides can share a color
-               (one series across two pushes), so the dash is what carries
-               the distinction in both places. -->
+          <!-- The chart's own key: a solid rule for the selected point's
+               side, a dashed one for the other end. The two sides can share a
+               color (one series across two pushes), so the dash is what
+               carries the distinction in both places. -->
           <span
             class="key"
-            class:dashed={row.isBase}
+            class:dashed={row.role !== 'selected'}
             style:--key-color={row.side.color}
             aria-hidden="true"
           ></span>

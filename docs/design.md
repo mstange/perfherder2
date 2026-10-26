@@ -1733,8 +1733,9 @@ thousands of pixels down. It is two panels now:
   pinned, its header becomes a tab per end, labelled with the comparison's own
   side labels (`compare.ts::sideTabLabel`): "Before" and "After" for two pushes,
   the distinguishing platform or application for two series on one push, "Run 1"
-  and "Run 2" for two retriggers. The tabs carry the chart legend's key, dashed
-  for the earlier end.
+  and "Run 2" for two retriggers. Each tab carries a key line: solid on the
+  selected tab, dashed on the other, matching the graph's rings and the chart
+  (comparison.md, "The chart").
 - **The comparison panel** (`ComparisonPane.svelte`) holds the comparison card
   and, under it, the commits in the pinned range, listed open.
 

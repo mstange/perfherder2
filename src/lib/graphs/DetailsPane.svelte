@@ -231,10 +231,10 @@
 <aside class="details" class:flow={!scroll}>
   <header>
     {#if tabs}
-      <!-- The same key as the chart legend and the comparison card's side rows:
-           dashed for the earlier end, solid for the later. The two ends can
-           share a color, so the dash is what tells them apart. Focus follows
-           the selected tab, since pressing the other one re-renders both. -->
+      <!-- The same key as the graph's rings, the chart legend and the
+           comparison card's side rows: solid for the selected end, dashed for
+           the other. So the dash moves with the tab, and the solid tab is
+           always the solid ring on the graph. -->
       <div class="tabs" role="tablist" aria-label="Which end of the comparison">
         {#each tabs as tab (tab.isBase)}
           <button
@@ -251,7 +251,7 @@
           >
             <span
               class="key"
-              class:dashed={tab.isBase}
+              class:dashed={!tab.selected}
               style:--key-color={tab.color}
               aria-hidden="true"
             ></span>

@@ -52,6 +52,12 @@ export type DistributionInput = {
   // Null where the question doesn't arise: a pool that is one run, or a
   // comparison side, where the two rows are the distinction being drawn.
   markedGroup?: { start: number; end: number } | null;
+  // Drawn dashed and hollow rather than solid and filled: the end of a
+  // comparison that is *not* the selected point. The same meaning the dashed
+  // ring has on the graph and the dashed key has on the point panel's tabs, so
+  // the solid one is always the end the reader is looking at. Which side that is
+  // follows the selection, not time order; the rows stay in time order.
+  secondary?: boolean;
 };
 
 // One raw value on the strip: its position on the value axis, plus where in the
@@ -78,6 +84,7 @@ export type DistributionSeries = {
   modes: ModeInfo;
   summary: PoolSummary | null;
   strip: StripDot[];
+  secondary: boolean;
 };
 
 export type DistributionPlot = {
@@ -229,6 +236,7 @@ export function buildDistribution(
       label: input.label,
       color: input.color,
       values: input.values,
+      secondary: input.secondary ?? false,
       bandwidth: bandwidths[side],
       density,
       modes: enoughForCurve

@@ -39,10 +39,6 @@
   );
   const layout = $derived(distributionLayout(width, plot, reserveBand));
 
-  // A single side is the plain "this push" case; two sides are a comparison, and
-  // the first is drawn dashed and hollow. Mirrors `isBaseSide` in
-  // distributionDraw.ts.
-  const comparing = $derived(plot.series.length > 1);
 
   $effect(() => {
     if (!wrapper) return;
@@ -126,7 +122,7 @@
       <li>
         <span
           class="key"
-          class:dashed={comparing && i === 0}
+          class:dashed={side.secondary}
           style:--key-color={side.color}
           aria-hidden="true"
         ></span>
@@ -205,8 +201,8 @@
     gap: 5px;
     align-items: start;
   }
-  /* The same vocabulary the canvas uses: a solid rule for the emphatic side, a
-     dashed one for the baseline. Colors can be identical (one series across two
+  /* The same vocabulary the canvas uses: a solid rule for the selected point's
+     side, a dashed one for the other end. Colors can be identical (one series across two
      pushes), so the dash is what carries the distinction.
 
      ComparisonSection's `.key` and DetailsPane's tab key are the same rule,
