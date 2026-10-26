@@ -209,8 +209,9 @@
      dashed one for the baseline. Colors can be identical (one series across two
      pushes), so the dash is what carries the distinction.
 
-     ComparisonSection's `.key` is the same rule, duplicated because Svelte
-     scopes styles per component. Change one, change the other. */
+     ComparisonSection's `.key` and DetailsPane's tab key are the same rule,
+     duplicated because Svelte scopes styles per component. Change one, change
+     the others. */
   .key {
     height: 0;
     margin-top: 6px;

@@ -1,11 +1,15 @@
 <script lang="ts">
-  // Right pane: everything about the clicked dot. Ordered by how immediately
-  // each fact bears on that dot — value, then the push's whole spread, then the
-  // job, then the build — rather than by the shape of the data model, which
-  // would put the twenty-commit pushlog first. See graphs.md, "The details
-  // pane, top to bottom".
+  // The point panel: everything about the clicked dot. Ordered by how
+  // immediately each fact bears on that dot — value, then the push's whole
+  // spread, then the job, then the build — rather than by the shape of the data
+  // model, which would put the twenty-commit pushlog first. See graphs.md, "The
+  // details pane, top to bottom".
+  //
+  // The pair is ComparisonPane's. With a comparison pinned, this panel's header
+  // is a tab per end, and the tab picks which end it describes — see `tabs`.
 
   import './detailsPane.css';
+  import { tick } from 'svelte';
   import {
     alertDelta,
     alertStatusLabel,
@@ -20,7 +24,6 @@
     formatTimestamp,
     formatValue,
   } from '../shared/chart';
-  import ComparisonSection from './ComparisonSection.svelte';
   import { MEAN_REPLICATE, pushValues, replicateGroups, seriesLabel } from './graphData';
   import {
     alertSummaryUrl,
@@ -37,10 +40,13 @@
   import MachineFocusButton from './MachineFocusButton.svelte';
   import NoiseSection from './NoiseSection.svelte';
   import { commitsOfPush } from './pushlog';
+  import { sideTabLabel } from './compare';
   import { isCoarsePointer, mediaMatcher } from '../shared/pointer';
 
-  type Props = { app: AppState };
-  let { app }: Props = $props();
+  // `scroll` false where the shell stacks both panels in one scroller of its
+  // own; see `SelectionSplit` in layout.ts.
+  type Props = { app: AppState; scroll?: boolean };
+  let { app, scroll = true }: Props = $props();
 
   // Which gestures this reader has, for the empty state's instruction. See
   // shared/pointer.ts, and design.md, "Copy that names a gesture has to name one
@@ -56,6 +62,42 @@
     'order and does not yet expose which trial each came from (bug 1981623)';
 
   const sel = $derived(app.selection);
+
+  // One tab per end of a pinned comparison, in time order, with the selected end
+  // pressed. **A tab is a selection, not a view**: picking the other end makes it
+  // the selected point, through the same swap a click on the pinned dot performs
+  // (`AppState.selectPoint`). So every lookup this panel reads — the job, the
+  // profiles, the push, the alert, the noise — follows the tab without a second
+  // copy for the compared end, the graph's solid ring moves to the dot being
+  // described, and the URL says which end the reader was looking at.
+  //
+  // Pinned only. A hover preview would grow tabs for a dot the pointer is about
+  // to leave, and could never be clicked — the pointer is on the graph.
+  const tabs = $derived.by(() => {
+    const cmp = app.comparison;
+    if (!cmp || app.comparisonSource !== 'pinned') return null;
+    const baseIsSelection = !cmp.swapped;
+    return [
+      { label: sideTabLabel(cmp.kind, cmp.base), isBase: true, selected: baseIsSelection, color: cmp.base.color },
+      { label: sideTabLabel(cmp.kind, cmp.next), isBase: false, selected: !baseIsSelection, color: cmp.next.color },
+    ];
+  });
+
+  function showOtherEnd() {
+    if (app.comparedPoint) app.selectPoint(app.comparedPoint);
+  }
+
+  // Left and right move between the two tabs, as in any tab list. With two tabs
+  // either key means "the other one". Focus goes with the selection, since only
+  // the selected tab is in the tab order.
+  async function onTabKey(e: KeyboardEvent) {
+    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+    e.preventDefault();
+    const list = (e.currentTarget as HTMLElement).parentElement;
+    showOtherEnd();
+    await tick();
+    list?.querySelector<HTMLElement>('[aria-selected="true"]')?.focus();
+  }
   const repo = $derived(sel?.entry.ref.repository ?? '');
 
   const repoLink = $derived(app.repoLinkFor(repo));
@@ -79,14 +121,15 @@
   const landing = $derived(app.selectedLanding);
 
   // Only whether there is a spread worth listing. The chart built from this pool
-  // lives in ComparisonSection now, as the one-row form of the one chart the
-  // pane draws; `pushValues` explains why the pool is the whole push.
+  // is in the comparison panel, as the one-row form of its one chart;
+  // `pushValues` explains why the pool is the whole push.
   const pushPool = $derived(sel ? pushValues(sel.push) : []);
 
   // Where "Values on this push" stops being a list and starts being a wall.
   // Measured on autoland signature 299010: one run 114px, three 341px, and the
   // seven-retrigger push that prompted this 386px — a fifth of the whole pane
-  // for a spread the chart above already draws with the clicked run haloed.
+  // for a spread the comparison panel's chart already draws with the clicked
+  // run haloed.
   // More runs than this and the section folds. The height is really driven by
   // replicate chips rather than by run count, so three unfolded is still not
   // short; the run count is what a reader can see coming.
@@ -187,8 +230,41 @@
   </ul>
 {/snippet}
 
-<aside class="details">
-  <header><h2>Selection</h2></header>
+<aside class="details" class:flow={!scroll}>
+  <header>
+    {#if tabs}
+      <!-- The same key as the chart legend and the comparison card's side rows:
+           dashed for the earlier end, solid for the later. The two ends can
+           share a color, so the dash is what tells them apart. Focus follows
+           the selected tab, since pressing the other one re-renders both. -->
+      <div class="tabs" role="tablist" aria-label="Which end of the comparison">
+        {#each tabs as tab (tab.isBase)}
+          <button
+            type="button"
+            role="tab"
+            class="tab"
+            aria-selected={tab.selected}
+            tabindex={tab.selected ? 0 : -1}
+            title={tab.label}
+            onclick={() => {
+              if (!tab.selected) showOtherEnd();
+            }}
+            onkeydown={onTabKey}
+          >
+            <span
+              class="key"
+              class:dashed={tab.isBase}
+              style:--key-color={tab.color}
+              aria-hidden="true"
+            ></span>
+            <span class="tab-label">{tab.label}</span>
+          </button>
+        {/each}
+      </div>
+    {:else}
+      <h2>Selection</h2>
+    {/if}
+  </header>
 
   {#if !sel}
     <p class="empty">
@@ -256,13 +332,10 @@
         </div>
       </section>
 
-      <ComparisonSection {app} />
-
       <!-- Perfherder's own verdict on this build, when it has one. Above the
-           single-point sections for the same reason the comparison card is: it
-           is a statement about two pushes, and it is the loudest fact about the
-           point — a sheriff looking at this graph is usually here because of
-           it. Read-only: creating and triaging alerts needs an authenticated
+           single-point sections because it is a statement about two stretches
+           of the graph, and it is the loudest fact about the point — a sheriff
+           looking at this graph is usually here because of it. Read-only: creating and triaging alerts needs an authenticated
            session, which this app deliberately doesn't have. -->
       {#if alert}
         <section class="alert-card card-box">
@@ -292,7 +365,7 @@
                  a window of 12-24 data points back and 12 forward, not over one
                  push each. On alert #51605 that is +121% where the two pushes
                  alone moved +194%, so a reader who took this for a two-push
-                 figure would think the comparison card below contradicted it.
+                 figure would think the comparison panel contradicted it.
                  It doesn't; they measure different things, and both say which. -->
             perfherder's window averages, 12–24 pushes before against 12 after
           </p>
@@ -388,7 +461,7 @@
             {formatValue(change.beforeValue)} → {formatValue(change.afterValue)}
             {#if sel.entry.meta?.measurementUnit}{' '}{sel.entry.meta.measurementUnit}{/if}
             <!-- Spelled out for the same reason the Alert card spells out its
-                 window: the comparison card below quotes these two builds and
+                 window: the comparison panel quotes these two builds and
                  will print a different number, and a reader who took both for
                  two-push figures would think one of them was wrong. -->
             means over {change.beforeCount} pushes before against {change.afterCount} after
@@ -522,13 +595,14 @@
       {#if pushPool.length > 1}
         <section>
           <h3>Values on this push</h3>
-          <!-- No chart here any more. The push's strip is the one-row form of
-               the chart ComparisonSection now holds, which is what stops it
-               vanishing and reappearing 250px up the pane every time the
-               pointer crosses a dot. This section keeps the numbers. -->
+          <!-- No chart here. The push's strip is the one-row form of the chart
+               in the comparison panel, which is what stops it vanishing and
+               reappearing every time the pointer crosses a dot. This section
+               keeps the numbers. -->
           <!-- Heavily retriggered pushes are where this section stops being
                readable: seven runs is 386px, a fifth of the whole pane, for a
-               spread the chart above already draws with the clicked run haloed.
+               spread the comparison panel's chart already draws with the clicked
+               run haloed.
                Past MANY_RUNS it folds, and the summary carries what the fold
                hides — how many runs, and the push mean the connecting line
                passes through. Nothing changes on the common one-run push, and
@@ -744,11 +818,10 @@
           {/if}
         </dl>
 
-        <!-- No "since previous → pushlog" row here any more. It built exactly
-             the range `comparePrevious` pins, and pinning now answers it in the
-             card above with the commits inline, the delta, the distributions
-             and the same link — so this was a trip out to hg for a subset of
-             one keypress. -->
+        <!-- No "since previous → pushlog" row here. It built exactly the range
+             `comparePrevious` pins, and pinning answers it in the comparison
+             panel with the commits listed, the delta, the distributions and the
+             same link. -->
         {#if app.selectedPush}
           {@const commits = commitsOfPush(app.selectedPush)}
           <h4>
@@ -776,32 +849,6 @@
 </aside>
 
 <style>
-  /* No border: which of this pane's sides face another pane depends on where
-     the shell has put it, and the shell is the only thing that knows. It draws
-     the seam on the slot — see `main` in App.svelte. */
-  .details {
-    display: flex;
-    flex-direction: column;
-    min-height: 0;
-    background: var(--bg-subtle);
-    font: 13px/1.45 system-ui, sans-serif;
-  }
-  header {
-    padding: 10px 12px;
-    border-bottom: 1px solid var(--border-default);
-  }
-  h2 {
-    margin: 0;
-    font-size: 13px;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    color: var(--fg-muted);
-  }
-  .empty {
-    padding: 12px;
-    margin: 0;
-    color: var(--fg-muted);
-  }
   .offscreen {
     display: flex;
     align-items: center;
@@ -817,14 +864,60 @@
   .offscreen button {
     flex: none;
   }
-  .scroll {
+  /* The tabs fill the header's 40px, so a pin swaps the title for them without
+     moving anything below. Each takes half the width and clips its label: two
+     platform strings are wider than the panel. The selected tab is marked the
+     way a tab is everywhere, by an underline on the header's own rule. */
+  .tabs {
+    display: flex;
+    align-self: stretch;
     flex: 1;
-    overflow-y: auto;
-    /* The third of the app's three scrollers, and the same rule: reaching the
-       bottom of a selection ends the gesture rather than rubber-banding the
-       document behind it. */
-    overscroll-behavior: contain;
-    padding: 10px 12px 24px;
+    min-width: 0;
+    margin: 0 -12px -1px;
+  }
+  .tab {
+    display: flex;
+    flex: 1 1 0;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    padding: 0 12px;
+    border: none;
+    border-bottom: 2px solid transparent;
+    background: none;
+    color: var(--fg-muted);
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .tab:hover {
+    background: var(--bg-hover);
+  }
+  .tab[aria-selected='true'] {
+    border-bottom-color: var(--accent-emphasis);
+    color: var(--fg-default);
+    cursor: default;
+  }
+  .tab:focus-visible {
+    outline: 2px solid var(--accent-emphasis);
+    outline-offset: -2px;
+  }
+  .tab-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  /* Duplicated from DistributionChart's legend and ComparisonSection's side
+     rows on purpose: Svelte scopes styles per component, and the three keys have
+     to look identical to read as one vocabulary. Change one, change the others. */
+  .key {
+    flex: none;
+    width: 16px;
+    height: 0;
+    border-top: 2px solid var(--key-color);
+  }
+  .key.dashed {
+    border-top-style: dashed;
   }
   section.series {
     display: grid;

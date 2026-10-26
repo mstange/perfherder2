@@ -314,22 +314,28 @@ smaller than it was and the collapse buys proportionally more.
 
 ### The details pane, top to bottom
 
-The pane is read from the top on every click, so its order is by how immediately
-each fact bears on the dot you just clicked, not by the shape of the data model —
-which would put the twenty-commit pushlog above the value you asked about.
+The details pane is two panels: the point panel, described here, and the
+comparison panel beside or below it. See design.md, "The selection is two
+panels", for the split, the tabs and where each panel goes.
+
+The point panel is read from the top on every click, so its order is by how
+immediately each fact bears on the dot you just clicked, not by the shape of the
+data model — which would put the twenty-commit pushlog above the value you asked
+about. With a comparison pinned, its header is a tab per end, and every section
+below describes the end whose tab is selected.
 
 1. **The series** — which line this is, spelled out in full. The series *list*
    deliberately shows only what distinguishes one card from the next (design.md,
    "The series list shows differences, not descriptions"), so this is the one
    place that answers "which series is this, exactly?".
-2. **The comparison block** — two slots that hold their height, so the pane
-   cannot move while the pointer sweeps the graph. A headline slot (the delta
-   when two points are on screen, otherwise the hint or "marked"), and under it
-   **the distribution chart**: one strip row for the selected push, a second
-   when there is something to compare it with. Each slot sizes itself by
-   stacking its own states hidden underneath the live one, so neither carries a
-   pixel value. A pinned comparison adds its stats, sides and links below the
-   chart. See [comparison.md](comparison.md).
+2. **The comparison block is not here any more**; it heads the comparison
+   panel. Two slots that hold their height, so the panel cannot move while the
+   pointer sweeps the graph: a headline slot (the delta when two points are on
+   screen, otherwise the hint or "marked"), and under it **the distribution
+   chart**, one strip row for the selected push and a second when there is
+   something to compare it with. A pinned comparison adds its stats, sides and
+   links below the chart, and the panel lists the commits in its range under
+   the card. See [comparison.md](comparison.md).
 3. **The value** — the clicked replicate and its rank, or the run's mean.
 4. **Values on this push** — every value the build recorded as a clickable chip,
    grouped by the job that produced it. The chart for this pool is the one in
@@ -405,15 +411,15 @@ which would put the twenty-commit pushlog above the value you asked about.
    two dots on the same push have identical builds.
 
    The commit list is [CommitList.svelte](../src/lib/graphs/CommitList.svelte),
-   the same component the comparison card's inline pushlog uses — they were two
+   the same component the comparison panel's commit list uses — they were two
    implementations of one row, and only one of them counted a truncated merge
    correctly. It is *this push's* commits; the range between two pushes is the
-   card's, see [comparison.md](comparison.md), "The inline pushlog".
+   comparison panel's, see [comparison.md](comparison.md), "The inline pushlog".
 
    There used to be a "Since previous → pushlog" link here too. It built exactly
-   the range `comparePrevious` pins, and pinning now answers that inline in the
-   card along with the delta and the statistics, so the link was a trip out to
-   hg for a subset of one keypress.
+   the range `comparePrevious` pins, and pinning now answers that in the
+   comparison panel along with the delta and the statistics, so the link was a
+   trip out to hg for a subset of one keypress.
 
 #### The three change cards say it the same way
 
@@ -1806,11 +1812,13 @@ Recovery is the explicit Retry button.
 - [SeriesList.svelte](../src/lib/graphs/SeriesList.svelte),
   [GraphPane.svelte](../src/lib/graphs/GraphPane.svelte),
   [DetailsPane.svelte](../src/lib/graphs/DetailsPane.svelte) — the three panes.
-  The details pane delegates its comparison card to
-  [ComparisonSection.svelte](../src/lib/graphs/ComparisonSection.svelte), its
-  three change headlines to
-  [ChangeHeadline.svelte](../src/lib/graphs/ChangeHeadline.svelte), and shares
-  its text styles with both through
+  The details pane is two panels: DetailsPane for the point, and
+  [ComparisonPane.svelte](../src/lib/graphs/ComparisonPane.svelte) for the pair,
+  which wraps the comparison card in
+  [ComparisonSection.svelte](../src/lib/graphs/ComparisonSection.svelte) and the
+  range's commit list. The change headlines on all three cards are
+  [ChangeHeadline.svelte](../src/lib/graphs/ChangeHeadline.svelte), and the two
+  panels share their chrome and text styles through
   [detailsPane.css](../src/lib/graphs/detailsPane.css).
 
 **Do not put a `SeriesData` inside a `$state` object or array.** Svelte 5

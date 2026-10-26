@@ -13,7 +13,66 @@
 
    Anything used by exactly one section stays in that section's own `<style>`.
    The test for moving a rule here is "does a second section read it", not "is
-   it generic-looking". */
+   it generic-looking".
+
+   The selection is two panels now (DetailsPane for the point, ComparisonPane
+   for the pair; see docs/design.md, "The selection is two panels"), and both
+   are a `.details` root. So the panel chrome is here too: the root, its header,
+   the empty state and the scroller. */
+
+/* No border: which of a panel's sides face another one depends on where the
+   shell has put it, and the shell is the only thing that knows. It draws the
+   seam on the slot — see `main` in App.svelte. */
+.details {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--bg-subtle);
+  font: 13px/1.45 system-ui, sans-serif;
+}
+
+/* A fixed height rather than padding around a line of text, because the point
+   panel's header is either its title or a row of tabs, and swapping one for the
+   other on a pin must not move anything under it. 40px is what the padded title
+   measured before. */
+.details > header {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  height: 40px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--border-default);
+}
+.details h2 {
+  margin: 0;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--fg-muted);
+}
+.details > .empty {
+  padding: 12px;
+  margin: 0;
+  color: var(--fg-muted);
+}
+.details > .scroll {
+  flex: 1;
+  overflow-y: auto;
+  /* Reaching the bottom of a panel ends the gesture rather than rubber-banding
+     the document behind it — the same rule as the app's other scrollers. */
+  overscroll-behavior: contain;
+  padding: 10px 12px 24px;
+}
+
+/* Where the shell stacks both panels in one scroller (`flow` in layout.ts), a
+   panel is as tall as its content and the slot scrolls instead. */
+.details.flow {
+  min-height: auto;
+}
+.details.flow > .scroll {
+  flex: none;
+  overflow: visible;
+}
 
 .details section {
   margin-bottom: 14px;
@@ -128,10 +187,10 @@
 }
 
 /* The pane's disclosure idiom: no native marker, a triangle that turns, and a
-   summary whose height doesn't change with its state. Two sections use it — the
-   run fold and the comparison's pushlog — and they had a copy each, which is
-   how one of them came to name a `--text-muted` custom property that does not
-   exist. `line-height` stays local, since the two sit in different type scales. */
+   summary whose height doesn't change with its state. The run fold and the
+   Noise section use it. The comparison's pushlog used to as well, and the two
+   copies it once had are how one of them came to name a `--text-muted` custom
+   property that does not exist. `line-height` stays local. */
 .details .fold > summary {
   cursor: pointer;
   list-style: none;

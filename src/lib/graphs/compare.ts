@@ -328,6 +328,16 @@ function labelsFor(
   }
 }
 
+// A side's label as the selection panel's tab names it. The same word as the
+// chart legend, so a tab and the legend row it selects read as one thing, with
+// a capital because a tab is a heading rather than a phrase. **Except for two
+// series**, whose labels are platform strings and application names:
+// "Macosx1500-aarch64-shippable" is not a word anyone has written.
+export function sideTabLabel(kind: ComparisonKind, side: ComparisonSide): string {
+  if (kind === 'series') return side.label;
+  return side.label.charAt(0).toUpperCase() + side.label.slice(1);
+}
+
 const HEADLINES: Record<ComparisonKind, string> = {
   push: 'one series, two pushes',
   series: 'one push, two series',

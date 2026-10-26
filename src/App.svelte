@@ -1,5 +1,7 @@
 <script lang="ts">
-  // Three-pane shell: series list, graphs, selection details. The Add-series
+  // Three-pane shell: series list, graphs, selection details — the last of which
+  // is two panels, the point and the comparison, arranged by `selectionSplit`
+  // in layout.ts. The Add-series
   // picker opens as an overlay over the lot — it needs the full width for its
   // table, and mounting it lazily keeps its multi-megabyte signature fetch off
   // the critical path for someone opening a shared graph link.
@@ -7,6 +9,7 @@
   import { fade, fly } from 'svelte/transition';
 
   import AddSeriesPicker from './lib/picker/AddSeriesPicker.svelte';
+  import ComparisonPane from './lib/graphs/ComparisonPane.svelte';
   import DetailsPane from './lib/graphs/DetailsPane.svelte';
   import GraphPane from './lib/graphs/GraphPane.svelte';
   import SeriesList from './lib/graphs/SeriesList.svelte';
@@ -21,6 +24,7 @@
     listIsSheet,
     listSheetCoversPanes,
     resolvePane,
+    selectionSplit,
     switchedPanes,
     type Pane,
   } from './lib/shared/layout';
@@ -60,13 +64,18 @@
   // Both axes, because one arrangement puts a pane in a *row*, and a row needs
   // height the way a column needs width — see layout.ts. `resize` fires for either
   // dimension, so one listener covers both.
-  let layout = $state(layoutFor(window.innerWidth, window.innerHeight));
+  //
+  // The selection's own split reads the same two numbers, and is published as
+  // `data-split` for the same reason.
+  let viewport = $state({ width: window.innerWidth, height: window.innerHeight });
   $effect(() => {
-    const measure = () => (layout = layoutFor(window.innerWidth, window.innerHeight));
+    const measure = () => (viewport = { width: window.innerWidth, height: window.innerHeight });
     measure();
     window.addEventListener('resize', measure);
     return () => window.removeEventListener('resize', measure);
   });
+  const layout = $derived(layoutFor(viewport.width, viewport.height));
+  const split = $derived(selectionSplit(layout, viewport.width, viewport.height));
 
   // The height the app lays itself out in, when that is not the window's.
   //
@@ -285,6 +294,7 @@
      independently, which is what the narrow case needs. -->
 <main
   data-layout={layout}
+  data-split={split}
   data-pane={panes.length > 0 ? activePane : null}
   data-plotted={seriesCount > 0 || null}
   style:height={heightStyle}
@@ -422,12 +432,34 @@
   >
     <GraphPane {app} />
   </div>
+  <!-- The selection's two panels share one slot, so every arrangement above —
+       which cell the selection gets, whether it takes turns with the graph,
+       whether it is `inert` — treats them as one pane. How they divide the cell
+       is `data-split`; see `selectionSplit` in layout.ts.
+
+       The point panel comes first, because a click fills it first: the
+       comparison panel only has something of its own once there is a second
+       point. **Except in `flow`**, where the two share one scroller and the
+       point panel runs past 1000px: second in that order would put a pinned
+       comparison a long scroll below the fold on a phone, where it used to be
+       near the top of the single pane. So there the comparison leads, and is
+       left out altogether until something is selected, rather than stacking a
+       second empty state over the first. -->
   <div
     class="slot slot-details"
+    data-split={split}
     data-active={isPaneVisible('selection', activePane, panes) || null}
     inert={app.pickerOpen || sheetCovers}
   >
-    <DetailsPane {app} />
+    {#if split === 'flow'}
+      {#if app.selection}
+        <div class="panel"><ComparisonPane {app} scroll={false} /></div>
+      {/if}
+      <div class="panel"><DetailsPane {app} scroll={false} /></div>
+    {:else}
+      <div class="panel"><DetailsPane {app} /></div>
+      <div class="panel"><ComparisonPane {app} /></div>
+    {/if}
   </div>
 </main>
 
@@ -530,6 +562,14 @@
     grid-template-areas:
       'list graph details'
       'bar graph details';
+  }
+
+  /* Four columns: the selection's two panels side by side, each the width the
+     single details pane had. Only `wide` gets here — see `FOUR_COLUMN_MIN`. */
+  main[data-layout='wide'][data-split='columns'] {
+    grid-template-columns:
+      var(--sidebar-width) minmax(0, 1fr)
+      calc(2 * var(--details-width));
   }
 
   /* Two columns, and the one that goes is the series list: `graph │ selection`,
@@ -794,6 +834,44 @@
   }
   .slot-details {
     grid-area: details;
+  }
+
+  /* The selection's two panels inside their slot. A panel box is a grid cell
+     for the same reason a slot is: the pane inside stretches to it in both axes
+     and scrolls itself, which needs `min-*: 0` all the way down. */
+  .panel {
+    display: grid;
+    min-width: 0;
+    min-height: 0;
+  }
+  .slot-details[data-split='columns'] {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+  /* Equal halves rather than sized to content. The comparison panel's content
+     changes height when a comparison is pinned and again when its commits
+     arrive, and a row that followed it would move the point panel's every line
+     each time. Fixed rows move nothing; each panel scrolls what it can't show. */
+  .slot-details[data-split='rows'] {
+    grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+  }
+  /* One scroller for both, so here the slot scrolls and the panels don't (they
+     get `scroll={false}`). */
+  .slot-details[data-split='flow'] {
+    display: block;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    background: var(--bg-subtle);
+  }
+  .slot-details[data-split='flow'] > .panel {
+    display: block;
+  }
+  /* The seam between the two panels: on the second, facing the first. */
+  .slot-details[data-split='columns'] > .panel + .panel {
+    border-left: 1px solid var(--border-default);
+  }
+  .slot-details[data-split='rows'] > .panel + .panel,
+  .slot-details[data-split='flow'] > .panel + .panel {
+    border-top: 1px solid var(--border-default);
   }
 
   /* The seams. They live here, on the slots, rather than on the panes, because

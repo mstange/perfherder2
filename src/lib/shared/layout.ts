@@ -406,3 +406,46 @@ export function isPaneVisible(pane: Pane, active: Pane, panes: Pane[]): boolean 
 export function resolvePane(requested: Pane, panes: Pane[]): Pane {
   return panes.includes(requested) ? requested : 'graph';
 }
+
+// ---------------------------------------------------------------------------
+// The selection's two panels
+//
+// The selection is two panels: one for the selected point, with a tab per end
+// of a pinned comparison, and one for the comparison itself and the commits in
+// its range. They used to be one pane, and the comparison card, the alert card,
+// the value, the job and the build were all stacked in one 320px scroller —
+// with a pinned comparison's commit list in the middle of it, pushing the rest
+// thousands of pixels down. See docs/design.md, "The selection is two panels".
+//
+// Where they go is a second question beside `layoutFor` rather than more tiers
+// of it, because the answer does not change anything else the shell decides:
+// which panes are columns, which is a sheet and what the switcher offers are the
+// same whichever way the selection divides its own cell.
+
+/**
+ * `columns` — side by side, each the width the single pane had. Only where the
+ *   graph keeps its minimum beside the list *and* both panels.
+ * `rows` — the selection's one column split in two, the point above and the
+ *   comparison below, each scrolling on its own.
+ * `flow` — one scroller holding both, comparison first. Wherever a row of the
+ *   selection is too short to split again: a phone, where the selection is
+ *   itself a row, and any window too short for two rows that say anything.
+ */
+export type SelectionSplit = 'columns' | 'rows' | 'flow';
+
+/** Below this the two panels cannot be columns beside a three-column shell. */
+export const FOUR_COLUMN_MIN = THREE_COLUMN_MIN + DETAILS_WIDTH;
+
+/**
+ * Below this the selection's column has no height for two rows. `DETAILS_MIN_ROW`
+ * is what a row needs before it says anything, and the comparison panel's
+ * resting content — its header, the hint and the one-row distribution — is about
+ * 300px, so a pair of half-height rows needs a window about twice that.
+ */
+export const SPLIT_MIN_HEIGHT = 640;
+
+export function selectionSplit(mode: LayoutMode, width: number, height: number): SelectionSplit {
+  if (mode === 'narrow' || mode === 'narrow-short') return 'flow';
+  if (mode === 'wide' && width >= FOUR_COLUMN_MIN) return 'columns';
+  return height >= SPLIT_MIN_HEIGHT ? 'rows' : 'flow';
+}

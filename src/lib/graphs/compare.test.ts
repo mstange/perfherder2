@@ -7,6 +7,7 @@ import {
   sameMachines,
   sideMachines,
   sideOrder,
+  sideTabLabel,
   type CompareSide,
 } from './compare';
 import { MEAN_REPLICATE, type PushGroup, type Run, type SeriesMeta } from './graphData';
@@ -363,6 +364,36 @@ describe('buildComparison', () => {
 
   it('is quiet when the units agree', () => {
     expect(buildComparison(side({ push: older }), side({ push: newer }))!.warning).toBeNull();
+  });
+});
+
+describe('sideTabLabel', () => {
+  it('capitalizes the legend word for a pair in time order', () => {
+    const c = buildComparison(side({ push: older }), side({ push: newer }))!;
+    expect(sideTabLabel(c.kind, c.base)).toBe('Before');
+    expect(sideTabLabel(c.kind, c.next)).toBe('After');
+  });
+
+  it('names two runs of one push by their run number', () => {
+    const c = buildComparison(
+      side({ push: retriggered, runIndex: 0 }),
+      side({ push: retriggered, runIndex: 1 }),
+    )!;
+    expect(sideTabLabel(c.kind, c.base)).toBe('Run 1');
+    expect(sideTabLabel(c.kind, c.next)).toBe('Run 2');
+  });
+
+  // A platform string is an identifier, not a word, so it is left as it is.
+  it('leaves the labels of two series alone', () => {
+    const c = buildComparison(
+      side({ push: older }),
+      side({ push: older, signatureId: 1, metaOver: { platform: 'windows11-64-24h2-shippable' } }),
+    )!;
+    expect(c.kind).toBe('series');
+    expect([sideTabLabel(c.kind, c.base), sideTabLabel(c.kind, c.next)]).toEqual([
+      'macosx1500-aarch64-shippable',
+      'windows11-64-24h2-shippable',
+    ]);
   });
 });
 

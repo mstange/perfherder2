@@ -4,16 +4,18 @@ Companion to [graphs.md](graphs.md); the map of which document answers what is
 at the top of [design.md](design.md). Two features that share one piece of
 machinery:
 
-1. **Push distributions.** Selecting a dot shows, in the details pane, the
+1. **Push distributions.** Selecting a dot shows, in the comparison panel, the
    distribution of *every* value that series recorded on that push — a kernel
    density curve with detected modes, and the raw values below it as a jittered
-   strip. Under the chart the same values appear as chips, grouped by the job
+   strip. In the point panel the same values appear as chips, grouped by the job
    that produced them, so a retriggered build's runs can be compared one by one
    and any of their values can be selected directly.
 2. **Comparison mode.** Shift-clicking a second dot pins it as a comparison.
-   The pane then draws both distributions on one axis and adds the statistics
-   and links that only make sense for a pair: Mann-Whitney U, Cliff's delta, a
-   pushlog range, a perf.compare link.
+   The comparison panel then draws both distributions on one axis and adds the
+   statistics and links that only make sense for a pair: Mann-Whitney U, Cliff's
+   delta, the commits in the range, a perf.compare link. The point panel grows a
+   tab per end, and the selected tab decides which end it describes (design.md,
+   "The selection is two panels").
 
 Hovering a dot with a selection active shows the same comparison as an
 unpinned preview. See "Interaction" below for the keyboard equivalent.
@@ -538,18 +540,17 @@ the query encoding is a second layer on top of that.
 ## The inline pushlog
 
 "What landed in this range" is the question a comparison exists to set up, and
-until now answering it meant following the `pushlog` link into hg.mozilla.org.
-The card lists the commits itself, in a disclosure under the links.
+answering it used to mean following the `pushlog` link into hg.mozilla.org. The
+comparison panel lists the commits itself, under the card, with the count as the
+heading: "254 of 263 commits".
 
-**Collapsed, with the count in the summary** — "254 of 263 commits". The count
-is most of the answer, so a disclosure that had to be opened to find out how
-much was behind it would save nothing; and the pane deliberately does not lead
-with a commit list (graphs.md, "The details pane, top to bottom"), which
-default-open would undo. The row is one line tall in every state, loading
-included, so nothing above or below it moves.
+**Open, because it is last in a panel of its own.** It was a collapsed
+disclosure inside the card while the card sat at the top of a single pane,
+because an open list pushed the value, the job and the build thousands of pixels
+down. Those are in the point panel now, so nothing is under the list to push.
+The heading is one line in every state, loading included.
 
-**Fetched when the comparison is pinned, not when the row is opened.** That is
-what lets the collapsed row carry a count. It is also why it is pinned-only:
+**Fetched when the comparison is pinned.** It is pinned-only:
 `appState.pushlogRangeRef` returns null for a hover, because a range fetch is
 the largest of the pane's lookups and hovering crosses dots by the dozen — the
 same rule, for the same reason, as the artifact lookups behind the profile
@@ -590,10 +591,8 @@ which the serializer's own cap makes unreachable, so a 164-commit merge showed
 twenty under a heading saying 164 and never rendered the line that would have
 explained it.
 
-One consequence worth knowing: expanded, a long list pushes the pane's remaining
-sections — Alert, Detected change, Replicate, Values, Run, Build — thousands of
-pixels down. 254 commits is ~16,000px. Collapsing restores them, and capping the
-open list's height with its own scroller is the fix if that turns out to matter.
+A long list is long — 254 commits is ~16,000px — but it is the last thing in the
+comparison panel's scroller, so it costs nothing above it.
 
 ## Deviations from PerfCompare
 
@@ -676,12 +675,14 @@ Not pure:
   lookups behind it.
 - `ComparisonSection.svelte` — the comparison card, in all three of its
   states (compared, marked-here, and the hint that says the gesture exists).
+- `ComparisonPane.svelte` — the comparison panel: that card, and the commits in
+  the pinned range under it.
 - `MachineFocusButton.svelte` — one machine name, which is also the control that
   picks that machine out of the graph. Shared with the pane's Run section; see
   graphs.md, "Machines".
-- `DetailsPane.svelte` — the numbers for the selected push, and everything
-  else in the pane. (Not the push distribution; that moved into
-  `ComparisonSection` — see "Both sides share one x domain" above.)
+- `DetailsPane.svelte` — the point panel: the numbers for the selected push,
+  and its tabs when a comparison is pinned. (Not the push distribution; that
+  moved into `ComparisonSection` — see "Both sides share one x domain" above.)
 
 Open items — a bootstrap CI, per-run shading inside a push pool, comparing more
 than two points — live in [graphs-todo.md](graphs-todo.md).

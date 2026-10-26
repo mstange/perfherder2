@@ -1,6 +1,6 @@
 <script lang="ts">
-  // One commit list, used in both places the pane shows commits: the range
-  // behind a pinned comparison (ComparisonSection) and the selected push's own
+  // One commit list, used in both places the selection shows commits: the range
+  // behind a pinned comparison (ComparisonPane) and the selected push's own
   // (DetailsPane's Build section).
   //
   // It exists because those were two implementations of the same rows — each

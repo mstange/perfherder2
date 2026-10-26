@@ -4,6 +4,8 @@ import {
   CONTROL_BLOCK_NARROW,
   DETAILS_MIN_ROW,
   DETAILS_WIDTH,
+  FOUR_COLUMN_MIN,
+  SPLIT_MIN_HEIGHT,
   GRAPH_MIN_HEIGHT,
   GRAPH_MIN_HEIGHT_COMPACT,
   GRAPH_MIN_WIDTH,
@@ -22,6 +24,7 @@ import {
   listSheetCoversPanes,
   pickerChromeCost,
   resolvePane,
+  selectionSplit,
   switchedPanes,
 } from './layout';
 
@@ -264,6 +267,48 @@ describe('resolvePane', () => {
     expect(resolvePane('series', switched)).toBe('graph');
     expect(resolvePane('selection', [])).toBe('graph');
     expect(resolvePane('series', [])).toBe('graph');
+  });
+});
+
+describe('selectionSplit', () => {
+  const split = (w: number, h: number) => selectionSplit(layoutFor(w, h), w, h);
+
+  it('puts the two panels side by side where four columns fit', () => {
+    expect(split(1920, 1080)).toBe('columns');
+    expect(split(FOUR_COLUMN_MIN, TALL)).toBe('columns');
+  });
+
+  // Four columns is a function of width alone, for the reason three is: nothing
+  // is in a row, so a short window makes every column short and nothing helps.
+  it('keeps the columns on a short wide window', () => {
+    expect(split(1920, 400)).toBe('columns');
+  });
+
+  it('splits the one column into rows below that', () => {
+    expect(split(FOUR_COLUMN_MIN - 1, TALL)).toBe('rows');
+    expect(split(1280, 800)).toBe('rows');
+    // An iPad in landscape: two columns, with the height for rows.
+    expect(split(1024, 768)).toBe('rows');
+  });
+
+  it('flows the two into one scroller where the column is too short for two rows', () => {
+    expect(split(1280, SPLIT_MIN_HEIGHT - 1)).toBe('flow');
+    expect(split(1024, 648)).toBe('rows');
+    // A landscape phone: two columns, 390px of height.
+    expect(split(844, 390)).toBe('flow');
+  });
+
+  // At one column the selection is already a row, or a turn in the switcher.
+  it('always flows at one column', () => {
+    expect(split(390, 844)).toBe('flow');
+    expect(split(390, 508)).toBe('flow');
+  });
+
+  it('never leaves the graph below its minimum width with the panels in columns', () => {
+    for (let width = FOUR_COLUMN_MIN; width <= 2400; width++) {
+      expect(split(width, TALL)).toBe('columns');
+      expect(width - SIDEBAR_WIDTH - 2 * DETAILS_WIDTH).toBeGreaterThanOrEqual(GRAPH_MIN_WIDTH);
+    }
   });
 });
 

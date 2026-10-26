@@ -1,9 +1,8 @@
 <script lang="ts">
   // The comparison between the selected point and a second one — shift-clicked
   // to pin it, or merely hovered, in which case this is a preview that goes
-  // away with the pointer. Sits at the top of the details pane, above the
-  // single-point sections: when there are two points on screen, the difference
-  // between them is the headline and everything else is supporting detail.
+  // away with the pointer. The card at the top of the comparison panel
+  // (ComparisonPane.svelte); the commits in its range are listed under it there.
   //
   // Its states are all here, because they are one slot: the pinned comparison,
   // the hover preview, the "marked, now move" step of the keyboard path, and
@@ -29,6 +28,8 @@
   // distribution on screen, but it used to be drawn by two components in two
   // *places* — this one for a comparison, DetailsPane for the push on its own —
   // each suppressing the other, so swapping between them moved 154px of pane.
+  // (They are separate panels now, which would make it a chart jumping from one
+  // panel to the other.)
   // One chart in one place instead: one strip row for this push, two when
   // comparing, which `distributionHeight` puts `STRIP_ROW_HEIGHT` apart.
   // Reserving the taller buys a chart that never moves and never blinks out —
@@ -59,9 +60,7 @@
     seriesLabel,
   } from './graphData';
   import { jobsUrl, revisionUrl, shortRevision } from '../shared/links';
-  import CommitList from './CommitList.svelte';
   import MachineFocusButton from './MachineFocusButton.svelte';
-  import { pushlogCaveat, pushlogLabel } from './pushlog';
   import { resolvableDifference } from './noise';
   import { SIGNIFICANCE_ALPHA } from '../shared/stats';
   import { isCoarsePointer, mediaMatcher } from '../shared/pointer';
@@ -81,7 +80,7 @@
   const reserveBand = $derived(app.selectionChart?.reserveBand ?? false);
 
   // The selected push on its own — the same plot DetailsPane used to render
-  // further down the pane, moved here so that gaining and losing the second row
+  // further down its pane, moved here so that gaining and losing the second row
   // is the only thing that ever changes about the chart.
   //
   // Derived whether or not it is the one being shown, because it reads only the
@@ -166,12 +165,6 @@
     cmp ? comparisonLinks(cmp, app.repoLinkFor(cmp.base.ref.repository)) : null,
   );
 
-  // The inline pushlog, and the repository its revisions are browsed in. Both
-  // sides share a repository whenever there is a range at all (appState,
-  // `pushlogRangeRef`), so the base's record is the right one for every row.
-  const pushlogRange = $derived(app.pushlogRange);
-  const repoLink = $derived(cmp ? app.repoLinkFor(cmp.base.ref.repository) : null);
-
   // The fourth link, and the only one that isn't a pure function of the two
   // points: it takes a job lookup and an artifact list per side to know whether
   // both runs uploaded a comparable profile, so it appears a beat after the rest
@@ -203,7 +196,7 @@
   // moment the comparison is pinned, unlike the link below it.
   //
   // Not for a `replicate` comparison, which is two values from one job: one
-  // machine, printed twice, and already named in the Run section below.
+  // machine, printed twice, and already named in the point panel's Run section.
   const machineRows = $derived.by(() =>
     cmp && cmp.kind !== 'replicate'
       ? { base: sideMachines(cmp.kind, cmp.base), next: sideMachines(cmp.kind, cmp.next) }
@@ -266,7 +259,7 @@
 
 {#snippet headlineBody(c: Comparison | null)}
   <div class="cmp-head">
-    <h3>Comparison</h3>
+    <h3>Difference</h3>
     {#if c && pinned}
       <button
         type="button"
@@ -409,7 +402,7 @@
     {#if belowResolution && resolution !== null}
       <p class="floor muted">
         This pair can resolve about {formatPercent(resolution)} — the difference above is
-        inside that. The Noise section below is where the figure comes from.
+        inside that. The Noise section in the point panel is where the figure comes from.
       </p>
     {/if}
 
@@ -592,36 +585,6 @@
       </div>
     {/if}
 
-    <!-- What landed in the range. Collapsed, but with the count in the summary:
-         the number is most of the answer, and a disclosure that has to be opened
-         to find out how much is behind it saves nothing. The row's height is one
-         line in every state, so loading it moves nothing below it. -->
-    {#if app.pushlogStatus !== 'absent'}
-      <details class="pushlog fold">
-        <summary>
-          {#if app.pushlogStatus === 'loading'}
-            <span class="muted">loading commits…</span>
-          {:else if app.pushlogStatus === 'failed'}
-            <span class="muted">commits unavailable</span>
-          {:else if pushlogRange}
-            {pushlogLabel(pushlogRange)}
-          {/if}
-        </summary>
-        {#if pushlogRange}
-          {#if pushlogCaveat(pushlogRange)}
-            <p class="pushlog-caveat muted">
-              {pushlogCaveat(pushlogRange)}
-              {#if cmpLinks?.pushlog}
-                <a href={cmpLinks.pushlog} target="_blank" rel="noopener">Full pushlog</a>.
-              {/if}
-            </p>
-          {/if}
-          <div class="pushlog-body">
-            <CommitList commits={pushlogRange.commits} {repoLink} />
-          </div>
-        {/if}
-      </details>
-    {/if}
   {/if}
 </section>
 
@@ -879,30 +842,5 @@
     padding-top: 8px;
     border-top: 1px solid var(--border-muted);
     font-size: 11px;
-  }
-
-  /* The disclosure. `list-style: none` plus the ::marker rule is what it takes
-     to replace the default triangle in both engines; the row is one line tall
-     in every state, loading included, so nothing below it moves. */
-  .pushlog {
-    margin-top: 8px;
-    padding-top: 8px;
-    border-top: 1px solid var(--border-muted);
-    font-size: 11px;
-  }
-
-  /* The marker, the triangle and the turn are `.fold` in detailsPane.css. Only
-     the line height is this section's, since it sits in the 11px scale. */
-  .pushlog > summary {
-    line-height: 16px;
-  }
-
-  .pushlog-caveat {
-    margin: 6px 0 0 12px;
-  }
-
-  /* Indented to the disclosure's text, so the list reads as its contents. */
-  .pushlog-body {
-    padding-left: 12px;
   }
 </style>

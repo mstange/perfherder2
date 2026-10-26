@@ -40,7 +40,7 @@ change is wrong for a reason the code doesn't show:
 | A percentage or a delta in the details pane | graphs.md, "The three change cards say it the same way" — one component draws all three headlines, and the sign is the measurement's, never the verdict's |
 | Anything that renders before its data arrives | "Layout stability" |
 | A text field that takes focus, or anything sized to the window's height | "The on-screen keyboard has to take height from the app, not cover it" — `100dvh` is not what a keyboard shrinks, and an autofocus is a keyboard nobody asked for |
-| Where a pane sits, how wide it is, or a border between two panes | "The shell has four arrangements, and the graph keeps its size" — there are four, the thresholds are computed from the pane sizes in `shared/layout.ts` rather than chosen, a pane that draws its own border draws a doubled one as soon as the arrangement moves it, and **below `wide` the series list is not a pane at all** but a sheet behind the bottom bar's button. Read that section's "The pane that stops being a pane is the series list" before adding a tier or moving a pane: two tiers were deleted for paying the list's 280px column out of the graph's *height*, and one of them was why an iPad in landscape could only show the graph or the selection |
+| Where a pane sits, how wide it is, or a border between two panes | "The selection is two panels" if it is the point or comparison panel — their split is a second decision beside the tier, in `selectionSplit`. Otherwise "The shell has four arrangements, and the graph keeps its size" — there are four, the thresholds are computed from the pane sizes in `shared/layout.ts` rather than chosen, a pane that draws its own border draws a doubled one as soon as the arrangement moves it, and **below `wide` the series list is not a pane at all** but a sheet behind the bottom bar's button. Read that section's "The pane that stops being a pane is the series list" before adding a tier or moving a pane: two tiers were deleted for paying the list's 280px column out of the graph's *height*, and one of them was why an iPad in landscape could only show the graph or the selection |
 | An animation, or the series sheet's presentation | "The sheet rises from the handle and leaves it on screen" — a sheet that took the whole window with no motion, no shadow and no dim read as a *page*, and the fix is five cues rather than any one of them. Two mechanisms animate the shell (CSS `@starting-style` for the always-mounted sheet, Svelte transitions for the `{#if}`-mounted panel) and they duplicate one duration between `MOTION_MS` and `--sheet-motion`. The sheet must not cover the bar: that is what makes the handle its own dismissal |
 | A fetch, or a new endpoint | "Validating API responses" and [api-assumptions.md](api-assumptions.md); plus "Cache key" if the result is cached, and "The picker's caches live at module scope" if it is the picker doing the fetching — a cache on `PickerState` does not survive the panel closing |
 | `SeriesMeta`, or anything that reads a series' metadata | "Two endpoints describe a series" below. It arrives from one of two responses, `source` says which, and two of its fields are answerable by only one of them — api-assumptions.md, "Two null fields mean different things depending on `source`" |
@@ -80,7 +80,7 @@ src/lib/
             alerts(+Api), appState.svelte, chartDraw, ScatterChart, GraphPane,
             SeriesList, seriesSummary, reorder, and the details pane's
             compare, distribution(+Draw), kde, DistributionChart, DetailsPane,
-            ComparisonSection, detailsPane.css
+            ComparisonPane, ComparisonSection, detailsPane.css
   urlState.ts   the whole app's URL schema — it names picker state and graph
                 state alike, so it sits above both rather than inside either
   schema.test.ts + fixtures/   recorded payloads for both halves
@@ -1402,10 +1402,13 @@ would push the graph below `GRAPH_MIN_WIDTH` / `GRAPH_MIN_HEIGHT`:
 
 | Window | Tier | Arrangement | Graph gets |
 | --- | --- | --- | --- |
-| w ≥ 1040 | `wide` | `list │ graph │ details` | w − 600 |
+| w ≥ 1040 | `wide` | `list │ graph │ details` (the details column is two panels wide from 1360px) | w − 600, or w − 920 |
 | w 760–1039 | `medium` | `graph │ details`, list a **drawer** behind a bar button | w − 320, h − 45 |
 | w < 760, h ≥ 570 | `narrow` | graph over a details row, list behind the same button | w, h − 45% − 45 |
 | w < 760, h < 570 | `narrow-short` | graph and details taking turns, list behind the same button | w, h − 45 |
+
+The details column holds the selection's two panels, and how it divides them is
+a second decision beside the tier; see "The selection is two panels" below.
 
 Read down the table as a sequence of retreats, each giving up the least it can:
 **the list's column goes first, then the details pane's column becomes a row, then
@@ -1716,6 +1719,65 @@ appears and disappears, which is the behaviour this replaced.
 The one-column tiers are also the ones that found two long-standing bugs in the picker,
 both of which bit at any window under ~1150px and are described in the next
 section.
+
+### The selection is two panels
+
+The details pane used to be one 320px scroller holding everything about the
+selection: the series, the comparison card, the alert and detected-change cards,
+the value, the push's values, the noise, the job and the build. A pinned
+comparison put its stats, its sides, its links and a collapsed list of up to 200
+commits in the middle of that, and opening the list pushed the rest of the pane
+thousands of pixels down. It is two panels now:
+
+- **The point panel** (`DetailsPane.svelte`) describes one dot. With a comparison
+  pinned, its header becomes a tab per end, labelled with the comparison's own
+  side labels (`compare.ts::sideTabLabel`): "Before" and "After" for two pushes,
+  the distinguishing platform or application for two series on one push, "Run 1"
+  and "Run 2" for two retriggers. The tabs carry the chart legend's key, dashed
+  for the earlier end.
+- **The comparison panel** (`ComparisonPane.svelte`) holds the comparison card
+  and, under it, the commits in the pinned range, listed open.
+
+**A tab is a selection, not a view.** Picking the other tab makes that end the
+selected point, through the same swap a click on the pinned dot already performs
+(`AppState.selectPoint`). So every lookup the point panel reads (job, profiles,
+push, alert, noise) follows the tab with no second copy for the compared end; the
+graph's solid ring moves to the dot being described; and `sel=` in the URL says
+which end the reader was looking at. The comparison itself does not change,
+because its two sides are in time order, not click order.
+
+**Tabs only for a pinned comparison, never for a hover.** A hover preview would
+grow tabs for a dot the pointer is about to leave, and they could not be clicked
+anyway. The header is a fixed 40px in both states, so a pin swaps the title for
+the tabs without moving anything below it.
+
+**Where the panels go is `layout.ts::selectionSplit`**, a second answer beside
+`layoutFor`. It is not more tiers because it changes nothing else the shell
+decides: both panels share the one `.slot-details`, so which cell the selection
+gets, whether it takes turns with the graph and whether it is `inert` are the same
+whichever way it divides that cell.
+
+| Split | When | Arrangement |
+| --- | --- | --- |
+| `columns` | `wide` and w ≥ 1360 (`FOUR_COLUMN_MIN`) | side by side, 320px each |
+| `rows` | otherwise, with h ≥ 640 (`SPLIT_MIN_HEIGHT`) | the point panel above, the comparison below, equal halves |
+| `flow` | one column, or a window too short for two rows | one scroller, comparison first |
+
+- **The point panel comes first** in `columns` and `rows`, because a click fills
+  it first; the comparison panel only has something of its own once there is a
+  second point.
+- **`rows` are equal halves, not sized to content.** The comparison panel grows
+  when a comparison is pinned and again when its commits arrive, and a row that
+  followed it would move every line of the point panel each time.
+- **`flow` puts the comparison first**, and leaves it out until something is
+  selected. The point panel runs past 1000px, so second place would put a pinned
+  comparison a long scroll below the fold on a phone, where it used to sit near
+  the top of the single pane. Both panels take `scroll={false}` there and the slot
+  scrolls instead.
+- **The comparison's distribution chart stays in the comparison panel even with
+  one point.** It is the one-row form of the comparison's chart, and moving it
+  between panels as a comparison comes and goes would be the 154px jump that
+  comparison.md, "The pane does not move while the pointer does", removed.
 
 ### The Add-series panel docks beside the series list
 
