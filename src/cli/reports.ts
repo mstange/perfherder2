@@ -697,14 +697,11 @@ export function sortMachines(machines: readonly MachineRow[], sort: MachineSort)
       return rows.sort((a, b) => byNullableDescending(a.relativeSpread, b.relativeSpread));
     case 'level':
     default:
-      // Worst first, by magnitude: the column exists for the case where the
-      // reader cannot name the machine they are looking for.
-      return rows.sort((a, b) =>
-        byNullableDescending(
-          a.relativeLevel === null ? null : Math.abs(a.relativeLevel),
-          b.relativeLevel === null ? null : Math.abs(b.relativeLevel),
-        ),
-      );
+      // Signed, highest first: the machines reading above the pool head the
+      // table, the ones reading below close it, and the ordinary ones sit in
+      // the middle. Sorting by magnitude interleaved the two tails, so a fast
+      // and a slow worker shared the top of the table.
+      return rows.sort((a, b) => byNullableDescending(a.relativeLevel, b.relativeLevel));
   }
 }
 

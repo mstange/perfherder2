@@ -48,6 +48,8 @@
   // not a thing a shared link should reproduce.
   let sort = $state<'name' | 'level'>('name');
 
+  // Signed, highest first, so the machines reading above the pool and the ones
+  // reading below it form the two ends of the list instead of interleaving.
   // Machines with no level fall to the bottom rather than sorting as zero, which
   // would file a machine we know nothing about among the ones we do.
   const rows = $derived.by(() => {
@@ -55,7 +57,7 @@
     return [...census.machines].sort((a, b) => {
       if (a.relativeLevel === null) return b.relativeLevel === null ? 0 : 1;
       if (b.relativeLevel === null) return -1;
-      return Math.abs(b.relativeLevel) - Math.abs(a.relativeLevel);
+      return b.relativeLevel - a.relativeLevel;
     });
   });
 

@@ -1168,6 +1168,18 @@ describe('buildMachinesReport', () => {
     expect(byRuns.machines.map((m) => m.name)).toEqual(['nuc-1', 'nuc-2']);
   });
 
+  it('ranks by signed level, so the high machines lead and the low ones close', () => {
+    // nuc-2 reads 10% low and nuc-3 8% high. By magnitude nuc-2 would lead;
+    // signed, it is last.
+    const values = noisy(100, 60, 0.5).map((v, i) =>
+      i % 4 === 1 ? v * 0.9 : i % 4 === 2 ? v * 1.08 : v,
+    );
+    const report = buildMachinesReport([pool(values)], SPAN60, 'x');
+    const names = report.machines.map((m) => m.name);
+    expect(names[0]).toBe('nuc-3');
+    expect(names[names.length - 1]).toBe('nuc-2');
+  });
+
   it('blocks the pool by name prefix when asked, and not otherwise', () => {
     const machines = ['aa-1', 'aa-2', 'bb-1', 'bb-2'];
     const plain = buildMachinesReport([pool(noisy(100, 60, 1), machines)], SPAN60, 'x');
