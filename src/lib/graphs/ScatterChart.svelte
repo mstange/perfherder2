@@ -110,6 +110,7 @@
     // know how to phrase. Returning null means "no tooltip for this one".
     alertTip?: (hit: ChartAlertHit) => TooltipContent | null;
     changeTip?: (hit: ChartChangeHit) => TooltipContent | null;
+    pointTip?: (hit: ChartHit) => TooltipContent | null;
     // The point under the pointer, or null when there isn't one. Fires only on
     // change, so a mousemove inside one dot doesn't re-report it.
     //
@@ -156,6 +157,7 @@
     onchangeselect,
     alertTip,
     changeTip,
+    pointTip,
     onhover,
     onbrush,
     onkeymove,
@@ -482,21 +484,29 @@
     return a.seriesIndex === b.seriesIndex && a.changeIndex === b.changeIndex;
   }
 
-  // Marks are drawn into a canvas, so a tooltip on one can't come from an
-  // attribute on an element — the whole reason this app has a tooltip layer.
+  // Marks and dots are drawn into a canvas, so a tooltip on one can't come from
+  // an attribute on an element — the whole reason this app has a tooltip layer.
   // Called on every move rather than only on a change of mark, because that is
   // what makes the box follow the cursor; `tooltip.show` treats a repeat with a
   // new anchor as a move.
   //
-  // A hovered *dot* deliberately gets nothing: the details pane already describes
-  // the point under the pointer, in far more depth than a tooltip could, and a box
-  // opening over the plot everywhere the pointer went would be unusable.
+  // A dot's tooltip is two short lines, the revision first. It used to have none,
+  // on the grounds that the pane describes a hovered dot. It only does once a
+  // point is selected, and sheriffs asked for the revision while scanning. The
+  // tooltip's rest delay keeps it from opening on every dot the pointer crosses.
   function updateTooltip(
     alert: ChartAlertHit | null,
     change: ChartChangeHit | null,
+    hit: ChartHit | null,
     e: PointerEvent,
   ): void {
-    const content = alert ? alertTip?.(alert) : change ? changeTip?.(change) : null;
+    const content = alert
+      ? alertTip?.(alert)
+      : change
+        ? changeTip?.(change)
+        : hit
+          ? pointTip?.(hit)
+          : null;
     if (content) tooltip.show(tipOwner, content, { x: e.clientX, y: e.clientY });
     else tooltip.hide(tipOwner);
   }
@@ -531,7 +541,7 @@
         const hit = alert || change ? null : hitAt(px, py);
         hovering = alert !== null || change !== null || hit !== null;
         reportHover(hit, e.shiftKey);
-        updateTooltip(alert, change, e);
+        updateTooltip(alert, change, hit, e);
       }
       return;
     }

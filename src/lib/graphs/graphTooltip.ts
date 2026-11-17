@@ -1,4 +1,5 @@
-// What the marks in the margins of the detail plot say when you point at them.
+// What the marks in the margins of the detail plot, and its dots, say when you
+// point at them.
 //
 // **Pure**, and separate from the components for the usual reason: the wording is
 // the part worth pinning, and every number in it has a convention behind it that
@@ -17,12 +18,19 @@
 //   three are different numbers about the same event, and each has to say which
 //   it is or a reader takes two of them for a contradiction.
 
-import { formatPValue, formatSignedPercent, formatSignedValue, formatValue } from '../shared/chart';
+import {
+  formatPValue,
+  formatSignedPercent,
+  formatSignedValue,
+  formatTimestamp,
+  formatValue,
+} from '../shared/chart';
 import { shortRevision } from '../shared/links';
 import type { TooltipContent } from '../shared/tooltip';
 import { alertDelta, alertStatusLabel, signedAmountFraction, summaryStatusLabel } from './alerts';
 import type { SeriesAlert } from './alerts';
 import type { DetectedChange } from './changes';
+import { MEAN_REPLICATE } from './graphData';
 
 // Everything about the series a mark belongs to that its tooltip needs.
 export type MarkContext = {
@@ -118,5 +126,49 @@ export function changeTooltip(change: DetectedChange, ctx: MarkContext): Tooltip
     ],
     source: source(ctx),
     hint: 'Click to compare the two pushes either side of the step.',
+  };
+}
+
+// What a dot under the pointer is.
+export type PointFacts = {
+  revision: string;
+  // Push time in ms.
+  x: number;
+  value: number;
+  // Index into the run's values, or MEAN_REPLICATE for a run-means dot.
+  replicateIndex: number;
+  // How many replicates the run recorded.
+  replicateCount: number;
+  // How many runs the push has: more than one when it was retriggered.
+  runCount: number;
+};
+
+// A dot.
+//
+// **The revision is the title**, because it is what this tooltip was asked for:
+// a sheriff scanning a step wants to know which push each dot is without
+// clicking it, and clicking moves the selection they may be comparing against.
+// Everything about the point beyond its identity (the job, the machine, the
+// distribution) stays in the point panel, where a click puts it. So this is two
+// short lines and no more.
+//
+// The value line says which kind of value it is, since a run mean and a single
+// replicate sit at the same position and mean different things.
+export function pointTooltip(p: PointFacts, ctx: MarkContext): TooltipContent {
+  const kind =
+    p.replicateIndex === MEAN_REPLICATE
+      ? 'run mean'
+      : p.replicateCount > 1
+        ? `replicate ${p.replicateIndex + 1} of ${p.replicateCount}`
+        : null;
+  const value = withUnit(formatValue(p.value), ctx.unit);
+  const pushed = `Pushed ${formatTimestamp(p.x)}`;
+  return {
+    title: shortRevision(p.revision),
+    lines: [
+      kind ? `${value} · ${kind}` : value,
+      p.runCount > 1 ? `${pushed} · ${p.runCount} runs` : pushed,
+    ],
+    source: source(ctx),
   };
 }

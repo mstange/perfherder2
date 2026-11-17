@@ -4,8 +4,8 @@
 
   import type { AppState, Selection, SeriesEntry } from './appState.svelte';
   import { hoverRingKind, type Highlight } from './chartDraw';
-  import { jitterForSelection } from './graphData';
-  import { alertTooltip, changeTooltip, type MarkContext } from './graphTooltip';
+  import { jitterForSelection, resolvePoint } from './graphData';
+  import { alertTooltip, changeTooltip, pointTooltip, type MarkContext } from './graphTooltip';
   import ScatterChart, {
     type ChartAlertHit,
     type ChartChangeHit,
@@ -14,6 +14,7 @@
   import type { PointMode, SelectedPoint } from '../urlState';
   import { CONTROL_BLOCK_NARROW, GRAPH_MIN_HEIGHT } from '../shared/layout';
   import { describeSpan, matchingPreset, RANGE_PRESETS } from '../shared/timeRange';
+  import type { TooltipContent } from '../shared/tooltip';
   import ChevronIcon from '../shared/ChevronIcon.svelte';
   import CrossIcon from '../shared/CrossIcon.svelte';
   import MachinePanel from './MachinePanel.svelte';
@@ -282,6 +283,27 @@
       label: app.visibleSeries.length > 1 ? (app.seriesLabels.get(entry.key) ?? null) : null,
       color: entry.color,
     };
+  }
+
+  // A dot's tooltip: which push it is, for scanning without clicking. See
+  // `pointTooltip` for what it says and why no more.
+  function pointTip(hit: ChartHit): TooltipContent | null {
+    const point = pointFor(hit);
+    const entry = app.visibleSeries[hit.seriesIndex];
+    if (!point || !entry) return null;
+    const resolved = resolvePoint(entry.data, point.datumId, point.replicateIndex);
+    if (!resolved) return null;
+    return pointTooltip(
+      {
+        revision: resolved.push.revision,
+        x: resolved.push.x,
+        value: resolved.value,
+        replicateIndex: resolved.replicateIndex,
+        replicateCount: resolved.run.values.length,
+        runCount: resolved.push.runs.length,
+      },
+      markContext(entry),
+    );
   }
 
   function onDetailSelect(hit: ChartHit | null, modifiers: { shift: boolean }): void {
@@ -576,6 +598,7 @@
           const change = entry?.changes[hit.changeIndex];
           return entry && change ? changeTooltip(change, markContext(entry)) : null;
         }}
+        {pointTip}
         onhover={(hit, modifiers) => {
           shiftHeld = modifiers.shift;
           app.setHoveredPoint(pointFor(hit));

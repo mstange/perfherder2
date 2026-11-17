@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { alertTooltip, changeTooltip, type MarkContext } from './graphTooltip';
+import {
+  alertTooltip,
+  changeTooltip,
+  pointTooltip,
+  type MarkContext,
+  type PointFacts,
+} from './graphTooltip';
+import { formatTimestamp } from '../shared/chart';
+import { MEAN_REPLICATE } from './graphData';
 import type { SeriesAlert } from './alerts';
 import type { DetectedChange } from './changes';
 
@@ -142,5 +150,46 @@ describe('changeTooltip', () => {
     expect(changeTooltip(change(), CTX).hint).toBe(
       'Click to compare the two pushes either side of the step.',
     );
+  });
+});
+
+describe('pointTooltip', () => {
+  const POINT: PointFacts = {
+    revision: 'b6aa7802af5899f3f4276fb2b6d243074013c84e',
+    x: 1_700_000_000_000,
+    value: 6130.08,
+    replicateIndex: 2,
+    replicateCount: 10,
+    runCount: 1,
+  };
+
+  it('leads with the short revision', () => {
+    expect(pointTooltip(POINT, CTX).title).toBe('b6aa7802af58');
+  });
+
+  it('says which replicate the value is', () => {
+    expect(pointTooltip(POINT, CTX).lines?.[0]).toBe('6130.08 ms · replicate 3 of 10');
+  });
+
+  it('calls a run-means dot a run mean', () => {
+    const mean = { ...POINT, replicateIndex: MEAN_REPLICATE };
+    expect(pointTooltip(mean, CTX).lines?.[0]).toBe('6130.08 ms · run mean');
+  });
+
+  // With one replicate per run, "replicate 1 of 1" would be noise.
+  it('says nothing about replicates when the run has only one', () => {
+    const single = { ...POINT, replicateIndex: 0, replicateCount: 1 };
+    expect(pointTooltip(single, CTX).lines?.[0]).toBe('6130.08 ms');
+  });
+
+  it('gives the push time, and the run count for a retriggered push', () => {
+    const pushed = `Pushed ${formatTimestamp(POINT.x)}`;
+    expect(pointTooltip(POINT, CTX).lines?.[1]).toBe(pushed);
+    expect(pointTooltip({ ...POINT, runCount: 3 }, CTX).lines?.[1]).toBe(`${pushed} · 3 runs`);
+  });
+
+  it('names the series only when asked to', () => {
+    expect(pointTooltip(POINT, CTX).source).toBeUndefined();
+    expect(pointTooltip(POINT, { ...CTX, label: 'chrome' }).source?.label).toBe('chrome');
   });
 });

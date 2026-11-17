@@ -1801,8 +1801,8 @@ Recovery is the explicit Retry button.
   plot's margins: row packing, pixel layout and hit tests for both the alert
   triangles and the change bars. Both of its layouts are computed once by
   ScatterChart and read by the draw call, the overlay and the hit test alike.
-- [graphTooltip.ts](../src/lib/graphs/graphTooltip.ts) — **pure**. What those marks
-  say when you point at one. Separate from the components because the wording
+- [graphTooltip.ts](../src/lib/graphs/graphTooltip.ts) — **pure**. What those marks,
+  and the dots, say when you point at one. Separate from the components because the wording
   carries the same sign and window conventions as the pane's cards, and a tooltip
   that disagreed with the card a click leads to would be worse than none; the
   chart asks for the words through a callback rather than composing them, the same
@@ -1943,15 +1943,17 @@ Decisions carried over from treeherder:
 
 Deliberate deviations:
 
-- **No tooltip on a dot, and no hover/click arrow panel.** Clicking a dot fills
-  the right-hand pane instead. *Hovering* one fills the pane's comparison card as
-  a preview against the selection — which is the same information a tooltip would
-  carry, in a place where it has room to be a distribution and a rank-sum test.
-  See [comparison.md](comparison.md). The *marks* are the other way round and do
-  have one: a triangle or a bar is a claim with no room to state itself, and the
-  pane only speaks once you have clicked. They are also the only thing in the app
-  with a drawn tooltip rather than a `title` — being canvas, they have no element
-  to put one on. See "Alerts" and "Detected changes" above, and design.md,
+- **A small tooltip on a dot, and no hover/click arrow panel.** Clicking a dot
+  fills the right-hand pane instead. *Hovering* one fills the pane's comparison
+  card as a preview against the selection, where it has room to be a
+  distribution and a rank-sum test (see [comparison.md](comparison.md)). The
+  dot's tooltip carries only what a reader scanning the plot needs: the
+  revision, the value and the push time. It was added after sheriffs asked for
+  the revision on hover; the pane says nothing until a point is selected. The
+  *marks* have fuller tooltips: a triangle or a bar is a claim with no room to
+  state itself. Dots and marks are the only things in the app with a drawn
+  tooltip rather than a `title`, because being canvas, they have no element to
+  put one on. See "Alerts" and "Detected changes" above, and design.md,
   "Tooltips: for what the canvas paints".
 - **Smaller dots.** Treeherder uses `DOT_SIZE = 5`; at high point counts the
   plot turns into a solid blob. We use radius 3 in the detail graph and 1.25

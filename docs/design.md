@@ -2372,8 +2372,8 @@ obvious, so they stay plain text.
 terms, clipped labels: all of them carry a `title`, and a new control should too.
 
 There is exactly one exception, and it is the reason
-[tooltip.ts](../src/lib/shared/tooltip.ts) exists: **an alert triangle and a
-detected-change bar are pixels in a canvas.** There is no element to hang an
+[tooltip.ts](../src/lib/shared/tooltip.ts) exists: **an alert triangle, a
+detected-change bar and a dot are pixels in a canvas.** There is no element to hang an
 attribute on, so their explanation has to be drawn. Until it was, the only way to
 find out what one of those marks meant was to click it and read the details pane —
 where the answer is one card among several, and easy to miss.
@@ -2433,10 +2433,15 @@ What to know before touching it:
   an alert is the graph's own <kbd>A</kbd> / <kbd>shift-A</kbd> stepper, which
   moves the selection and answers in the details pane.
 
-What deliberately has *no* tooltip: a hovered dot. The details pane already
-describes the point under the pointer — in more depth than a box could, including
-a comparison against the selection — and a box opening everywhere the pointer went
-over a plot would be unusable. See graphs.md.
+**A hovered dot has one too**, and for a long time did not. The reasoning was that
+the details pane already describes the point under the pointer, and that a box
+opening everywhere the pointer went would be unusable. Neither held up. The pane
+previews a hovered dot only once a point is selected, and sheriffs scanning a step
+asked for each dot's revision without having to click it. The rest delay above
+already stops the box from opening on every dot the pointer crosses. So the dot's
+tooltip is short: the revision as its title, then the value and the push time
+(`pointTooltip` in graphTooltip.ts). Everything else about the point stays in the
+pane, where a click puts it. See graphs.md.
 
 ### Layout stability
 

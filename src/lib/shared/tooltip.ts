@@ -6,10 +6,10 @@
 // ThemeToggle.svelte, and for the same reason: the arithmetic is the part worth
 // testing, and it shouldn't need a DOM to exercise.
 //
-// **This exists for what the canvas paints, and nothing else.** An alert triangle
-// and a detected-change bar have no element to hang a `title` on, so their
-// explanation has to be drawn; every ordinary control in this app still uses
-// `title`. See docs/design.md, "Tooltips: for what the canvas paints".
+// **This exists for what the canvas paints, and nothing else.** An alert
+// triangle, a detected-change bar and a dot have no element to hang a `title`
+// on, so their explanation has to be drawn; every ordinary control in this app
+// still uses `title`. See docs/design.md, "Tooltips: for what the canvas paints".
 
 export type TooltipContent = {
   // Bold first row: what the thing under the pointer *is*.
