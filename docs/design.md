@@ -2141,6 +2141,8 @@ sheet's close, which is the same shape and mark as the panel's because it is the
 control, and `Remove all` — the machine panel's rows and the details pane's machine
 control 32 tall, being list rows and a word in a definition list rather than
 buttons, the graph's machine chip's clear 32 square, being a 16px cross in a pill,
+the copy-revision button (`shared/CopyButton.svelte`) 32 square, being a 13px
+icon in a definition-list row,
 and the panel's three other shapes below. **There are
 no exceptions left, and there was one.** The bottom bar's two controls — the pane
 switcher and the series sheet's handle — took the guideline's 44 for a while, on

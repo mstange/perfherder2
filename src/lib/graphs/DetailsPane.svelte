@@ -38,6 +38,7 @@
   import { jobDuration, shortJobType } from './job';
   import MachineFocusButton from './MachineFocusButton.svelte';
   import NoiseSection from './NoiseSection.svelte';
+  import CopyButton from '../shared/CopyButton.svelte';
   import { sideTabLabel } from './compare';
   import { isCoarsePointer, mediaMatcher } from '../shared/pointer';
 
@@ -609,6 +610,7 @@
             {:else}
               <span class="mono">{shortRevision(sel.push.revision)}</span>
             {/if}
+            <CopyButton text={sel.push.revision} what="the full revision" />
           </dd>
           <!-- Always a row, with a placeholder until the push lands, so the
                cards below don't move when it does. -->

@@ -16,6 +16,7 @@
   // half of what the commit says it is, and the CLI's commit table prints them
   // all, which would leave two views of one field disagreeing.
 
+  import CopyButton from '../shared/CopyButton.svelte';
   import { bugUrl, revisionUrl, shortRevision } from '../shared/links';
   import type { RepoLinkInfo } from '../shared/links';
   import { commitTitle, type Commit } from './pushlog';
@@ -43,7 +44,9 @@
             href={revisionUrl(repoLink, commit.revision)}
             target="_blank"
             rel="noopener">{shortRevision(commit.revision)}</a
-          >{:else}<span class="mono">{shortRevision(commit.revision)}</span>{/if}
+          >{:else}<span class="mono">{shortRevision(commit.revision)}</span>{/if}<span
+          class="copy-slot"><CopyButton text={commit.revision} what="this commit’s full revision" /></span
+        >
         · {commit.author}
       </div>
     </li>
@@ -75,5 +78,22 @@
 
   .commit-meta {
     line-height: 1.35;
+  }
+
+  /* The copy button only shows on the row being pointed at, so a list of thirty
+     commits isn't a column of thirty icons. Hidden with `visibility`, not
+     removed, so a row doesn't move when the pointer arrives. A touch screen has
+     no hover, so there it is always shown. */
+  .copy-slot {
+    visibility: hidden;
+  }
+  li:hover .copy-slot,
+  li:focus-within .copy-slot {
+    visibility: visible;
+  }
+  @media (hover: none) {
+    .copy-slot {
+      visibility: visible;
+    }
   }
 </style>
