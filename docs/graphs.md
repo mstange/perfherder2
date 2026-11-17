@@ -628,7 +628,7 @@ answers rather than two checkboxes:
 | Mode | Dots | For |
 | --- | --- | --- |
 | `replicates` | every replicate value | the default; the only view that shows a run's *spread*, which is what tells a step from a noisy series |
-| `runs` | one per run, at its mean | takes a 90-day range from ~20k dots per series to a few hundred, and stops a real step being buried in scatter |
+| `runs` | one per run, at its mean, and no connecting line | takes a 90-day range from ~20k dots per series to a few hundred, and stops a real step being buried in scatter |
 | `none` | none, and no connecting line | leaves the summaries: the trend band, the alert markers, the change bars |
 
 `none` exists because the band is drawn *under* nine series' worth of dots
@@ -637,9 +637,16 @@ cannot answer at all. Two things follow the mode rather than being switches of
 their own — in both cases because the state the extra switch would allow is one
 nobody asked for:
 
-- **The connecting line goes off with the dots.** It is the same raw data at
-  push resolution, so "no data points" that still drew the noisiest summary of
-  them would not be the thing the reader asked for.
+- **The connecting line is drawn in `replicates` only** (`AppState.drawLines`).
+  In `none` it goes off with the dots: it is the same raw data at push
+  resolution, so "no data points" that still drew the noisiest summary of them
+  would not be the thing the reader asked for. In `runs` it goes off because the
+  dots already are nearly that summary. The line ran through or beside every run
+  mean and drew a zigzag of its own on top, and sheriffs reported it as the most
+  distracting thing on the graph in that mode. With every replicate drawn the
+  dots are a cloud, and the line is the one push-level summary on the plot, so
+  it stays there. The y extent follows the same flag: the line's crossings of
+  the window edges count only when the line is painted (`extentOf`'s `drawn`).
 - **The y axis follows what is drawn**, so with the dots off it covers the
   *band* (`extentOf`'s `drawPoints` argument, and `trendExtent` in trend.ts,
   which measures exactly the vertices `trendSpan` hands the drawing). Measured
@@ -1953,7 +1960,8 @@ Deliberate deviations:
   difference to redraw cost (median 16.6 ms either way on a live brush drag
   over 91k points), so it's purely a legibility call.
 - **No connecting lines in the overview graph**, per the task. The detail
-  graph does draw them (treeherder's `VictoryLine`), one polyline per series
+  graph draws them with every replicate drawn (treeherder's `VictoryLine`; see
+  "Replicates" for why not in the other two modes), one polyline per series
   through the **per-push** mean — `PushGroup.mean`, the mean of that push's
   runs' means. Per push rather than per run because retriggers of one push
   share a push timestamp: joining runs put two or more vertices at the same x

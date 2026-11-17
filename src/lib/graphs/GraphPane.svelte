@@ -555,7 +555,7 @@
         dotRadius={DETAIL_DOT}
         showPoints={app.drawPoints}
         focusMachine={app.machineFocus}
-        showLines={app.drawPoints}
+        showLines={app.drawLines}
         showAxes={true}
         showAlerts={true}
         showChanges={app.changeDetection}

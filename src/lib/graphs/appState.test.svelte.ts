@@ -2778,6 +2778,16 @@ describe('AppState point modes', () => {
       expect(app.fullYDomain.max).toBeLessThan(210);
     }));
 
+  it('draws the connecting line only with every replicate drawn', () =>
+    withApp('?series=autoland,1,1', async (app) => {
+      await settle();
+      expect(app.drawLines).toBe(true);
+      app.setPointMode('runs');
+      expect(app.drawLines).toBe(false);
+      app.setPointMode('none');
+      expect(app.drawLines).toBe(false);
+    }));
+
   it('is a drawing choice, so switching modes refetches nothing', () =>
     withApp('?series=autoland,1,1', async (app) => {
       await settle();
@@ -2873,6 +2883,11 @@ describe('AppState point modes', () => {
 });
 
 describe('extentOf', () => {
+  // What is drawn, as `AppState` passes it: `replicates`, `runs` and `none`.
+  const EVERYTHING = { points: true, line: true };
+  const POINTS_ONLY = { points: true, line: false };
+  const NOTHING = { points: false, line: false };
+
   // Two runs a day apart, means 100 and 200, with nothing in between.
   const DAY_1 = Date.UTC(2026, 6, 21, 6, 0, 0);
   const DAY_2 = DAY_1 + DAY;
@@ -2920,6 +2935,13 @@ describe('extentOf', () => {
     expect(extentOf([SLOPED, flat], span)).toEqual({ min: 125, max: 500 });
   });
 
+  it('leaves the line out when it is not drawn', () => {
+    // The window from the test above, which only the line crosses. With run
+    // means drawn there is no line, so nothing in the window needs room.
+    const span = { start: DAY_1 + DAY / 4, end: DAY_1 + DAY / 2 };
+    expect(extentOf([SLOPED], span, POINTS_ONLY)).toEqual({ min: 0, max: 1 });
+  });
+
   it('does not extrapolate past the ends of a series', () => {
     // Window entirely to the right of both runs: no line to show.
     expect(extentOf([SLOPED], { start: DAY_2 + DAY, end: DAY_2 + 2 * DAY })).toEqual({
@@ -2944,22 +2966,22 @@ describe('extentOf', () => {
     );
 
     it('covers the band rather than the dots it is drawn instead of', () => {
-      expect(extentOf([BANDED], null, false)).toEqual({ min: 140, max: 170 });
+      expect(extentOf([BANDED], null, NOTHING)).toEqual({ min: 140, max: 170 });
       // The same series with its dots on is four times as tall.
-      expect(extentOf([BANDED], null, true)).toEqual({ min: 100, max: 200 });
+      expect(extentOf([BANDED], null, EVERYTHING)).toEqual({ min: 100, max: 200 });
     });
 
     it('takes the same vertices the ribbon is drawn from', () => {
       // A window inside the first half of the band keeps the vertex on each side,
       // exactly as `trendSpan` does for the drawing.
       const span = { start: DAY_1 + DAY / 4, end: DAY_1 + DAY / 2 };
-      expect(extentOf([BANDED], span, false)).toEqual({ min: 140, max: 170 });
+      expect(extentOf([BANDED], span, NOTHING)).toEqual({ min: 140, max: 170 });
     });
 
     it('falls back to the points when there is no band to measure', () => {
       // Nothing is drawn at all in this state; the axis stays the data's, ready
       // for whichever switch the reader reaches for next.
-      expect(extentOf([SLOPED], null, false)).toEqual({ min: 100, max: 200 });
+      expect(extentOf([SLOPED], null, NOTHING)).toEqual({ min: 100, max: 200 });
     });
   });
 });

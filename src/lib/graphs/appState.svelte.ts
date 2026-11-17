@@ -241,9 +241,9 @@ export class AppState {
   // instant, and the details pane still lists a run's individual replicates in
   // every mode. Two things follow the mode rather than being switches of their
   // own, both because the alternative is a state nobody asked for: the
-  // connecting line, which is the same raw data at push resolution (see
-  // `DrawOptions.showLines`), and the y axis, which covers what is drawn and so
-  // scales to the band in `none` (see `extentOf`).
+  // connecting line, drawn in `replicates` only (see `drawLines`), and the y
+  // axis, which covers what is drawn and so scales to the band in `none` (see
+  // `extentOf`).
   pointMode = $state<PointMode>('replicates');
   // Draw the steps this app detects in each series (changes.ts).
   //
@@ -503,11 +503,20 @@ export class AppState {
   hasData = $derived(this.visibleSeries.some((s) => s.plot.points.length > 0));
   failedSeries = $derived(this.series.filter((s) => s.error !== null));
 
-  // Whether the dots (and with them the connecting line) are painted at all. One
-  // flag off `pointMode` rather than three comparisons spread over the pane and
-  // the chart: it gates the drawing *and* the hit test, which have to agree, or
-  // the graph would hand out selections for dots nobody can see.
+  // Whether the dots are painted at all. One flag off `pointMode` rather than
+  // three comparisons spread over the pane and the chart: it gates the drawing
+  // *and* the hit test, which have to agree, or the graph would hand out
+  // selections for dots nobody can see.
   drawPoints = $derived(this.pointMode !== 'none');
+
+  // Whether the detail graph draws the connecting line through the push means.
+  // **Only with every replicate drawn.** There the dots are a cloud and the line
+  // is the one push-level summary on the plot. With run means drawn, the dots
+  // already are nearly that summary: the line ran through or beside every one of
+  // them and added a zigzag of its own on top. Sheriffs reported it as the most
+  // distracting thing on the graph in that mode. In `none` it goes off with the
+  // dots (graphs.md, "Replicates").
+  drawLines = $derived(this.pointMode === 'replicates');
 
   // Which machine the graph is emphasising right now, hover beating pin — the
   // same precedence `comparisonSource` gives a hovered dot over a pinned one, and
@@ -575,10 +584,13 @@ export class AppState {
     new Map<string, MachineLevel>(this.machineCensus.machines.map((m) => [m.name, m])),
   );
 
+  // What `extentOf` has to make room for.
+  private drawn = $derived({ points: this.drawPoints, line: this.drawLines });
+
   // Shared y domain across every visible series, over the whole range. The
   // overview graph uses this one.
   fullYDomain = $derived.by((): Range => {
-    const e = extentOf(this.visibleSeries, null, this.drawPoints);
+    const e = extentOf(this.visibleSeries, null, this.drawn);
     return padDomain(e.min, e.max);
   });
 
@@ -587,7 +599,7 @@ export class AppState {
   // bottom of the plot. Treeherder keeps a y zoom in its URL instead; we
   // derive it, which is one less thing to get out of sync.
   detailYDomain = $derived.by((): Range => {
-    const e = extentOf(this.visibleSeries, this.detailSpan, this.drawPoints);
+    const e = extentOf(this.visibleSeries, this.detailSpan, this.drawn);
     return padDomain(e.min, e.max);
   });
 
@@ -2156,8 +2168,8 @@ function compareSideOf(sel: Selection): CompareSide {
 // scan — this runs on every frame of a zoom drag.
 //
 // **The y axis covers what is painted, and nothing else.** That rule is why the
-// line's edge crossings are in here (below), and it is what `drawPoints` is doing
-// in the signature: with the dots and the line off, the band is the only thing on
+// line's edge crossings are in here (below), and it is what `drawn` is for in the
+// signature: with the dots and the line off, the band is the only thing on
 // the plot, so scaling to the dots would anchor the axis to invisible data and
 // leave the band — the thing the reader asked to see — as a stripe across a
 // quarter of it. Measured on the two 128m_encrypt/decrypt signatures over three
@@ -2167,10 +2179,19 @@ function compareSideOf(sel: Selection): CompareSide {
 // With no band to measure it falls back to the point extent, which is deliberate:
 // the axis of a plot with nothing on it should still be the axis of the data,
 // ready for whichever switch the reader reaches for next.
-export function extentOf(series: SeriesEntry[], span: Span | null, drawPoints = true): Range {
+//
+// `drawn.line` drops the line's edge crossings, for `runs`, where the line is not
+// painted (`AppState.drawLines`).
+export type Drawn = { points: boolean; line: boolean };
+
+export function extentOf(
+  series: SeriesEntry[],
+  span: Span | null,
+  drawn: Drawn = { points: true, line: true },
+): Range {
   const ranges: Range[] = [];
   for (const s of series) {
-    if (!drawPoints) {
+    if (!drawn.points) {
       const band = trendExtent(
         s.trend,
         span ? span.start : -Infinity,
@@ -2203,7 +2224,7 @@ export function extentOf(series: SeriesEntry[], span: Span | null, drawPoints = 
     // Pushes *inside* the window need no special handling: a push mean is an
     // average of its runs' means, each of which lies between its own
     // replicates, so it can't escape whichever dots the loop above covered.
-    const line = lineEdgeExtent(s.data.pushes, span);
+    const line = drawn.line ? lineEdgeExtent(s.data.pushes, span) : null;
     if (line) {
       if (line.min < min) min = line.min;
       if (line.max > max) max = line.max;
