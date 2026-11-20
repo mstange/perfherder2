@@ -693,6 +693,18 @@ describe('buildCommitsReport', () => {
     expect(report.label).toBe('1 of 145 commits');
     expect(report.caveat).toMatch(/at most 20 per push/);
   });
+
+  it('lists the whole range unless --commit-limit caps it, and counts what the cap held back', () => {
+    const three: PushlogRange = {
+      ...range,
+      commits: ['a', 'b', 'c'].map((r) => ({ ...range.commits[0], revision: r.repeat(12) })),
+      hiddenRevisions: 0,
+    };
+    expect(buildCommitsReport('autoland', 'from', 'to', three, null).omitted).toBe(0);
+    const capped = buildCommitsReport('autoland', 'from', 'to', three, null, null, 2);
+    expect(capped.commits.map((c) => c.revision)).toEqual(['aaaaaaaaaaaa', 'bbbbbbbbbbbb']);
+    expect(capped.omitted).toBe(1);
+  });
 });
 
 // A change row is only ever built by `buildChangesReport`; these tests are about

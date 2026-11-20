@@ -937,9 +937,10 @@ const commits: Command = {
   summary: 'what landed between two revisions',
   usage: [
     'perfherder-cli commits <repo> <fromRevision> <toRevision> [--commit-grep <pattern>]',
+    '                                                         [--commit-limit <n>]',
   ],
   booleans: [],
-  valued: ['commit-grep'],
+  valued: ['commit-grep', 'commit-limit'],
   details: [
     'The base revision\'s own push is excluded, matching hg\'s pushloghtml — so this is the set',
     'of candidates for a change measured between the two, and not a list that blames the',
@@ -952,6 +953,9 @@ const commits: Command = {
     'case-insensitive regular expression, and counts the ones it excluded. Over a busy merge',
     'that is the difference between reading twenty commits and reading the two that touch the',
     'subsystem the graph moved on.',
+    '',
+    '--commit-limit <n> shows the first n matching commits and counts the rest. Unlike',
+    '`changes`, this command has no default limit and lists the whole range.',
   ],
   async run(parsed) {
     if (parsed.positionals.length !== 3) {
@@ -969,6 +973,7 @@ const commits: Command = {
       range,
       repoLink,
       compileGrep(flagString(parsed.flags, 'commit-grep'), 'commit-grep'),
+      parsed.flags.has('commit-limit') ? flagNumber(parsed.flags, 'commit-limit', 0) : null,
     );
     return { report, lines: renderCommits(report) };
   },

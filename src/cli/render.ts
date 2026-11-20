@@ -1753,8 +1753,9 @@ export function renderCommits(report: CommitsReport): string[] {
       // The label counts the range. A filtered list under it would read as a
       // range that only ever held these rows.
       (report.filtered !== null
-        ? `, ${report.commits.length} matching --commit-grep`
-        : ''),
+        ? `, ${report.commits.length + report.omitted} matching --commit-grep`
+        : '') +
+      (report.omitted > 0 ? `, showing ${report.commits.length} (--commit-limit)` : ''),
   );
   out.push('');
   if (report.commits.length === 0) {

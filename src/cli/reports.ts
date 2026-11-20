@@ -1974,6 +1974,9 @@ export type CommitsReport = {
   // `label` counts the range, so without this a filtered list is three rows
   // under "35 commits" and reads as a range that only held three.
   filtered: number | null;
+  // How many matching commits `--commit-limit` held back. Zero when no limit
+  // was given: unlike `changes`, this command lists the whole range by default.
+  omitted: number;
   url: string | null;
   commits: CommitSummary[];
 };
@@ -1987,9 +1990,13 @@ export function buildCommitsReport(
   // Null when `--commit-grep` was not given, so that "the pattern excluded
   // nothing" and "no pattern ran" stay distinguishable in the report.
   grep: RegExp | null = null,
+  // Null for no limit. Accepted because `changes` names `--commit-limit` in its
+  // heading, and the natural next step from a shortened list is this command.
+  limit: number | null = null,
 ): CommitsReport {
   const all = range.commits.map(commitSummary);
   const matched = grep ? all.filter((c) => commitMatches(c, grep)) : all;
+  const shown = limit === null ? matched : matched.slice(0, limit);
   return {
     repository,
     fromRevision,
@@ -2000,7 +2007,8 @@ export function buildCommitsReport(
     hiddenRevisions: range.hiddenRevisions,
     truncated: range.truncated,
     filtered: grep ? all.length - matched.length : null,
+    omitted: matched.length - shown.length,
     url: repoLink ? pushLogRangeUrl(repoLink, fromRevision, toRevision) : null,
-    commits: matched,
+    commits: shown,
   };
 }
