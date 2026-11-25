@@ -307,10 +307,9 @@ function parsePointSelector(tail: string | null, whole: string): PointSelector |
   if (value === '') throw new UsageError(`"${whole}" has an empty @ selector`);
   if (value === 'first') return { kind: 'first' };
   if (value === 'last') return { kind: 'last' };
-  // All-digits is a push id. A revision is hex and could in principle be all
-  // digits too, but a 12-character one has odds of about 1 in 3 × 10^6 and the
-  // escape hatch is to paste one more character of it.
-  if (/^\d+$/.test(value)) return { kind: 'push', pushId: Number(value) };
+  // A push id has no leading zero. Keep it on all-digit revisions instead of
+  // converting it to a number and losing the zero.
+  if (/^\d+$/.test(value) && !/^0\d/.test(value)) return { kind: 'push', pushId: Number(value) };
   if (!/^[0-9a-f]{6,40}$/i.test(value)) {
     throw new UsageError(
       `"${value}" is not a revision, a push id, or first/last — revisions are 6 to 40 hex characters`,

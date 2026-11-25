@@ -195,6 +195,10 @@ describe('parseSeriesArg', () => {
     expect(parseSeriesArg('autoland,1@first').at).toEqual({ kind: 'first' });
     expect(parseSeriesArg('autoland,1@last').at).toEqual({ kind: 'last' });
     expect(parseSeriesArg('autoland,1@1954000').at).toEqual({ kind: 'push', pushId: 1954000 });
+    expect(parseSeriesArg('autoland,1@006163118837').at).toEqual({
+      kind: 'revision',
+      revision: '006163118837',
+    });
     expect(parseSeriesArg('autoland,1@4138203B7BE1').at).toEqual({
       kind: 'revision',
       revision: '4138203b7be1',
